@@ -1,0 +1,37 @@
+{
+    "editor.fontSize": 14,
+    "editor.tabSize": 4,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "prettier.singleQuote": true,
+    "prettier.tabWidth": 4,
+    "prettier.useTabs": false,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "black-formatter.args": ["--line-length=88", "--skip-string-normalization"],
+    "isort.args": ["--profile=black"],
+    "workbench.colorCustomizations": {
+        // タイトルバー
+        "titleBar.activeBackground": "#7bc0e9",
+        "titleBar.activeForeground": "#4d4d4d",
+        "titleBar.inactiveBackground": "#7bc0e9",
+        "titleBar.inactiveForeground": "#b1b1b8",
+        "titleBar.border": "#7bc0e9",
+        // アクティビティバー
+        "activityBar.background": "#7bc0e9",
+        "activityBar.foreground": "#4d4d4d",
+        "activityBar.inactiveForeground": "#969696",
+        "activityBar.border": "#7bc0e9",
+        // アクティビティバーのバッジ
+        "activityBarBadge.background": "#3a3a40",
+        "activityBarBadge.foreground": "#ffffff",
+        "tab.activeBorder": "#00e1ff",
+        "tab.activeBorderTop": "#1f1f1f",
+        "tab.activeBackground": "#1f1f1f"
+    }
+}
