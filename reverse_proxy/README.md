@@ -1,6 +1,6 @@
 # Nginx リバースプロキシ
 
-このディレクトリには、Dockerで動作するNginxリバースプロキシサーバーの設定が含まれています。
+このディレクトリには、Docker で動作する Nginx リバースプロキシサーバーの設定が含まれています。
 
 ## 構成
 
@@ -20,25 +20,25 @@ reverse_proxy/
 
 ```bash
 cd reverse_proxy
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 停止
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ### ログの確認
 
 ```bash
-docker-compose logs -f nginx-proxy
+docker compose logs -f nginx-proxy
 ```
 
 ### 設定の再読み込み
 
 ```bash
-docker-compose exec nginx-proxy nginx -s reload
+docker compose exec nginx-proxy nginx -s reload
 ```
 
 ## 設定のカスタマイズ
@@ -58,9 +58,9 @@ location /app {
 }
 ```
 
-### HTTPS対応
+### HTTPS 対応
 
-1. SSL証明書を`ssl/`ディレクトリに配置
+1. SSL 証明書を`ssl/`ディレクトリに配置
 2. `docker-compose.yml`のポートとボリュームのコメントアウトを解除
 3. `conf.d/`に新しいサーバー設定を追加
 
@@ -74,5 +74,5 @@ curl http://localhost/health
 
 ## ネットワーク
 
-このリバースプロキシは`kawashiro-proxy-network`という名前のDockerネットワークを使用します。
+このリバースプロキシは`kawashiro-proxy-network`という名前の Docker ネットワークを使用します。
 他のコンテナをこのネットワークに接続することで、内部通信が可能になります。
