@@ -5,6 +5,7 @@ services:
             dockerfile: Dockerfile
         image: kawashiro-reverse-proxy
         container_name: kawashiro-reverse-proxy
+        hostname: kawashiro-reverse-proxy
         ports:
             - '80:80'
             # HTTPS用（必要に応じてコメントアウトを解除）
@@ -16,9 +17,7 @@ services:
             # カスタム404ページ
             - ./reverse_proxy/html:/usr/share/nginx/html:ro
             # ログの永続化
-            - nginx_logs:/var/log/nginx
-            # SSL証明書（必要に応じてコメントアウトを解除）
-            # - ./ssl:/etc/nginx/ssl:ro
+            - ./volumes/kawashiro-reverse-proxy/log/nginx:/var/log/nginx
         restart: unless-stopped
         networks:
             - proxy-network
@@ -29,15 +28,15 @@ services:
             dockerfile: Dockerfile
         image: kawashiro-test-web
         container_name: kawashiro-test-web
+        hostname: kawashiro-test-web
         ports:
             - '8080:80'
+        volumes:
+            # ログの永続化
+            - ./volumes/kawashiro-test-web/log/nginx:/var/log/nginx
         restart: unless-stopped
         networks:
             - proxy-network
-
-volumes:
-    nginx_logs:
-        driver: local
 
 networks:
     proxy-network:

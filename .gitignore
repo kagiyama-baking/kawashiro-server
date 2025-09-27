@@ -1,0 +1,6 @@
+# 永続化ボリューム
+/volumes/
+
+# OS関連
+.DS_Store
+Thumbs.db
