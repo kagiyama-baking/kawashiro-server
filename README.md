@@ -33,17 +33,32 @@ kawashiro-server/
 
 ## アーキテクチャ
 
+### Reverse Proxy
+
+Reverse Proxy が Web アクセスを受け付け、サブドメインに応じて異なるポートへ転送する。
+
 ```
-Internet
-    │
-    ▼
-┌─────────────┐
-│ Nginx Proxy │ :80
-│ (Port 80)   │
-└─────────────┘
-    │
-    ├── test.[domain] ──► Test Web Server :8080
-    └── [domain] ─────► 404 Page
+   Internet
+      │
+      ▼
+┌───────────────┐
+│ Reverse Proxy │ :80
+│ (Nginx)       │
+└───────────────┘
+      │
+      ├── test.example ──► Test Web Server :8080
+      └── example ───────► 404 Page
+```
+
+### 永続化ボリューム
+
+永続化したいボリュームは、`docker-compose.yaml`で指定する。
+`volomes`の配下は、コンテナ名ごとに整理する。
+
+```yaml
+volumes:
+    # ログの永続化例（nginx）
+    - ./volumes/[container_name]/log/nginx:/var/log/nginx
 ```
 
 ## 必要な環境
@@ -117,107 +132,4 @@ docker compose exec reverse-proxy nginx -s reload
 
 # または再起動
 docker compose restart reverse-proxy
-```
-
-## アクセス方法
-
-### 基本アクセス
-
--   **ヘルスチェック**: `http://localhost/health`
--   **メインドメイン**: `http://localhost/` → カスタム 404 ページ
--   **テストサーバー**: `http://test.localhost/` → テスト用 Web サーバー
-
-### 本番環境での使用
-
-実際のドメインでの使用時:
-
--   **メインサイト**: `https://yourdomain.com/` → 404 ページ
--   **テストサイト**: `https://test.yourdomain.com/` → テスト用サーバー
-
-## カスタマイズ
-
-### 新しいサービスの追加
-
-1. `docker-compose.yaml`にサービスを追加:
-
-```yaml
-services:
-    your-app:
-        image: your-app:latest
-        container_name: your-app
-        networks:
-            - proxy-network
-```
-
-2. `reverse_proxy/conf.d/default.conf`にルーティングを追加:
-
-```nginx
-# あなたのアプリ用設定
-server {
-    listen 80;
-    server_name ~^app\.(.*)$;
-
-    location / {
-        proxy_pass http://your-app:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### SSL/HTTPS 対応
-
-1. SSL 証明書を`reverse_proxy/ssl/`ディレクトリに配置
-2. `docker-compose.yaml`の HTTPS 設定のコメントアウトを解除
-3. `reverse_proxy/conf.d/`に SSL 設定を追加
-
-## 開発
-
-### 開発環境での起動
-
-```bash
-# 開発モードで起動（ファイル変更が即座に反映）
-docker compose up --build
-
-# 特定のサービスのみビルド
-docker compose build reverse-proxy
-```
-
-### デバッグ
-
-```bash
-# コンテナ内でコマンド実行
-docker compose exec reverse-proxy /bin/sh
-
-# 設定ファイルの検証
-docker compose exec reverse-proxy nginx -t
-```
-
-## トラブルシューティング
-
-### よくある問題
-
-#### ポート 80 が既に使用されている
-
-```bash
-# 使用中のプロセスを確認
-sudo lsof -i :80
-
-# または別のポートを使用
-# docker-compose.yamlでポート設定を変更
-ports:
-  - '8080:80'  # localhost:8080でアクセス
-```
-
-#### 設定変更が反映されない
-
-```bash
-# Nginxの設定をテスト
-docker compose exec reverse-proxy nginx -t
-
-# コンテナを完全に再ビルド
-docker compose down
-docker compose up --build -d
 ```
