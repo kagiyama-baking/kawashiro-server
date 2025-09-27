@@ -11,10 +11,9 @@ services:
             # HTTPS用（必要に応じてコメントアウトを解除）
             # - "443:443"
         volumes:
-            # 設定ファイルのマウント（開発時用）
+            # ファイルのマウント
             - ./reverse_proxy/nginx.conf:/etc/nginx/nginx.conf:ro
             - ./reverse_proxy/conf.d:/etc/nginx/conf.d:ro
-            # カスタム404ページ
             - ./reverse_proxy/html:/usr/share/nginx/html:ro
             # ログの永続化
             - ./volumes/kawashiro-reverse-proxy/log/nginx:/var/log/nginx
@@ -32,6 +31,8 @@ services:
         ports:
             - '8080:80'
         volumes:
+            # ファイルのマウント
+            - ./test_web/html:/usr/share/nginx/html:ro
             # ログの永続化
             - ./volumes/kawashiro-test-web/log/nginx:/var/log/nginx
         restart: unless-stopped
