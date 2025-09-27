@@ -1,65 +1,68 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>テストWebサーバ</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 50px;
-            background-color: #f0f8ff;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        .status {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
-            display: inline-block;
-            margin: 20px 0;
-        }
-        .info {
-            background-color: #f9f9f9;
-            padding: 15px;
-            border-left: 4px solid #2196F3;
-            margin: 20px 0;
-            text-align: left;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🌐 テストWebサーバ</h1>
-        <div class="status">✅ サーバが正常に動作中</div>
-        
-        <div class="info">
-            <h3>サーバ情報</h3>
-            <p><strong>目的:</strong> リバースプロキシの接続先確認用</p>
-            <p><strong>サーバ:</strong> Nginx (Docker)</p>
-            <p><strong>ポート:</strong> 8080</p>
-        </div>
-        
-        <p>このページが表示されていれば、Webサーバが正常に動作しています。</p>
-        <p>リバースプロキシの設定テストに使用してください。</p>
-        
-        <small>作成日時: <span id="datetime"></span></small>
-    </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>テストWebサーバ</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                text-align: center;
+                padding: 50px;
+                background-color: #f0f8ff;
+            }
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+                background: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+                color: #333;
+                margin-bottom: 20px;
+            }
+            .status {
+                background-color: #4caf50;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                display: inline-block;
+                margin: 20px 0;
+            }
+            .info {
+                background-color: #f9f9f9;
+                padding: 15px;
+                border-left: 4px solid #2196f3;
+                margin: 20px 0;
+                text-align: left;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🌐 テストWebサーバ</h1>
+            <div class="status">✅ サーバが正常に動作中</div>
 
-    <script>
-        document.getElementById('datetime').textContent = new Date().toLocaleString('ja-JP');
-    </script>
-</body>
+            <div class="info">
+                <h3>サーバ情報</h3>
+                <p><strong>目的:</strong> リバースプロキシの接続先確認用</p>
+                <p><strong>サーバ:</strong> Nginx (Docker)</p>
+                <p><strong>ポート:</strong> 8080</p>
+            </div>
+
+            <p>
+                このページが表示されていれば、Webサーバが正常に動作しています。
+            </p>
+            <p>リバースプロキシの設定テストに使用してください。</p>
+
+            <small>日時: <span id="datetime"></span></small>
+        </div>
+
+        <script>
+            document.getElementById('datetime').textContent =
+                new Date().toLocaleString('ja-JP');
+        </script>
+    </body>
 </html>
