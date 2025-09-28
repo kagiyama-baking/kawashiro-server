@@ -35,19 +35,26 @@ kawashiro-server/
 
 ### Reverse Proxy
 
-Reverse Proxy が Web アクセスを受け付け、サブドメインに応じて異なるポートへ転送する。
+各コンテナへ、Web アクセスは、Reverse Proxy に集約する。  
+Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付け、
+サブドメインに応じて対応するコンテナ側ポートへ転送する。
 
 ```
-   Internet
+   Browser
       │
       ▼
 ┌───────────────┐
-│ Reverse Proxy │ :80
+│ Reverse Proxy │ :80（ホスト）
 │ (Nginx)       │
 └───────────────┘
-      │
-      ├── test.example ──► Test Web Server :8080
-      └── example ───────► 404 Page
+      │                        ┌───────────────┐
+      ├── test.example.com ──► │ Test Web      │ :8080 (コンテナ)
+      │                        │ (Nginx)       │
+      │                        └───────────────┘
+      │                        ┌───────────────┐
+      └── example.com ───────► │ Reverse Proxy │ :8080 (コンテナ)
+                               │ (Nginx)       │
+                               └───────────────┘
 ```
 
 ### 永続化ボリューム

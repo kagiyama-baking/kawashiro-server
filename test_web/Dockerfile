@@ -1,7 +1,14 @@
 FROM nginx:alpine
 
-# ポート80を公開
-EXPOSE 80
+# 設定をイメージに焼く
+COPY conf.d/*.conf /etc/nginx/conf.d/
+COPY html/* /usr/share/nginx/html/
+
+# 非rootで動かす
+USER nginx
+
+# コンテナがリッスンするポートを指定
+EXPOSE 8080
 
 # Nginxを実行
 CMD ["nginx", "-g", "daemon off;"]
