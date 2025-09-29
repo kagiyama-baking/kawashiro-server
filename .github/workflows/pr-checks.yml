@@ -31,42 +31,106 @@ jobs:
           docker compose -f docker-compose.yaml up -d
           docker compose ps
 
-      # 5) コンテナが "running" になるまで待つ（execの前に必須）
-      - name: Wait container running (reverse-proxy)
+      # 5) コンテナが "running" になり、ヘルスチェックが成功するまで待つ（execの前に必須）
+      - name: Wait container fully ready (reverse-proxy)
         run: |
           set -e
           CID=$(docker compose -f docker-compose.yaml ps -q reverse-proxy)
+          echo "Waiting for reverse-proxy container to be fully ready..."
+          
+          # Step 1: Wait for container to be running
           for i in $(seq 1 60); do
             st=$(docker inspect -f '{{.State.Status}}' "$CID" || echo "unknown")
-            echo "reverse-proxy status=$st"
-            [ "$st" = "running" ] && exit 0
+            echo "[$i/60] reverse-proxy status=$st"
+            if [ "$st" = "running" ]; then
+              echo "Container is running, checking if it's healthy..."
+              break
+            fi
             sleep 1
           done
-          echo "reverse-proxy did not reach running"; exit 1
+          
+          if [ "$st" != "running" ]; then
+            echo "reverse-proxy did not reach running state"
+            docker compose -f docker-compose.yaml logs reverse-proxy | tail -n 50
+            exit 1
+          fi
+          
+          # Step 2: Wait for nginx to be ready (port 8080 inside container)
+          echo "Waiting for nginx to be ready on port 8080..."
+          for i in $(seq 1 60); do
+            if docker compose -f docker-compose.yaml exec -T reverse-proxy sh -c "nc -z localhost 8080" 2>/dev/null; then
+              echo "[$i/60] nginx is listening on port 8080"
+              sleep 2  # Give nginx a bit more time to fully initialize
+              exit 0
+            fi
+            echo "[$i/60] nginx not ready yet..."
+            sleep 1
+          done
+          
+          echo "nginx did not become ready"
+          docker compose -f docker-compose.yaml logs reverse-proxy | tail -n 50
+          exit 1
 
-      - name: Wait container running (test-web)
+      - name: Wait container fully ready (test-web)
         run: |
           set -e
           CID=$(docker compose -f docker-compose.yaml ps -q test-web)
+          echo "Waiting for test-web container to be fully ready..."
+          
+          # Step 1: Wait for container to be running
           for i in $(seq 1 60); do
             st=$(docker inspect -f '{{.State.Status}}' "$CID" || echo "unknown")
-            echo "test-web status=$st"
-            [ "$st" = "running" ] && exit 0
+            echo "[$i/60] test-web status=$st"
+            if [ "$st" = "running" ]; then
+              echo "Container is running, checking if it's healthy..."
+              break
+            fi
             sleep 1
           done
-          echo "test-web did not reach running"; exit 1
+          
+          if [ "$st" != "running" ]; then
+            echo "test-web did not reach running state"
+            docker compose -f docker-compose.yaml logs test-web | tail -n 50
+            exit 1
+          fi
+          
+          # Step 2: Wait for nginx to be ready (port 8080 inside container)
+          echo "Waiting for nginx to be ready on port 8080..."
+          for i in $(seq 1 60); do
+            if docker compose -f docker-compose.yaml exec -T test-web sh -c "nc -z localhost 8080" 2>/dev/null; then
+              echo "[$i/60] nginx is listening on port 8080"
+              sleep 2  # Give nginx a bit more time to fully initialize
+              exit 0
+            fi
+            echo "[$i/60] nginx not ready yet..."
+            sleep 1
+          done
+          
+          echo "nginx did not become ready"
+          docker compose -f docker-compose.yaml logs test-web | tail -n 50
+          exit 1
 
       # 6) 構文チェック（B案）：exec でコンテナ内 nginx -t
       #    error_log を一時的に stderr に退避して権限依存を回避
       - name: Nginx config test (reverse-proxy)
         run: |
+          echo "Testing nginx configuration in reverse-proxy..."
           docker compose -f docker-compose.yaml exec -T reverse-proxy \
-            sh -lc "nginx -t -g 'error_log /dev/stderr notice;'"
+            sh -lc "nginx -t -g 'error_log /dev/stderr notice;'" || {
+            echo "nginx -t failed for reverse-proxy"
+            docker compose -f docker-compose.yaml logs reverse-proxy | tail -n 50
+            exit 1
+          }
 
       - name: Nginx config test (test-web)
         run: |
+          echo "Testing nginx configuration in test-web..."
           docker compose -f docker-compose.yaml exec -T test-web \
-            sh -lc 'nginx -t -g "error_log /dev/stderr notice;"'
+            sh -lc 'nginx -t -g "error_log /dev/stderr notice;"' || {
+            echo "nginx -t failed for test-web"
+            docker compose -f docker-compose.yaml logs test-web | tail -n 50
+            exit 1
+          }
 
       # 7) 事前スモーク①：/health が 200 になるまで待機
       - name: Wait /health (reverse-proxy)
