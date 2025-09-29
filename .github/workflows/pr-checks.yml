@@ -32,29 +32,69 @@ jobs:
           # 起動状態を確認
           docker compose ps
 
-      # コンテナの準備完了を待機（最大30秒）
+      # コンテナの準備完了を待機（最大60秒）
       - name: Wait for containers to be ready
         run: |
           echo "⏳ コンテナの準備完了を待機中..."
           
+          # コンテナの状態を確認
+          echo "🔍 コンテナの現在の状態:"
+          docker compose ps
+          
           # reverse-proxyの準備完了を待機
-          for i in {1..30}; do
-            if docker compose exec -T reverse-proxy nc -z localhost 8080 2>/dev/null; then
-              echo "✅ reverse-proxy: 準備完了"
-              break
+          echo "🔄 reverse-proxyの起動を待機中..."
+          for i in {1..60}; do
+            # コンテナの状態を確認
+            status=$(docker compose ps --format json reverse-proxy | jq -r '.[0].State' 2>/dev/null || echo "unknown")
+            echo "  [$i/60] コンテナ状態: $status"
+            
+            # running状態の場合はポートチェック
+            if [ "$status" = "running" ]; then
+              if docker compose exec -T reverse-proxy nc -z localhost 8080 2>/dev/null; then
+                echo "✅ reverse-proxy: 準備完了"
+                break
+              else
+                echo "    ポート8080の確認中..."
+              fi
             fi
-            [ $i -eq 30 ] && { echo "❌ reverse-proxy: タイムアウト"; exit 1; }
-            sleep 1
+            
+            # タイムアウト時のデバッグ情報
+            if [ $i -eq 60 ]; then
+              echo "❌ reverse-proxy: タイムアウト"
+              echo "📋 コンテナのログ:"
+              docker compose logs reverse-proxy | tail -n 50
+              exit 1
+            fi
+            
+            sleep 2
           done
           
           # test-webの準備完了を待機
-          for i in {1..30}; do
-            if docker compose exec -T test-web nc -z localhost 8080 2>/dev/null; then
-              echo "✅ test-web: 準備完了"
-              break
+          echo "🔄 test-webの起動を待機中..."
+          for i in {1..60}; do
+            # コンテナの状態を確認
+            status=$(docker compose ps --format json test-web | jq -r '.[0].State' 2>/dev/null || echo "unknown")
+            echo "  [$i/60] コンテナ状態: $status"
+            
+            # running状態の場合はポートチェック
+            if [ "$status" = "running" ]; then
+              if docker compose exec -T test-web nc -z localhost 8080 2>/dev/null; then
+                echo "✅ test-web: 準備完了"
+                break
+              else
+                echo "    ポート8080の確認中..."
+              fi
             fi
-            [ $i -eq 30 ] && { echo "❌ test-web: タイムアウト"; exit 1; }
-            sleep 1
+            
+            # タイムアウト時のデバッグ情報
+            if [ $i -eq 60 ]; then
+              echo "❌ test-web: タイムアウト"
+              echo "📋 コンテナのログ:"
+              docker compose logs test-web | tail -n 50
+              exit 1
+            fi
+            
+            sleep 2
           done
 
       # Nginx設定の構文チェック
