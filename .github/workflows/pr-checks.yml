@@ -20,6 +20,8 @@ jobs:
         run: |
           mkdir -p volumes/kawashiro-reverse-proxy/log/nginx
           mkdir -p volumes/kawashiro-test-web/log/nginx
+          # GitHub Actions環境での権限問題を解決
+          chmod -R 777 volumes/
 
       # Dockerイメージのビルド
       - name: Build Docker images
