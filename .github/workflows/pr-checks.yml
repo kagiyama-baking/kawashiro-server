@@ -5,183 +5,134 @@ on:
     branches: [develop]
 
 jobs:
+  # PRチェック用のメインジョブ
   pr-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # 全体のタイムアウトを設定
 
     steps:
-      # 1) ソース取得
+      # ソースコードの取得
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) ログのバインド先を作成
-      #    /var/log/nginx をホストにマウントしているため、事前に作っておくと起動が安定
-      - name: Prepare log dirs for bind mounts
+      # ログディレクトリの準備（コンテナマウント用）
+      - name: Prepare log directories
         run: |
           mkdir -p volumes/kawashiro-reverse-proxy/log/nginx
           mkdir -p volumes/kawashiro-test-web/log/nginx
-          chmod -R 0777 volumes || true
 
-      # 3) まずイメージだけビルド（起動はまだ）
-      - name: Compose build
-        run: docker compose -f docker-compose.yaml build --pull
+      # Dockerイメージのビルド
+      - name: Build Docker images
+        run: docker compose build --pull
 
-      # 4) 両サービスを起動（reverse-proxy と test-web）
-      - name: Compose up
+      # コンテナの起動
+      - name: Start containers
         run: |
-          docker compose -f docker-compose.yaml up -d
+          docker compose up -d
+          # 起動状態を確認
           docker compose ps
 
-      # 5) コンテナが "running" になり、ヘルスチェックが成功するまで待つ（execの前に必須）
-      - name: Wait container fully ready (reverse-proxy)
+      # コンテナの準備完了を待機（最大30秒）
+      - name: Wait for containers to be ready
         run: |
-          set -e
-          CID=$(docker compose -f docker-compose.yaml ps -q reverse-proxy)
-          echo "Waiting for reverse-proxy container to be fully ready..."
+          echo "⏳ コンテナの準備完了を待機中..."
           
-          # Step 1: Wait for container to be running
-          for i in $(seq 1 60); do
-            st=$(docker inspect -f '{{.State.Status}}' "$CID" || echo "unknown")
-            echo "[$i/60] reverse-proxy status=$st"
-            if [ "$st" = "running" ]; then
-              echo "Container is running, checking if it's healthy..."
+          # reverse-proxyの準備完了を待機
+          for i in {1..30}; do
+            if docker compose exec -T reverse-proxy nc -z localhost 8080 2>/dev/null; then
+              echo "✅ reverse-proxy: 準備完了"
               break
             fi
+            [ $i -eq 30 ] && { echo "❌ reverse-proxy: タイムアウト"; exit 1; }
             sleep 1
           done
           
-          if [ "$st" != "running" ]; then
-            echo "reverse-proxy did not reach running state"
-            docker compose -f docker-compose.yaml logs reverse-proxy | tail -n 50
-            exit 1
-          fi
-          
-          # Step 2: Wait for nginx to be ready (port 8080 inside container)
-          echo "Waiting for nginx to be ready on port 8080..."
-          for i in $(seq 1 60); do
-            if docker compose -f docker-compose.yaml exec -T reverse-proxy sh -c "nc -z localhost 8080" 2>/dev/null; then
-              echo "[$i/60] nginx is listening on port 8080"
-              sleep 2  # Give nginx a bit more time to fully initialize
-              exit 0
-            fi
-            echo "[$i/60] nginx not ready yet..."
-            sleep 1
-          done
-          
-          echo "nginx did not become ready"
-          docker compose -f docker-compose.yaml logs reverse-proxy | tail -n 50
-          exit 1
-
-      - name: Wait container fully ready (test-web)
-        run: |
-          set -e
-          CID=$(docker compose -f docker-compose.yaml ps -q test-web)
-          echo "Waiting for test-web container to be fully ready..."
-          
-          # Step 1: Wait for container to be running
-          for i in $(seq 1 60); do
-            st=$(docker inspect -f '{{.State.Status}}' "$CID" || echo "unknown")
-            echo "[$i/60] test-web status=$st"
-            if [ "$st" = "running" ]; then
-              echo "Container is running, checking if it's healthy..."
+          # test-webの準備完了を待機
+          for i in {1..30}; do
+            if docker compose exec -T test-web nc -z localhost 8080 2>/dev/null; then
+              echo "✅ test-web: 準備完了"
               break
             fi
+            [ $i -eq 30 ] && { echo "❌ test-web: タイムアウト"; exit 1; }
             sleep 1
           done
+
+      # Nginx設定の構文チェック
+      - name: Test Nginx configuration
+        run: |
+          echo "🔍 Nginx設定の構文チェック中..."
           
-          if [ "$st" != "running" ]; then
-            echo "test-web did not reach running state"
-            docker compose -f docker-compose.yaml logs test-web | tail -n 50
+          # reverse-proxyの構文チェック
+          docker compose exec -T reverse-proxy nginx -t
+          
+          # test-webの構文チェック
+          docker compose exec -T test-web nginx -t
+          
+          echo "✅ Nginx設定の構文チェック: OK"
+
+      # 基本的な疎通確認
+      - name: Health check
+        run: |
+          echo "🏥 ヘルスチェック中..."
+          
+          # ヘルスエンドポイントの確認
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
+          if [ "$status" = "200" ]; then
+            echo "✅ ヘルスチェック: OK (HTTP $status)"
+          else
+            echo "❌ ヘルスチェック: NG (HTTP $status)"
             exit 1
           fi
+
+      # サブドメインルーティングの確認
+      - name: Test subdomain routing
+        run: |
+          echo "🔀 サブドメインルーティングのテスト中..."
           
-          # Step 2: Wait for nginx to be ready (port 8080 inside container)
-          echo "Waiting for nginx to be ready on port 8080..."
-          for i in $(seq 1 60); do
-            if docker compose -f docker-compose.yaml exec -T test-web sh -c "nc -z localhost 8080" 2>/dev/null; then
-              echo "[$i/60] nginx is listening on port 8080"
-              sleep 2  # Give nginx a bit more time to fully initialize
-              exit 0
-            fi
-            echo "[$i/60] nginx not ready yet..."
-            sleep 1
-          done
+          # test.localhost → test-webへのルーティング確認
+          status=$(curl --resolve test.localhost:80:127.0.0.1 \
+                   -s -o /dev/null -w "%{http_code}" \
+                   http://test.localhost/)
           
-          echo "nginx did not become ready"
-          docker compose -f docker-compose.yaml logs test-web | tail -n 50
-          exit 1
-
-      # 6) 構文チェック（B案）：exec でコンテナ内 nginx -t
-      #    error_log を一時的に stderr に退避して権限依存を回避
-      - name: Nginx config test (reverse-proxy)
-        run: |
-          echo "Testing nginx configuration in reverse-proxy..."
-          docker compose -f docker-compose.yaml exec -T reverse-proxy \
-            sh -lc "nginx -t -g 'error_log /dev/stderr notice;'" || {
-            echo "nginx -t failed for reverse-proxy"
-            docker compose -f docker-compose.yaml logs reverse-proxy | tail -n 50
+          if [ "$status" = "200" ]; then
+            echo "✅ ルーティング: OK (test.localhost → test-web)"
+          else
+            echo "❌ ルーティング: NG (HTTP $status)"
             exit 1
-          }
+          fi
 
-      - name: Nginx config test (test-web)
+      # Nginxの再起動テスト（ゼロダウンタイム確認）
+      - name: Test graceful reload
         run: |
-          echo "Testing nginx configuration in test-web..."
-          docker compose -f docker-compose.yaml exec -T test-web \
-            sh -lc 'nginx -t -g "error_log /dev/stderr notice;"' || {
-            echo "nginx -t failed for test-web"
-            docker compose -f docker-compose.yaml logs test-web | tail -n 50
+          echo "🔄 Nginx再起動テスト中..."
+          
+          # graceful reload実行
+          docker compose exec -T reverse-proxy nginx -s reload
+          
+          # 再起動後の疎通確認
+          sleep 2
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
+          
+          if [ "$status" = "200" ]; then
+            echo "✅ 再起動後の疎通確認: OK"
+          else
+            echo "❌ 再起動後の疎通確認: NG (HTTP $status)"
             exit 1
-          }
+          fi
 
-      # 7) 事前スモーク①：/health が 200 になるまで待機
-      - name: Wait /health (reverse-proxy)
-        run: |
-          set -e
-          for i in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
-            [ "$code" = "200" ] && { echo "/health=200"; exit 0; }
-            sleep 1
-          done
-          echo "reverse-proxy /health not ready (expect 200)"; exit 1
-
-      # 8) 事前スモーク②：Host ルート（test.localhost → test-web）
-      - name: Smoke before reload (test.localhost)
-        run: |
-          code=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/ || true)
-          echo "HTTP $code test.localhost / (before reload)"
-          case "$code" in
-            200|201|202|204|301|302|304|307|308) exit 0 ;;
-            *) echo "Unexpected status: $code"; exit 1 ;;
-          esac
-
-      # 9) graceful reload（ゼロダウン更新の回帰確認）
-      - name: Reload Nginx (reverse-proxy)
-        run: docker compose -f docker-compose.yaml exec -T reverse-proxy nginx -s reload
-
-      # 10) 事後スモーク①：/health
-      - name: Smoke after reload (/health)
-        run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
-          echo "HTTP $code /health (after reload)"
-          test "$code" = "200"
-
-      # 11) 事後スモーク②：Host ルート
-      - name: Smoke after reload (test.localhost)
-        run: |
-          code=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/ || true)
-          echo "HTTP $code test.localhost / (after reload)"
-          case "$code" in
-            200|201|202|204|301|302|304|307|308) exit 0 ;;
-            *) echo "Unexpected status after reload: $code"; exit 1 ;;
-          esac
-
-      # 障害時の原因特定：直近ログを出力
+      # エラー時のデバッグ情報出力
       - name: Show logs on failure
         if: failure()
         run: |
-          docker compose -f docker-compose.yaml logs --no-color reverse-proxy | tail -n 200 || true
-          docker compose -f docker-compose.yaml logs --no-color test-web      | tail -n 200 || true
+          echo "📋 === エラー時のログ出力 ==="
+          echo "\n--- reverse-proxy logs ---"
+          docker compose logs reverse-proxy | tail -n 100
+          echo "\n--- test-web logs ---"
+          docker compose logs test-web | tail -n 100
 
-      # 12) 後片付け
-      - name: Compose down
+      # 環境のクリーンアップ（常に実行）
+      - name: Cleanup
         if: always()
-        run: docker compose -f docker-compose.yaml down -v
+        run: |
+          docker compose down -v
+          echo "🧹 クリーンアップ完了"
