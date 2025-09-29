@@ -1,0 +1,71 @@
+name: PR checks (develop)
+
+on:
+  pull_request:
+    branches: [develop]
+
+jobs:
+  pr-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compose up (build)
+        run: |
+          docker compose -f docker-compose.yaml up -d --build
+          docker compose ps
+
+      - name: Nginx config test (reverse-proxy)
+        run: docker compose -f docker-compose.yaml exec -T reverse-proxy nginx -t
+
+      - name: Nginx config test (test-web)
+        run: docker compose -f docker-compose.yaml exec -T test-web nginx -t
+
+      - name: Wait /health (reverse-proxy)
+        run: |
+          set -e
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
+            [ "$code" = "200" ] && { echo "/health=200"; exit 0; }
+            sleep 1
+          done
+          echo "reverse-proxy /health not ready (expect 200)"; exit 1
+
+      - name: Smoke before reload (/health)
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
+          echo "HTTP $code /health (before reload)"
+          test "$code" = "200"
+
+      - name: Smoke before reload (test.localhost)
+        run: |
+          code=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/ || true)
+          echo "HTTP $code test.localhost / (before reload)"
+          case "$code" in
+            200|201|202|204|301|302|304|307|308) exit 0 ;;
+            *) echo "Unexpected status: $code"; exit 1 ;;
+          esac
+
+      - name: Reload Nginx (reverse-proxy)
+        run: docker compose -f docker-compose.yaml exec -T reverse-proxy nginx -s reload
+
+      - name: Smoke after reload (/health)
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
+          echo "HTTP $code /health (after reload)"
+          test "$code" = "200"
+
+      - name: Smoke after reload (test.localhost)
+        run: |
+          code=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/ || true)
+          echo "HTTP $code test.localhost / (after reload)"
+          case "$code" in
+            200|201|202|204|301|302|304|307|308) exit 0 ;;
+            *) echo "Unexpected status after reload: $code"; exit 1 ;;
+          esac
+
+      - name: Compose down
+        if: always()
+        run: docker compose -f docker-compose.yaml down -v
