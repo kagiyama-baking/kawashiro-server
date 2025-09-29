@@ -9,20 +9,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) ソース取得
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compose up (build)
+      # 2) ログのバインド先を作成
+      #    /var/log/nginx をホストにマウントしているため、事前に作っておくと起動が安定
+      - name: Prepare log dirs for bind mounts
         run: |
-          docker compose -f docker-compose.yaml up -d --build
+          mkdir -p volumes/kawashiro-reverse-proxy/log/nginx
+          mkdir -p volumes/kawashiro-test-web/log/nginx
+          chmod -R 0777 volumes || true
+
+      # 3) まずイメージだけビルド（起動はまだ）
+      - name: Compose build
+        run: docker compose -f docker-compose.yaml build --pull
+
+      # 4) 両サービスを起動（reverse-proxy と test-web）
+      - name: Compose up
+        run: |
+          docker compose -f docker-compose.yaml up -d
           docker compose ps
 
+      # 5) コンテナが "running" になるまで待つ（execの前に必須）
+      - name: Wait container running (reverse-proxy)
+        run: |
+          set -e
+          CID=$(docker compose -f docker-compose.yaml ps -q reverse-proxy)
+          for i in $(seq 1 60); do
+            st=$(docker inspect -f '{{.State.Status}}' "$CID" || echo "unknown")
+            echo "reverse-proxy status=$st"
+            [ "$st" = "running" ] && exit 0
+            sleep 1
+          done
+          echo "reverse-proxy did not reach running"; exit 1
+
+      - name: Wait container running (test-web)
+        run: |
+          set -e
+          CID=$(docker compose -f docker-compose.yaml ps -q test-web)
+          for i in $(seq 1 60); do
+            st=$(docker inspect -f '{{.State.Status}}' "$CID" || echo "unknown")
+            echo "test-web status=$st"
+            [ "$st" = "running" ] && exit 0
+            sleep 1
+          done
+          echo "test-web did not reach running"; exit 1
+
+      # 6) 構文チェック（B案）：exec でコンテナ内 nginx -t
+      #    error_log を一時的に stderr に退避して権限依存を回避
       - name: Nginx config test (reverse-proxy)
-        run: docker compose -f docker-compose.yaml exec -T reverse-proxy nginx -t
+        run: |
+          docker compose -f docker-compose.yaml exec -T reverse-proxy \
+            sh -lc "nginx -t -g 'error_log /dev/stderr notice;'"
 
       - name: Nginx config test (test-web)
-        run: docker compose -f docker-compose.yaml exec -T test-web nginx -t
+        run: |
+          docker compose -f docker-compose.yaml exec -T test-web \
+            sh -lc 'nginx -t -g "error_log /dev/stderr notice;"'
 
+      # 7) 事前スモーク①：/health が 200 になるまで待機
       - name: Wait /health (reverse-proxy)
         run: |
           set -e
@@ -33,12 +79,7 @@ jobs:
           done
           echo "reverse-proxy /health not ready (expect 200)"; exit 1
 
-      - name: Smoke before reload (/health)
-        run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
-          echo "HTTP $code /health (before reload)"
-          test "$code" = "200"
-
+      # 8) 事前スモーク②：Host ルート（test.localhost → test-web）
       - name: Smoke before reload (test.localhost)
         run: |
           code=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/ || true)
@@ -48,15 +89,18 @@ jobs:
             *) echo "Unexpected status: $code"; exit 1 ;;
           esac
 
+      # 9) graceful reload（ゼロダウン更新の回帰確認）
       - name: Reload Nginx (reverse-proxy)
         run: docker compose -f docker-compose.yaml exec -T reverse-proxy nginx -s reload
 
+      # 10) 事後スモーク①：/health
       - name: Smoke after reload (/health)
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
           echo "HTTP $code /health (after reload)"
           test "$code" = "200"
 
+      # 11) 事後スモーク②：Host ルート
       - name: Smoke after reload (test.localhost)
         run: |
           code=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/ || true)
@@ -66,6 +110,14 @@ jobs:
             *) echo "Unexpected status after reload: $code"; exit 1 ;;
           esac
 
+      # 障害時の原因特定：直近ログを出力
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yaml logs --no-color reverse-proxy | tail -n 200 || true
+          docker compose -f docker-compose.yaml logs --no-color test-web      | tail -n 200 || true
+
+      # 12) 後片付け
       - name: Compose down
         if: always()
         run: docker compose -f docker-compose.yaml down -v
