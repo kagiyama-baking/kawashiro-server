@@ -40,6 +40,17 @@ jobs:
           # ネットワーク情報を確認
           docker network ls
           docker network inspect kawashiro-proxy-network || true
+          
+          # コンテナ間の通信を確認
+          echo "🔍 コンテナ間の通信テスト..."
+          # test-webコンテナのIPアドレスを取得
+          TEST_WEB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kawashiro-test-web)
+          echo "test-web IP: $TEST_WEB_IP"
+          
+          # reverse-proxyからtest-webへの名前解決を確認
+          docker exec kawashiro-reverse-proxy nslookup test-web || true
+          docker exec kawashiro-reverse-proxy ping -c 1 test-web || true
+          docker exec kawashiro-reverse-proxy ping -c 1 kawashiro-test-web || true
 
       # コンテナの準備完了を待機（最大60秒）
       - name: Wait for containers to be ready

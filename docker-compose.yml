@@ -18,6 +18,8 @@ services:
             # ログの永続化
             - ./volumes/kawashiro-reverse-proxy/log/nginx:/var/log/nginx
         restart: unless-stopped
+        depends_on:
+            - test-web
         networks:
             - proxy-network
 
