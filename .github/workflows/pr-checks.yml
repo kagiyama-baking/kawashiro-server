@@ -30,9 +30,16 @@ jobs:
       # コンテナの起動
       - name: Start containers
         run: |
-          docker compose up -d
+          # test-webを先に起動
+          docker compose up -d test-web
+          sleep 5
+          # reverse-proxyを起動
+          docker compose up -d reverse-proxy
           # 起動状態を確認
           docker compose ps
+          # ネットワーク情報を確認
+          docker network ls
+          docker network inspect kawashiro-proxy-network || true
 
       # コンテナの準備完了を待機（最大60秒）
       - name: Wait for containers to be ready
@@ -46,8 +53,8 @@ jobs:
           # reverse-proxyの準備完了を待機
           echo "🔄 reverse-proxyの起動を待機中..."
           for i in {1..60}; do
-            # コンテナの状態を確認
-            status=$(docker compose ps --format json reverse-proxy | jq -r '.[0].State' 2>/dev/null || echo "unknown")
+            # コンテナの状態を確認 (docker inspectを使用)
+            status=$(docker inspect -f '{{.State.Status}}' kawashiro-reverse-proxy 2>/dev/null || echo "unknown")
             echo "  [$i/60] コンテナ状態: $status"
             
             # running状態の場合はポートチェック
@@ -74,8 +81,8 @@ jobs:
           # test-webの準備完了を待機
           echo "🔄 test-webの起動を待機中..."
           for i in {1..60}; do
-            # コンテナの状態を確認
-            status=$(docker compose ps --format json test-web | jq -r '.[0].State' 2>/dev/null || echo "unknown")
+            # コンテナの状態を確認 (docker inspectを使用)
+            status=$(docker inspect -f '{{.State.Status}}' kawashiro-test-web 2>/dev/null || echo "unknown")
             echo "  [$i/60] コンテナ状態: $status"
             
             # running状態の場合はポートチェック
