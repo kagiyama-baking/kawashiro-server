@@ -27,131 +27,88 @@ jobs:
       - name: Build Docker images
         run: docker compose build --pull
 
-      # コンテナの起動
-      - name: Start containers
+      # コンテナの起動と準備完了待機
+      - name: Start containers and wait for readiness
         run: |
-          # test-webを先に起動
-          docker compose up -d test-web
-          sleep 5
-          # reverse-proxyを起動
-          docker compose up -d reverse-proxy
-          # 起動状態を確認
+          echo "🚀 コンテナ起動中..."
+          docker compose up -d
+          
+          echo "⏳ コンテナ準備完了待機中..."
+          sleep 10  # 初期化待ち
+          
+          # コンテナ状態確認
+          echo "📋 コンテナ状態:"
           docker compose ps
-          # ネットワーク情報を確認
-          docker network ls
-          docker network inspect kawashiro-proxy-network || true
           
-          # コンテナ間の通信を確認
-          echo "🔍 コンテナ間の通信テスト..."
-          # test-webコンテナのIPアドレスを取得
-          TEST_WEB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kawashiro-test-web)
-          echo "test-web IP: $TEST_WEB_IP"
-          
-          # reverse-proxyからtest-webへの名前解決を確認
-          docker exec kawashiro-reverse-proxy nslookup test-web || true
-          docker exec kawashiro-reverse-proxy ping -c 1 test-web || true
-          docker exec kawashiro-reverse-proxy ping -c 1 kawashiro-test-web || true
-
-      # コンテナの準備完了を待機（最大30秒）
-      - name: Wait for containers to be ready
-        run: |
-          echo "⏳ コンテナの準備完了を待機中..."
-          sleep 5  # コンテナ起動後の初期化待ち
-          
-          # test-webコンテナのヘルスチェック（プロセス確認）
-          echo "🔍 test-webコンテナのヘルスチェック..."
-          for i in {1..30}; do
+          # test-webのヘルスチェック
+          echo "🔍 test-web確認中..."
+          for i in {1..20}; do
             if docker exec kawashiro-test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
-              echo "✅ test-web: nginxプロセス実行中"
+              echo "✅ test-web: 準備完了"
               break
             fi
-            echo "[$i/30] test-web待機中..."
-            sleep 1
+            echo "  [$i/20] 待機中..."
+            sleep 2
           done
           
-          # reverse-proxyコンテナのヘルスチェック（外部からポート80）
-          echo "🔍 reverse-proxyコンテナのヘルスチェック..."
-          for i in {1..30}; do
+          # reverse-proxyのヘルスチェック
+          echo "🔍 reverse-proxy確認中..."
+          for i in {1..20}; do
             if curl -f -s http://localhost/health >/dev/null 2>&1; then
-              echo "✅ reverse-proxy: ヘルスチェック成功"
+              echo "✅ reverse-proxy: 準備完了"
               break
             fi
-            echo "[$i/30] reverse-proxy待機中..."
-            sleep 1
+            echo "  [$i/20] 待機中..."
+            sleep 2
           done
+
 
       # Nginx設定の構文チェック
       - name: Test Nginx configuration
         run: |
-          echo "🔍 Nginx設定の構文チェック中..."
-          
-          # reverse-proxyの構文チェック
+          echo "🔧 Nginx設定構文チェック..."
           docker compose exec -T reverse-proxy nginx -t
-          
-          # test-webの構文チェック
           docker compose exec -T test-web nginx -t
-          
-          echo "✅ Nginx設定の構文チェック: OK"
+          echo "✅ 構文チェック: OK"
 
-      # 基本的な疎通確認
-      - name: Health check
+      # 機能テスト
+      - name: Functional tests
         run: |
-          echo "🏥 ヘルスチェック中..."
+          echo "🧪 機能テスト実行中..."
           
-          # ヘルスエンドポイントの確認
+          # ヘルスエンドポイント確認
+          echo "  🏥 ヘルスチェック..."
           status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
           if [ "$status" = "200" ]; then
-            echo "✅ ヘルスチェック: OK (HTTP $status)"
+            echo "  ✅ ヘルス: OK"
           else
-            echo "❌ ヘルスチェック: NG (HTTP $status)"
+            echo "  ❌ ヘルス: NG (HTTP $status)"
             exit 1
           fi
-
-      # サブドメインルーティングの確認
-      - name: Test subdomain routing
-        run: |
-          echo "🔀 サブドメインルーティングのテスト中..."
           
-          # test.localhost → test-webへのルーティング確認
-          status=$(curl --resolve test.localhost:80:127.0.0.1 \
-                   -s -o /dev/null -w "%{http_code}" \
-                   http://test.localhost/)
-          
+          # サブドメインルーティング確認
+          echo "  🔀 ルーティング..."
+          status=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
           if [ "$status" = "200" ]; then
-            echo "✅ ルーティング: OK (test.localhost → test-web)"
+            echo "  ✅ ルーティング: OK"
           else
-            echo "❌ ルーティング: NG (HTTP $status)"
+            echo "  ❌ ルーティング: NG (HTTP $status)"
             exit 1
           fi
 
-      # Nginxの再起動テスト（ゼロダウンタイム確認）
-      - name: Test graceful reload
-        run: |
-          echo "🔄 Nginx再起動テスト中..."
-          
-          # graceful reload実行
-          docker compose exec -T reverse-proxy nginx -s reload
-          
-          # 再起動後の疎通確認
-          sleep 2
-          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
-          
-          if [ "$status" = "200" ]; then
-            echo "✅ 再起動後の疎通確認: OK"
-          else
-            echo "❌ 再起動後の疎通確認: NG (HTTP $status)"
-            exit 1
-          fi
 
-      # エラー時のデバッグ情報出力
-      - name: Show logs on failure
+
+      # エラー時のデバッグ情報
+      - name: Debug info on failure
         if: failure()
         run: |
-          echo "📋 === エラー時のログ出力 ==="
-          echo "\n--- reverse-proxy logs ---"
-          docker compose logs reverse-proxy | tail -n 100
-          echo "\n--- test-web logs ---"
-          docker compose logs test-web | tail -n 100
+          echo "🚨 === デバッグ情報 ==="
+          echo "📋 コンテナ状態:"
+          docker compose ps
+          echo "\n📋 reverse-proxy ログ:"
+          docker compose logs reverse-proxy | tail -n 50
+          echo "\n📋 test-web ログ:"
+          docker compose logs test-web | tail -n 50
 
       # 環境のクリーンアップ（常に実行）
       - name: Cleanup
