@@ -1,5 +1,8 @@
 FROM nginx:alpine
 
+# デフォルトの設定ファイルを削除（ポート80を使用している）
+RUN rm -f /etc/nginx/conf.d/default.conf
+
 # 設定をイメージに焼く
 COPY conf.d/*.conf /etc/nginx/conf.d/
 COPY html/* /usr/share/nginx/html/
