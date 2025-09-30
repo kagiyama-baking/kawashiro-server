@@ -27,17 +27,24 @@ jobs:
             - name: Build Docker images
               run: docker compose build --pull
 
-            # Nginx設定の構文チェック（起動前に実行）
-            - name: Test Nginx configuration
+            # 構文チェック（reverse-proxy）
+            - name: Test configuration syntax (Nginx) :reverse-proxy
               run: |
                   echo "🔧 Nginx設定構文チェック..."
                   # 一時的にコンテナを起動して構文チェック
                   docker compose run --rm --no-deps reverse-proxy nginx -t
+                  echo "✅ 構文チェック: OK"
+
+            # 構文チェック（test-web）
+            - name: Test configuration syntax (Nginx) :test-web
+              run: |
+                  echo "🔧 Nginx設定構文チェック..."
+                  # 一時的にコンテナを起動して構文チェック
                   docker compose run --rm --no-deps test-web nginx -t
                   echo "✅ 構文チェック: OK"
 
-            # コンテナの起動と準備完了待機
-            - name: Start containers and wait for readiness
+            # コンテナの起動
+            - name: Start containers
               run: |
                   echo "🚀 コンテナ起動中..."
                   docker compose up -d
@@ -49,35 +56,41 @@ jobs:
                   echo "📋 コンテナ状態:"
                   docker compose ps
 
-                  # test-webのヘルスチェック
-                  echo "🔍 test-web確認中..."
-                  for i in {1..20}; do
-                    if docker exec kawashiro-test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
-                      echo "✅ test-web: 準備完了"
-                      break
-                    fi
-                    echo "  [$i/20] 待機中..."
-                    sleep 2
-                  done
-
-                  # reverse-proxyのプロセス確認
+            # 準備完了待機（reverse-proxy）
+            - name: Wait for readiness :reverse-proxy
+              run: |
+                  # プロセス確認
                   echo "🔍 reverse-proxy確認中..."
                   for i in {1..20}; do
                     if docker exec kawashiro-reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
-                      echo "✅ reverse-proxy: 準備完了"
+                      echo "✅ reverse-proxy準備完了"
                       break
                     fi
                     echo "  [$i/20] 待機中..."
                     sleep 2
                   done
 
-            # 機能テスト
-            - name: Functional tests
+            # 準備完了待機（test-web）
+            - name: Wait for readiness :test-web
+              run: |
+                  # プロセス確認
+                  echo "🔍 test-web確認中..."
+                  for i in {1..20}; do
+                    if docker exec kawashiro-test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                      echo "✅ test-web準備完了"
+                      break
+                    fi
+                    echo "  [$i/20] 待機中..."
+                    sleep 2
+                  done
+
+            # リバースプロキシ機能テスト
+            - name: Reverse proxy functionality tests
               run: |
                   echo "🧪 機能テスト実行中..."
 
                   # ヘルスエンドポイント確認
-                  echo "  🏥 ヘルスチェック..."
+                  echo "  🏥 ヘルスチェック... (localhost/health)"
                   status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
                   if [ "$status" = "200" ]; then
                     echo "  ✅ ヘルス: OK"
@@ -87,7 +100,7 @@ jobs:
                   fi
 
                   # サブドメインルーティング確認
-                  echo "  🔀 ルーティング..."
+                  echo "  🔀 ルーティング... (test.localhost -> localhost:8080)"
                   status=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
                   if [ "$status" = "200" ]; then
                     echo "  ✅ ルーティング: OK"
