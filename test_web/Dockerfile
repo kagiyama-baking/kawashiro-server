@@ -4,6 +4,10 @@ FROM nginx:alpine
 COPY conf.d/*.conf /etc/nginx/conf.d/
 COPY html/* /usr/share/nginx/html/
 
+# nginxユーザーに必要なディレクトリの権限を設定
+RUN touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+
 # 非rootで動かす
 USER nginx
 
