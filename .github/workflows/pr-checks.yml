@@ -78,7 +78,8 @@ jobs:
                 docker compose exec -T reverse-proxy netstat -tlpn 2>/dev/null || docker compose exec -T reverse-proxy ss -tlpn 2>/dev/null || true
               fi
               
-              if docker compose exec -T reverse-proxy nc -z localhost 8080 2>/dev/null; then
+              # wgetでヘルスチェックエンドポイントを確認
+              if docker compose exec -T reverse-proxy wget -q -O /dev/null http://localhost:8080/health 2>/dev/null; then
                 echo "✅ reverse-proxy: 準備完了"
                 break
               else
@@ -116,7 +117,8 @@ jobs:
                 docker compose exec -T test-web netstat -tlpn 2>/dev/null || docker compose exec -T test-web ss -tlpn 2>/dev/null || true
               fi
               
-              if docker compose exec -T test-web nc -z localhost 8080 2>/dev/null; then
+              # wgetでルートページにアクセス
+              if docker compose exec -T test-web wget -q -O /dev/null http://localhost:8080/ 2>/dev/null; then
                 echo "✅ test-web: 準備完了"
                 break
               else
