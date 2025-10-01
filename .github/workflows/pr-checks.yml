@@ -3,6 +3,12 @@ name: PR checks (develop)
 on:
     pull_request:
         branches: [develop]
+        paths-ignore:
+            - '.vscode/**'
+            - '.claude/**'
+            - '.github/workflows/**'
+            - '.gitignore'
+            - 'README.md'
 
 jobs:
     # PRチェック用のメインジョブ
