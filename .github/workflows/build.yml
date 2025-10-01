@@ -7,7 +7,6 @@ on:
         paths-ignore:
             - .vscode/**
             - .claude/**
-            - .github/workflows/**
             - .gitignore
             - README.md
     workflow_dispatch: # テスト用の手動実行
