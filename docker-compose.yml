@@ -7,7 +7,7 @@ services:
         container_name: kawashiro-reverse-proxy
         hostname: kawashiro-reverse-proxy
         ports:
-            - '80:80'
+            - '80:8080'
             # HTTPS用（必要に応じてコメントアウトを解除）
             # - "443:443"
         volumes:
@@ -18,6 +18,8 @@ services:
             # ログの永続化
             - ./volumes/kawashiro-reverse-proxy/log/nginx:/var/log/nginx
         restart: unless-stopped
+        depends_on:
+            - test-web
         networks:
             - proxy-network
 
@@ -28,10 +30,9 @@ services:
         image: kawashiro-test-web
         container_name: kawashiro-test-web
         hostname: kawashiro-test-web
-        ports:
-            - '8080:80'
         volumes:
             # ファイルのマウント
+            - ./test_web/conf.d:/etc/nginx/conf.d:ro
             - ./test_web/html:/usr/share/nginx/html:ro
             # ログの永続化
             - ./volumes/kawashiro-test-web/log/nginx:/var/log/nginx

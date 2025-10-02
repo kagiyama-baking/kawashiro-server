@@ -1,0 +1,135 @@
+name: PR checks (develop)
+
+on:
+    pull_request:
+        branches: [develop]
+        paths-ignore:
+            - '.vscode/**'
+            - '.claude/**'
+            - '.gitignore'
+            - '**/*.md'
+    workflow_dispatch: # テスト用の手動実行
+
+jobs:
+    # PRチェック用のメインジョブ
+    pr-checks:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10 # 全体のタイムアウトを設定
+
+        steps:
+            # ソースコードの取得
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            # ログディレクトリの準備（コンテナマウント用）
+            - name: Prepare log directories
+              run: |
+                  mkdir -p volumes/kawashiro-reverse-proxy/log/nginx
+                  mkdir -p volumes/kawashiro-test-web/log/nginx
+                  # GitHub Actions環境での権限問題を解決
+                  chmod -R 777 volumes/
+
+            # Dockerイメージのビルド
+            - name: Build Docker images
+              run: docker compose build --pull
+
+            # 構文チェック（reverse-proxy）
+            - name: Test configuration syntax (Nginx) :reverse-proxy
+              run: |
+                  echo "🔧 Nginx設定構文チェック..."
+                  # 一時的にコンテナを起動して構文チェック
+                  docker compose run --rm --no-deps reverse-proxy nginx -t
+                  echo "✅ 構文チェック: OK"
+
+            # 構文チェック（test-web）
+            - name: Test configuration syntax (Nginx) :test-web
+              run: |
+                  echo "🔧 Nginx設定構文チェック..."
+                  # 一時的にコンテナを起動して構文チェック
+                  docker compose run --rm --no-deps test-web nginx -t
+                  echo "✅ 構文チェック: OK"
+
+            # コンテナの起動
+            - name: Start containers
+              run: |
+                  echo "🚀 コンテナ起動中..."
+                  docker compose up -d
+
+                  echo "⏳ コンテナ準備完了待機中..."
+                  sleep 10  # 初期化待ち
+
+                  # コンテナ状態確認
+                  echo "📋 コンテナ状態:"
+                  docker compose ps
+
+            # 準備完了待機（reverse-proxy）
+            - name: Wait for readiness :reverse-proxy
+              run: |
+                  # プロセス確認
+                  echo "🔍 reverse-proxy確認中..."
+                  for i in {1..20}; do
+                    if docker exec kawashiro-reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                      echo "✅ reverse-proxy準備完了"
+                      break
+                    fi
+                    echo "  [$i/20] 待機中..."
+                    sleep 2
+                  done
+
+            # 準備完了待機（test-web）
+            - name: Wait for readiness :test-web
+              run: |
+                  # プロセス確認
+                  echo "🔍 test-web確認中..."
+                  for i in {1..20}; do
+                    if docker exec kawashiro-test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                      echo "✅ test-web準備完了"
+                      break
+                    fi
+                    echo "  [$i/20] 待機中..."
+                    sleep 2
+                  done
+
+            # リバースプロキシ機能テスト
+            - name: Reverse proxy functionality tests
+              run: |
+                  echo "🧪 機能テスト実行中..."
+
+                  # ヘルスエンドポイント確認
+                  echo "  🏥 ヘルスチェック... (localhost/health)"
+                  status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
+                  if [ "$status" = "200" ]; then
+                    echo "  ✅ ヘルス: OK"
+                  else
+                    echo "  ❌ ヘルス: NG (HTTP $status)"
+                    exit 1
+                  fi
+
+                  # サブドメインルーティング確認
+                  echo "  🔀 ルーティング... (test.localhost -> localhost:8080)"
+                  status=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
+                  if [ "$status" = "200" ]; then
+                    echo "  ✅ ルーティング: OK"
+                  else
+                    echo "  ❌ ルーティング: NG (HTTP $status)"
+                    exit 1
+                  fi
+
+            # エラー時のデバッグ情報
+            - name: Debug info on failure
+              if: failure()
+              run: |
+                  echo "🚨 === デバッグ情報 ==="
+                  echo "📋 コンテナ状態:"
+                  docker compose ps
+                  echo "\n📋 reverse-proxy ログ:"
+                  docker compose logs reverse-proxy | tail -n 50
+                  echo "\n📋 test-web ログ:"
+                  docker compose logs test-web | tail -n 50
+
+            # 環境のクリーンアップ（常に実行）
+            - name: Cleanup
+              if: always()
+              run: |
+                  docker compose down -v
+                  echo "🧹 クリーンアップ完了"
