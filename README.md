@@ -10,6 +10,7 @@ Kawashiro Server は、Docker コンテナベースの Web サービス群です
 
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
 -   🧪 **テスト環境**: 開発・検証用のテスト Web サーバー内蔵
+-   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 
 ## 特徴
 
@@ -50,8 +51,11 @@ kawashiro-server/
 └── volumes/                    # 永続化データ
     ├── kawashiro-reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
-    └── kawashiro-test-web/
-        └── log/nginx/          # テストWebのログ
+    ├── kawashiro-test-web/
+    │   └── log/nginx/          # テストWebのログ
+    └── kawashiro-immich/
+        ├── data/               # アップロード写真データ
+        └── log/                # アプリケーションログ
 ```
 
 ## アーキテクチャ
@@ -70,25 +74,18 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
 │ Reverse Proxy │ :80（ホスト）
 │ (Nginx)       │
 └───────────────┘
-      │                        ┌───────────────┐
-      ├── test.example.com ──► │ Test Web      │ :8080 (コンテナ)
-      │                        │ (Nginx)       │
-      │                        └───────────────┘
-      │                        ┌───────────────┐
-      └── example.com ───────► │ Reverse Proxy │ :8080 (コンテナ)
-                               │ (Nginx)       │
-                               └───────────────┘
-```
-
-### 永続化ボリューム
-
-永続化したいボリュームは、`docker-compose.yaml`で指定する。
-`volomes`の配下は、コンテナ名ごとに整理する。
-
-```yaml
-volumes:
-    # ログの永続化例（nginx）
-    - ./volumes/[container_name]/log/nginx:/var/log/nginx
+      │                         ┌───────────────┐
+      ├── test.example.com ──►  │ Test Web      │ :8080 (コンテナ)
+      │                         │ (Nginx)       │
+      │                         └───────────────┘
+      │                         ┌───────────────┐
+      ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
+      │                         │ (Server)      │
+      │                         └───────────────┘
+      │                         ┌───────────────┐
+      └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
+                                │ (Nginx)       │
+                                └───────────────┘
 ```
 
 ## 必要な環境
@@ -123,6 +120,9 @@ curl http://localhost/health
 
 # テストサーバー（サブドメイン経由）
 curl -H "Host: test.localhost" http://localhost/
+
+# Immich（サブドメイン経由）
+curl -H "Host: album.localhost" http://localhost/
 ```
 
 ## 使用方法
@@ -152,6 +152,10 @@ docker compose logs -f
 # 特定のサービスのログ
 docker compose logs -f reverse-proxy
 docker compose logs -f test-web
+docker compose logs -f immich
+docker compose logs -f immich-machine-learning
+docker compose logs -f immich-redis
+docker compose logs -f immich-postgres
 ```
 
 ### 設定の更新
