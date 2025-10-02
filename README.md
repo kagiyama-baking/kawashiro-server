@@ -1,0 +1,216 @@
+# Kawashiro Server
+
+🌊 Docker Compose を使用した Web サービス群
+
+## 概要
+
+Kawashiro Server は、Docker コンテナベースの Web サービス群です。複数の Web サービスを統一されたドメインで提供し、サブドメインによるルーティングを行います。
+
+## サービス
+
+-   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
+-   🧪 **テスト環境**: 開発・検証用のテスト Web サーバー内蔵
+
+## 特徴
+
+-   🔒 **セキュリティ**: 非 root ユーザーでの実行、最小権限の原則
+-   🚀 **CI/CD**: GitHub Actions による自動ビルド・テスト・デプロイ
+-   📦 **コンテナレジストリ**: GitHub Container Registry へのイメージ公開
+-   🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
+-   📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
+
+## プロジェクト構成
+
+```
+kawashiro-server/
+├── docker-compose.yml          # メインのDocker Compose設定
+├── README.md                   # このファイル
+│
+├── .github/                    # GitHub設定
+│   ├── workflows/              # GitHub Actionsワークフロー
+│   │   ├── build.yml           # ビルド・プッシュ（develop）
+│   │   └── pr-checks.yml       # PRチェック
+│   └── copilot-instructions.md # Copilotレビュー設定
+│
+├── reverse_proxy/              # リバースプロキシ設定
+│   ├── Dockerfile              # Nginxコンテナ定義
+│   ├── nginx.conf              # メインのNginx設定
+│   ├── conf.d/                 # サイト別設定
+│   │   └── default.conf        # デフォルトサイト設定
+│   └── html/                   # 静的ファイル
+│       ├── index.html          # トップページ
+│       └── 404.html            # カスタム404ページ
+│
+├── test_web/                   # テスト用Webサーバー
+│   ├── Dockerfile              # テストサーバーコンテナ
+│   ├── conf.d/                 # Nginx設定
+│   │   └── default.conf        # デフォルト設定
+│   └── html/                   # 静的ファイル
+│       └── index.html          # テストページ
+│
+└── volumes/                    # 永続化データ
+    ├── kawashiro-reverse-proxy/
+    │   └── log/nginx/          # リバースプロキシのログ
+    └── kawashiro-test-web/
+        └── log/nginx/          # テストWebのログ
+```
+
+## アーキテクチャ
+
+### Reverse Proxy
+
+各コンテナへ、Web アクセスは、Reverse Proxy に集約する。  
+Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付け、
+サブドメインに応じて対応するコンテナ側ポートへ転送する。
+
+```
+   Browser
+      │
+      ▼
+┌───────────────┐
+│ Reverse Proxy │ :80（ホスト）
+│ (Nginx)       │
+└───────────────┘
+      │                        ┌───────────────┐
+      ├── test.example.com ──► │ Test Web      │ :8080 (コンテナ)
+      │                        │ (Nginx)       │
+      │                        └───────────────┘
+      │                        ┌───────────────┐
+      └── example.com ───────► │ Reverse Proxy │ :8080 (コンテナ)
+                               │ (Nginx)       │
+                               └───────────────┘
+```
+
+### 永続化ボリューム
+
+永続化したいボリュームは、`docker-compose.yaml`で指定する。
+`volomes`の配下は、コンテナ名ごとに整理する。
+
+```yaml
+volumes:
+    # ログの永続化例（nginx）
+    - ./volumes/[container_name]/log/nginx:/var/log/nginx
+```
+
+## 必要な環境
+
+-   Docker Engine 20.10.0+
+-   Docker Compose 2.0.0+
+
+## インストール・セットアップ
+
+### 1. リポジトリのクローン
+
+```bash
+git clone https://github.com/kagiyama-baking/kawashiro-server.git
+cd kawashiro-server
+```
+
+### 2. サーバーの起動
+
+```bash
+# すべてのサービスを起動
+docker compose up -d
+
+# ログを確認
+docker compose logs -f
+```
+
+### 3. 動作確認
+
+```bash
+# ヘルスチェック
+curl http://localhost/health
+
+# テストサーバー（サブドメイン経由）
+curl -H "Host: test.localhost" http://localhost/
+```
+
+## 使用方法
+
+### サービスの管理
+
+```bash
+# サービスの起動
+docker compose up -d
+
+# サービスの停止
+docker compose down
+
+# サービスの再起動
+docker compose restart
+
+# 特定のサービスのみ再起動
+docker compose restart reverse-proxy
+```
+
+### ログの確認
+
+```bash
+# 全サービスのログ
+docker compose logs -f
+
+# 特定のサービスのログ
+docker compose logs -f reverse-proxy
+docker compose logs -f test-web
+```
+
+### 設定の更新
+
+```bash
+# 設定ファイル変更後、リバースプロキシの再読み込み
+docker compose exec reverse-proxy nginx -s reload
+
+# または再起動
+docker compose restart reverse-proxy
+```
+
+## CI/CD
+
+### GitHub Actions ワークフロー
+
+#### ビルド・プッシュ（develop ブランチ）
+
+developブランチへのプッシュ時に自動実行：
+
+1. マルチアーキテクチャビルド（amd64, arm64）
+2. GitHub Container Registry へプッシュ
+3. SBOM（ソフトウェア部品表）生成
+4. ビルド証明（Build Provenance）の添付
+
+```bash
+# イメージの取得
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-reverse-proxy:staging
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-test-web:staging
+```
+
+#### PRチェック
+
+Pull Request作成時に自動実行：
+
+1. Dockerイメージのビルド
+2. Nginx設定の構文チェック
+3. コンテナの起動確認
+4. リバースプロキシ機能テスト
+
+### コンテナイメージのタグ戦略
+
+- `staging`: developブランチの最新ビルド
+- `sha-<commit>`: 特定コミットのビルド
+
+## セキュリティ
+
+### 非rootユーザー実行
+
+全てのコンテナは非rootユーザー（nginx）で実行され、最小権限の原則に従っています：
+
+- PIDファイル: `/tmp/nginx.pid`（書き込み可能）
+- 必要最小限のディレクトリへの権限付与
+
+### ビルド証明
+
+GitHub Actionsにより、各コンテナイメージにビルド証明（SLSA Build Provenance）が添付され、イメージの信頼性を検証できます。
+
+## ライセンス
+
+このプロジェクトはMITライセンスの下で公開されています。
