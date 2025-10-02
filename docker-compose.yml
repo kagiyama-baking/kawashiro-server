@@ -88,7 +88,7 @@ services:
             DB_DATABASE_NAME: immich
         volumes:
             # モデルキャッシュの永続化
-            - ./volumes/kawashiro-immich-ml/cache:/cache
+            - immich-ml-cache:/cache
         restart: unless-stopped
         networks:
             - proxy-network
@@ -102,7 +102,7 @@ services:
             test: redis-cli ping || exit 1
         volumes:
             # Redisデータの永続化
-            - ./volumes/kawashiro-immich-redis/data:/data
+            - immich-redis-data:/data
         restart: unless-stopped
         networks:
             - proxy-network
@@ -134,3 +134,7 @@ networks:
 volumes:
     immich-pgdata:
         name: kawashiro-immich-pgdata
+    immich-redis-data:
+        name: kawashiro-immich-redis-data
+    immich-ml-cache:
+        name: kawashiro-immich-ml-cache
