@@ -13,7 +13,6 @@ Kawashiro Server は、Docker コンテナベースの Web サービス群です
 
 ## 特徴
 
--   🔒 **セキュリティ**: 非 root ユーザーでの実行、最小権限の原則
 -   🚀 **CI/CD**: GitHub Actions による自動ビルド・テスト・デプロイ
 -   📦 **コンテナレジストリ**: GitHub Container Registry へのイメージ公開
 -   🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
@@ -171,7 +170,7 @@ docker compose restart reverse-proxy
 
 #### ビルド・プッシュ（develop ブランチ）
 
-developブランチへのプッシュ時に自動実行：
+develop ブランチへのプッシュ時に自動実行：
 
 1. マルチアーキテクチャビルド（amd64, arm64）
 2. GitHub Container Registry へプッシュ
@@ -184,33 +183,16 @@ docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-reverse-proxy:sta
 docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-test-web:staging
 ```
 
-#### PRチェック
+#### PR チェック
 
-Pull Request作成時に自動実行：
+Pull Request 作成時に自動実行：
 
-1. Dockerイメージのビルド
-2. Nginx設定の構文チェック
+1. Docker イメージのビルド
+2. Nginx 設定の構文チェック
 3. コンテナの起動確認
 4. リバースプロキシ機能テスト
 
 ### コンテナイメージのタグ戦略
 
-- `staging`: developブランチの最新ビルド
-- `sha-<commit>`: 特定コミットのビルド
-
-## セキュリティ
-
-### 非rootユーザー実行
-
-全てのコンテナは非rootユーザー（nginx）で実行され、最小権限の原則に従っています：
-
-- PIDファイル: `/tmp/nginx.pid`（書き込み可能）
-- 必要最小限のディレクトリへの権限付与
-
-### ビルド証明
-
-GitHub Actionsにより、各コンテナイメージにビルド証明（SLSA Build Provenance）が添付され、イメージの信頼性を検証できます。
-
-## ライセンス
-
-このプロジェクトはMITライセンスの下で公開されています。
+-   `staging`: develop ブランチの最新ビルド
+-   `sha-<commit>`: 特定コミットのビルド
