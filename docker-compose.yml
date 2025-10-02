@@ -1,4 +1,5 @@
 services:
+    # リバースプロキシサーバー
     reverse-proxy:
         build:
             context: ./reverse_proxy
@@ -20,9 +21,11 @@ services:
         restart: unless-stopped
         depends_on:
             - test-web
+            - immich
         networks:
             - proxy-network
 
+    # テスト用Webサーバー
     test-web:
         build:
             context: ./test_web
@@ -40,7 +43,94 @@ services:
         networks:
             - proxy-network
 
+    # Immich - 写真管理サービス
+    immich:
+        image: ghcr.io/immich-app/immich-server:release
+        container_name: kawashiro-immich
+        hostname: kawashiro-immich
+        environment:
+            # Redisの接続設定
+            REDIS_HOSTNAME: kawashiro-immich-redis
+            # Postgresqlの接続設定
+            DB_HOSTNAME: kawashiro-immich-postgres
+            DB_USERNAME: immich
+            DB_PASSWORD: immich
+            DB_DATABASE_NAME: immich
+            # サーバー設定
+            PUBLIC_SERVER_URL: http://album.localhost
+            IMMICH_LOG_LEVEL: verbose
+        volumes:
+            # アップロードファイルの永続化
+            - ./volumes/kawashiro-immich/data:/data
+            # ログディレクトリの作成（アプリケーションログ用）
+            - ./volumes/kawashiro-immich/log:/logs
+            # タイムゾーン設定
+            - /etc/localtime:/etc/localtime:ro
+        depends_on:
+            - immich-redis
+            - immich-postgres
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # Immich Machine Learning
+    immich-machine-learning:
+        image: ghcr.io/immich-app/immich-machine-learning:release
+        container_name: kawashiro-immich-ml
+        hostname: kawashiro-immich-ml
+        environment:
+            # Redisの接続設定
+            REDIS_HOSTNAME: kawashiro-immich-redis
+            # Postgresqlの接続設定
+            DB_HOSTNAME: kawashiro-immich-postgres
+            DB_USERNAME: immich
+            DB_PASSWORD: immich
+            DB_DATABASE_NAME: immich
+        volumes:
+            # モデルキャッシュの永続化
+            - ./volumes/kawashiro-immich-ml/cache:/cache
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # Redis for Immich
+    immich-redis:
+        image: docker.io/valkey/valkey:8-bookworm
+        container_name: kawashiro-immich-redis
+        hostname: kawashiro-immich-redis
+        healthcheck:
+            test: redis-cli ping || exit 1
+        volumes:
+            # Redisデータの永続化
+            - ./volumes/kawashiro-immich-redis/data:/data
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # PostgreSQL for Immich
+    immich-postgres:
+        image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+        container_name: kawashiro-immich-postgres
+        hostname: kawashiro-immich-postgres
+        environment:
+            POSTGRES_PASSWORD: immich
+            POSTGRES_USER: immich
+            POSTGRES_DB: immich
+            POSTGRES_INITDB_ARGS: '--data-checksums'
+            # WSL2でのボリューム権限問題を回避
+            PGDATA: /var/lib/postgresql/data/pgdata
+        volumes:
+            # PostgreSQLデータの永続化
+            - immich-pgdata:/var/lib/postgresql/data
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
 networks:
     proxy-network:
         driver: bridge
         name: kawashiro-proxy-network
+
+volumes:
+    immich-pgdata:
+        name: kawashiro-immich-pgdata
