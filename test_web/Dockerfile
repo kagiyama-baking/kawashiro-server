@@ -8,8 +8,8 @@ COPY conf.d/*.conf /etc/nginx/conf.d/
 COPY html/* /usr/share/nginx/html/
 
 # nginxユーザーに必要なディレクトリの権限を設定
-RUN touch /var/run/nginx.pid && \
-    chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+RUN touch /tmp/nginx.pid && \
+    chown -R nginx:nginx /tmp/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d /tmp /var/run
 
 # 非rootで動かす
 USER nginx
