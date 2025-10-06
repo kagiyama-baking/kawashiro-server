@@ -21,11 +21,22 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            # CI環境用の.envファイル作成
+            - name: Create .env file for CI
+              run: |
+                  echo "# CI環境用のダミー環境変数" > .env
+                  echo "DB_USERNAME=ci_user" >> .env
+                  echo "DB_PASSWORD=ci_password" >> .env
+                  echo "DB_DATABASE_NAME=ci_database" >> .env
+                  echo "PUBLIC_SERVER_URL=http://album.localhost" >> .env
+                  echo "IMMICH_LOG_LEVEL=verbose" >> .env
+                  echo "TZ=Asia/Tokyo" >> .env
+
             # ログディレクトリの準備（コンテナマウント用）
             - name: Prepare log directories
               run: |
-                  mkdir -p volumes/kawashiro-reverse-proxy/log/nginx
-                  mkdir -p volumes/kawashiro-test-web/log/nginx
+                  mkdir -p volumes/reverse-proxy/log/nginx
+                  mkdir -p volumes/test-web/log/nginx
                   # GitHub Actions環境での権限問題を解決
                   chmod -R 777 volumes/
 
@@ -68,7 +79,7 @@ jobs:
                   # プロセス確認
                   echo "🔍 reverse-proxy確認中..."
                   for i in {1..20}; do
-                    if docker exec kawashiro-reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                    if docker exec reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
                       echo "✅ reverse-proxy準備完了"
                       break
                     fi
@@ -82,7 +93,7 @@ jobs:
                   # プロセス確認
                   echo "🔍 test-web確認中..."
                   for i in {1..20}; do
-                    if docker exec kawashiro-test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                    if docker exec test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
                       echo "✅ test-web準備完了"
                       break
                     fi

@@ -32,11 +32,11 @@ jobs:
                     - name: reverse-proxy
                       context: reverse_proxy
                       dockerfile: Dockerfile
-                      image: ghcr.io/${{ github.repository }}/kawashiro-reverse-proxy
+                      image: ghcr.io/${{ github.repository }}/reverse-proxy
                     - name: test-web
                       context: test_web
                       dockerfile: Dockerfile
-                      image: ghcr.io/${{ github.repository }}/kawashiro-test-web
+                      image: ghcr.io/${{ github.repository }}/test-web
 
         steps:
             # ソースコードの取得
@@ -70,7 +70,7 @@ jobs:
                       type=raw,value=staging
                   labels: |
                       org.opencontainers.image.title=${{ matrix.service.name }}
-                      org.opencontainers.image.description=Kawashiro ${{
+                      org.opencontainers.image.description=${{
                         matrix.service.name
                       }} container
                       org.opencontainers.image.revision=${{ github.sha }}

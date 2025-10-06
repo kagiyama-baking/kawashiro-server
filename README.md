@@ -1,15 +1,19 @@
-# Kawashiro Server
+# 鍵山製パン社内 Web システム
 
-🌊 Docker Compose を使用した Web サービス群
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)](https://nginx.org/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
 ## 概要
 
-Kawashiro Server は、Docker コンテナベースの Web サービス群です。複数の Web サービスを統一されたドメインで提供し、サブドメインによるルーティングを行います。
+Docker コンテナベースの Web サービス群です。複数の Web サービスを統一されたドメインで提供し、サブドメインによるルーティングを行います。
 
 ## サービス
 
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
 -   🧪 **テスト環境**: 開発・検証用のテスト Web サーバー内蔵
+-   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 
 ## 特徴
 
@@ -48,10 +52,13 @@ kawashiro-server/
 │       └── index.html          # テストページ
 │
 └── volumes/                    # 永続化データ
-    ├── kawashiro-reverse-proxy/
+    ├── reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
-    └── kawashiro-test-web/
-        └── log/nginx/          # テストWebのログ
+    ├── test-web/
+    │   └── log/nginx/          # テストWebのログ
+    └── immich/
+        ├── data/               # アップロード写真データ
+        └── log/                # アプリケーションログ
 ```
 
 ## アーキテクチャ
@@ -70,25 +77,18 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
 │ Reverse Proxy │ :80（ホスト）
 │ (Nginx)       │
 └───────────────┘
-      │                        ┌───────────────┐
-      ├── test.example.com ──► │ Test Web      │ :8080 (コンテナ)
-      │                        │ (Nginx)       │
-      │                        └───────────────┘
-      │                        ┌───────────────┐
-      └── example.com ───────► │ Reverse Proxy │ :8080 (コンテナ)
-                               │ (Nginx)       │
-                               └───────────────┘
-```
-
-### 永続化ボリューム
-
-永続化したいボリュームは、`docker-compose.yaml`で指定する。
-`volomes`の配下は、コンテナ名ごとに整理する。
-
-```yaml
-volumes:
-    # ログの永続化例（nginx）
-    - ./volumes/[container_name]/log/nginx:/var/log/nginx
+      │                         ┌───────────────┐
+      ├── test.example.com ──►  │ Test Web      │ :8080 (コンテナ)
+      │                         │ (Nginx)       │
+      │                         └───────────────┘
+      │                         ┌───────────────┐
+      ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
+      │                         │ (Server)      │
+      │                         └───────────────┘
+      │                         ┌───────────────┐
+      └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
+                                │ (Nginx)       │
+                                └───────────────┘
 ```
 
 ## 必要な環境
@@ -123,6 +123,9 @@ curl http://localhost/health
 
 # テストサーバー（サブドメイン経由）
 curl -H "Host: test.localhost" http://localhost/
+
+# Immich（サブドメイン経由）
+curl -H "Host: album.localhost" http://localhost/
 ```
 
 ## 使用方法
@@ -152,6 +155,10 @@ docker compose logs -f
 # 特定のサービスのログ
 docker compose logs -f reverse-proxy
 docker compose logs -f test-web
+docker compose logs -f immich
+docker compose logs -f immich-machine-learning
+docker compose logs -f immich-redis
+docker compose logs -f immich-postgres
 ```
 
 ### 設定の更新
@@ -179,8 +186,8 @@ develop ブランチへのプッシュ時に自動実行：
 
 ```bash
 # イメージの取得
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-reverse-proxy:staging
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-test-web:staging
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/test-web:staging
 ```
 
 #### PR チェック
