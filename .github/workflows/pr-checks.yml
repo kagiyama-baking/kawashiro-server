@@ -37,6 +37,8 @@ jobs:
               run: |
                   mkdir -p volumes/reverse-proxy/log/nginx
                   mkdir -p volumes/test-web/log/nginx
+                  mkdir -p volumes/immich/data
+                  mkdir -p volumes/immich/log
                   # GitHub Actions環境での権限問題を解決
                   chmod -R 777 volumes/
 
@@ -72,6 +74,12 @@ jobs:
                   # コンテナ状態確認
                   echo "📋 コンテナ状態:"
                   docker compose ps
+
+                  # 問題のあるコンテナのログを確認
+                  echo "📄 reverse-proxy ログ:"
+                  docker compose logs reverse-proxy | tail -n 20
+                  echo "📄 test-web ログ:"
+                  docker compose logs test-web | tail -n 20
 
             # 準備完了待機（reverse-proxy）
             - name: Wait for readiness :reverse-proxy
