@@ -21,6 +21,17 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
+            # CI環境用の.envファイル作成
+            - name: Create .env file for CI
+              run: |
+                  echo "# CI環境用のダミー環境変数" > .env
+                  echo "DB_USERNAME=ci_user" >> .env
+                  echo "DB_PASSWORD=ci_password" >> .env
+                  echo "DB_DATABASE_NAME=ci_database" >> .env
+                  echo "PUBLIC_SERVER_URL=http://album.localhost" >> .env
+                  echo "IMMICH_LOG_LEVEL=verbose" >> .env
+                  echo "TZ=Asia/Tokyo" >> .env
+
             # ログディレクトリの準備（コンテナマウント用）
             - name: Prepare log directories
               run: |
