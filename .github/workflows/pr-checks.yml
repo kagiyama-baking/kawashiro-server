@@ -24,8 +24,8 @@ jobs:
             # ログディレクトリの準備（コンテナマウント用）
             - name: Prepare log directories
               run: |
-                  mkdir -p volumes/kawashiro-reverse-proxy/log/nginx
-                  mkdir -p volumes/kawashiro-test-web/log/nginx
+                  mkdir -p volumes/reverse-proxy/log/nginx
+                  mkdir -p volumes/test-web/log/nginx
                   # GitHub Actions環境での権限問題を解決
                   chmod -R 777 volumes/
 
@@ -68,7 +68,7 @@ jobs:
                   # プロセス確認
                   echo "🔍 reverse-proxy確認中..."
                   for i in {1..20}; do
-                    if docker exec kawashiro-reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                    if docker exec reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
                       echo "✅ reverse-proxy準備完了"
                       break
                     fi
@@ -82,7 +82,7 @@ jobs:
                   # プロセス確認
                   echo "🔍 test-web確認中..."
                   for i in {1..20}; do
-                    if docker exec kawashiro-test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
+                    if docker exec test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
                       echo "✅ test-web準備完了"
                       break
                     fi

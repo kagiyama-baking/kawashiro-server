@@ -1,10 +1,13 @@
-# Kawashiro Server
+# 鍵山製パン社内 Web システム
 
-🌊 Docker Compose を使用した Web サービス群
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)](https://nginx.org/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
 ## 概要
 
-Kawashiro Server は、Docker コンテナベースの Web サービス群です。複数の Web サービスを統一されたドメインで提供し、サブドメインによるルーティングを行います。
+Docker コンテナベースの Web サービス群です。複数の Web サービスを統一されたドメインで提供し、サブドメインによるルーティングを行います。
 
 ## サービス
 
@@ -49,11 +52,11 @@ kawashiro-server/
 │       └── index.html          # テストページ
 │
 └── volumes/                    # 永続化データ
-    ├── kawashiro-reverse-proxy/
+    ├── reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
-    ├── kawashiro-test-web/
+    ├── test-web/
     │   └── log/nginx/          # テストWebのログ
-    └── kawashiro-immich/
+    └── immich/
         ├── data/               # アップロード写真データ
         └── log/                # アプリケーションログ
 ```
@@ -183,8 +186,8 @@ develop ブランチへのプッシュ時に自動実行：
 
 ```bash
 # イメージの取得
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-reverse-proxy:staging
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/kawashiro-test-web:staging
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/test-web:staging
 ```
 
 #### PR チェック
