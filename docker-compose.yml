@@ -48,17 +48,8 @@ services:
         image: ghcr.io/immich-app/immich-server:release
         container_name: immich
         hostname: immich
-        environment:
-            # Redisの接続設定
-            REDIS_HOSTNAME: immich-redis
-            # Postgresqlの接続設定
-            DB_HOSTNAME: immich-postgres
-            DB_USERNAME: immich
-            DB_PASSWORD: immich
-            DB_DATABASE_NAME: immich
-            # サーバー設定
-            PUBLIC_SERVER_URL: http://album.localhost
-            IMMICH_LOG_LEVEL: verbose
+        env_file:
+            - .env
         volumes:
             # アップロードファイルの永続化
             - ./volumes/immich/data:/data
@@ -78,14 +69,8 @@ services:
         image: ghcr.io/immich-app/immich-machine-learning:release
         container_name: immich-ml
         hostname: immich-ml
-        environment:
-            # Redisの接続設定
-            REDIS_HOSTNAME: immich-redis
-            # Postgresqlの接続設定
-            DB_HOSTNAME: immich-postgres
-            DB_USERNAME: immich
-            DB_PASSWORD: immich
-            DB_DATABASE_NAME: immich
+        env_file:
+            - .env
         volumes:
             # モデルキャッシュの永続化
             - immich-ml-cache:/cache
@@ -113,16 +98,15 @@ services:
         container_name: immich-postgres
         hostname: immich-postgres
         environment:
-            POSTGRES_PASSWORD: immich
-            POSTGRES_USER: immich
-            POSTGRES_DB: immich
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+            POSTGRES_USER: ${DB_USERNAME}
+            POSTGRES_DB: ${DB_DATABASE_NAME}
             POSTGRES_INITDB_ARGS: '--data-checksums'
-            # WSL2でのボリューム権限問題を回避
-            PGDATA: /var/lib/postgresql/data/pgdata
         volumes:
             # PostgreSQLデータの永続化
             - immich-pgdata:/var/lib/postgresql/data
-        restart: unless-stopped
+        shm_size: 128mb
+        restart: always
         networks:
             - proxy-network
 
