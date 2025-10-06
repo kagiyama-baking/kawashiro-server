@@ -4,3 +4,6 @@
 # OS関連
 .DS_Store
 Thumbs.db
+
+# 環境変数ファイル
+.env
