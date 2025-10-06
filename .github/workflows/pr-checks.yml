@@ -48,16 +48,16 @@ jobs:
             - name: Test configuration syntax (Nginx) :reverse-proxy
               run: |
                   echo "🔧 Nginx設定構文チェック..."
-                  # 一時的にコンテナを起動して構文チェック
-                  docker compose run --rm --no-deps reverse-proxy nginx -t
+                  # CI環境ではrootユーザーで実行して権限問題を回避
+                  docker compose run --rm --no-deps --user root reverse-proxy nginx -t
                   echo "✅ 構文チェック: OK"
 
             # 構文チェック（test-web）
             - name: Test configuration syntax (Nginx) :test-web
               run: |
                   echo "🔧 Nginx設定構文チェック..."
-                  # 一時的にコンテナを起動して構文チェック
-                  docker compose run --rm --no-deps test-web nginx -t
+                  # CI環境ではrootユーザーで実行して権限問題を回避
+                  docker compose run --rm --no-deps --user root test-web nginx -t
                   echo "✅ 構文チェック: OK"
 
             # コンテナの起動
