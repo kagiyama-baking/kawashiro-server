@@ -106,19 +106,29 @@ jobs:
               run: |
                   echo "🧪 機能テスト実行中..."
 
+                  # コンテナの状態確認
+                  echo "📋 現在のコンテナ状態:"
+                  docker compose ps
+
+                  # ポートのリッスン状態確認
+                  echo "🔍 ポート80のリッスン状態:"
+                  netstat -tlnp | grep :80 || echo "ポート80はリッスンされていません"
+
                   # ヘルスエンドポイント確認
                   echo "  🏥 ヘルスチェック... (localhost/health)"
-                  status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
+                  status=$(curl -v --max-time 10 -s -o /dev/null -w "%{http_code}" http://localhost/health 2>&1 | tee /tmp/curl_output.txt | tail -1)
                   if [ "$status" = "200" ]; then
                     echo "  ✅ ヘルス: OK"
                   else
                     echo "  ❌ ヘルス: NG (HTTP $status)"
+                    echo "  詳細なエラー情報:"
+                    cat /tmp/curl_output.txt
                     exit 1
                   fi
 
                   # サブドメインルーティング確認
                   echo "  🔀 ルーティング... (test.localhost -> localhost:8080)"
-                  status=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
+                  status=$(curl --max-time 10 --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
                   if [ "$status" = "200" ]; then
                     echo "  ✅ ルーティング: OK"
                   else
