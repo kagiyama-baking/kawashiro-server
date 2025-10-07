@@ -202,4 +202,56 @@ Pull Request 作成時に自動実行：
 ### コンテナイメージのタグ戦略
 
 -   `staging`: develop ブランチの最新ビルド
+-   `release`: 本番環境用の安定版
 -   `sha-<commit>`: 特定コミットのビルド
+
+## 本番環境へのデプロイ
+
+本番環境では`docker-compose-prod.yml`を使用します。このファイルは、GitHub Container Registryにプッシュされたリリースイメージを使用します。
+
+### 初回セットアップ
+
+1. **必要なファイルの準備**
+   ```bash
+   # リポジトリのクローン
+   git clone https://github.com/kagiyama-baking/kawashiro-server.git
+   cd kawashiro-server
+
+   # .envファイルの作成（Immich用の環境変数）
+   cp .env.example .env
+   # 必要に応じて.envファイルを編集
+   ```
+
+2. **イメージの取得と起動**
+   ```bash
+   # 最新のイメージをプル
+   docker compose -f docker-compose-prod.yml pull
+
+   # サービスの起動
+   docker compose -f docker-compose-prod.yml up -d
+   ```
+
+### 運用コマンド
+
+```bash
+# イメージの更新と再起動
+docker compose -f docker-compose-prod.yml pull
+docker compose -f docker-compose-prod.yml up -d --force-recreate
+
+# ログの確認
+docker compose -f docker-compose-prod.yml logs -f
+
+# 特定サービスのログ確認
+docker compose -f docker-compose-prod.yml logs -f reverse-proxy
+
+# サービスの停止
+docker compose -f docker-compose-prod.yml down
+
+# サービスの状態確認
+docker compose -f docker-compose-prod.yml ps
+```
+
+### 本番環境で使用されるイメージ
+
+- `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
+- `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
