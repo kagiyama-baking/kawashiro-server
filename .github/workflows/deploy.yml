@@ -1,17 +1,16 @@
 name: Deploy to Production
 
 on:
-    # mainブランチへのマージ時
     push:
         branches:
             - main
         paths-ignore:
-            - .vscode/**
-            - .claude/**
-            - .gitignore
-            - README.md
-    # 手動実行
-    workflow_dispatch:
+            - '.vscode/**'
+            - '.claude/**'
+            - '.gitignore'
+            - '**/*.md'
+            - '.github/workflows/!(deploy).yml'
+    workflow_dispatch: # テスト用の手動実行
         inputs:
             tag:
                 description: 'デプロイするイメージタグ (デフォルト: staging)'
@@ -97,6 +96,9 @@ jobs:
         runs-on: ubuntu-latest
         needs: verify-images
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        permissions:
+            contents: read
+            packages: write
         steps:
             - name: Login to GHCR
               uses: docker/login-action@v3
