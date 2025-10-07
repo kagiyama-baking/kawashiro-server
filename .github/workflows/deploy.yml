@@ -91,8 +91,8 @@ jobs:
                     exit 1
                   fi
 
-    # プロダクションタグの作成
-    tag-production:
+    # リリースタグの作成
+    tag-release:
         runs-on: ubuntu-latest
         needs: verify-images
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -107,32 +107,32 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Tag images as production
+            - name: Tag images as release
               run: |
                   # reverse-proxy
                   docker pull ghcr.io/${{ github.repository }}/reverse-proxy:staging
                   docker tag ghcr.io/${{ github.repository }}/reverse-proxy:staging \
-                             ghcr.io/${{ github.repository }}/reverse-proxy:production
+                             ghcr.io/${{ github.repository }}/reverse-proxy:release
                   docker tag ghcr.io/${{ github.repository }}/reverse-proxy:staging \
                              ghcr.io/${{ github.repository }}/reverse-proxy:latest
-                  docker push ghcr.io/${{ github.repository }}/reverse-proxy:production
+                  docker push ghcr.io/${{ github.repository }}/reverse-proxy:release
                   docker push ghcr.io/${{ github.repository }}/reverse-proxy:latest
 
                   # test-web
                   docker pull ghcr.io/${{ github.repository }}/test-web:staging
                   docker tag ghcr.io/${{ github.repository }}/test-web:staging \
-                             ghcr.io/${{ github.repository }}/test-web:production
+                             ghcr.io/${{ github.repository }}/test-web:release
                   docker tag ghcr.io/${{ github.repository }}/test-web:staging \
                              ghcr.io/${{ github.repository }}/test-web:latest
-                  docker push ghcr.io/${{ github.repository }}/test-web:production
+                  docker push ghcr.io/${{ github.repository }}/test-web:release
                   docker push ghcr.io/${{ github.repository }}/test-web:latest
 
-                  echo "✅ プロダクションタグを作成しました"
+                  echo "✅ リリースタグを作成しました"
 
     # デプロイ情報の生成
     deployment-info:
         runs-on: ubuntu-latest
-        needs: [verify-images, tag-production]
+        needs: [verify-images, tag-release]
         if: always() && needs.verify-images.result == 'success'
         steps:
             - name: Checkout
@@ -175,53 +175,6 @@ jobs:
                   name: deployment-info
                   path: deployment-info.json
 
-            - name: Generate deployment instructions
-              run: |
-                  TAG="${{ inputs.tag || 'staging' }}"
-
-                  cat > DEPLOY_INSTRUCTIONS.md <<EOF
-                  # デプロイ手順
-
-                  ## 1. 本番サーバーで以下のコマンドを実行
-
-                  \`\`\`bash
-                  # リポジトリのクローンまたは更新
-                  git clone https://github.com/${{ github.repository }}.git
-                  # または
-                  cd kawashiro-server && git pull
-
-                  # 環境変数の設定
-                  cp .env.production.example .env.production
-                  # .env.production を編集して適切な値を設定
-
-                  # デプロイスクリプトの実行
-                  ./scripts/deploy.sh ${TAG}
-                  \`\`\`
-
-                  ## 2. 手動でデプロイする場合
-
-                  \`\`\`bash
-                  # イメージの取得
-                  export GITHUB_REPOSITORY=${{ github.repository }}
-                  docker compose -f docker-compose.production.yml pull
-
-                  # サービスの更新
-                  docker compose -f docker-compose.production.yml up -d
-
-                  # ヘルスチェック
-                  docker compose -f docker-compose.production.yml ps
-                  \`\`\`
-
-                  ## デプロイされるイメージ
-
-                  - reverse-proxy: ghcr.io/${{ github.repository }}/reverse-proxy:${TAG}
-                  - test-web: ghcr.io/${{ github.repository }}/test-web:${TAG}
-
-                  EOF
-
-                  echo "📝 デプロイ手順を生成しました"
-                  cat DEPLOY_INSTRUCTIONS.md
-
             - name: Upload deployment instructions
               uses: actions/upload-artifact@v4
               with:
@@ -231,7 +184,7 @@ jobs:
     # サマリー
     summary:
         runs-on: ubuntu-latest
-        needs: [verify-images, tag-production, deployment-info]
+        needs: [verify-images, tag-release, deployment-info]
         if: always()
         steps:
             - name: Generate summary
