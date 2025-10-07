@@ -5,10 +5,11 @@ on:
         branches:
             - develop
         paths-ignore:
-            - .vscode/**
-            - .claude/**
-            - .gitignore
-            - README.md
+            - '.vscode/**'
+            - '.claude/**'
+            - '.gitignore'
+            - '**/*.md'
+            - '.github/workflows/!(build).yml'
     workflow_dispatch: # テスト用の手動実行
 
 permissions:
@@ -119,8 +120,8 @@ jobs:
             # ビルド証明の生成
             - name: Attest build provenance
               uses: actions/attest-build-provenance@v1
-              if: github.event_name != 'workflow_dispatch'  # 手動実行時はスキップ
-              continue-on-error: true  # エラーが発生してもワークフローを続行
+              if: github.event_name != 'workflow_dispatch' # 手動実行時はスキップ
+              continue-on-error: true # エラーが発生してもワークフローを続行
               with:
                   subject-name: ${{ matrix.service.image }}
                   subject-digest: ${{ steps.build.outputs.digest }}
