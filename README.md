@@ -255,3 +255,96 @@ docker compose -f docker-compose-prod.yml ps
 
 - `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
 - `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
+
+## データのバックアップ・リストア
+
+### Immichボリュームデータのコピー（開発→本番）
+
+開発環境から本番環境へImmichのデータをコピーする際は、以下のコマンドを使用します。
+
+#### 1. ホストマシン上のボリュームディレクトリから直接コピー
+
+```bash
+# Immichのデータボリューム（写真データ）をコピー
+rsync -avz --progress ./volumes/immich/data/ <本番サーバーユーザー>@<本番サーバーIP>:~/Repository/kawashiro-server/volumes/immich/data/
+
+# 例：
+# rsync -avz --progress ./volumes/immich/data/ user@192.168.1.100:~/Repository/kawashiro-server/volumes/immich/data/
+```
+
+#### 2. Dockerボリュームから本番環境へコピー
+
+名前付きボリューム（PostgreSQL、Redis、MLキャッシュ）の場合：
+
+```bash
+# PostgreSQLデータのバックアップとコピー
+docker run --rm -v immich-pgdata:/source -v $(pwd)/backup:/backup alpine tar czf /backup/immich-pgdata.tar.gz -C /source .
+scp ./backup/immich-pgdata.tar.gz <本番サーバーユーザー>@<本番サーバーIP>:~/backup/
+
+# 本番サーバー側でリストア
+ssh <本番サーバーユーザー>@<本番サーバーIP>
+cd ~/Repository/kawashiro-server
+docker compose -f docker-compose-prod.yml down
+docker run --rm -v immich-pgdata:/target -v ~/backup:/backup alpine tar xzf /backup/immich-pgdata.tar.gz -C /target
+docker compose -f docker-compose-prod.yml up -d
+
+# Redisデータのバックアップとコピー
+docker run --rm -v immich-redis-data:/source -v $(pwd)/backup:/backup alpine tar czf /backup/immich-redis-data.tar.gz -C /source .
+scp ./backup/immich-redis-data.tar.gz <本番サーバーユーザー>@<本番サーバーIP>:~/backup/
+
+# MLキャッシュのバックアップとコピー（オプション）
+docker run --rm -v immich-ml-cache:/source -v $(pwd)/backup:/backup alpine tar czf /backup/immich-ml-cache.tar.gz -C /source .
+scp ./backup/immich-ml-cache.tar.gz <本番サーバーユーザー>@<本番サーバーIP>:~/backup/
+```
+
+#### 3. 一括コピースクリプト
+
+すべてのImmich関連データを一括でコピーする場合：
+
+```bash
+#!/bin/bash
+# sync-immich-to-prod.sh
+
+PROD_SERVER="<本番サーバーユーザー>@<本番サーバーIP>"
+PROD_PATH="~/Repository/kawashiro-server"
+
+# ホストボリュームのコピー
+echo "📁 Syncing host volumes..."
+rsync -avz --progress ./volumes/immich/data/ ${PROD_SERVER}:${PROD_PATH}/volumes/immich/data/
+
+# Dockerボリュームのバックアップとコピー
+echo "🗄️ Backing up Docker volumes..."
+mkdir -p ./backup
+
+# PostgreSQL
+docker run --rm -v immich-pgdata:/source -v $(pwd)/backup:/backup alpine \
+  tar czf /backup/immich-pgdata.tar.gz -C /source .
+
+# Redis
+docker run --rm -v immich-redis-data:/source -v $(pwd)/backup:/backup alpine \
+  tar czf /backup/immich-redis-data.tar.gz -C /source .
+
+# ML Cache
+docker run --rm -v immich-ml-cache:/source -v $(pwd)/backup:/backup alpine \
+  tar czf /backup/immich-ml-cache.tar.gz -C /source .
+
+# バックアップファイルを本番サーバーへ転送
+echo "📤 Transferring backups to production..."
+scp ./backup/*.tar.gz ${PROD_SERVER}:~/backup/
+
+# 本番サーバーでのリストア手順を表示
+echo "✅ Backup complete! Run the following commands on production server:"
+echo "cd ${PROD_PATH}"
+echo "docker compose -f docker-compose-prod.yml down"
+echo "docker run --rm -v immich-pgdata:/target -v ~/backup:/backup alpine tar xzf /backup/immich-pgdata.tar.gz -C /target"
+echo "docker run --rm -v immich-redis-data:/target -v ~/backup:/backup alpine tar xzf /backup/immich-redis-data.tar.gz -C /target"
+echo "docker run --rm -v immich-ml-cache:/target -v ~/backup:/backup alpine tar xzf /backup/immich-ml-cache.tar.gz -C /target"
+echo "docker compose -f docker-compose-prod.yml up -d"
+```
+
+### 注意事項
+
+- コピー前に本番環境のImmichサービスを停止することを推奨します
+- データベースの整合性を保つため、PostgreSQLとRedisのデータは同時にバックアップしてください
+- 大量のデータがある場合、`rsync`の`--bwlimit`オプションで帯域制限をかけることを検討してください
+- 本番環境へのコピー前に必ず現在のデータをバックアップしてください
