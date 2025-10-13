@@ -7,3 +7,6 @@ Thumbs.db
 
 # 環境変数ファイル
 .env
+
+# 構成図
+archtecture.drawio
