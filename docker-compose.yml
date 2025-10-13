@@ -46,7 +46,7 @@ services:
     # Django APIサーバー
     django-api:
         build:
-          context: .
+          context: ./django_api 
         # 一時的に8000で公開 追ってReverse Proxy経由に変更 
         ports:
             - "8000:8000"
