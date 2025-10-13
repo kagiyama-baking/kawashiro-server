@@ -11,8 +11,8 @@ COPY pyproject.toml ./
 RUN uv sync --no-dev
 
 # Djangoプロジェクトを置くディレクトリをコンテナ上に作成
-RUN mkdir /django-api                        
-WORKDIR /django-api
+RUN mkdir /django_api                        
+WORKDIR /django_api
 
 # ローカルのdjango-apiディレクトリをコンテナにコピー
 COPY . .

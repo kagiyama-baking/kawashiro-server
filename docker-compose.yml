@@ -43,6 +43,20 @@ services:
         networks:
             - proxy-network
 
+    # Django APIサーバー
+    django-api:
+        build:
+          context: .
+        # 一時的に8000で公開 追ってReverse Proxy経由に変更 
+        ports:
+            - "8000:8000"
+        volumes:
+            # コードの永続化
+            - ./django_api:/django_api
+        command: >
+            sh -c "python manage.py migrate &&
+                   python manage.py runserver 0.0.0.0:8000"
+
     # Immich - 写真管理サービス
     immich:
         image: ghcr.io/immich-app/immich-server:release
