@@ -51,9 +51,9 @@ services:
         image: django-api
         container_name: django-api
         hostname: django-api
-        # 一時的に8000で公開 追ってReverse Proxy経由に変更 
+        # 一時的に8000で公開 追ってReverse Proxy経由に変更
         ports:
-            - "8000:8000"
+            - '8000:8000'
         volumes:
             # コードの永続化
             - ./django_api:/django_api
@@ -61,8 +61,8 @@ services:
         networks:
             - proxy-network
         command: >
-            sh -c "python manage.py migrate &&
-                   python manage.py runserver 0.0.0.0:8000"
+            sh -c "uv run manage.py migrate &&
+                   uv run manage.py runserver 0.0.0.0:8000"
 
     # Immich - 写真管理サービス
     immich:
