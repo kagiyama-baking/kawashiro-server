@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-
+import os
 # ============================================================
 # 基本設定
 # ============================================================
@@ -28,18 +28,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # クイックスタート開発設定 - 本番環境には不適切
 # 参照: https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# セキュリティ警告: 本番環境で使用されるシークレットキーは秘密にしておくこと！
-# TODO: 本番環境では環境変数から取得するように変更すること
-SECRET_KEY = 'django-insecure-#-$$m$ewk5jtg%%mf1ikh)-t3kzdiur%b447nj76s3*-**8tfr'
+# 環境変数から取得
+SECRET_KEY = os.getenv('SECRET_KEY')
 
-# セキュリティ警告: 本番環境ではDEBUGをオンにしないこと！
-# デバッグモード（開発環境ではTrue、本番環境では必ずFalse）
-DEBUG = True
+# DEBUGモード（環境変数が'True'の場合のみTrue）
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
-# アクセスを許可するホスト名のリスト
-# 本番環境では適切なドメイン名を設定すること
-ALLOWED_HOSTS = []
-
+# ALLOWED_HOSTSをカンマ区切りから配列に変換
+ALLOWED_HOSTS = [
+    host.strip() 
+    for host in os.getenv('ALLOWED_HOSTS', 'localhost').split(',')
+    if host.strip()  # 空文字列を除外
+]
 
 # ============================================================
 # アプリケーション設定

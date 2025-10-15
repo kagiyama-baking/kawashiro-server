@@ -33,6 +33,8 @@ services:
         image: test-web
         container_name: test-web
         hostname: test-web
+        env_file:
+            - .env
         volumes:
             # ファイルのマウント
             - ./test_web/conf.d:/etc/nginx/conf.d:ro
