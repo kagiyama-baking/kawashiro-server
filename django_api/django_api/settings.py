@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',  # 静的ファイル管理
     # カスタムアプリケーション
     'core',  # ユーザー認証などのコア機能
+    'user',  # ユーザーモデルのApp
 ]
 
 # ミドルウェアの設定
