@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',  # セッションフレームワーク
     'django.contrib.messages',  # メッセージフレームワーク
     'django.contrib.staticfiles',  # 静的ファイル管理
+    # サードパーティアプリケーション
+    'rest_framework',  # Django REST framework
     # カスタムアプリケーション
     'core',  # ユーザー認証などのコア機能
     'user',  # ユーザーモデルのApp
