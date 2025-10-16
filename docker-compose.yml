@@ -56,6 +56,8 @@ services:
         # 一時的に8000で公開 追ってReverse Proxy経由に変更
         ports:
             - '8000:8000'
+        env_file:
+            - .env
         volumes:
             # コードの永続化
             - ./django_api:/django_api
