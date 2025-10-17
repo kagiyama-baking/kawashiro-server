@@ -22,6 +22,17 @@ class UserAdmin(BaseUserAdmin):
         # 重要な日付セクション（最終ログイン日時）
         (_('Important dates'), {'fields': ('last_login',)}),
     )
+    # 新規ユーザー作成画面のフィールドセット定義
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('email', 'name', 'password1', 'password2'),
+        }),
+    )
+    # 検索フィールド
+    search_fields = ('email', 'name')
+    # フィルターサイドバーに表示するフィールド
+    filter_horizontal = ()
 
 
 # カスタムUserモデルを管理画面に登録
