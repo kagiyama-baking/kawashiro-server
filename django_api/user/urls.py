@@ -1,15 +1,15 @@
 from django.urls import path
-
 from user import views
-
 
 # アプリケーション名の定義
 app_name = 'user'
 
 # ユーザー関連のURLパターン定義
 urlpatterns = [
-      # ユーザー作成エンドポイント
-      path('create/', views.CreateUserView.as_view(), name='create'),
-      # トークン認証エンドポイント（ログイン）
-      path('token/', views.CreateTokenView.as_view(), name='token'),
+    # ユーザー作成エンドポイント
+    path('create/', views.CreateUserView.as_view(), name='create'),
+    # トークン認証エンドポイント（ログイン）
+    path('token/', views.CreateTokenView.as_view(), name='token'),
+    # 認証済みユーザー情報の取得・更新エンドポイント
+    path('update/', views.ManageUserView.as_view(), name='update'),
 ]
