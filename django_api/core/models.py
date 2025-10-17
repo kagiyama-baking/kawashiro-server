@@ -74,6 +74,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         is_active: アカウントの有効/無効状態
         is_staff: 管理画面へのアクセス権限の有無
     """
+
     email = models.EmailField(max_length=255, unique=True)
     name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
