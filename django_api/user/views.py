@@ -12,7 +12,7 @@ class CreateUserView(generics.CreateAPIView):
     serializer_class = UserSerializer
 
 class CreateTokenView(ObtainAuthToken):
-    """ユーザー用の新しい認証トークンを作成するビュー（Todoへのアクセス制限）"""
+    """ユーザー用の新しい認証トークンを作成するビュー"""
     # 認証トークンシリアライザーを使用
     serializer_class = AuthTokenSerializer
     # レンダラークラスをAPI設定のデフォルトから取得
