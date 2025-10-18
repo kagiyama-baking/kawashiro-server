@@ -12,6 +12,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# .envファイルを読み込む
+load_dotenv()
 
 # ============================================================
 # 基本設定
@@ -61,6 +65,7 @@ INSTALLED_APPS = [
     # カスタムアプリケーション
     'core',  # ユーザー認証などのコア機能
     'user',  # ユーザーモデルのApp
+    'onedrive',  # OneDrive連携機能
 ]
 
 # ミドルウェアの設定
@@ -197,3 +202,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # カスタムユーザーモデルの指定
 # アプリ名.モデル名の形式で指定
 AUTH_USER_MODEL = 'core.User'
+
+# ============================================================
+# Microsoft Graph API設定
+# ============================================================
+# Azure AD（Microsoft Entra ID）のテナントID
+AZURE_TENANT_ID = os.getenv('AZURE_TENANT_ID')
+# Azure ADアプリケーションのクライアントID
+AZURE_CLIENT_ID = os.getenv('AZURE_CLIENT_ID')
+# 証明書のサムプリント（拇印）
+AZURE_CERT_THUMBPRINT = os.getenv('AZURE_CERT_THUMBPRINT')
+# 秘密鍵ファイルのパス
+AZURE_CERT_KEY_FILE = os.getenv('AZURE_CERT_KEY_FILE')
+# OneDriveにアクセスする対象ユーザーのメールアドレスまたはユーザーID
+TARGET_USER = os.getenv('TARGET_USER')
