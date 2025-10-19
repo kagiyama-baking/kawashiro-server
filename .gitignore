@@ -10,3 +10,6 @@ Thumbs.db
 
 # 構成図
 archtecture.drawio
+
+# 鍵ファイル
+*.pem

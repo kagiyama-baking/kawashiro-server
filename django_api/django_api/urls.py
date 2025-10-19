@@ -24,4 +24,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # ユーザー関連APIのURL（user.urlsにルーティング）
     path('api/user/', include('user.urls')),
+    # OneDrive関連APIのURL（onedrive.urlsにルーティング）
+    path('api/onedrive/', include('onedrive.urls')),
 ]
