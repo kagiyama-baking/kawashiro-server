@@ -1,4 +1,6 @@
 """OneDriveアプリケーションのビュー"""
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import status, authentication, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -23,6 +25,33 @@ class OneDriveUploadView(APIView):
     # ファイルアップロード用のパーサーを設定
     parser_classes = (MultiPartParser, FormParser)
 
+    @extend_schema(
+        tags=['onedrive'],
+        summary='ファイルアップロード',
+        description='ファイルをOneDriveにアップロードします。',
+        request=FileUploadSerializer,
+        responses={
+            201: {
+                'description': 'アップロード成功',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'message': 'ファイルが正常にアップロードされました',
+                            'file_info': {
+                                'name': 'example.pdf',
+                                'size': 1024000,
+                                'created_datetime': '2024-01-01T00:00:00Z',
+                                'web_url': 'https://...'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': '入力データの検証エラー'},
+            401: {'description': '認証が必要です'},
+            500: {'description': 'サーバーエラー'}
+        }
+    )
     def post(self, request, *args, **kwargs):
         """ファイルをOneDriveにアップロード"""
         serializer = FileUploadSerializer(data=request.data)
@@ -76,6 +105,32 @@ class OneDriveFolderView(APIView):
     # 認証済みユーザーのみアクセス可能
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        tags=['onedrive'],
+        summary='フォルダ作成',
+        description='OneDriveに新しいフォルダを作成します。',
+        request=CreateFolderSerializer,
+        responses={
+            201: {
+                'description': '作成成功',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'message': 'フォルダが正常に作成されました',
+                            'folder_info': {
+                                'name': 'New Folder',
+                                'created_datetime': '2024-01-01T00:00:00Z',
+                                'web_url': 'https://...'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': '入力データの検証エラー'},
+            401: {'description': '認証が必要です'},
+            500: {'description': 'サーバーエラー'}
+        }
+    )
     def post(self, request, *args, **kwargs):
         """フォルダを作成"""
         serializer = CreateFolderSerializer(data=request.data)
@@ -124,6 +179,50 @@ class OneDriveListView(APIView):
     # 認証済みユーザーのみアクセス可能
     permission_classes = (permissions.IsAuthenticated,)
 
+    @extend_schema(
+        tags=['onedrive'],
+        summary='ファイル一覧取得',
+        description='指定したフォルダ内のファイル一覧を取得します。',
+        parameters=[
+            OpenApiParameter(
+                name='folder_path',
+                description='取得するフォルダのパス（デフォルト: /）',
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={
+            200: {
+                'description': '取得成功',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'folder_path': '/',
+                            'count': 2,
+                            'files': [
+                                {
+                                    'name': 'file1.pdf',
+                                    'size': 1024000,
+                                    'created_datetime': '2024-01-01T00:00:00Z',
+                                    'web_url': 'https://...'
+                                },
+                                {
+                                    'name': 'folder1',
+                                    'folder': True,
+                                    'created_datetime': '2024-01-01T00:00:00Z',
+                                    'web_url': 'https://...'
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            400: {'description': '入力パラメータエラー'},
+            401: {'description': '認証が必要です'},
+            500: {'description': 'サーバーエラー'}
+        }
+    )
     def get(self, request, *args, **kwargs):
         """指定したフォルダ内のファイル一覧を取得"""
         serializer = ListFilesSerializer(data=request.query_params)
