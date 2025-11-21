@@ -84,9 +84,8 @@ jobs:
             - name: Test Django migrations
               run: |
                   echo "🔧 Django マイグレーション確認..."
-                  # CI環境用にSQLiteデータベースファイルを作成してからマイグレーションチェック
-                  docker compose run --rm --no-deps -w /django_api django-api sh -c "
-                    touch /django_api/db.sqlite3 && \
+                  # CI環境用：rootユーザーで実行して権限問題を回避
+                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
                     python manage.py migrate --run-syncdb && \
                     python manage.py migrate --check
                   "
