@@ -3,7 +3,9 @@ set -e
 
 # 環境変数を読み込む
 if [ -f ".env" ]; then
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
 fi
 
 # デフォルト値の設定

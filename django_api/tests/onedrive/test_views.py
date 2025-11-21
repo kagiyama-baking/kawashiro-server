@@ -1,6 +1,6 @@
 """OneDriveアプリのビューテスト"""
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from rest_framework import status
 
 

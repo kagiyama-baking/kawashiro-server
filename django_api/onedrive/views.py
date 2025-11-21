@@ -1,7 +1,6 @@
 """OneDriveアプリケーションのビュー"""
 import logging
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
 from rest_framework import status, authentication, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
