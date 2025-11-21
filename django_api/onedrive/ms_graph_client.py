@@ -59,9 +59,9 @@ class MSGraphClient:
 
     def acquire_token(self):
         """アクセストークンを取得"""
-        # 秘密鍵ファイルを読み込み
-        with open(self.key_file, encoding='utf-8') as fp:
-            private_key = fp.read()
+        # 秘密鍵ファイルを読み込み（バイナリモードで読み込んでからデコード）
+        with open(self.key_file, 'rb') as fp:
+            private_key = fp.read().decode('utf-8')
 
         # MSALアプリケーションを作成
         app = ConfidentialClientApplication(
