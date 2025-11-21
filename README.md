@@ -105,7 +105,17 @@ git clone https://github.com/kagiyama-baking/kawashiro-server.git
 cd kawashiro-server
 ```
 
-### 2. サーバーの起動
+### 2. 環境変数の設定
+
+```bash
+# 環境変数ファイルの作成
+cp .env.example .env
+
+# .envファイルを編集して必要な値を設定
+nano .env
+```
+
+### 3. サーバーの起動
 
 ```bash
 # すべてのサービスを起動
@@ -115,7 +125,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-### 3. 動作確認
+### 4. 動作確認
 
 ```bash
 # ヘルスチェック
@@ -126,6 +136,39 @@ curl -H "Host: test.localhost" http://localhost/
 
 # Immich（サブドメイン経由）
 curl -H "Host: album.localhost" http://localhost/
+```
+
+## 環境変数設定
+
+### 必須の環境変数
+
+`.env`ファイルに以下の環境変数を設定してください：
+
+```bash
+# PostgreSQL設定（Immich用）
+DB_USERNAME=immich          # PostgreSQLユーザー名
+DB_PASSWORD=strongpassword  # PostgreSQLパスワード（必ず変更してください）
+DB_DATABASE_NAME=immich      # データベース名
+
+# Immichサーバー設定
+PUBLIC_SERVER_URL=http://album.example.com  # 本番環境では実際のドメインに変更
+IMMICH_LOG_LEVEL=log         # ログレベル (verbose/log/warn/error)
+
+# タイムゾーン
+TZ=Asia/Tokyo               # システムタイムゾーン
+```
+
+### オプションの環境変数
+
+```bash
+# Django API設定（バックアップ機能を使用する場合）
+DJANGO_SECRET_KEY=your-secret-key-here  # Django秘密鍵
+DJANGO_DEBUG=False                      # デバッグモード（本番環境では必ずFalse）
+DJANGO_ALLOWED_HOSTS=api.example.com    # 許可するホスト名
+
+# リバースプロキシ設定
+NGINX_WORKER_PROCESSES=auto             # Nginxワーカープロセス数
+NGINX_WORKER_CONNECTIONS=1024           # ワーカーあたりの最大接続数
 ```
 
 ## 使用方法
@@ -175,6 +218,56 @@ docker compose restart reverse-proxy
 
 ### GitHub Actions ワークフロー
 
+```mermaid
+flowchart LR
+
+  %% 🔹 開発フェーズ（PR → develop）
+  subgraph Dev["🔧 開発フェーズ"]
+    direction TB
+    A[feature/* ブランチ<br/>push & PR]
+    B[PR to develop]
+    C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Docker compose build<br/>・Nginx構文チェック<br/>・Django migrate<br/>・ヘルスチェック]
+    D[✅ develop へマージ]
+
+    A --> B
+    B --> C
+    C --> D
+  end
+
+  %% 🔹 ステージング（develop push）
+  subgraph Stg["📦 ステージング"]
+    direction TB
+    E[develop push]
+    F[build.yml<br/>━━━━━━━━━━<br/>・Multi-arch build<br/>・GHCR へ push<br/>・タグ: staging<br/>・SBOM生成]
+
+    E --> F
+  end
+
+  %% 🔹 本番（main / 手動デプロイ）
+  subgraph Prod["🚀 本番デプロイ"]
+    direction TB
+    G[develop → main<br/>または<br/>workflow_dispatch]
+    H[deploy.yml<br/>━━━━━━━━━━<br/>・イメージ確認<br/>・タグ付け<br/>・アーティファクト生成]
+    I[本番サーバで<br/>デプロイ実行]
+
+    G --> H
+    H --> I
+  end
+
+  %% フェーズ間の接続
+  Dev -.->|develop branch| Stg
+  Stg -.->|staging images| Prod
+
+  %% スタイリング
+  classDef devClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+  classDef stgClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+  classDef prodClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+
+  class A,B,C,D devClass
+  class E,F stgClass
+  class G,H,I prodClass
+```
+
 #### ビルド・プッシュ（develop ブランチ）
 
 develop ブランチへのプッシュ時に自動実行：
@@ -207,29 +300,31 @@ Pull Request 作成時に自動実行：
 
 ## 本番環境へのデプロイ
 
-本番環境では`docker-compose-prod.yml`を使用します。このファイルは、GitHub Container Registryにプッシュされたリリースイメージを使用します。
+本番環境では`docker-compose-prod.yml`を使用します。このファイルは、GitHub Container Registry にプッシュされたリリースイメージを使用します。
 
 ### 初回セットアップ
 
 1. **必要なファイルの準備**
-   ```bash
-   # リポジトリのクローン
-   git clone https://github.com/kagiyama-baking/kawashiro-server.git
-   cd kawashiro-server
 
-   # .envファイルの作成（Immich用の環境変数）
-   cp .env.example .env
-   # 必要に応じて.envファイルを編集
-   ```
+    ```bash
+    # リポジトリのクローン
+    git clone https://github.com/kagiyama-baking/kawashiro-server.git
+    cd kawashiro-server
+
+    # .envファイルの作成（Immich用の環境変数）
+    cp .env.example .env
+    # 必要に応じて.envファイルを編集
+    ```
 
 2. **イメージの取得と起動**
-   ```bash
-   # 最新のイメージをプル
-   docker compose -f docker-compose-prod.yml pull
 
-   # サービスの起動
-   docker compose -f docker-compose-prod.yml up -d
-   ```
+    ```bash
+    # 最新のイメージをプル
+    docker compose -f docker-compose-prod.yml pull
+
+    # サービスの起動
+    docker compose -f docker-compose-prod.yml up -d
+    ```
 
 ### 運用コマンド
 
@@ -253,14 +348,14 @@ docker compose -f docker-compose-prod.yml ps
 
 ### 本番環境で使用されるイメージ
 
-- `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
-- `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
+-   `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
+-   `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
 
 ## データのバックアップ・リストア
 
-### Immichボリュームデータのコピー（開発→本番）
+### Immich ボリュームデータのコピー（開発 → 本番）
 
-開発環境から本番環境へImmichのデータをコピーする際は、以下のコマンドを使用します。
+開発環境から本番環境へ Immich のデータをコピーする際は、以下のコマンドを使用します。
 
 #### 1. ホストマシン上のボリュームディレクトリから直接コピー
 
@@ -272,9 +367,9 @@ rsync -avz --progress ./volumes/immich/data/ <本番サーバーユーザー>@<�
 # rsync -avz --progress ./volumes/immich/data/ user@192.168.1.100:~/Repository/kawashiro-server/volumes/immich/data/
 ```
 
-#### 2. Dockerボリュームから本番環境へコピー
+#### 2. Docker ボリュームから本番環境へコピー
 
-名前付きボリューム（PostgreSQL、Redis、MLキャッシュ）の場合：
+名前付きボリューム（PostgreSQL、Redis、ML キャッシュ）の場合：
 
 ```bash
 # PostgreSQLデータのバックアップとコピー
@@ -299,7 +394,7 @@ scp ./backup/immich-ml-cache.tar.gz <本番サーバーユーザー>@<本番サ�
 
 #### 3. 一括コピースクリプト
 
-すべてのImmich関連データを一括でコピーする場合：
+すべての Immich 関連データを一括でコピーする場合：
 
 ```bash
 #!/bin/bash
@@ -344,7 +439,7 @@ echo "docker compose -f docker-compose-prod.yml up -d"
 
 ### 注意事項
 
-- コピー前に本番環境のImmichサービスを停止することを推奨します
-- データベースの整合性を保つため、PostgreSQLとRedisのデータは同時にバックアップしてください
-- 大量のデータがある場合、`rsync`の`--bwlimit`オプションで帯域制限をかけることを検討してください
-- 本番環境へのコピー前に必ず現在のデータをバックアップしてください
+-   コピー前に本番環境の Immich サービスを停止することを推奨します
+-   データベースの整合性を保つため、PostgreSQL と Redis のデータは同時にバックアップしてください
+-   大量のデータがある場合、`rsync`の`--bwlimit`オプションで帯域制限をかけることを検討してください
+-   本番環境へのコピー前に必ず現在のデータをバックアップしてください
