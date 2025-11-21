@@ -13,3 +13,9 @@ archtecture.drawio
 
 # 鍵ファイル
 *.pem
+
+# シークレットディレクトリ
+/secrets/
+
+# Django静的ファイル
+django_api/staticfiles/

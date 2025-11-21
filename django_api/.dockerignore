@@ -1,0 +1,69 @@
+# Git関連
+.git
+.gitignore
+.gitattributes
+
+# Python関連
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Django関連
+*.log
+*.pot
+*.pyc
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# IDE関連
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ドキュメント
+README.md
+docs/
+*.md
+
+# 環境設定
+.env
+.env.local
+.env.*.local
+
+# Docker関連
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# テスト関連
+tests/
+test_*.py
+*_test.py
+
+# その他
+*.bak
+*.tmp
+*.temp
+node_modules/

@@ -1,24 +1,37 @@
-FROM python:3.13-alpine                       
+FROM python:3.13-alpine
 
 # リアルタイムでログを見れるように環境変数を指定
 ENV PYTHONUNBUFFERD 1
 
+# セキュリティのため、OSパッケージを最新版にアップデート
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache \
+        ca-certificates \
+        tzdata && \
+    rm -rf /var/cache/apk/*
+
 # Djangoプロジェクトを置くディレクトリをコンテナ上に作成
-RUN mkdir /django_api                        
+RUN mkdir /django_api
 WORKDIR /django_api
 
-# uvをインストール
-RUN pip install uv
+# pipを最新版にアップグレードしてからuvをインストール
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir uv
 
-# Python依存関係をインストール
+# Python依存関係をインストール（最新版を取得）
 COPY pyproject.toml ./
-RUN uv sync --no-dev
+RUN uv sync --no-dev --upgrade
 
-# ローカルのdjango-apiディレクトリをコンテナにコピー
-COPY . .
+# アプリケーションを実行するためのユーザを作成する（先に作成）
+RUN adduser -D -g django django && \
+    chown -R django:django /django_api
 
-# アプリケーションを実行するためのユーザを作成する
-RUN adduser -D django
-
-# ユーザをrootから変更
+# ユーザをrootから変更（ファイルコピー前に変更）
 USER django
+
+# ローカルのdjango-apiディレクトリをコンテナにコピー（djangoユーザー権限で）
+COPY --chown=django:django . .
+
+# セキュリティヘッダーを設定
+ENV PYTHONDONTWRITEBYTECODE=1

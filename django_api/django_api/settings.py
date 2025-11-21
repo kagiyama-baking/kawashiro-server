@@ -180,10 +180,10 @@ USE_TZ = True
 # 参照: https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 # 静的ファイル（CSS、JavaScript、画像）のURL
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # 本番環境で静的ファイルを集約するディレクトリ
-# STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # 開発環境用の追加静的ファイルディレクトリ
 # STATICFILES_DIRS = [
@@ -231,7 +231,7 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,  # スキーマエンドポイントを含めない
     # APIのセキュリティスキーマ定義
     'COMPONENT_SPLIT_REQUEST': True,
-    'SCHEMA_PATH_PREFIX': r'/api/',
+    'SCHEMA_PATH_PREFIX': r'/',
     # Swagger UIの設定
     'SWAGGER_UI_SETTINGS': {
         'deepLinking': True,

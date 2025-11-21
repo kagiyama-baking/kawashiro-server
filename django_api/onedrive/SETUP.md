@@ -25,8 +25,8 @@ Azure PortalでAzure ADアプリケーションを作成し、以下の情報を
    - 証明書を登録後、証明書の詳細から確認
 
 4. **AZURE_CERT_KEY_FILE**: 秘密鍵ファイルのパス
-   - 証明書の秘密鍵ファイル（.pemファイル）の絶対パス
-   - 例: `/home/hakotsuki/Repository/kawashiro-server/volumes/m365-sample/key.pem`
+   - Docker secrets経由でマウントされるパス
+   - Dockerコンテナ内: `/run/secrets/django_api_graph_key`
 
 5. **TARGET_USER**: アクセス対象のユーザー
    - OneDriveにアクセスするユーザーのメールアドレス
@@ -46,17 +46,18 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CERT_THUMBPRINT=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-AZURE_CERT_KEY_FILE=/home/hakotsuki/Repository/kawashiro-server/volumes/m365-sample/key.pem
+# Docker secretsを使用（コンテナ内のパス）
+AZURE_CERT_KEY_FILE=/run/secrets/django_api_graph_key
 TARGET_USER=your-email@example.com
 ```
 
 ### 4. 証明書の配置
 
-M365サンプルフォルダに証明書ファイルがある場合、そのパスを使用できます：
+秘密鍵ファイルを`secrets`ディレクトリに配置してください：
 
 ```bash
-# 証明書ファイルの確認
-ls -la /home/hakotsuki/Repository/kawashiro-server/volumes/m365-sample/
+# secretsディレクトリに秘密鍵を配置
+cp /path/to/your/key.pem /home/hakotsuki/Repository/kawashiro-server/secrets/django_api_graph_key.pem
 ```
 
 もし証明書ファイルがない場合は、以下の手順で作成してください：
