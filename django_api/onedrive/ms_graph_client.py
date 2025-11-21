@@ -3,6 +3,14 @@ import os
 from msal import ConfidentialClientApplication
 import requests
 from django.conf import settings
+from .exceptions import (
+    ConfigurationError,
+    AuthenticationError,
+    UploadError,
+    FolderOperationError,
+    ListOperationError,
+    NetworkError
+)
 
 
 class MSGraphClient:
@@ -31,14 +39,14 @@ class MSGraphClient:
             missing_vars.append('TARGET_USER')
 
         if missing_vars:
-            raise ValueError(
+            raise ConfigurationError(
                 f"以下の環境変数が設定されていません: {', '.join(missing_vars)}\n"
                 ".envファイルを作成し、必要な環境変数を設定してください。"
             )
 
         # 秘密鍵ファイルの存在確認
         if not os.path.exists(self.key_file):
-            raise FileNotFoundError(
+            raise ConfigurationError(
                 f"秘密鍵ファイルが見つかりません: {self.key_file}\n"
                 "AZURE_CERT_KEY_FILE環境変数で指定されたパスを確認してください。"
             )
@@ -70,7 +78,7 @@ class MSGraphClient:
 
         if 'access_token' not in result:
             error_msg = result.get('error_description', 'Unknown error')
-            raise RuntimeError(f'Failed to acquire token: {error_msg}')
+            raise AuthenticationError(f'Failed to acquire token: {error_msg}')
 
         self._access_token = result['access_token']
         return self._access_token
@@ -123,26 +131,42 @@ class MSGraphClient:
                 timeout=60
             )
 
+            # トークンの有効期限切れの可能性があるため再取得を試みる
+            if response.status_code == 401:
+                try:
+                    self.acquire_token()
+                    headers = self.get_headers()
+
+                    # 再試行
+                    response = requests.put(
+                        url,
+                        headers=headers,
+                        data=file_content,
+                        timeout=60
+                    )
+                    response.raise_for_status()
+                    return response.json()
+                except Exception:
+                    raise AuthenticationError('認証の更新に失敗しました')
+
             response.raise_for_status()
             return response.json()
 
-        except requests.exceptions.RequestException as e:
-            # トークンの有効期限切れの可能性があるため再取得を試みる
-            if response.status_code == 401:
-                self.acquire_token()
-                headers = self.get_headers()
-
-                # 再試行
-                response = requests.put(
-                    url,
-                    headers=headers,
-                    data=file_content,
-                    timeout=60
-                )
-                response.raise_for_status()
-                return response.json()
+        except requests.exceptions.Timeout:
+            raise NetworkError('ファイルアップロードがタイムアウトしました')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('OneDriveへの接続に失敗しました')
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                raise UploadError('指定されたフォルダが見つかりません')
+            elif e.response.status_code == 507:
+                raise UploadError('OneDriveの容量が不足しています')
+            elif e.response.status_code == 413:
+                raise UploadError('ファイルサイズが大きすぎます')
             else:
-                raise RuntimeError(f'Failed to upload file: {str(e)}')
+                raise UploadError('ファイルのアップロードに失敗しました')
+        except requests.exceptions.RequestException:
+            raise UploadError('ファイルのアップロードに失敗しました')
 
     def create_folder(self, folder_name, parent_path='/'):
         """
@@ -187,8 +211,21 @@ class MSGraphClient:
             response.raise_for_status()
             return response.json()
 
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f'Failed to create folder: {str(e)}')
+        except requests.exceptions.Timeout:
+            raise NetworkError('フォルダ作成がタイムアウトしました')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('OneDriveへの接続に失敗しました')
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise AuthenticationError('認証に失敗しました')
+            elif e.response.status_code == 404:
+                raise FolderOperationError('親フォルダが見つかりません')
+            elif e.response.status_code == 409:
+                raise FolderOperationError('同名のフォルダが既に存在します')
+            else:
+                raise FolderOperationError('フォルダの作成に失敗しました')
+        except requests.exceptions.RequestException:
+            raise FolderOperationError('フォルダの作成に失敗しました')
 
     def list_files(self, folder_path='/'):
         """
@@ -225,5 +262,16 @@ class MSGraphClient:
             result = response.json()
             return result.get('value', [])
 
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f'Failed to list files: {str(e)}')
+        except requests.exceptions.Timeout:
+            raise NetworkError('ファイル一覧取得がタイムアウトしました')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('OneDriveへの接続に失敗しました')
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise AuthenticationError('認証に失敗しました')
+            elif e.response.status_code == 404:
+                raise ListOperationError('指定されたフォルダが見つかりません')
+            else:
+                raise ListOperationError('ファイル一覧の取得に失敗しました')
+        except requests.exceptions.RequestException:
+            raise ListOperationError('ファイル一覧の取得に失敗しました')

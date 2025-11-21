@@ -1,4 +1,5 @@
 """OneDriveアプリケーションのビュー"""
+import logging
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status, authentication, permissions
@@ -7,12 +8,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from .ms_graph_client import MSGraphClient
+from .exceptions import (
+    ConfigurationError,
+    AuthenticationError,
+    UploadError,
+    FolderOperationError,
+    ListOperationError,
+    NetworkError
+)
 from .serializers import (
     FileUploadSerializer,
     CreateFolderSerializer,
     ListFilesSerializer,
     FileInfoSerializer
 )
+
+# ロガーを設定
+logger = logging.getLogger(__name__)
 
 
 class OneDriveUploadView(APIView):
@@ -90,9 +102,39 @@ class OneDriveUploadView(APIView):
                 status=status.HTTP_201_CREATED
             )
 
-        except Exception as e:
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {'error': 'サービスの設定に問題があります。管理者にお問い合わせください。'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except UploadError as e:
+            # アップロードエラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Upload error: {str(e)}")
             return Response(
                 {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file upload")
+            return Response(
+                {'error': 'ファイルのアップロード中に問題が発生しました。しばらく時間をおいて再試行してください。'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -164,9 +206,39 @@ class OneDriveFolderView(APIView):
                 status=status.HTTP_201_CREATED
             )
 
-        except Exception as e:
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {'error': 'サービスの設定に問題があります。管理者にお問い合わせください。'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except FolderOperationError as e:
+            # フォルダ操作エラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Folder operation error: {str(e)}")
             return Response(
                 {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during folder creation")
+            return Response(
+                {'error': 'フォルダの作成中に問題が発生しました。しばらく時間をおいて再試行してください。'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -255,8 +327,38 @@ class OneDriveListView(APIView):
                 status=status.HTTP_200_OK
             )
 
-        except Exception as e:
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {'error': 'サービスの設定に問題があります。管理者にお問い合わせください。'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except ListOperationError as e:
+            # ファイル一覧取得エラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"List operation error: {str(e)}")
             return Response(
                 {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file listing")
+            return Response(
+                {'error': 'ファイル一覧の取得中に問題が発生しました。しばらく時間をおいて再試行してください。'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
