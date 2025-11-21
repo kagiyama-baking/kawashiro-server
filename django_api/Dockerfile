@@ -4,11 +4,13 @@ FROM python:3.13-alpine
 ENV PYTHONUNBUFFERD 1
 
 # セキュリティのため、OSパッケージを最新版にアップデート
+# curlも追加（ヘルスチェック用）
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
         ca-certificates \
-        tzdata && \
+        tzdata \
+        curl && \
     rm -rf /var/cache/apk/*
 
 # Djangoプロジェクトを置くディレクトリをコンテナ上に作成

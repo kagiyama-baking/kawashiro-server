@@ -148,8 +148,14 @@ jobs:
                   for i in {1..30}; do
                     # コンテナが起動中かチェック
                     if docker ps --filter "name=django-api" --filter "status=running" | grep -q django-api; then
-                      # APIが応答するかチェック
-                      if docker exec django-api sh -c "curl -s http://localhost:8000/schema/ | head -n1" 2>/dev/null | grep -q "openapi"; then
+                      # curlがない場合に備えて、wgetも試す
+                      if docker exec django-api sh -c "command -v curl >/dev/null 2>&1 && curl -s http://localhost:8000/schema/ 2>/dev/null | head -n1 | grep -q openapi" 2>/dev/null; then
+                        echo "✅ Django API準備完了"
+                        break
+                      elif docker exec django-api sh -c "command -v wget >/dev/null 2>&1 && wget -q -O - http://localhost:8000/schema/ 2>/dev/null | head -n1 | grep -q openapi" 2>/dev/null; then
+                        echo "✅ Django API準備完了"
+                        break
+                      elif docker exec django-api sh -c "python -c 'import urllib.request; print(urllib.request.urlopen(\"http://localhost:8000/schema/\").read().decode()[:100])' 2>/dev/null | grep -q openapi" 2>/dev/null; then
                         echo "✅ Django API準備完了"
                         break
                       fi
@@ -157,6 +163,8 @@ jobs:
                     echo "  [$i/30] 待機中..."
                     sleep 3
                   done
+                  # タイムアウトしても警告のみで続行（後続のテストで実際の動作を確認）
+                  echo "⚠️ Django API準備確認タイムアウト（後続テストで動作確認）"
 
             # リバースプロキシ機能テスト
             - name: Reverse proxy functionality tests
