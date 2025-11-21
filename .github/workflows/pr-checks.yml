@@ -145,13 +145,17 @@ jobs:
               run: |
                   # Django APIのヘルスチェック
                   echo "🔍 Django API確認中..."
-                  for i in {1..20}; do
-                    if docker exec django-api sh -c "curl -s http://localhost:8000/schema/ | head -n1" | grep -q "openapi"; then
-                      echo "✅ Django API準備完了"
-                      break
+                  for i in {1..30}; do
+                    # コンテナが起動中かチェック
+                    if docker ps --filter "name=django-api" --filter "status=running" | grep -q django-api; then
+                      # APIが応答するかチェック
+                      if docker exec django-api sh -c "curl -s http://localhost:8000/schema/ | head -n1" 2>/dev/null | grep -q "openapi"; then
+                        echo "✅ Django API準備完了"
+                        break
+                      fi
                     fi
-                    echo "  [$i/20] 待機中..."
-                    sleep 2
+                    echo "  [$i/30] 待機中..."
+                    sleep 3
                   done
 
             # リバースプロキシ機能テスト
