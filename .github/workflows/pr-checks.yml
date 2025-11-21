@@ -84,16 +84,16 @@ jobs:
             - name: Test Django migrations
               run: |
                   echo "🔧 Django マイグレーション確認..."
-                  # CI環境ではuvの仮想環境は使わず、Dockerビルド時にインストールされたパッケージを使用
-                  docker compose run --rm --no-deps -e UV_NO_VENV=1 django-api sh -c "python manage.py migrate --check"
+                  # uvでインストールされたパッケージを使用（仮想環境は/django_api/.venvに存在）
+                  docker compose run --rm --no-deps -w /django_api django-api sh -c "uv run python manage.py migrate --check"
                   echo "✅ マイグレーション: OK"
 
             # Django API: 静的ファイル収集確認
             - name: Test Django collectstatic
               run: |
                   echo "📦 Django 静的ファイル収集確認..."
-                  # CI環境ではuvの仮想環境は使わず、Dockerビルド時にインストールされたパッケージを使用
-                  docker compose run --rm --no-deps -e UV_NO_VENV=1 django-api sh -c "python manage.py collectstatic --noinput --dry-run"
+                  # uvでインストールされたパッケージを使用（仮想環境は/django_api/.venvに存在）
+                  docker compose run --rm --no-deps -w /django_api django-api sh -c "uv run python manage.py collectstatic --noinput --dry-run"
                   echo "✅ 静的ファイル: OK"
 
             # コンテナの起動
