@@ -1,0 +1,109 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Django Server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/django_api/manage.py",
+            "args": [
+                "runserver",
+                "0.0.0.0:8000"
+            ],
+            "django": true,
+            "justMyCode": true,
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "django_api.settings"
+            },
+            "envFile": "${workspaceFolder}/django_api/.env"
+        },
+        {
+            "name": "Python: Django Shell",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/django_api/manage.py",
+            "args": [
+                "shell"
+            ],
+            "django": true,
+            "justMyCode": true,
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "django_api.settings"
+            },
+            "envFile": "${workspaceFolder}/django_api/.env"
+        },
+        {
+            "name": "Python: Django Migrate",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/django_api/manage.py",
+            "args": [
+                "migrate"
+            ],
+            "django": true,
+            "justMyCode": true,
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "django_api.settings"
+            },
+            "envFile": "${workspaceFolder}/django_api/.env"
+        },
+        {
+            "name": "Python: Pytest (All Tests)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${workspaceFolder}/django_api/tests",
+                "-v",
+                "--tb=short"
+            ],
+            "cwd": "${workspaceFolder}/django_api",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "django_api.settings",
+                "PYTHONPATH": "${workspaceFolder}/django_api"
+            },
+            "envFile": "${workspaceFolder}/django_api/.env",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Pytest (Current File)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}",
+                "-v",
+                "--tb=short"
+            ],
+            "cwd": "${workspaceFolder}/django_api",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "django_api.settings",
+                "PYTHONPATH": "${workspaceFolder}/django_api"
+            },
+            "envFile": "${workspaceFolder}/django_api/.env",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Pytest (Debug Current Test)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}::${selectedText}",
+                "-v",
+                "--tb=short",
+                "-s"
+            ],
+            "cwd": "${workspaceFolder}/django_api",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "django_api.settings",
+                "PYTHONPATH": "${workspaceFolder}/django_api"
+            },
+            "envFile": "${workspaceFolder}/django_api/.env",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        }
+    ]
+}

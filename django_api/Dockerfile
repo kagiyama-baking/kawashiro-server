@@ -1,7 +1,7 @@
 FROM python:3.13-alpine
 
 # リアルタイムでログを見れるように環境変数を指定
-ENV PYTHONUNBUFFERD 1
+ENV PYTHONUNBUFFERED 1
 
 # セキュリティのため、OSパッケージを最新版にアップデート
 # curlも追加（ヘルスチェック用）
