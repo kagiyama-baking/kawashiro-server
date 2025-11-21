@@ -20,8 +20,14 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir uv
 
 # Python依存関係をインストール（最新版を取得）
+# uv pip installでシステムPythonに直接インストール
 COPY pyproject.toml ./
-RUN uv sync --no-dev --upgrade
+RUN uv pip install --system \
+    django \
+    djangorestframework \
+    drf-spectacular \
+    python-dotenv \
+    msal
 
 # アプリケーションを実行するためのユーザを作成する（先に作成）
 RUN adduser -D -g django django && \
