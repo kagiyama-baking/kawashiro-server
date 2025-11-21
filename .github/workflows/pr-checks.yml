@@ -40,6 +40,18 @@ jobs:
                   echo "DEBUG=False" >> django_api/.env
                   echo "ALLOWED_HOSTS=api.localhost,localhost" >> django_api/.env
 
+            # CI環境用のダミー秘密鍵ファイル作成
+            - name: Create dummy secret files for CI
+              run: |
+                  echo "🔐 ダミー秘密鍵ファイルを作成..."
+                  mkdir -p secrets
+                  # CI環境用のダミー秘密鍵（実際には使用されない）
+                  echo "-----BEGIN PRIVATE KEY-----" > secrets/django_api_graph_key.pem
+                  echo "DUMMY_KEY_FOR_CI_TESTING" >> secrets/django_api_graph_key.pem
+                  echo "-----END PRIVATE KEY-----" >> secrets/django_api_graph_key.pem
+                  chmod 600 secrets/django_api_graph_key.pem
+                  echo "✅ ダミー秘密鍵ファイル作成完了"
+
             # ログディレクトリの準備（コンテナマウント用）
             - name: Prepare log directories
               run: |
