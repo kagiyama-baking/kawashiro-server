@@ -84,8 +84,12 @@ jobs:
             - name: Test Django migrations
               run: |
                   echo "🔧 Django マイグレーション確認..."
-                  # システムPythonにインストールされたパッケージを使用（UV_SYSTEM_PYTHON=1が設定済み）
-                  docker compose run --rm --no-deps -w /django_api django-api sh -c "python manage.py migrate --check"
+                  # CI環境用にSQLiteデータベースファイルを作成してからマイグレーションチェック
+                  docker compose run --rm --no-deps -w /django_api django-api sh -c "
+                    touch /django_api/db.sqlite3 && \
+                    python manage.py migrate --run-syncdb && \
+                    python manage.py migrate --check
+                  "
                   echo "✅ マイグレーション: OK"
 
             # Django API: 静的ファイル収集確認
