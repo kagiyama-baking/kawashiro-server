@@ -8,5 +8,8 @@ Thumbs.db
 # 環境変数ファイル
 .env
 
-# 構成図
-archtecture.drawio
+# シークレットディレクトリ
+/secrets/
+
+# Django静的ファイル
+django_api/staticfiles/
