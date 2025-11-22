@@ -14,6 +14,7 @@ services:
         restart: unless-stopped
         depends_on:
             - test-web
+            - django-api
             - immich
         networks:
             - proxy-network
@@ -29,6 +30,28 @@ services:
         restart: unless-stopped
         networks:
             - proxy-network
+
+    # Django API サーバー
+    django-api:
+        image: ghcr.io/kagiyama-baking/kawashiro-server/django-api:release
+        container_name: django-api
+        hostname: django-api
+        env_file:
+            - .env
+        volumes:
+            # ログの永続化
+            - ./volumes/django-api/log:/django_api/logs
+            # 静的ファイルの永続化
+            - ./volumes/django-api/static:/django_api/staticfiles
+        secrets:
+            - django_api_graph_key
+        restart: unless-stopped
+        networks:
+            - proxy-network
+        command: >
+            sh -c "python manage.py migrate &&
+                   python manage.py collectstatic --noinput &&
+                   gunicorn django_api.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 1200"
 
     # Immich - 写真管理サービス
     immich:
@@ -117,3 +140,7 @@ volumes:
         name: immich-redis-data
     immich-ml-cache:
         name: immich-ml-cache
+
+secrets:
+    django_api_graph_key:
+        file: ./secrets/django_api_graph_key.pem

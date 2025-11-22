@@ -33,6 +33,8 @@ services:
         image: test-web
         container_name: test-web
         hostname: test-web
+        env_file:
+            - .env
         volumes:
             # ファイルのマウント
             - ./test_web/conf.d:/etc/nginx/conf.d:ro
@@ -42,6 +44,28 @@ services:
         restart: unless-stopped
         networks:
             - proxy-network
+
+    # Django APIサーバー
+    django-api:
+        build:
+            context: ./django_api
+            dockerfile: Dockerfile
+        image: django-api
+        container_name: django-api
+        hostname: django-api
+        env_file:
+            - .env
+        volumes:
+            # コードの永続化
+            - ./django_api:/django_api
+        secrets:
+            - django_api_graph_key
+        restart: unless-stopped
+        networks:
+            - proxy-network
+        command: >
+            sh -c "python manage.py migrate &&
+                   python manage.py runserver 0.0.0.0:8000"
 
     # Immich - 写真管理サービス
     immich:
@@ -130,3 +154,7 @@ volumes:
         name: immich-redis-data
     immich-ml-cache:
         name: immich-ml-cache
+
+secrets:
+    django_api_graph_key:
+        file: ./secrets/django_api_graph_key.pem

@@ -10,9 +10,70 @@ on:
             - '.gitignore'
             - '**/*.md'
             - '.github/workflows/!(pr-checks).yml'
+            - 'scripts/**'
+            - 'docs/**'
     workflow_dispatch: # テスト用の手動実行
 
 jobs:
+    # Django APIテストジョブ（他のチェックと並列実行）
+    django-test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.13'
+
+            - name: Install uv
+              run: |
+                  pip install --upgrade pip
+                  pip install uv
+
+            - name: Install dependencies
+              working-directory: ./django_api
+              run: |
+                  uv pip install --system .
+                  uv pip install --system pytest pytest-django pytest-cov pytest-mock factory-boy faker
+
+            - name: Create test environment
+              working-directory: ./django_api
+              run: |
+                  # テスト用.envファイル作成
+                  echo "SECRET_KEY=test-secret-key-for-ci-testing" > .env
+                  echo "DEBUG=False" >> .env
+                  echo "ALLOWED_HOSTS=localhost,testserver" >> .env
+
+                  # ダミー秘密鍵ファイル作成
+                  mkdir -p ../secrets
+                  echo "-----BEGIN PRIVATE KEY-----" > ../secrets/django_api_graph_key.pem
+                  echo "DUMMY_KEY_FOR_CI_TESTING" >> ../secrets/django_api_graph_key.pem
+                  echo "-----END PRIVATE KEY-----" >> ../secrets/django_api_graph_key.pem
+
+            - name: Run tests with coverage
+              working-directory: ./django_api
+              env:
+                  DJANGO_SETTINGS_MODULE: django_api.settings
+              run: |
+                  echo "🧪 テスト実行中..."
+                  python -m pytest tests/ -v --tb=short \
+                    --cov=user --cov=onedrive --cov=core \
+                    --cov-report=term-missing \
+                    --cov-report=html \
+                    --cov-fail-under=80
+                  echo "✅ テスト完了"
+
+            - name: Upload coverage report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: django-coverage-report
+                  path: django_api/htmlcov/
+
     # PRチェック用のメインジョブ
     pr-checks:
         runs-on: ubuntu-latest
@@ -33,6 +94,24 @@ jobs:
                   echo "PUBLIC_SERVER_URL=http://album.localhost" >> .env
                   echo "IMMICH_LOG_LEVEL=verbose" >> .env
                   echo "TZ=Asia/Tokyo" >> .env
+
+                  # Django API用の環境変数
+                  cp django_api/.env.sample django_api/.env
+                  echo "SECRET_KEY=test-secret-key-for-ci-environment" >> django_api/.env
+                  echo "DEBUG=False" >> django_api/.env
+                  echo "ALLOWED_HOSTS=api.localhost,localhost" >> django_api/.env
+
+            # CI環境用のダミー秘密鍵ファイル作成
+            - name: Create dummy secret files for CI
+              run: |
+                  echo "🔐 ダミー秘密鍵ファイルを作成..."
+                  mkdir -p secrets
+                  # CI環境用のダミー秘密鍵（実際には使用されない）
+                  echo "-----BEGIN PRIVATE KEY-----" > secrets/django_api_graph_key.pem
+                  echo "DUMMY_KEY_FOR_CI_TESTING" >> secrets/django_api_graph_key.pem
+                  echo "-----END PRIVATE KEY-----" >> secrets/django_api_graph_key.pem
+                  chmod 600 secrets/django_api_graph_key.pem
+                  echo "✅ ダミー秘密鍵ファイル作成完了"
 
             # ログディレクトリの準備（コンテナマウント用）
             - name: Prepare log directories
@@ -61,6 +140,42 @@ jobs:
                   # 一時的にコンテナを起動して構文チェック
                   docker compose run --rm --no-deps test-web nginx -t
                   echo "✅ 構文チェック: OK"
+
+            # Django API: マイグレーション確認
+            - name: Test Django migrations
+              run: |
+                  echo "🔧 Django マイグレーション確認..."
+                  # CI環境用：rootユーザーで実行して権限問題を回避
+                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
+                    python manage.py migrate --run-syncdb && \
+                    python manage.py migrate --check
+                  "
+                  echo "✅ マイグレーション: OK"
+
+            # Django API: 静的ファイル収集確認
+            - name: Test Django collectstatic
+              run: |
+                  echo "📦 Django 静的ファイル収集確認..."
+                  # システムPythonにインストールされたパッケージを使用（UV_SYSTEM_PYTHON=1が設定済み）
+                  docker compose run --rm --no-deps -w /django_api django-api sh -c "python manage.py collectstatic --noinput --dry-run"
+                  echo "✅ 静的ファイル: OK"
+
+            # Django API: テスト実行
+            - name: Run Django tests
+              run: |
+                  echo "🧪 Django テスト実行中..."
+                  # pytest を使用したテスト実行
+                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
+                    # テスト用環境変数を設定
+                    export DJANGO_SETTINGS_MODULE=django_api.settings
+                    export SECRET_KEY='test-secret-key-for-ci'
+                    export DEBUG=False
+                    export ALLOWED_HOSTS='localhost,testserver'
+
+                    # pytestでテストを実行（カバレッジ付き）
+                    python -m pytest tests/ -v --tb=short --cov=user --cov=onedrive --cov=core --cov-report=term-missing
+                  "
+                  echo "✅ テスト: 全て成功"
 
             # コンテナの起動
             - name: Start containers
@@ -103,6 +218,40 @@ jobs:
                     sleep 2
                   done
 
+            # 準備完了待機（django-api）
+            - name: Wait for readiness :django-api
+              run: |
+                  # Django APIのヘルスチェック
+                  echo "🔍 Django API確認中..."
+                  api_ready=false
+                  for i in {1..30}; do
+                    # コンテナが起動中かチェック
+                    if docker ps --filter "name=django-api" --filter "status=running" | grep -q django-api; then
+                      # curlで確認
+                      if docker exec django-api sh -c "command -v curl >/dev/null 2>&1 && curl -s http://localhost:8000/schema/ 2>/dev/null | head -n1 | grep -q openapi" 2>/dev/null; then
+                        echo "✅ Django API準備完了 (curl使用)"
+                        api_ready=true
+                        break
+                      # wgetで確認
+                      elif docker exec django-api sh -c "command -v wget >/dev/null 2>&1 && wget -q -O - http://localhost:8000/schema/ 2>/dev/null | head -n1 | grep -q openapi" 2>/dev/null; then
+                        echo "✅ Django API準備完了 (wget使用)"
+                        api_ready=true
+                        break
+                      # pythonで確認
+                      elif docker exec django-api sh -c "python -c 'import urllib.request; print(urllib.request.urlopen(\"http://localhost:8000/schema/\").read().decode()[:100])' 2>/dev/null | grep -q openapi" 2>/dev/null; then
+                        echo "✅ Django API準備完了 (Python urllib使用)"
+                        api_ready=true
+                        break
+                      fi
+                    fi
+                    echo "  [$i/30] 待機中..."
+                    sleep 3
+                  done
+                  # タイムアウトチェック
+                  if [ "$api_ready" = false ]; then
+                    echo "⚠️ Django API準備確認タイムアウト（後続テストで動作確認）"
+                  fi
+
             # リバースプロキシ機能テスト
             - name: Reverse proxy functionality tests
               run: |
@@ -118,13 +267,48 @@ jobs:
                     exit 1
                   fi
 
-                  # サブドメインルーティング確認
+                  # サブドメインルーティング確認（test）
                   echo "  🔀 ルーティング... (test.localhost -> localhost:8080)"
                   status=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
                   if [ "$status" = "200" ]; then
-                    echo "  ✅ ルーティング: OK"
+                    echo "  ✅ ルーティング(test): OK"
                   else
-                    echo "  ❌ ルーティング: NG (HTTP $status)"
+                    echo "  ❌ ルーティング(test): NG (HTTP $status)"
+                    exit 1
+                  fi
+
+                  # サブドメインルーティング確認（api）
+                  echo "  🔀 ルーティング... (api.localhost -> django-api:8000)"
+                  status=$(curl --resolve api.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://api.localhost/schema/)
+                  if [ "$status" = "200" ]; then
+                    echo "  ✅ ルーティング(api): OK"
+                  else
+                    echo "  ❌ ルーティング(api): NG (HTTP $status)"
+                    exit 1
+                  fi
+
+            # Django API機能テスト
+            - name: Django API functionality tests
+              run: |
+                  echo "🧪 Django API機能テスト実行中..."
+
+                  # OpenAPIスキーマ確認
+                  echo "  📄 OpenAPIスキーマ... (/schema/)"
+                  content=$(curl --resolve api.localhost:80:127.0.0.1 -s http://api.localhost/schema/ | head -n1)
+                  if echo "$content" | grep -q "openapi"; then
+                    echo "  ✅ スキーマ: OK"
+                  else
+                    echo "  ❌ スキーマ: NG"
+                    exit 1
+                  fi
+
+                  # Swagger UI確認
+                  echo "  🎨 Swagger UI... (/swagger/)"
+                  status=$(curl --resolve api.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://api.localhost/swagger/)
+                  if [ "$status" = "200" ]; then
+                    echo "  ✅ Swagger UI: OK"
+                  else
+                    echo "  ❌ Swagger UI: NG (HTTP $status)"
                     exit 1
                   fi
 
@@ -139,6 +323,8 @@ jobs:
                   docker compose logs reverse-proxy | tail -n 50
                   echo "\n📋 test-web ログ:"
                   docker compose logs test-web | tail -n 50
+                  echo "\n📋 django-api ログ:"
+                  docker compose logs django-api | tail -n 50
 
             # 環境のクリーンアップ（常に実行）
             - name: Cleanup

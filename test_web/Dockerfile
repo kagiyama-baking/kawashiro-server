@@ -1,5 +1,13 @@
 FROM nginx:alpine
 
+# セキュリティのため、OSパッケージを最新版にアップデート
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache \
+        ca-certificates \
+        tzdata && \
+    rm -rf /var/cache/apk/*
+
 # デフォルトの設定ファイルを削除（ポート80を使用している）
 RUN rm -f /etc/nginx/conf.d/default.conf
 

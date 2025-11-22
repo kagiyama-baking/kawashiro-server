@@ -10,6 +10,8 @@ on:
             - '.gitignore'
             - '**/*.md'
             - '.github/workflows/!(deploy).yml'
+            - 'scripts/**'
+            - 'docs/**'
     workflow_dispatch: # テスト用の手動実行
         inputs:
             tag:
@@ -42,6 +44,7 @@ jobs:
         outputs:
             reverse-proxy-digest: ${{ steps.verify-reverse-proxy.outputs.digest }}
             test-web-digest: ${{ steps.verify-test-web.outputs.digest }}
+            django-api-digest: ${{ steps.verify-django-api.outputs.digest }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -91,6 +94,25 @@ jobs:
                     exit 1
                   fi
 
+            - name: Verify django-api image
+              id: verify-django-api
+              run: |
+                  TAG="${{ inputs.tag || 'staging' }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/django-api:${TAG}"
+
+                  echo "🔍 django-apiイメージの検証: ${IMAGE}"
+
+                  # イメージの存在確認とダイジェスト取得
+                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
+                    echo "✅ イメージが見つかりました"
+                    echo "📦 ダイジェスト: ${DIGEST}"
+                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+                  else
+                    echo "❌ イメージが見つかりません: ${IMAGE}"
+                    exit 1
+                  fi
+
     # リリースタグの作成
     tag-release:
         runs-on: ubuntu-latest
@@ -127,6 +149,15 @@ jobs:
                   docker push ghcr.io/${{ github.repository }}/test-web:release
                   docker push ghcr.io/${{ github.repository }}/test-web:latest
 
+                  # django-api
+                  docker pull ghcr.io/${{ github.repository }}/django-api:staging
+                  docker tag ghcr.io/${{ github.repository }}/django-api:staging \
+                             ghcr.io/${{ github.repository }}/django-api:release
+                  docker tag ghcr.io/${{ github.repository }}/django-api:staging \
+                             ghcr.io/${{ github.repository }}/django-api:latest
+                  docker push ghcr.io/${{ github.repository }}/django-api:release
+                  docker push ghcr.io/${{ github.repository }}/django-api:latest
+
                   echo "✅ リリースタグを作成しました"
 
     # デプロイ情報の生成
@@ -156,6 +187,10 @@ jobs:
                       "test-web": {
                         "image": "ghcr.io/${{ github.repository }}/test-web:${TAG}",
                         "digest": "${{ needs.verify-images.outputs.test-web-digest }}"
+                      },
+                      "django-api": {
+                        "image": "ghcr.io/${{ github.repository }}/django-api:${TAG}",
+                        "digest": "${{ needs.verify-images.outputs.django-api-digest }}"
                       }
                     },
                     "git": {
@@ -208,6 +243,7 @@ jobs:
                   if [ "${{ needs.verify-images.result }}" == "success" ]; then
                     echo "| reverse-proxy | ghcr.io/${{ github.repository }}/reverse-proxy:${TAG} | ✅ |" >> $GITHUB_STEP_SUMMARY
                     echo "| test-web | ghcr.io/${{ github.repository }}/test-web:${TAG} | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| django-api | ghcr.io/${{ github.repository }}/django-api:${TAG} | ✅ |" >> $GITHUB_STEP_SUMMARY
                   else
                     echo "| - | - | ❌ 検証失敗 |" >> $GITHUB_STEP_SUMMARY
                   fi
