@@ -116,17 +116,7 @@ if [ -f "$BACKUP_DIR/immich-data.tar.gz" ]; then
   echo "✓ Immichデータリストア完了"
 fi
 
-# 5. Redisデータのリストア
-if [ -f "$BACKUP_DIR/redis-data.tar.gz" ]; then
-  echo "Redisデータをリストア中..."
-  docker run --rm \
-    -v immich-redis-data:/target \
-    -v "$(pwd)/$BACKUP_DIR":/backup:ro \
-    alpine sh -c "rm -rf /target/* /target/..?* /target/.[!.]* 2>/dev/null || true && tar xzf /backup/redis-data.tar.gz -C /target"
-  echo "✓ Redisデータリストア完了"
-fi
-
-# 6. PostgreSQLボリュームのリストア（database.sqlでリストアできない場合の代替）
+# 5. PostgreSQLボリュームのリストア（database.sqlでリストアできない場合の代替）
 if [ -f "$BACKUP_DIR/pgdata-volume.tar.gz" ]; then
   echo "PostgreSQLボリュームをリストア中..."
   read -p "PostgreSQLボリュームもリストアしますか？(通常は不要です) (yes/no): " RESTORE_PGVOLUME
@@ -139,17 +129,7 @@ if [ -f "$BACKUP_DIR/pgdata-volume.tar.gz" ]; then
   fi
 fi
 
-# 7. MLモデルキャッシュのリストア（オプション）
-if [ -f "$BACKUP_DIR/ml-cache.tar.gz" ]; then
-  echo "MLモデルキャッシュをリストア中..."
-  docker run --rm \
-    -v immich-ml-cache:/target \
-    -v "$(pwd)/$BACKUP_DIR":/backup:ro \
-    alpine sh -c "rm -rf /target/* /target/..?* /target/.[!.]* 2>/dev/null || true && tar xzf /backup/ml-cache.tar.gz -C /target"
-  echo "✓ MLモデルキャッシュリストア完了"
-fi
-
-# 8. 設定ファイルのリストア（オプション）
+# 6. 設定ファイルのリストア（オプション）
 if [ -f "$BACKUP_DIR/.env" ]; then
   echo "設定ファイル(.env)が見つかりました。"
   read -p "設定ファイルもリストアしますか？ (yes/no): " RESTORE_CONFIG
@@ -160,7 +140,7 @@ if [ -f "$BACKUP_DIR/.env" ]; then
   fi
 fi
 
-# 9. すべてのサービスを起動
+# 7. すべてのサービスを起動
 echo "Immichサービスを起動中..."
 docker compose up -d immich immich-machine-learning immich-redis immich-postgres
 
