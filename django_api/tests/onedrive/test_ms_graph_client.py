@@ -1,7 +1,6 @@
 """MSGraphClientのテスト"""
-import os
 import pytest
-from unittest.mock import Mock, patch, mock_open, MagicMock
+from unittest.mock import Mock, patch, mock_open
 from django.test import override_settings
 from onedrive.ms_graph_client import MSGraphClient
 from onedrive.exceptions import (
