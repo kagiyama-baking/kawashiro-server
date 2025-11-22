@@ -26,7 +26,8 @@ echo "データベース名: $DB_DATABASE_NAME"
 
 # 1. PostgreSQLデータベースのバックアップ
 echo "PostgreSQLデータベースをバックアップ中..."
-docker exec -t immich-postgres pg_dumpall -c -U "$DB_USERNAME" > "$BACKUP_DIR/database.sql"
+# 特定のデータベースのみをバックアップ（DROP文なし）
+docker exec -t immich-postgres pg_dump -U "$DB_USERNAME" -d "$DB_DATABASE_NAME" --clean --if-exists > "$BACKUP_DIR/database.sql"
 echo "✓ データベースバックアップ完了"
 
 # 2. Immichデータ（写真・動画・サムネイル等）のバックアップ

@@ -33,8 +33,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # クイックスタート開発設定 - 本番環境には不適切
 # 参照: https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# 環境変数から取得
+# 環境変数から取得（必須）
 SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    raise ValueError('SECRET_KEY environment variable is not set')
 
 # DEBUGモード（環境変数が'True'の場合のみTrue）
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
