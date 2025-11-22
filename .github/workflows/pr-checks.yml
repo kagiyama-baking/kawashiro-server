@@ -13,6 +13,64 @@ on:
     workflow_dispatch: # テスト用の手動実行
 
 jobs:
+    # Django APIテストジョブ（他のチェックと並列実行）
+    django-test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.13'
+
+            - name: Install uv
+              run: |
+                  pip install --upgrade pip
+                  pip install uv
+
+            - name: Install dependencies
+              working-directory: ./django_api
+              run: |
+                  uv pip install --system .
+                  uv pip install --system pytest pytest-django pytest-cov pytest-mock factory-boy faker
+
+            - name: Create test environment
+              working-directory: ./django_api
+              run: |
+                  # テスト用.envファイル作成
+                  echo "SECRET_KEY=test-secret-key-for-ci-testing" > .env
+                  echo "DEBUG=False" >> .env
+                  echo "ALLOWED_HOSTS=localhost,testserver" >> .env
+
+                  # ダミー秘密鍵ファイル作成
+                  mkdir -p ../secrets
+                  echo "-----BEGIN PRIVATE KEY-----" > ../secrets/django_api_graph_key.pem
+                  echo "DUMMY_KEY_FOR_CI_TESTING" >> ../secrets/django_api_graph_key.pem
+                  echo "-----END PRIVATE KEY-----" >> ../secrets/django_api_graph_key.pem
+
+            - name: Run tests with coverage
+              working-directory: ./django_api
+              env:
+                  DJANGO_SETTINGS_MODULE: django_api.settings
+              run: |
+                  echo "🧪 テスト実行中..."
+                  python -m pytest tests/ -v --tb=short \
+                    --cov=user --cov=onedrive --cov=core \
+                    --cov-report=term-missing \
+                    --cov-report=html \
+                    --cov-fail-under=70
+
+            - name: Upload coverage report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: django-coverage-report
+                  path: django_api/htmlcov/
+
     # PRチェック用のメインジョブ
     pr-checks:
         runs-on: ubuntu-latest
@@ -98,6 +156,23 @@ jobs:
                   # システムPythonにインストールされたパッケージを使用（UV_SYSTEM_PYTHON=1が設定済み）
                   docker compose run --rm --no-deps -w /django_api django-api sh -c "python manage.py collectstatic --noinput --dry-run"
                   echo "✅ 静的ファイル: OK"
+
+            # Django API: テスト実行
+            - name: Run Django tests
+              run: |
+                  echo "🧪 Django テスト実行中..."
+                  # pytest を使用したテスト実行
+                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
+                    # テスト用環境変数を設定
+                    export DJANGO_SETTINGS_MODULE=django_api.settings
+                    export SECRET_KEY='test-secret-key-for-ci'
+                    export DEBUG=False
+                    export ALLOWED_HOSTS='localhost,testserver'
+
+                    # pytestでテストを実行（カバレッジ付き）
+                    python -m pytest tests/ -v --tb=short --cov=user --cov=onedrive --cov=core --cov-report=term-missing
+                  "
+                  echo "✅ テスト: 全て成功"
 
             # コンテナの起動
             - name: Start containers
