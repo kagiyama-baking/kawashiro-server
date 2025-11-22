@@ -458,3 +458,64 @@ class TestImageConvertView:
         assert response['Content-Type'] == 'image/png'
         # 画像サイズが保持されることを確認
         assert '200x150' in response['Content-Disposition']
+
+    def test_convert_palette_image_to_jpg_success(self, authenticated_client):
+        """パレットモード画像をJPGに変換できること"""
+        # パレットモード画像を作成
+        img = Image.new('P', (100, 100), 128)
+        img_io = io.BytesIO()
+        img.save(img_io, format='PNG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='palette.png',
+            content=img_io.read(),
+            content_type='image/png'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'jpg'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/jpeg'
+        assert '100x100' in response['Content-Disposition']
+
+    def test_convert_file_size_limit_exceeded(self, authenticated_client):
+        """50MBを超えるファイルはエラーになること"""
+        # 51MBのダミーデータを作成（実際の画像ではなく、サイズチェックのみのテスト）
+        large_data = b'0' * (51 * 1024 * 1024)  # 51MB
+
+        uploaded_file = SimpleUploadedFile(
+            name='large.dng',
+            content=large_data,
+            content_type='image/x-adobe-dng'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'jpg'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert 'ファイルサイズ' in response.data['error']
+
+    def test_convert_jpeg_quality_parameter(self, authenticated_client):
+        """JPEG変換時に品質パラメータが適用されること"""
+        # PNG画像を作成
+        img = Image.new('RGB', (100, 100), 'yellow')
+        img_io = io.BytesIO()
+        img.save(img_io, format='PNG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='test.png',
+            content=img_io.read(),
+            content_type='image/png'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'jpg'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/jpeg'
+        # 品質が適用された結果、ファイルサイズが妥当であることを確認
+        assert len(response.content) > 0

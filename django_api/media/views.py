@@ -229,6 +229,9 @@ class ImageConvertView(APIView):
         'tiff': {'mime': 'image/tiff', 'pil_format': 'TIFF', 'ext': 'tiff'},
     }
 
+    # ファイルサイズ制限（50MB）
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB in bytes
+
     @extend_schema(
         tags=['media'],
         summary='画像形式変換',
@@ -295,6 +298,13 @@ class ImageConvertView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # ファイルサイズチェック（DoS対策）
+        if uploaded_file.size > self.MAX_FILE_SIZE:
+            return Response(
+                {'error': f'ファイルサイズが大きすぎます（最大{self.MAX_FILE_SIZE // (1024*1024)}MBまで）'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # 出力形式の確認
         output_format = request.data.get('output_format', '').lower()
         if not output_format:
@@ -323,20 +333,32 @@ class ImageConvertView(APIView):
 
                 # RGBモードに変換（JPEGやその他の形式で必要）
                 if output_format == 'jpg':
-                    if img.mode in ('RGBA', 'LA', 'P'):
+                    if img.mode in ('RGBA', 'LA'):
                         # アルファチャンネルがある場合は白背景で合成
                         background = Image.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        # アルファチャンネルをマスクとして使用して白背景に合成
                         background.paste(img, mask=img.split()[-1])
                         img = background
+                    elif img.mode == 'P':
+                        # パレットモードの場合、透明度情報を確認
+                        if 'transparency' in img.info:
+                            # 透明度がある場合はRGBAに変換してから白背景で合成
+                            img = img.convert('RGBA')
+                            background = Image.new('RGB', img.size, (255, 255, 255))
+                            background.paste(img, mask=img.split()[-1])
+                            img = background
+                        else:
+                            # 透明度がない場合は直接RGBに変換
+                            img = img.convert('RGB')
                     elif img.mode != 'RGB':
                         img = img.convert('RGB')
 
                 # 画像を変換
                 img_buffer = io.BytesIO()
-                img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'])
+                # JPEG形式の場合は品質パラメータを指定
+                if output_format == 'jpg':
+                    img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'], quality=85)
+                else:
+                    img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'])
                 img_buffer.seek(0)
 
                 # レスポンスを返す
@@ -384,8 +406,11 @@ class ImageConvertView(APIView):
                         # EXIF日時フォーマット: "YYYY:MM:DD HH:MM:SS"
                         date_obj = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
                         return date_obj.strftime("%Y%m%d")
-        except Exception:
-            # EXIFデータの取得に失敗した場合は無視
+        except (ValueError, KeyError, AttributeError):
+            # EXIFデータの取得・解析に失敗した場合は無視
+            # ValueError: 日時フォーマットが不正
+            # KeyError: EXIFタグが存在しない
+            # AttributeError: EXIFデータが不正
             pass
 
         # EXIFデータがない場合は現在日時を使用（Django設定のタイムゾーンを適用）
