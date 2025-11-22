@@ -82,7 +82,7 @@ class TestZipToPdfView:
         ])
 
         payload = {'file': zip_file}
-        response = authenticated_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'application/pdf'
@@ -100,7 +100,7 @@ class TestZipToPdfView:
         ])
 
         payload = {'file': zip_file}
-        response = authenticated_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'application/pdf'
@@ -114,7 +114,7 @@ class TestZipToPdfView:
         ])
 
         payload = {'file': zip_file}
-        response = authenticated_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'error' in response.data
@@ -127,13 +127,13 @@ class TestZipToPdfView:
         ])
 
         payload = {'file': zip_file}
-        response = api_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = api_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_convert_zip_to_pdf_without_file_fails(self, authenticated_client):
         """ファイルなしでリクエストした場合はエラーになること"""
-        response = authenticated_client.post('/media/zip-to-pdf/', {}, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', {}, format='multipart')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'error' in response.data
@@ -141,7 +141,7 @@ class TestZipToPdfView:
     def test_convert_non_zip_file_fails(self, authenticated_client, mock_file):
         """ZIP以外のファイルをアップロードした場合はエラーになること"""
         payload = {'file': mock_file}
-        response = authenticated_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'error' in response.data
@@ -156,7 +156,7 @@ class TestZipToPdfView:
         ])
 
         payload = {'file': zip_file}
-        response = authenticated_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'application/pdf'
@@ -173,7 +173,7 @@ class TestZipToPdfView:
         ])
 
         payload = {'file': zip_file}
-        response = authenticated_client.post('/media/zip-to-pdf/', payload, format='multipart')
+        response = authenticated_client.post('/media/zip2pdf/', payload, format='multipart')
 
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'application/pdf'
