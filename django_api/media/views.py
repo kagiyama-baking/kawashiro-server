@@ -46,7 +46,7 @@ class ZipToPdfView(APIView):
     permission_classes = [IsAuthenticated]
 
     # ZIPボム対策の制限値
-    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    MAX_TOTAL_SIZE = 1 * 1024 * 1024 * 1024  # 1GB（展開後の合計サイズ）
     MAX_FILES = 1000
 
     # 対応する画像拡張子
@@ -123,21 +123,13 @@ class ZipToPdfView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # 合計ファイルサイズチェック
+                # 合計ファイルサイズチェック（ZIPボム対策）
                 total_size = sum(info.file_size for info in infos)
-                if total_size > self.MAX_FILE_SIZE * self.MAX_FILES:
+                if total_size > self.MAX_TOTAL_SIZE:
                     return Response(
-                        {'error': 'ZIPファイル内の合計ファイルサイズが大きすぎます'},
+                        {'error': f'ZIPファイル内の合計ファイルサイズが大きすぎます（最大{self.MAX_TOTAL_SIZE // (1024*1024*1024)}GBまで）'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-
-                # 個別ファイルサイズチェック
-                for info in infos:
-                    if info.file_size > self.MAX_FILE_SIZE:
-                        return Response(
-                            {'error': f'ZIPファイル内のファイルが大きすぎます（最大{self.MAX_FILE_SIZE // (1024*1024)}MBまで）'},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
 
                 # ZIP内のファイルリストを取得し、画像ファイルのみ抽出
                 # パストラバーサル攻撃対策を含む
