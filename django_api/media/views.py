@@ -3,6 +3,8 @@ import io
 import logging
 import zipfile
 from datetime import datetime
+from zoneinfo import ZoneInfo
+from django.conf import settings
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -375,5 +377,7 @@ class ImageConvertView(APIView):
             # EXIFデータの取得に失敗した場合は無視
             pass
 
-        # EXIFデータがない場合は現在日時を使用
-        return datetime.now().strftime("%Y%m%d")
+        # EXIFデータがない場合は現在日時を使用（Django設定のタイムゾーンを適用）
+        timezone = ZoneInfo(settings.TIME_ZONE)
+        now = datetime.now(timezone)
+        return now.strftime("%Y%m%d")
