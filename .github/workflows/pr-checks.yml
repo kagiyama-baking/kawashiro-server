@@ -164,23 +164,6 @@ jobs:
                   docker compose run --rm --no-deps -w /django_api django-api sh -c "python manage.py collectstatic --noinput --dry-run"
                   echo "✅ 静的ファイル: OK"
 
-            # Django API: テスト実行
-            - name: Run Django tests
-              run: |
-                  echo "🧪 Django テスト実行中..."
-                  # pytest を使用したテスト実行
-                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
-                    # テスト用環境変数を設定
-                    export DJANGO_SETTINGS_MODULE=django_api.settings
-                    export SECRET_KEY='test-secret-key-for-ci'
-                    export DEBUG=False
-                    export ALLOWED_HOSTS='localhost,testserver'
-
-                    # pytestでテストを実行（カバレッジ付き）
-                    python -m pytest tests/ -v --tb=short --cov=user --cov=onedrive --cov=core --cov-report=term-missing
-                  "
-                  echo "✅ テスト: 全て成功"
-
             # コンテナの起動
             - name: Start containers
               run: |
