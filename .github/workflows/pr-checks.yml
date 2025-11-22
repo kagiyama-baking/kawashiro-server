@@ -10,6 +10,8 @@ on:
             - '.gitignore'
             - '**/*.md'
             - '.github/workflows/!(pr-checks).yml'
+            - 'scripts/**'
+            - 'docs/**'
     workflow_dispatch: # テスト用の手動実行
 
 jobs:
