@@ -1,5 +1,6 @@
 """mediaアプリのビューテスト"""
 import io
+import re
 import zipfile
 import pytest
 from rest_framework import status
@@ -28,6 +29,17 @@ def create_test_image():
         img_io.seek(0)
         return img_io.read()
     return _create_image
+
+
+@pytest.fixture(scope='module', autouse=True)
+def setup_heif_support():
+    """HEIF/HEIC形式のサポートを有効化（モジュールレベルで1回のみ実行）"""
+    try:
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        # pillow-heifがインストールされていない場合はスキップ
+        pytest.skip("pillow-heif is not installed")
 
 
 @pytest.fixture
@@ -199,7 +211,6 @@ class TestImageConvertView:
         assert 'Content-Disposition' in response
         assert 'attachment' in response['Content-Disposition']
         # ファイル名が [YYYYMMDD].[width]x[height].png の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.png'
         assert re.search(filename_pattern, response['Content-Disposition'])
         # PNG画像のシグネチャを確認
@@ -220,7 +231,6 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/jpeg'
         # ファイル名が [YYYYMMDD].[width]x[height].jpg の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
         assert re.search(filename_pattern, response['Content-Disposition'])
         # JPEG画像のシグネチャを確認
@@ -241,7 +251,6 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/webp'
         # ファイル名が [YYYYMMDD].[width]x[height].webp の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.webp'
         assert re.search(filename_pattern, response['Content-Disposition'])
         # WebP画像のシグネチャを確認
@@ -262,7 +271,6 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/tiff'
         # ファイル名が [YYYYMMDD].[width]x[height].tiff の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.tiff'
         assert re.search(filename_pattern, response['Content-Disposition'])
         # TIFF画像のシグネチャを確認（リトルエンディアン or ビッグエンディアン）
@@ -283,7 +291,6 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/jpeg'
         # ファイル名が [YYYYMMDD].[width]x[height].jpg の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
         assert re.search(filename_pattern, response['Content-Disposition'])
 
@@ -307,7 +314,6 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/png'
         # ファイル名が [YYYYMMDD].[width]x[height].png の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.png'
         assert re.search(filename_pattern, response['Content-Disposition'])
 
@@ -410,10 +416,6 @@ class TestImageConvertView:
 
     def test_convert_heif_to_jpg_success(self, authenticated_client):
         """HEIF画像をJPGに変換できること"""
-        # pillow-heifを登録
-        import pillow_heif
-        pillow_heif.register_heif_opener()
-
         # HEIF画像を作成
         img = Image.new('RGB', (100, 100), 'cyan')
         heif_io = io.BytesIO()
@@ -432,16 +434,11 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/jpeg'
         # ファイル名が [YYYYMMDD].[width]x[height].jpg の形式であることを確認
-        import re
         filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
         assert re.search(filename_pattern, response['Content-Disposition'])
 
     def test_convert_heif_to_png_success(self, authenticated_client):
         """HEIF画像をPNGに変換できること"""
-        # pillow-heifを登録
-        import pillow_heif
-        pillow_heif.register_heif_opener()
-
         # HEIF画像を作成
         img = Image.new('RGB', (200, 150), 'magenta')
         heif_io = io.BytesIO()

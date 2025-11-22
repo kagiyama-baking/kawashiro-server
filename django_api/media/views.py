@@ -4,15 +4,15 @@ import logging
 import zipfile
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from django.conf import settings
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.http import HttpResponse
-from PIL import Image
-from PIL.ExifTags import TAGS
 from drf_spectacular.utils import extend_schema
+from PIL import Image
 
 # HEIF/HEIC形式のサポートを有効化
 try:
@@ -328,7 +328,8 @@ class ImageConvertView(APIView):
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         if img.mode == 'P':
                             img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                        # アルファチャンネルをマスクとして使用して白背景に合成
+                        background.paste(img, mask=img.split()[-1])
                         img = background
                     elif img.mode != 'RGB':
                         img = img.convert('RGB')
