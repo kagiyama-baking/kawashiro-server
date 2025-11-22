@@ -360,33 +360,35 @@ class ImageConvertView(APIView):
                 filename = f"{creation_date}.{width}x{height}.{self.SUPPORTED_FORMATS[output_format]['ext']}"
 
                 # RGBモードに変換（JPEGやその他の形式で必要）
+                # 変換後の画像を別変数に格納してリソースリークを防ぐ
+                converted_img = img
                 if output_format == 'jpg':
                     if img.mode in ('RGBA', 'LA'):
                         # アルファチャンネルがある場合は白背景で合成
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         background.paste(img, mask=img.split()[-1])
-                        img = background
+                        converted_img = background
                     elif img.mode == 'P':
                         # パレットモードの場合、透明度情報を確認
                         if 'transparency' in img.info:
                             # 透明度がある場合はRGBAに変換してから白背景で合成
-                            img = img.convert('RGBA')
+                            tmp_img = img.convert('RGBA')
                             background = Image.new('RGB', img.size, (255, 255, 255))
-                            background.paste(img, mask=img.split()[-1])
-                            img = background
+                            background.paste(tmp_img, mask=tmp_img.split()[-1])
+                            converted_img = background
                         else:
                             # 透明度がない場合は直接RGBに変換
-                            img = img.convert('RGB')
+                            converted_img = img.convert('RGB')
                     elif img.mode != 'RGB':
-                        img = img.convert('RGB')
+                        converted_img = img.convert('RGB')
 
                 # 画像を変換
                 img_buffer = io.BytesIO()
                 # JPEG形式の場合は品質パラメータを指定
                 if output_format == 'jpg':
-                    img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'], quality=quality)
+                    converted_img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'], quality=quality)
                 else:
-                    img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'])
+                    converted_img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'])
                 img_buffer.seek(0)
 
                 # レスポンスを返す

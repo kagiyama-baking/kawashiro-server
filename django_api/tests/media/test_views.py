@@ -31,7 +31,7 @@ def create_test_image():
     return _create_image
 
 
-@pytest.fixture(scope='module', autouse=True)
+@pytest.fixture(scope='module')
 def setup_heif_support():
     """HEIF/HEIC形式のサポートを有効化（モジュールレベルで1回のみ実行）"""
     try:
@@ -414,7 +414,7 @@ class TestImageConvertView:
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/png'
 
-    def test_convert_heif_to_jpg_success(self, authenticated_client):
+    def test_convert_heif_to_jpg_success(self, authenticated_client, setup_heif_support):
         """HEIF画像をJPGに変換できること"""
         # HEIF画像を作成
         img = Image.new('RGB', (100, 100), 'cyan')
@@ -437,7 +437,7 @@ class TestImageConvertView:
         filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
         assert re.search(filename_pattern, response['Content-Disposition'])
 
-    def test_convert_heif_to_png_success(self, authenticated_client):
+    def test_convert_heif_to_png_success(self, authenticated_client, setup_heif_support):
         """HEIF画像をPNGに変換できること"""
         # HEIF画像を作成
         img = Image.new('RGB', (200, 150), 'magenta')
