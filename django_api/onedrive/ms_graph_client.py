@@ -1,5 +1,6 @@
 """Microsoft Graph APIクライアント"""
 import os
+import time
 from msal import ConfidentialClientApplication
 import requests
 from django.conf import settings
@@ -11,6 +12,10 @@ from .exceptions import (
     ListOperationError,
     NetworkError
 )
+
+# アップロードセッションの定数
+CHUNK_SIZE = 10 * 1024 * 1024  # 10MB (320KiBの倍数)
+SIMPLE_UPLOAD_THRESHOLD = 4 * 1024 * 1024  # 4MB未満はシンプルアップロード
 
 
 class MSGraphClient:
@@ -97,11 +102,32 @@ class MSGraphClient:
     def upload_file_to_onedrive(self, file_content, file_name, folder_path='/'):
         """
         OneDriveにファイルをアップロード
+        ファイルサイズに応じて最適な方法を選択します。
 
         Args:
             file_content: ファイルのバイナリコンテンツ
             file_name: アップロードするファイル名
             folder_path: OneDrive上のフォルダパス（デフォルトはルート）
+
+        Returns:
+            dict: アップロード結果の情報
+        """
+        file_size = len(file_content)
+
+        # 4MB未満はシンプルアップロード、それ以上はアップロードセッション
+        if file_size < SIMPLE_UPLOAD_THRESHOLD:
+            return self._simple_upload(file_content, file_name, folder_path)
+        else:
+            return self._upload_large_file(file_content, file_name, folder_path)
+
+    def _simple_upload(self, file_content, file_name, folder_path='/'):
+        """
+        4MB未満のファイルをシンプルアップロード
+
+        Args:
+            file_content: ファイルのバイナリコンテンツ
+            file_name: アップロードするファイル名
+            folder_path: OneDrive上のフォルダパス
 
         Returns:
             dict: アップロード結果の情報
@@ -167,6 +193,162 @@ class MSGraphClient:
                 raise UploadError('ファイルのアップロードに失敗しました')
         except requests.exceptions.RequestException:
             raise UploadError('ファイルのアップロードに失敗しました')
+
+    def _upload_large_file(self, file_content, file_name, folder_path='/'):
+        """
+        4MB以上のファイルをアップロードセッションを使用してアップロード
+
+        Args:
+            file_content: ファイルのバイナリコンテンツ
+            file_name: アップロードするファイル名
+            folder_path: OneDrive上のフォルダパス
+
+        Returns:
+            dict: アップロード結果の情報
+        """
+        # アップロードセッションを作成
+        upload_url = self._create_upload_session(file_name, folder_path)
+
+        # ファイルをチャンクに分割してアップロード
+        file_size = len(file_content)
+        offset = 0
+
+        try:
+            while offset < file_size:
+                # チャンクサイズを計算
+                chunk_size = min(CHUNK_SIZE, file_size - offset)
+                chunk_data = file_content[offset:offset + chunk_size]
+
+                # チャンクをアップロード
+                result = self._upload_chunk(
+                    upload_url,
+                    chunk_data,
+                    offset,
+                    file_size
+                )
+
+                # アップロード完了を確認
+                if result.get('id'):
+                    # アップロード成功
+                    return result
+
+                offset += chunk_size
+
+            raise UploadError('ファイルのアップロードが完了しませんでした')
+
+        except requests.exceptions.Timeout:
+            raise NetworkError('ファイルアップロードがタイムアウトしました')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('OneDriveへの接続に失敗しました')
+        except requests.exceptions.RequestException:
+            raise UploadError('ファイルのアップロードに失敗しました')
+
+    def _create_upload_session(self, file_name, folder_path='/'):
+        """
+        アップロードセッションを作成
+
+        Args:
+            file_name: アップロードするファイル名
+            folder_path: OneDrive上のフォルダパス
+
+        Returns:
+            str: アップロードURL
+        """
+        # URLを構築
+        if folder_path.endswith('/'):
+            path = f"{folder_path}{file_name}"
+        else:
+            path = f"{folder_path}/{file_name}"
+
+        # 先頭のスラッシュを削除
+        if path.startswith('/'):
+            path = path[1:]
+
+        # セッション作成URL
+        url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{path}:/createUploadSession"
+
+        # ヘッダーを取得
+        headers = self.get_headers()
+        headers['Content-Type'] = 'application/json'
+
+        # リクエストボディ
+        body = {
+            "item": {
+                "@microsoft.graph.conflictBehavior": "replace"
+            }
+        }
+
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                json=body,
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result['uploadUrl']
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise AuthenticationError('認証に失敗しました')
+            elif e.response.status_code == 404:
+                raise UploadError('指定されたフォルダが見つかりません')
+            else:
+                raise UploadError('アップロードセッションの作成に失敗しました')
+        except requests.exceptions.RequestException:
+            raise UploadError('アップロードセッションの作成に失敗しました')
+        except KeyError:
+            raise UploadError('アップロードセッションのURLが取得できませんでした')
+
+    def _upload_chunk(self, upload_url, chunk_data, offset, total_size, max_retries=3):
+        """
+        ファイルチャンクをアップロード（リトライ機能付き）
+
+        Args:
+            upload_url: アップロードURL
+            chunk_data: チャンクデータ
+            offset: ファイル内のオフセット位置
+            total_size: ファイルの総サイズ
+            max_retries: 最大リトライ回数
+
+        Returns:
+            dict: アップロード結果
+        """
+        chunk_size = len(chunk_data)
+        end = offset + chunk_size - 1
+
+        headers = {
+            'Content-Length': str(chunk_size),
+            'Content-Range': f'bytes {offset}-{end}/{total_size}'
+        }
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.put(
+                    upload_url,
+                    headers=headers,
+                    data=chunk_data,
+                    timeout=300  # 5分のタイムアウト
+                )
+
+                # 202 Acceptedは継続、200/201は完了
+                if response.status_code in [200, 201]:
+                    return response.json()
+                elif response.status_code == 202:
+                    # 継続中
+                    return response.json()
+                else:
+                    response.raise_for_status()
+
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    # 指数バックオフでリトライ
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise UploadError(f'チャンクのアップロードに失敗しました: {str(e)}')
 
     def create_folder(self, folder_name, parent_path='/'):
         """

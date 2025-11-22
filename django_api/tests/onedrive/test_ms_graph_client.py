@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import Mock, patch, mock_open
 from django.test import override_settings
-from onedrive.ms_graph_client import MSGraphClient
+from onedrive.ms_graph_client import MSGraphClient, SIMPLE_UPLOAD_THRESHOLD, CHUNK_SIZE
 from onedrive.exceptions import (
     ConfigurationError,
     AuthenticationError,
@@ -234,7 +234,7 @@ class TestMSGraphClientUpload:
 
     @patch('requests.put')
     def test_upload_file_success(self, mock_put):
-        """ファイルアップロードが成功すること"""
+        """ファイルアップロードが成功すること（小さいファイル）"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -244,6 +244,7 @@ class TestMSGraphClientUpload:
         }
         mock_put.return_value = mock_response
 
+        # 小さいファイルなのでシンプルアップロードが使われる
         result = self.client.upload_file_to_onedrive(
             file_content=b'test content',
             file_name='test.txt',
@@ -390,6 +391,262 @@ class TestMSGraphClientUpload:
                 file_name='test.txt'
             )
         assert 'アップロードに失敗' in str(excinfo.value)
+
+
+@pytest.mark.unit
+class TestMSGraphClientLargeFileUpload:
+    """大容量ファイルアップロード関連のテスト"""
+
+    @override_settings(
+        AZURE_TENANT_ID='test-tenant',
+        AZURE_CLIENT_ID='test-client',
+        AZURE_CERT_THUMBPRINT='test-thumb',
+        AZURE_CERT_KEY_FILE='/path/to/key.pem',
+        TARGET_USER='test@example.com'
+    )
+    @patch('os.path.exists')
+    def setup_method(self, method, mock_exists):
+        """テストセットアップ"""
+        mock_exists.return_value = True
+        self.client = MSGraphClient()
+        self.client._access_token = 'test-token'
+
+    def test_small_file_uses_simple_upload(self):
+        """4MB未満のファイルはシンプルアップロードを使用すること"""
+        small_content = b'x' * (SIMPLE_UPLOAD_THRESHOLD - 1)
+
+        with patch.object(self.client, '_simple_upload') as mock_simple:
+            with patch.object(self.client, '_upload_large_file') as mock_large:
+                mock_simple.return_value = {'name': 'test.txt'}
+
+                self.client.upload_file_to_onedrive(
+                    file_content=small_content,
+                    file_name='test.txt'
+                )
+
+                mock_simple.assert_called_once()
+                mock_large.assert_not_called()
+
+    def test_large_file_uses_upload_session(self):
+        """4MB以上のファイルはアップロードセッションを使用すること"""
+        large_content = b'x' * (SIMPLE_UPLOAD_THRESHOLD + 1)
+
+        with patch.object(self.client, '_simple_upload') as mock_simple:
+            with patch.object(self.client, '_upload_large_file') as mock_large:
+                mock_large.return_value = {'name': 'large.txt'}
+
+                self.client.upload_file_to_onedrive(
+                    file_content=large_content,
+                    file_name='large.txt'
+                )
+
+                mock_simple.assert_not_called()
+                mock_large.assert_called_once()
+
+    @patch('requests.post')
+    def test_create_upload_session_success(self, mock_post):
+        """アップロードセッションの作成が成功すること"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'uploadUrl': 'https://upload.url/session123'
+        }
+        mock_post.return_value = mock_response
+
+        upload_url = self.client._create_upload_session('large.txt', '/documents')
+
+        assert upload_url == 'https://upload.url/session123'
+
+        expected_url = 'https://graph.microsoft.com/v1.0/users/test@example.com/drive/root:/documents/large.txt:/createUploadSession'
+        mock_post.assert_called_once()
+        assert mock_post.call_args[0][0] == expected_url
+
+    @patch('requests.post')
+    def test_create_upload_session_auth_error(self, mock_post):
+        """セッション作成時の認証エラー"""
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
+        mock_post.return_value = mock_response
+
+        with pytest.raises(AuthenticationError):
+            self.client._create_upload_session('test.txt')
+
+    @patch('requests.post')
+    def test_create_upload_session_folder_not_found(self, mock_post):
+        """セッション作成時のフォルダ未検出エラー"""
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
+        mock_post.return_value = mock_response
+
+        with pytest.raises(UploadError) as excinfo:
+            self.client._create_upload_session('test.txt', '/nonexistent')
+        assert 'フォルダが見つかりません' in str(excinfo.value)
+
+    @patch('requests.put')
+    def test_upload_chunk_success(self, mock_put):
+        """チャンクアップロードが成功すること"""
+        chunk_data = b'x' * 1024
+        mock_response = Mock()
+        mock_response.status_code = 202
+        mock_response.json.return_value = {
+            'expirationDateTime': '2024-01-01T00:00:00Z',
+            'nextExpectedRanges': ['1024-']
+        }
+        mock_put.return_value = mock_response
+
+        result = self.client._upload_chunk(
+            upload_url='https://upload.url/session',
+            chunk_data=chunk_data,
+            offset=0,
+            total_size=10240
+        )
+
+        assert 'nextExpectedRanges' in result
+        mock_put.assert_called_once()
+
+        # Content-Rangeヘッダーを確認
+        call_headers = mock_put.call_args[1]['headers']
+        assert call_headers['Content-Range'] == 'bytes 0-1023/10240'
+
+    @patch('requests.put')
+    def test_upload_chunk_complete(self, mock_put):
+        """最終チャンクのアップロードで完了すること"""
+        chunk_data = b'x' * 1024
+        mock_response = Mock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {
+            'id': 'file-id-123',
+            'name': 'large.txt',
+            'size': 10240
+        }
+        mock_put.return_value = mock_response
+
+        result = self.client._upload_chunk(
+            upload_url='https://upload.url/session',
+            chunk_data=chunk_data,
+            offset=9216,
+            total_size=10240
+        )
+
+        assert result['id'] == 'file-id-123'
+        assert result['name'] == 'large.txt'
+
+    @patch('requests.put')
+    def test_upload_chunk_retry_on_failure(self, mock_put):
+        """チャンクアップロード失敗時にリトライすること"""
+        chunk_data = b'x' * 1024
+
+        # 最初の2回は失敗、3回目に成功
+        mock_response_fail = Mock()
+        mock_response_fail.side_effect = requests.exceptions.ConnectionError()
+
+        mock_response_success = Mock()
+        mock_response_success.status_code = 202
+        mock_response_success.json.return_value = {'nextExpectedRanges': ['1024-']}
+
+        mock_put.side_effect = [
+            requests.exceptions.ConnectionError(),
+            requests.exceptions.ConnectionError(),
+            mock_response_success
+        ]
+
+        with patch('time.sleep'):  # sleepをモック化してテスト高速化
+            result = self.client._upload_chunk(
+                upload_url='https://upload.url/session',
+                chunk_data=chunk_data,
+                offset=0,
+                total_size=10240
+            )
+
+            assert 'nextExpectedRanges' in result
+            assert mock_put.call_count == 3
+
+    @patch('requests.put')
+    def test_upload_chunk_max_retries_exceeded(self, mock_put):
+        """最大リトライ回数を超えたらエラーになること"""
+        chunk_data = b'x' * 1024
+        mock_put.side_effect = requests.exceptions.ConnectionError()
+
+        with patch('time.sleep'):
+            with pytest.raises(UploadError) as excinfo:
+                self.client._upload_chunk(
+                    upload_url='https://upload.url/session',
+                    chunk_data=chunk_data,
+                    offset=0,
+                    total_size=10240,
+                    max_retries=3
+                )
+            assert 'チャンクのアップロードに失敗' in str(excinfo.value)
+            assert mock_put.call_count == 3
+
+    @patch('requests.post')
+    @patch('requests.put')
+    def test_upload_large_file_success(self, mock_put, mock_post):
+        """大容量ファイルのアップロードが成功すること"""
+        # アップロードセッション作成のモック
+        mock_session_response = Mock()
+        mock_session_response.status_code = 200
+        mock_session_response.json.return_value = {
+            'uploadUrl': 'https://upload.url/session'
+        }
+        mock_post.return_value = mock_session_response
+
+        # チャンクアップロードのモック（2チャンク分）
+        large_content = b'x' * (CHUNK_SIZE + 1024)
+
+        mock_chunk1_response = Mock()
+        mock_chunk1_response.status_code = 202
+        mock_chunk1_response.json.return_value = {
+            'nextExpectedRanges': [f'{CHUNK_SIZE}-']
+        }
+
+        mock_chunk2_response = Mock()
+        mock_chunk2_response.status_code = 201
+        mock_chunk2_response.json.return_value = {
+            'id': 'file-id-123',
+            'name': 'large.txt',
+            'size': len(large_content)
+        }
+
+        mock_put.side_effect = [mock_chunk1_response, mock_chunk2_response]
+
+        result = self.client._upload_large_file(
+            file_content=large_content,
+            file_name='large.txt',
+            folder_path='/documents'
+        )
+
+        assert result['id'] == 'file-id-123'
+        assert result['name'] == 'large.txt'
+
+        # セッション作成が1回、チャンクアップロードが2回呼ばれる
+        mock_post.assert_called_once()
+        assert mock_put.call_count == 2
+
+    @patch('requests.post')
+    @patch('requests.put')
+    def test_upload_large_file_timeout(self, mock_put, mock_post):
+        """大容量ファイルアップロード時のタイムアウト"""
+        mock_session_response = Mock()
+        mock_session_response.status_code = 200
+        mock_session_response.json.return_value = {
+            'uploadUrl': 'https://upload.url/session'
+        }
+        mock_post.return_value = mock_session_response
+
+        large_content = b'x' * (CHUNK_SIZE + 1024)
+        mock_put.side_effect = requests.exceptions.Timeout()
+
+        with patch('time.sleep'):
+            with pytest.raises(UploadError) as excinfo:
+                self.client._upload_large_file(
+                    file_content=large_content,
+                    file_name='large.txt'
+                )
+            # _upload_chunkがリトライ後にUploadErrorを発生させる
+            assert 'チャンクのアップロードに失敗' in str(excinfo.value)
 
 
 @pytest.mark.unit

@@ -10,6 +10,8 @@ on:
             - '.gitignore'
             - '**/*.md'
             - '.github/workflows/!(deploy).yml'
+            - 'scripts/**'
+            - 'docs/**'
     workflow_dispatch: # テスト用の手動実行
         inputs:
             tag:

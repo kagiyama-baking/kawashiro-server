@@ -33,7 +33,7 @@ DB_USERNAME="${DB_USERNAME:-immich}"
 DB_DATABASE_NAME="${DB_DATABASE_NAME:-immich}"
 
 # バックアップディレクトリの設定
-BACKUP_BASE_DIR="./backups/immich"
+BACKUP_BASE_DIR="./volumes/backups"
 BACKUP_DIR="$BACKUP_BASE_DIR/immich-backup-$(date +%Y%m%d_%H%M%S)"
 
 # バックアップディレクトリを作成

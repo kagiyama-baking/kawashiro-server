@@ -37,7 +37,7 @@ DB_DATABASE_NAME="${DB_DATABASE_NAME:-immich}"
 # 引数チェック
 if [ -z "$1" ]; then
   echo "使用方法: $0 <バックアップディレクトリ>"
-  echo "例: $0 ./backups/immich/immich-backup-20240101_120000"
+  echo "例: $0 ./volumes/backups/immich-backup-20240101_120000"
   exit 1
 fi
 
