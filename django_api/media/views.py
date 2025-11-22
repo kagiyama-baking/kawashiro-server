@@ -83,6 +83,34 @@ class Zip2PdfView(APIView):
         try:
             # ZIPファイルとして開く
             with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
+                # ZIPボム対策: ファイル数・サイズ制限
+                MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+                MAX_FILES = 100
+                infos = zip_ref.infolist()
+
+                # ファイル数チェック
+                if len(infos) > MAX_FILES:
+                    return Response(
+                        {'error': f'ZIPファイル内のファイル数が多すぎます（最大{MAX_FILES}件まで）'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # 合計ファイルサイズチェック
+                total_size = sum(info.file_size for info in infos)
+                if total_size > MAX_FILE_SIZE * MAX_FILES:
+                    return Response(
+                        {'error': 'ZIPファイル内の合計ファイルサイズが大きすぎます'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # 個別ファイルサイズチェック
+                for info in infos:
+                    if info.file_size > MAX_FILE_SIZE:
+                        return Response(
+                            {'error': f'ZIPファイル内のファイルが大きすぎます（最大{MAX_FILE_SIZE // (1024*1024)}MBまで）'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
                 # 対応する画像拡張子
                 image_extensions = ('.jpg', '.jpeg', '.png', '.webp')
 
@@ -93,7 +121,8 @@ class Zip2PdfView(APIView):
                     if (
                         name.lower().endswith(image_extensions)
                         and not name.startswith('__MACOSX/')
-                        and '..' not in name
+                        # パスセグメントに'..'が含まれないことを確認
+                        and not any(part == '..' for part in name.replace('\\', '/').split('/'))
                         and not name.startswith('/')
                         and not name.startswith('\\')
                         and not name.endswith('/')
@@ -143,6 +172,13 @@ class Zip2PdfView(APIView):
         except zipfile.BadZipFile:
             return Response(
                 {'error': 'アップロードされたファイルは有効なZIPファイルではありません'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except (Image.UnidentifiedImageError, IOError) as e:
+            # 画像形式エラー
+            logger.warning(f'画像ファイルの形式が無効です: {str(e)}')
+            return Response(
+                {'error': '画像ファイルの形式が無効です'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
