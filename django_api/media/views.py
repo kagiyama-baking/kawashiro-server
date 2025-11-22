@@ -14,6 +14,14 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 from drf_spectacular.utils import extend_schema
 
+# HEIF/HEIC形式のサポートを有効化
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    # pillow-heifがインストールされていない場合はスキップ
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -207,7 +215,8 @@ class ImageConvertView(APIView):
     """
     画像形式を変換するビュー
 
-    jpg、png、webp、tiff形式間で相互変換を行います。
+    入力形式: jpg、png、webp、tiff、heif/heic、psd、dng
+    出力形式: jpg、png、webp、tiff
     変換後のファイル名は [YYYYMMDD].[width]x[height].[extension] の形式になります。
     """
     permission_classes = [IsAuthenticated]
@@ -223,7 +232,9 @@ class ImageConvertView(APIView):
     @extend_schema(
         tags=['media'],
         summary='画像形式変換',
-        description='画像形式をjpg、png、webp、tiff間で変換します。'
+        description='画像形式を変換します。\n\n'
+                    '入力形式: jpg、png、webp、tiff、heif/heic、psd、dng\n'
+                    '出力形式: jpg、png、webp、tiff\n\n'
                     '出力ファイル名は [YYYYMMDD].[width]x[height].[extension] の形式になります。',
         request={
             'multipart/form-data': {
