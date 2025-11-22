@@ -113,11 +113,15 @@ jobs:
                   chmod 600 secrets/django_api_graph_key.pem
                   echo "✅ ダミー秘密鍵ファイル作成完了"
 
-            # ログディレクトリの準備（コンテナマウント用）
-            - name: Prepare log directories
+            # ログディレクトリと永続化ディレクトリの準備（コンテナマウント用）
+            - name: Prepare volume directories
               run: |
                   mkdir -p volumes/reverse-proxy/log/nginx
                   mkdir -p volumes/test-web/log/nginx
+                  mkdir -p volumes/django-api/log
+                  mkdir -p volumes/django-api/staticfiles
+                  # SQLiteデータベースファイルを事前に作成
+                  touch volumes/django-api/db.sqlite3
                   # GitHub Actions環境での権限問題を解決
                   chmod -R 777 volumes/
 
