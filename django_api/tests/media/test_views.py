@@ -2,7 +2,6 @@
 import io
 import zipfile
 import pytest
-from unittest.mock import Mock, patch
 from rest_framework import status
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image

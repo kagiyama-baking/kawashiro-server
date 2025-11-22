@@ -1,5 +1,6 @@
 """mediaアプリのビュー"""
 import io
+import logging
 import zipfile
 from rest_framework import status
 from rest_framework.views import APIView
@@ -7,8 +8,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
 from PIL import Image
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
-from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
+
+logger = logging.getLogger(__name__)
 
 
 class Zip2PdfView(APIView):
@@ -85,9 +87,18 @@ class Zip2PdfView(APIView):
                 image_extensions = ('.jpg', '.jpeg', '.png', '.webp')
 
                 # ZIP内のファイルリストを取得し、画像ファイルのみ抽出
+                # パストラバーサル攻撃対策を含む
                 image_files = [
                     name for name in zip_ref.namelist()
-                    if name.lower().endswith(image_extensions) and not name.startswith('__MACOSX/')
+                    if (
+                        name.lower().endswith(image_extensions)
+                        and not name.startswith('__MACOSX/')
+                        and '..' not in name
+                        and not name.startswith('/')
+                        and not name.startswith('\\')
+                        and not name.endswith('/')
+                        and name.strip() != ''
+                    )
                 ]
 
                 # ファイル名順にソート
@@ -101,30 +112,28 @@ class Zip2PdfView(APIView):
                     )
 
                 # 画像をPIL Imageオブジェクトに変換
+                # コンテキストマネージャーを使用してメモリリークを防ぐ
                 images = []
                 for image_file in image_files:
                     with zip_ref.open(image_file) as img_file:
-                        # 画像を読み込み
                         img_data = img_file.read()
-                        img = Image.open(io.BytesIO(img_data))
-
-                        # RGBモードに変換（PDFにする際に必要）
-                        if img.mode != 'RGB':
-                            img = img.convert('RGB')
-
-                        images.append(img)
+                        with Image.open(io.BytesIO(img_data)) as img:
+                            # RGBモードに変換（PDFにする際に必要）
+                            if img.mode != 'RGB':
+                                img = img.convert('RGB')
+                            # 画像をコピーしてから追加（元の画像はwith句を抜けた時点でclose）
+                            images.append(img.copy())
 
                 # PDFに変換
                 pdf_buffer = io.BytesIO()
-                if len(images) > 0:
-                    # 最初の画像をベースにして、残りを追加
-                    images[0].save(
-                        pdf_buffer,
-                        format='PDF',
-                        save_all=True,
-                        append_images=images[1:] if len(images) > 1 else []
-                    )
-                    pdf_buffer.seek(0)
+                # 最初の画像をベースにして、残りを追加
+                images[0].save(
+                    pdf_buffer,
+                    format='PDF',
+                    save_all=True,
+                    append_images=images[1:] if len(images) > 1 else []
+                )
+                pdf_buffer.seek(0)
 
                 # PDFファイルとしてレスポンスを返す
                 response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
@@ -137,7 +146,10 @@ class Zip2PdfView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
+            # ログには詳細を記録（デバッグ用）
+            logger.error(f'画像の処理中にエラーが発生しました: {str(e)}', exc_info=True)
+            # ユーザーには一般的なエラーメッセージのみ返す（セキュリティ対策）
             return Response(
-                {'error': f'画像の処理中にエラーが発生しました: {str(e)}'},
+                {'error': '画像の処理中にエラーが発生しました'},
                 status=status.HTTP_400_BAD_REQUEST
             )
