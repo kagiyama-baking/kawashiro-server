@@ -78,6 +78,7 @@ INSTALLED_APPS = [
 # リクエスト/レスポンス処理のフックポイント
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',  # セキュリティヘッダー追加
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # 静的ファイル配信（SecurityMiddlewareの直後に配置）
     'django.contrib.sessions.middleware.SessionMiddleware',  # セッション管理
     'django.middleware.common.CommonMiddleware',  # 共通処理（URLの正規化など）
     'django.middleware.csrf.CsrfViewMiddleware',  # CSRF攻撃からの保護
@@ -194,6 +195,17 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # STATICFILES_DIRS = [
 #     BASE_DIR / 'static',
 # ]
+
+# WhiteNoise設定
+# 静的ファイルの圧縮とキャッシュを有効化
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 
 # ============================================================
