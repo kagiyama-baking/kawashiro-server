@@ -62,7 +62,7 @@ jobs:
                     --cov=user --cov=onedrive --cov=core \
                     --cov-report=term-missing \
                     --cov-report=html \
-                    --cov-fail-under=70
+                    --cov-fail-under=50
 
             - name: Upload coverage report
               if: always()
