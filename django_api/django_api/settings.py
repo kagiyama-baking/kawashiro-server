@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'core',  # ユーザー認証などのコア機能
     'user',  # ユーザーモデルのApp
     'onedrive',  # OneDrive連携機能
+    'media',  # 画像処理などのメディア関連機能
 ]
 
 # ミドルウェアの設定
@@ -170,7 +171,7 @@ LANGUAGE_CODE = 'en-us'
 
 # タイムゾーン設定
 # 日本時間の場合は 'Asia/Tokyo' に変更
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Tokyo'
 
 # 国際化機能の有効化
 USE_I18N = True
@@ -278,6 +279,7 @@ SPECTACULAR_SETTINGS = {
         {'name': 'auth', 'description': '認証関連のAPI'},
         {'name': 'users', 'description': 'ユーザー管理API'},
         {'name': 'onedrive', 'description': 'OneDrive連携API'},
+        {'name': 'media', 'description': '画像処理などのメディア関連API'},
     ],
 }
 

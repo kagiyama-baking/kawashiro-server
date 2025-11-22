@@ -39,4 +39,6 @@ urlpatterns = [
     path('user/', include('user.urls')),
     # OneDrive関連APIのURL（onedrive.urlsにルーティング）
     path('onedrive/', include('onedrive.urls')),
+    # メディア処理関連APIのURL（media.urlsにルーティング）
+    path('media/', include('media.urls')),
 ]
