@@ -215,7 +215,6 @@ class ImageConvertView(APIView):
     # サポートする入出力形式
     SUPPORTED_FORMATS = {
         'jpg': {'mime': 'image/jpeg', 'pil_format': 'JPEG', 'ext': 'jpg'},
-        'jpeg': {'mime': 'image/jpeg', 'pil_format': 'JPEG', 'ext': 'jpg'},
         'png': {'mime': 'image/png', 'pil_format': 'PNG', 'ext': 'png'},
         'webp': {'mime': 'image/webp', 'pil_format': 'WEBP', 'ext': 'webp'},
         'tiff': {'mime': 'image/tiff', 'pil_format': 'TIFF', 'ext': 'tiff'},
@@ -237,7 +236,7 @@ class ImageConvertView(APIView):
                     },
                     'output_format': {
                         'type': 'string',
-                        'enum': ['jpg', 'jpeg', 'png', 'webp', 'tiff'],
+                        'enum': ['jpg', 'png', 'webp', 'tiff'],
                         'description': '出力形式'
                     }
                 },
@@ -312,7 +311,7 @@ class ImageConvertView(APIView):
                 filename = f"{creation_date}.{width}x{height}.{self.SUPPORTED_FORMATS[output_format]['ext']}"
 
                 # RGBモードに変換（JPEGやその他の形式で必要）
-                if output_format in ['jpg', 'jpeg']:
+                if output_format == 'jpg':
                     if img.mode in ('RGBA', 'LA', 'P'):
                         # アルファチャンネルがある場合は白背景で合成
                         background = Image.new('RGB', img.size, (255, 255, 255))
