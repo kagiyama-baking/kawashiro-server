@@ -84,7 +84,7 @@ class Zip2PdfView(APIView):
             # ZIPファイルとして開く
             with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
                 # ZIPボム対策: ファイル数・サイズ制限
-                MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+                MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
                 MAX_FILES = 1000
                 infos = zip_ref.infolist()
 
