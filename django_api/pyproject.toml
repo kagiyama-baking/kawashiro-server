@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "django-api"
 version = "0.1.0"
-description = "Add your description here"
+description = "Kawashiro Server Django API"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -22,6 +26,9 @@ dev = [
     "pytest-django>=4.11.1",
     "pytest-mock>=3.15.1",
 ]
+
+[tool.setuptools]
+packages = ["django_api", "core", "user", "onedrive"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "django_api.settings"
