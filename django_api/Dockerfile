@@ -24,8 +24,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Python依存関係をインストール（pyproject.tomlから）
 # uv pip installでシステムPythonに直接インストール
 COPY pyproject.toml ./
-# README.mdを作成（存在しない場合のため）
-RUN touch README.md
 RUN uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock
 
