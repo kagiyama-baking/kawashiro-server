@@ -407,3 +407,57 @@ class TestImageConvertView:
 
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'image/png'
+
+    def test_convert_heif_to_jpg_success(self, authenticated_client):
+        """HEIF画像をJPGに変換できること"""
+        # pillow-heifを登録
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+
+        # HEIF画像を作成
+        img = Image.new('RGB', (100, 100), 'cyan')
+        heif_io = io.BytesIO()
+        img.save(heif_io, format='HEIF')
+        heif_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='photo.heic',
+            content=heif_io.read(),
+            content_type='image/heic'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'jpg'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/jpeg'
+        # ファイル名が [YYYYMMDD].[width]x[height].jpg の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+
+    def test_convert_heif_to_png_success(self, authenticated_client):
+        """HEIF画像をPNGに変換できること"""
+        # pillow-heifを登録
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+
+        # HEIF画像を作成
+        img = Image.new('RGB', (200, 150), 'magenta')
+        heif_io = io.BytesIO()
+        img.save(heif_io, format='HEIF')
+        heif_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='image.heif',
+            content=heif_io.read(),
+            content_type='image/heif'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'png'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/png'
+        # 画像サイズが保持されることを確認
+        assert '200x150' in response['Content-Disposition']
