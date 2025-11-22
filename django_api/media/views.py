@@ -232,13 +232,19 @@ class ImageConvertView(APIView):
     # ファイルサイズ制限（50MB）
     MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB in bytes
 
+    # JPEG品質パラメータのデフォルト値と範囲
+    DEFAULT_JPEG_QUALITY = 85
+    MIN_JPEG_QUALITY = 1
+    MAX_JPEG_QUALITY = 100
+
     @extend_schema(
         tags=['media'],
         summary='画像形式変換',
         description='画像形式を変換します。\n\n'
                     '入力形式: jpg / png / webp / tiff / heif / heic / psd / dng\n'
                     '出力形式: jpg / png / webp / tiff\n\n'
-                    '出力ファイル名は [YYYYMMDD].[width]x[height].[extension] の形式になります。',
+                    '出力ファイル名は [YYYYMMDD].[width]x[height].[extension] の形式になります。\n\n'
+                    'JPEG形式で出力する場合、quality パラメータで品質を指定できます（1-100、デフォルト: 85）。',
         request={
             'multipart/form-data': {
                 'type': 'object',
@@ -252,6 +258,12 @@ class ImageConvertView(APIView):
                         'type': 'string',
                         'enum': ['jpg', 'png', 'webp', 'tiff'],
                         'description': '出力形式'
+                    },
+                    'quality': {
+                        'type': 'integer',
+                        'minimum': 1,
+                        'maximum': 100,
+                        'description': 'JPEG品質（1-100、デフォルト: 85）。JPEG以外の形式では無視されます。'
                     }
                 },
                 'required': ['file', 'output_format']
@@ -319,6 +331,22 @@ class ImageConvertView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # JPEG品質パラメータの取得とバリデーション
+        quality = self.DEFAULT_JPEG_QUALITY
+        if output_format == 'jpg' and 'quality' in request.data:
+            try:
+                quality = int(request.data['quality'])
+                if quality < self.MIN_JPEG_QUALITY or quality > self.MAX_JPEG_QUALITY:
+                    return Response(
+                        {'error': f'品質パラメータは{self.MIN_JPEG_QUALITY}から{self.MAX_JPEG_QUALITY}の範囲で指定してください'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': '品質パラメータは整数で指定してください'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         try:
             # 画像を開く
             with Image.open(uploaded_file) as img:
@@ -356,7 +384,7 @@ class ImageConvertView(APIView):
                 img_buffer = io.BytesIO()
                 # JPEG形式の場合は品質パラメータを指定
                 if output_format == 'jpg':
-                    img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'], quality=85)
+                    img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'], quality=quality)
                 else:
                     img.save(img_buffer, format=self.SUPPORTED_FORMATS[output_format]['pil_format'])
                 img_buffer.seek(0)

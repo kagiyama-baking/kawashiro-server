@@ -519,3 +519,101 @@ class TestImageConvertView:
         assert response['Content-Type'] == 'image/jpeg'
         # 品質が適用された結果、ファイルサイズが妥当であることを確認
         assert len(response.content) > 0
+
+    def test_convert_jpeg_with_custom_quality(self, authenticated_client):
+        """JPEG変換時にカスタム品質パラメータを指定できること"""
+        # PNG画像を作成
+        img = Image.new('RGB', (200, 200), 'blue')
+        img_io = io.BytesIO()
+        img.save(img_io, format='PNG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='test.png',
+            content=img_io.read(),
+            content_type='image/png'
+        )
+
+        # 高品質で変換
+        payload_high = {'file': uploaded_file, 'output_format': 'jpg', 'quality': '95'}
+        response_high = authenticated_client.post('/media/convert-image/', payload_high, format='multipart')
+
+        # 新しいファイルを作成（同じ内容）
+        img_io.seek(0)
+        uploaded_file2 = SimpleUploadedFile(
+            name='test2.png',
+            content=img_io.read(),
+            content_type='image/png'
+        )
+
+        # 低品質で変換
+        payload_low = {'file': uploaded_file2, 'output_format': 'jpg', 'quality': '50'}
+        response_low = authenticated_client.post('/media/convert-image/', payload_low, format='multipart')
+
+        assert response_high.status_code == status.HTTP_200_OK
+        assert response_low.status_code == status.HTTP_200_OK
+        # 高品質の方がファイルサイズが大きいことを確認
+        assert len(response_high.content) > len(response_low.content)
+
+    def test_convert_jpeg_quality_out_of_range(self, authenticated_client):
+        """JPEG品質パラメータが範囲外の場合はエラーになること"""
+        img = Image.new('RGB', (100, 100), 'red')
+        img_io = io.BytesIO()
+        img.save(img_io, format='PNG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='test.png',
+            content=img_io.read(),
+            content_type='image/png'
+        )
+
+        # 範囲外の品質（101）
+        payload = {'file': uploaded_file, 'output_format': 'jpg', 'quality': '101'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert '品質' in response.data['error']
+
+    def test_convert_jpeg_quality_non_numeric(self, authenticated_client):
+        """JPEG品質パラメータが数値でない場合はエラーになること"""
+        img = Image.new('RGB', (100, 100), 'green')
+        img_io = io.BytesIO()
+        img.save(img_io, format='PNG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='test.png',
+            content=img_io.read(),
+            content_type='image/png'
+        )
+
+        # 数値でない品質
+        payload = {'file': uploaded_file, 'output_format': 'jpg', 'quality': 'high'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert '品質' in response.data['error']
+
+    def test_convert_png_ignores_quality_parameter(self, authenticated_client):
+        """PNG変換時は品質パラメータを無視すること"""
+        img = Image.new('RGB', (100, 100), 'purple')
+        img_io = io.BytesIO()
+        img.save(img_io, format='JPEG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=img_io.read(),
+            content_type='image/jpeg'
+        )
+
+        # PNGに変換する際にqualityパラメータを指定
+        payload = {'file': uploaded_file, 'output_format': 'png', 'quality': '50'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        # エラーにならず、正常に変換されること
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/png'
