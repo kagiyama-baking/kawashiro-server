@@ -1,4 +1,24 @@
 #!/bin/bash
+#
+# Immichバックアップスクリプト
+#
+# 【説明】
+#   Immichの全データ（PostgreSQLデータベース、写真・動画、Redis、ML Cache）をバックアップします。
+#
+# 【前提条件】
+#   - Docker Composeでimmichが起動していること
+#   - .envファイルにDB_USERNAMEとDB_DATABASE_NAMEが設定されていること
+#   - 十分なディスク容量があること
+#
+# 【使用方法】
+#   ./scripts/immich-backup.sh
+#
+# 【バックアップ先】
+#   ./backups/immich/immich-backup-YYYYMMDD_HHMMSS/
+#
+# 【リストア方法】
+#   ./scripts/immich-restore.sh <バックアップディレクトリ>
+#
 set -e
 
 # 環境変数を読み込む

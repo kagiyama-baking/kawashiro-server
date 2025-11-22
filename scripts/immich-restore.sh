@@ -1,4 +1,26 @@
 #!/bin/bash
+#
+# Immichリストアスクリプト
+#
+# 【説明】
+#   immich-backup.shで作成したバックアップからImmichのデータを復元します。
+#
+# 【前提条件】
+#   - Docker Composeでimmichが起動していること
+#   - .envファイルにDB_USERNAMEとDB_DATABASE_NAMEが設定されていること
+#   - バックアップディレクトリが存在すること
+#
+# 【使用方法】
+#   ./scripts/immich-restore.sh <バックアップディレクトリ>
+#
+# 【使用例】
+#   ./scripts/immich-restore.sh ./backups/immich/immich-backup-20240101_120000
+#
+# 【注意事項】
+#   ⚠️ リストアを実行すると、既存のデータは完全に上書きされます
+#   ⚠️ 実行前に必ず現在のデータをバックアップしてください
+#   ⚠️ リストア中はImmichサービスを停止することを推奨します
+#
 set -e
 
 # 環境変数を読み込む

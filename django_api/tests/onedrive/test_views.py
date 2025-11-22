@@ -276,3 +276,139 @@ class TestOneDriveListView:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data['error'] == 'Folder not found'
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_upload_file_with_unexpected_error(self, mock_client_class, authenticated_client, mock_file):
+        """予期しないエラー時に適切なエラーレスポンスを返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.upload_file_to_onedrive.side_effect = Exception("Unexpected error")
+
+        payload = {
+            'file': mock_file
+        }
+
+        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert 'ファイルのアップロード中に問題が発生しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_create_folder_with_unexpected_error(self, mock_client_class, authenticated_client):
+        """予期しないエラー時に適切なエラーレスポンスを返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.create_folder.side_effect = Exception("Unexpected error")
+
+        payload = {
+            'folder_name': 'New Folder'
+        }
+
+        response = authenticated_client.post('/onedrive/folder/', payload)
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert 'フォルダの作成中に問題が発生しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_list_files_with_unexpected_error(self, mock_client_class, authenticated_client):
+        """予期しないエラー時に適切なエラーレスポンスを返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.list_files.side_effect = Exception("Unexpected error")
+
+        response = authenticated_client.get('/onedrive/list/')
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert 'ファイル一覧の取得中に問題が発生しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_create_folder_with_configuration_error(self, mock_client_class, authenticated_client):
+        """設定エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import ConfigurationError
+
+        mock_client_class.side_effect = ConfigurationError("Missing configuration")
+
+        payload = {
+            'folder_name': 'New Folder'
+        }
+
+        response = authenticated_client.post('/onedrive/folder/', payload)
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert 'サービスの設定に問題があります' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_create_folder_with_authentication_error(self, mock_client_class, authenticated_client):
+        """認証エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import AuthenticationError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.create_folder.side_effect = AuthenticationError("Token expired")
+
+        payload = {
+            'folder_name': 'New Folder'
+        }
+
+        response = authenticated_client.post('/onedrive/folder/', payload)
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_create_folder_with_network_error(self, mock_client_class, authenticated_client):
+        """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import NetworkError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.create_folder.side_effect = NetworkError("Connection timeout")
+
+        payload = {
+            'folder_name': 'New Folder'
+        }
+
+        response = authenticated_client.post('/onedrive/folder/', payload)
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_list_files_with_configuration_error(self, mock_client_class, authenticated_client):
+        """設定エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import ConfigurationError
+
+        mock_client_class.side_effect = ConfigurationError("Missing configuration")
+
+        response = authenticated_client.get('/onedrive/list/')
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert 'サービスの設定に問題があります' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_list_files_with_authentication_error(self, mock_client_class, authenticated_client):
+        """認証エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import AuthenticationError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.list_files.side_effect = AuthenticationError("Token expired")
+
+        response = authenticated_client.get('/onedrive/list/')
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_list_files_with_network_error(self, mock_client_class, authenticated_client):
+        """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import NetworkError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.list_files.side_effect = NetworkError("Connection timeout")
+
+        response = authenticated_client.get('/onedrive/list/')
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert 'OneDriveへの接続に失敗しました' in response.data['error']

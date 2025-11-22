@@ -36,7 +36,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # 環境変数から取得（必須）
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
-    raise ValueError('SECRET_KEY environment variable is not set')
+    raise ValueError(
+        'SECRET_KEY environment variable is not set. '
+        'Please set SECRET_KEY in your .env file (例: .envファイルに「SECRET_KEY=your-secret-key-here」を追加してください)。'
+    )
 
 # DEBUGモード（環境変数が'True'の場合のみTrue）
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
