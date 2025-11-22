@@ -215,8 +215,8 @@ class ImageConvertView(APIView):
     """
     画像形式を変換するビュー
 
-    入力形式: jpg、png、webp、tiff、heif/heic、psd、dng
-    出力形式: jpg、png、webp、tiff
+    入力形式: jpg / png / webp / tiff / heif / heic / psd / dng
+    出力形式: jpg / png / webp / tiff
     変換後のファイル名は [YYYYMMDD].[width]x[height].[extension] の形式になります。
     """
     permission_classes = [IsAuthenticated]
@@ -233,8 +233,8 @@ class ImageConvertView(APIView):
         tags=['media'],
         summary='画像形式変換',
         description='画像形式を変換します。\n\n'
-                    '入力形式: jpg、png、webp、tiff、heif/heic、psd、dng\n'
-                    '出力形式: jpg、png、webp、tiff\n\n'
+                    '入力形式: jpg / png / webp / tiff / heif / heic / psd / dng\n'
+                    '出力形式: jpg / png / webp / tiff\n\n'
                     '出力ファイル名は [YYYYMMDD].[width]x[height].[extension] の形式になります。',
         request={
             'multipart/form-data': {
