@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'core',  # ユーザー認証などのコア機能
     'user',  # ユーザーモデルのApp
     'onedrive',  # OneDrive連携機能
+    'media',  # 画像処理などのメディア関連機能
 ]
 
 # ミドルウェアの設定
