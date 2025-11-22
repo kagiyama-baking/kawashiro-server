@@ -56,8 +56,20 @@ services:
         env_file:
             - .env
         volumes:
-            # コードの永続化
-            - ./django_api:/django_api
+            # ソースコードのマウント（開発環境用）
+            - ./django_api/manage.py:/django_api/manage.py
+            - ./django_api/django_api:/django_api/django_api
+            - ./django_api/core:/django_api/core
+            - ./django_api/user:/django_api/user
+            - ./django_api/onedrive:/django_api/onedrive
+            # 環境変数ファイル
+            - ./django_api/.env:/django_api/.env
+            # ログの永続化
+            - ./volumes/django-api/log:/django_api/logs
+            # 静的ファイルの永続化
+            - ./volumes/django-api/staticfiles:/django_api/staticfiles
+            # SQLiteデータベースの永続化
+            - ./volumes/django-api/db.sqlite3:/django_api/db.sqlite3
         secrets:
             - django_api_graph_key
         restart: unless-stopped

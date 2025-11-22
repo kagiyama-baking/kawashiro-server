@@ -38,8 +38,13 @@ RUN adduser -D -g django django && \
 # ユーザをrootから変更（ファイルコピー前に変更）
 USER django
 
-# ローカルのdjango-apiディレクトリをコンテナにコピー（djangoユーザー権限で）
-COPY --chown=django:django . .
+# 必要なアプリケーションファイルのみをコピー
+# manage.pyと各アプリケーションディレクトリ
+COPY --chown=django:django manage.py .
+COPY --chown=django:django django_api ./django_api
+COPY --chown=django:django core ./core
+COPY --chown=django:django user ./user
+COPY --chown=django:django onedrive ./onedrive
 
 # セキュリティヘッダーを設定
 ENV PYTHONDONTWRITEBYTECODE=1
