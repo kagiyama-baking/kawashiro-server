@@ -39,10 +39,14 @@ services:
         env_file:
             - .env
         volumes:
+            # 環境変数ファイル
+            - ./django_api/.env:/django_api/.env
             # ログの永続化
             - ./volumes/django-api/log:/django_api/logs
             # 静的ファイルの永続化
-            - ./volumes/django-api/static:/django_api/staticfiles
+            - ./volumes/django-api/staticfiles:/django_api/staticfiles
+            # SQLiteデータベースの永続化
+            - ./volumes/django-api/db.sqlite3:/django_api/db.sqlite3
         secrets:
             - django_api_graph_key
         restart: unless-stopped
