@@ -62,6 +62,7 @@ services:
             - ./django_api/core:/django_api/core
             - ./django_api/user:/django_api/user
             - ./django_api/onedrive:/django_api/onedrive
+            - ./django_api/media:/django_api/media
             # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
             # ログの永続化
