@@ -5,12 +5,14 @@ ENV PYTHONUNBUFFERED=1
 
 # セキュリティのため、OSパッケージを最新版にアップデート
 # curlも追加（ヘルスチェック用）
+# libheifも追加（HEIF/HEIC画像形式サポート用）
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
         ca-certificates \
         tzdata \
-        curl && \
+        curl \
+        libheif && \
     rm -rf /var/cache/apk/*
 
 # Djangoプロジェクトを置くディレクトリをコンテナ上に作成

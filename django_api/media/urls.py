@@ -9,4 +9,6 @@ app_name = 'media'
 urlpatterns = [
     # ZIP→PDF変換エンドポイント
     path('zip-to-pdf/', views.ZipToPdfView.as_view(), name='zip-to-pdf'),
+    # 画像形式変換エンドポイント
+    path('convert-image/', views.ImageConvertView.as_view(), name='convert-image'),
 ]
