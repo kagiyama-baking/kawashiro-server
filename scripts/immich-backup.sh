@@ -60,15 +60,7 @@ else
     echo "警告: ./volumes/immich/dataが見つかりません"
 fi
 
-# 3. Redisデータのバックアップ
-echo "Redisデータをバックアップ中..."
-docker run --rm \
-  -v immich-redis-data:/source:ro \
-  -v "$(pwd)/$BACKUP_DIR":/backup \
-  alpine tar czf /backup/redis-data.tar.gz -C /source .
-echo "✓ Redisデータバックアップ完了"
-
-# 4. PostgreSQLボリュームのバックアップ（追加の安全性のため）
+# 3. PostgreSQLボリュームのバックアップ（追加の安全性のため）
 echo "PostgreSQLボリュームをバックアップ中..."
 docker run --rm \
   -v immich-pgdata:/source:ro \
@@ -76,15 +68,7 @@ docker run --rm \
   alpine tar czf /backup/pgdata-volume.tar.gz -C /source .
 echo "✓ PostgreSQLボリュームバックアップ完了"
 
-# 5. MLモデルキャッシュのバックアップ（オプション - サイズが大きい可能性あり）
-echo "MLモデルキャッシュをバックアップ中..."
-docker run --rm \
-  -v immich-ml-cache:/source:ro \
-  -v "$(pwd)/$BACKUP_DIR":/backup \
-  alpine tar czf /backup/ml-cache.tar.gz -C /source .
-echo "✓ MLモデルキャッシュバックアップ完了"
-
-# 6. 設定ファイルのバックアップ
+# 4. 設定ファイルのバックアップ
 echo "設定ファイルをバックアップ中..."
 if [ -f ".env" ]; then
   cp .env "$BACKUP_DIR/"
