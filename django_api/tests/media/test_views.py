@@ -176,3 +176,234 @@ class TestZipToPdfView:
 
         assert response.status_code == status.HTTP_200_OK
         assert response['Content-Type'] == 'application/pdf'
+
+
+@pytest.mark.api
+class TestImageConvertView:
+    """ImageConvertViewのテストクラス"""
+
+    def test_convert_jpg_to_png_success(self, authenticated_client, create_test_image):
+        """JPG画像をPNGに変換できること"""
+        jpg_image = create_test_image(format='JPEG', color='red')
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=jpg_image,
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'png'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/png'
+        assert 'Content-Disposition' in response
+        assert 'attachment' in response['Content-Disposition']
+        # ファイル名が [YYYYMMDD].[width]x[height].png の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.png'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+        # PNG画像のシグネチャを確認
+        assert response.content.startswith(b'\x89PNG')
+
+    def test_convert_png_to_jpg_success(self, authenticated_client, create_test_image):
+        """PNG画像をJPGに変換できること"""
+        png_image = create_test_image(format='PNG', color='blue')
+        uploaded_file = SimpleUploadedFile(
+            name='test.png',
+            content=png_image,
+            content_type='image/png'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'jpg'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/jpeg'
+        # ファイル名が [YYYYMMDD].[width]x[height].jpg の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+        # JPEG画像のシグネチャを確認
+        assert response.content.startswith(b'\xff\xd8\xff')
+
+    def test_convert_jpg_to_webp_success(self, authenticated_client, create_test_image):
+        """JPG画像をWebPに変換できること"""
+        jpg_image = create_test_image(format='JPEG', color='green')
+        uploaded_file = SimpleUploadedFile(
+            name='image.jpg',
+            content=jpg_image,
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'webp'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/webp'
+        # ファイル名が [YYYYMMDD].[width]x[height].webp の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.webp'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+        # WebP画像のシグネチャを確認
+        assert b'WEBP' in response.content[:20]
+
+    def test_convert_png_to_tiff_success(self, authenticated_client, create_test_image):
+        """PNG画像をTIFFに変換できること"""
+        png_image = create_test_image(format='PNG', color='yellow')
+        uploaded_file = SimpleUploadedFile(
+            name='photo.png',
+            content=png_image,
+            content_type='image/png'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'tiff'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/tiff'
+        # ファイル名が [YYYYMMDD].[width]x[height].tiff の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.tiff'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+        # TIFF画像のシグネチャを確認（リトルエンディアン or ビッグエンディアン）
+        assert response.content.startswith((b'II\x2a\x00', b'MM\x00\x2a'))
+
+    def test_convert_webp_to_jpg_success(self, authenticated_client, create_test_image):
+        """WebP画像をJPGに変換できること"""
+        webp_image = create_test_image(format='WEBP', color='purple')
+        uploaded_file = SimpleUploadedFile(
+            name='sample.webp',
+            content=webp_image,
+            content_type='image/webp'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'jpg'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/jpeg'
+        # ファイル名が [YYYYMMDD].[width]x[height].jpg の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.jpg'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+
+    def test_convert_tiff_to_png_success(self, authenticated_client):
+        """TIFF画像をPNGに変換できること"""
+        # TIFFファイルを作成
+        tiff_img = Image.new('RGB', (100, 100), 'orange')
+        tiff_io = io.BytesIO()
+        tiff_img.save(tiff_io, format='TIFF')
+        tiff_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='document.tiff',
+            content=tiff_io.read(),
+            content_type='image/tiff'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'png'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/png'
+        # ファイル名が [YYYYMMDD].[width]x[height].png の形式であることを確認
+        import re
+        filename_pattern = r'\d{8}\.\d+x\d+\.png'
+        assert re.search(filename_pattern, response['Content-Disposition'])
+
+    def test_convert_without_file_fails(self, authenticated_client):
+        """ファイルなしでリクエストした場合はエラーになること"""
+        payload = {'output_format': 'png'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+
+    def test_convert_without_output_format_fails(self, authenticated_client, create_test_image):
+        """出力形式を指定しない場合はエラーになること"""
+        jpg_image = create_test_image(format='JPEG', color='red')
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=jpg_image,
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+
+    def test_convert_with_invalid_output_format_fails(self, authenticated_client, create_test_image):
+        """サポートされていない出力形式を指定した場合はエラーになること"""
+        jpg_image = create_test_image(format='JPEG', color='red')
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=jpg_image,
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'bmp'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert 'サポートされていない' in response.data['error']
+
+    def test_convert_invalid_image_file_fails(self, authenticated_client, mock_file):
+        """無効な画像ファイルの場合はエラーになること"""
+        payload = {'file': mock_file, 'output_format': 'png'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+
+    def test_convert_without_authentication_fails(self, api_client, create_test_image):
+        """認証なしで画像変換が失敗すること"""
+        jpg_image = create_test_image(format='JPEG', color='red')
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=jpg_image,
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'png'}
+        response = api_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_convert_filename_format_with_dimensions(self, authenticated_client, create_test_image):
+        """変換後のファイル名が画像サイズを含むこと"""
+        # 特定のサイズの画像を作成
+        img = Image.new('RGB', (1920, 1080), 'red')
+        img_io = io.BytesIO()
+        img.save(img_io, format='JPEG')
+        img_io.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=img_io.read(),
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'png'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        # ファイル名に1920x1080が含まれることを確認
+        assert '1920x1080' in response['Content-Disposition']
+
+    def test_convert_handles_uppercase_output_format(self, authenticated_client, create_test_image):
+        """大文字の出力形式も受け入れられること"""
+        jpg_image = create_test_image(format='JPEG', color='red')
+        uploaded_file = SimpleUploadedFile(
+            name='test.jpg',
+            content=jpg_image,
+            content_type='image/jpeg'
+        )
+
+        payload = {'file': uploaded_file, 'output_format': 'PNG'}
+        response = authenticated_client.post('/media/convert-image/', payload, format='multipart')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'image/png'
