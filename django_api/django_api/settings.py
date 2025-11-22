@@ -279,6 +279,7 @@ SPECTACULAR_SETTINGS = {
         {'name': 'auth', 'description': '認証関連のAPI'},
         {'name': 'users', 'description': 'ユーザー管理API'},
         {'name': 'onedrive', 'description': 'OneDrive連携API'},
+        {'name': 'media', 'description': '画像処理などのメディア関連API'},
     ],
 }
 
