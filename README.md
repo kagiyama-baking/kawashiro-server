@@ -14,6 +14,7 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
 -   🧪 **テスト環境**: 開発・検証用のテスト Web サーバー内蔵
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
+-   🐍 **Django API**: OneDrive バックアップ機能を提供する REST API
 
 ## 特徴
 
@@ -32,6 +33,7 @@ kawashiro-server/
 ├── .github/                    # GitHub設定
 │   ├── workflows/              # GitHub Actionsワークフロー
 │   │   ├── build.yml           # ビルド・プッシュ（develop）
+│   │   ├── deploy.yml          # デプロイ（main）
 │   │   └── pr-checks.yml       # PRチェック
 │   └── copilot-instructions.md # Copilotレビュー設定
 │
@@ -51,6 +53,27 @@ kawashiro-server/
 │   └── html/                   # 静的ファイル
 │       └── index.html          # テストページ
 │
+├── django_api/                 # Django REST API
+│   ├── Dockerfile              # Django APIコンテナ
+│   ├── pyproject.toml          # Python依存関係
+│   ├── manage.py               # Djangoコマンド
+│   ├── pytest.ini              # pytestの設定
+│   ├── django_api/             # メインプロジェクト
+│   │   ├── settings.py         # Django設定
+│   │   ├── urls.py             # URLルーティング
+│   │   └── wsgi.py             # WSGIエントリーポイント
+│   ├── user/                   # ユーザー認証アプリ
+│   ├── onedrive/               # OneDrive統合アプリ
+│   ├── core/                   # 共通コアアプリ
+│   └── tests/                  # テストコード
+│
+├── scripts/                    # 運用スクリプト
+│   ├── immich-backup.sh        # Immichバックアップ
+│   └── immich-restore.sh       # Immichリストア
+│
+├── docs/                       # ドキュメント
+│   └── archtecture.drawio      # アーキテクチャ図
+│
 └── volumes/                    # 永続化データ
     ├── reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
@@ -65,7 +88,7 @@ kawashiro-server/
 
 ### Reverse Proxy
 
-各コンテナへ、Web アクセスは、Reverse Proxy に集約する。  
+各コンテナへ、Web アクセスは、Reverse Proxy に集約する。
 Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付け、
 サブドメインに応じて対応するコンテナ側ポートへ転送する。
 
@@ -84,6 +107,10 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
       │                         ┌───────────────┐
       ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
       │                         │ (Server)      │
+      │                         └───────────────┘
+      │                         ┌───────────────┐
+      ├── api.example.com ───►  │ Django API    │ :8000 (コンテナ)
+      │                         │ (Gunicorn)    │
       │                         └───────────────┘
       │                         ┌───────────────┐
       └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
@@ -158,17 +185,22 @@ IMMICH_LOG_LEVEL=log         # ログレベル (verbose/log/warn/error)
 TZ=Asia/Tokyo               # システムタイムゾーン
 ```
 
-### オプションの環境変数
+### Django API設定
+
+Django APIを使用する場合は、`django_api/.env`ファイルに以下の環境変数を設定してください：
 
 ```bash
-# Django API設定（バックアップ機能を使用する場合）
-DJANGO_SECRET_KEY=your-secret-key-here  # Django秘密鍵
-DJANGO_DEBUG=False                      # デバッグモード（本番環境では必ずFalse）
-DJANGO_ALLOWED_HOSTS=api.example.com    # 許可するホスト名
+# Django設定（必須）
+SECRET_KEY=your-secret-key-here         # Django秘密鍵（本番環境では必ず変更）
+DEBUG=False                             # デバッグモード（本番環境では必ずFalse）
+ALLOWED_HOSTS=api.example.com,localhost # 許可するホスト名（カンマ区切り）
 
-# リバースプロキシ設定
-NGINX_WORKER_PROCESSES=auto             # Nginxワーカープロセス数
-NGINX_WORKER_CONNECTIONS=1024           # ワーカーあたりの最大接続数
+# OneDrive API設定（バックアップ機能を使用する場合）
+AZURE_TENANT_ID=your-tenant-id          # Azure ADテナントID
+AZURE_CLIENT_ID=your-client-id          # Azure ADアプリクライアントID
+AZURE_CERT_THUMBPRINT=your-thumbprint   # 証明書のサムプリント
+AZURE_CERT_KEY_FILE=../secrets/django_api_graph_key.pem  # 秘密鍵ファイルパス
+TARGET_USER=backup@example.com          # OneDriveターゲットユーザー
 ```
 
 ## 使用方法
