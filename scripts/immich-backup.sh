@@ -86,10 +86,6 @@ echo "✓ MLモデルキャッシュバックアップ完了"
 
 # 6. 設定ファイルのバックアップ
 echo "設定ファイルをバックアップ中..."
-if [ -f "docker-compose.yml" ]; then
-  cp docker-compose.yml "$BACKUP_DIR/"
-fi
-
 if [ -f ".env" ]; then
   cp .env "$BACKUP_DIR/"
 fi

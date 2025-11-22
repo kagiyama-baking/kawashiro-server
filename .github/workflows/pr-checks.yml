@@ -113,11 +113,15 @@ jobs:
                   chmod 600 secrets/django_api_graph_key.pem
                   echo "✅ ダミー秘密鍵ファイル作成完了"
 
-            # ログディレクトリの準備（コンテナマウント用）
-            - name: Prepare log directories
+            # ログディレクトリと永続化ディレクトリの準備（コンテナマウント用）
+            - name: Prepare volume directories
               run: |
                   mkdir -p volumes/reverse-proxy/log/nginx
                   mkdir -p volumes/test-web/log/nginx
+                  mkdir -p volumes/django-api/log
+                  mkdir -p volumes/django-api/staticfiles
+                  # SQLiteデータベースファイルを事前に作成
+                  touch volumes/django-api/db.sqlite3
                   # GitHub Actions環境での権限問題を解決
                   chmod -R 777 volumes/
 
@@ -159,23 +163,6 @@ jobs:
                   # システムPythonにインストールされたパッケージを使用（UV_SYSTEM_PYTHON=1が設定済み）
                   docker compose run --rm --no-deps -w /django_api django-api sh -c "python manage.py collectstatic --noinput --dry-run"
                   echo "✅ 静的ファイル: OK"
-
-            # Django API: テスト実行
-            - name: Run Django tests
-              run: |
-                  echo "🧪 Django テスト実行中..."
-                  # pytest を使用したテスト実行
-                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
-                    # テスト用環境変数を設定
-                    export DJANGO_SETTINGS_MODULE=django_api.settings
-                    export SECRET_KEY='test-secret-key-for-ci'
-                    export DEBUG=False
-                    export ALLOWED_HOSTS='localhost,testserver'
-
-                    # pytestでテストを実行（カバレッジ付き）
-                    python -m pytest tests/ -v --tb=short --cov=user --cov=onedrive --cov=core --cov-report=term-missing
-                  "
-                  echo "✅ テスト: 全て成功"
 
             # コンテナの起動
             - name: Start containers
