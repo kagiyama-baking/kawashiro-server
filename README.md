@@ -14,6 +14,7 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
 -   🧪 **テスト環境**: 開発・検証用のテスト Web サーバー内蔵
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
+-   🐍 **Django API**: OneDrive バックアップ機能を提供する REST API
 
 ## 特徴
 
@@ -32,6 +33,7 @@ kawashiro-server/
 ├── .github/                    # GitHub設定
 │   ├── workflows/              # GitHub Actionsワークフロー
 │   │   ├── build.yml           # ビルド・プッシュ（develop）
+│   │   ├── deploy.yml          # デプロイ（main）
 │   │   └── pr-checks.yml       # PRチェック
 │   └── copilot-instructions.md # Copilotレビュー設定
 │
@@ -51,6 +53,27 @@ kawashiro-server/
 │   └── html/                   # 静的ファイル
 │       └── index.html          # テストページ
 │
+├── django_api/                 # Django REST API
+│   ├── Dockerfile              # Django APIコンテナ
+│   ├── pyproject.toml          # Python依存関係
+│   ├── manage.py               # Djangoコマンド
+│   ├── pytest.ini              # pytestの設定
+│   ├── django_api/             # メインプロジェクト
+│   │   ├── settings.py         # Django設定
+│   │   ├── urls.py             # URLルーティング
+│   │   └── wsgi.py             # WSGIエントリーポイント
+│   ├── user/                   # ユーザー認証アプリ
+│   ├── onedrive/               # OneDrive統合アプリ
+│   ├── core/                   # 共通コアアプリ
+│   └── tests/                  # テストコード
+│
+├── scripts/                    # 運用スクリプト
+│   ├── immich-backup.sh        # Immichバックアップ
+│   └── immich-restore.sh       # Immichリストア
+│
+├── docs/                       # ドキュメント
+│   └── archtecture.drawio      # アーキテクチャ図
+│
 └── volumes/                    # 永続化データ
     ├── reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
@@ -65,7 +88,7 @@ kawashiro-server/
 
 ### Reverse Proxy
 
-各コンテナへ、Web アクセスは、Reverse Proxy に集約する。  
+各コンテナへ、Web アクセスは、Reverse Proxy に集約する。
 Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付け、
 サブドメインに応じて対応するコンテナ側ポートへ転送する。
 
@@ -84,6 +107,10 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
       │                         ┌───────────────┐
       ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
       │                         │ (Server)      │
+      │                         └───────────────┘
+      │                         ┌───────────────┐
+      ├── api.example.com ───►  │ Django API    │ :8000 (コンテナ)
+      │                         │ (Gunicorn)    │
       │                         └───────────────┘
       │                         ┌───────────────┐
       └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
@@ -105,7 +132,17 @@ git clone https://github.com/kagiyama-baking/kawashiro-server.git
 cd kawashiro-server
 ```
 
-### 2. サーバーの起動
+### 2. 環境変数の設定
+
+```bash
+# 環境変数ファイルの作成
+cp .env.example .env
+
+# .envファイルを編集して必要な値を設定
+nano .env
+```
+
+### 3. サーバーの起動
 
 ```bash
 # すべてのサービスを起動
@@ -115,7 +152,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-### 3. 動作確認
+### 4. 動作確認
 
 ```bash
 # ヘルスチェック
@@ -126,6 +163,44 @@ curl -H "Host: test.localhost" http://localhost/
 
 # Immich（サブドメイン経由）
 curl -H "Host: album.localhost" http://localhost/
+```
+
+## 環境変数設定
+
+### 必須の環境変数
+
+`.env`ファイルに以下の環境変数を設定してください：
+
+```bash
+# PostgreSQL設定（Immich用）
+DB_USERNAME=immich          # PostgreSQLユーザー名
+DB_PASSWORD=strongpassword  # PostgreSQLパスワード（必ず変更してください）
+DB_DATABASE_NAME=immich      # データベース名
+
+# Immichサーバー設定
+PUBLIC_SERVER_URL=http://album.example.com  # 本番環境では実際のドメインに変更
+IMMICH_LOG_LEVEL=log         # ログレベル (verbose/log/warn/error)
+
+# タイムゾーン
+TZ=Asia/Tokyo               # システムタイムゾーン
+```
+
+### Django API設定
+
+Django APIを使用する場合は、`django_api/.env`ファイルに以下の環境変数を設定してください：
+
+```bash
+# Django設定（必須）
+SECRET_KEY=your-secret-key-here         # Django秘密鍵（本番環境では必ず変更）
+DEBUG=False                             # デバッグモード（本番環境では必ずFalse）
+ALLOWED_HOSTS=api.example.com,localhost # 許可するホスト名（カンマ区切り）
+
+# OneDrive API設定（バックアップ機能を使用する場合）
+AZURE_TENANT_ID=your-tenant-id          # Azure ADテナントID
+AZURE_CLIENT_ID=your-client-id          # Azure ADアプリクライアントID
+AZURE_CERT_THUMBPRINT=your-thumbprint   # 証明書のサムプリント
+AZURE_CERT_KEY_FILE=../secrets/django_api_graph_key.pem  # 秘密鍵ファイルパス
+TARGET_USER=backup@example.com          # OneDriveターゲットユーザー
 ```
 
 ## 使用方法
@@ -173,63 +248,257 @@ docker compose restart reverse-proxy
 
 ## CI/CD
 
+### デプロイメントパイプライン
+
+本プロジェクトでは、GitHub Actionsを活用した3段階のデプロイメントパイプラインを構築しています。
+
 ### GitHub Actions ワークフロー
 
-#### ビルド・プッシュ（develop ブランチ）
+```mermaid
+flowchart LR
 
-develop ブランチへのプッシュ時に自動実行：
+  %% 🔹 開発フェーズ（PR → develop）
+  subgraph Dev["🔧 開発フェーズ"]
+    direction TB
+    A[feature/* ブランチ<br/>push & PR]
+    B[PR to develop]
+    C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Docker compose build<br/>・Nginx構文チェック<br/>・Django migrate<br/>・ヘルスチェック]
+    D[✅ develop へマージ]
 
-1. マルチアーキテクチャビルド（amd64, arm64）
-2. GitHub Container Registry へプッシュ
-3. SBOM（ソフトウェア部品表）生成
-4. ビルド証明（Build Provenance）の添付
+    A --> B
+    B --> C
+    C --> D
+  end
 
-```bash
-# イメージの取得
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/test-web:staging
+  %% 🔹 ステージング（develop push）
+  subgraph Stg["📦 ステージング"]
+    direction TB
+    E[develop push]
+    F[build.yml<br/>━━━━━━━━━━<br/>・Multi-arch build<br/>・GHCR へ push<br/>・タグ: staging<br/>・SBOM生成]
+
+    E --> F
+  end
+
+  %% 🔹 本番（main / 手動デプロイ）
+  subgraph Prod["🚀 本番デプロイ"]
+    direction TB
+    G[develop → main<br/>または<br/>workflow_dispatch]
+    H[deploy.yml<br/>━━━━━━━━━━<br/>・イメージ確認<br/>・タグ付け<br/>・アーティファクト生成]
+    I[本番サーバで<br/>デプロイ実行]
+
+    G --> H
+    H --> I
+  end
+
+  %% フェーズ間の接続
+  Dev -.->|develop branch| Stg
+  Stg -.->|staging images| Prod
+
+  %% スタイリング
+  classDef devClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+  classDef stgClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+  classDef prodClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+
+  class A,B,C,D devClass
+  class E,F stgClass
+  class G,H,I prodClass
 ```
 
-#### PR チェック
+### ワークフロー詳細
 
-Pull Request 作成時に自動実行：
+#### 1. PRチェック (`pr-checks.yml`)
 
-1. Docker イメージのビルド
-2. Nginx 設定の構文チェック
-3. コンテナの起動確認
-4. リバースプロキシ機能テスト
+**トリガー条件:**
+- `develop`ブランチへのPull Request作成・更新時
+- 手動実行（`workflow_dispatch`）
+
+**実行内容:**
+```yaml
+# 主要なチェック項目
+- Docker Composeビルド検証
+- Nginx設定構文チェック
+- Django APIのマイグレーションテスト
+- 静的ファイル収集テスト
+- ヘルスチェックエンドポイント確認
+- サブドメインルーティング機能テスト
+```
+
+**タイムアウト:** 10分
+
+#### 2. ビルド・プッシュ (`build.yml`)
+
+**トリガー条件:**
+- `develop`ブランチへのプッシュ時
+- 手動実行（`workflow_dispatch`）
+
+**実行内容:**
+```yaml
+# ビルド対象サービス
+services:
+  - reverse-proxy
+  - test-web
+
+# 各サービスに対して実行
+- マルチアーキテクチャビルド (linux/amd64, linux/arm64)
+- GitHub Container Registry (GHCR) へプッシュ
+- SBOM (Software Bill of Materials) 生成
+- Build Provenance (SLSA Level 3) 添付
+- イメージ署名 (Cosign)
+```
+
+**生成されるタグ:**
+- `staging` - 最新のステージングビルド
+- `sha-<7文字のSHA>` - コミット固有のタグ
+
+**タイムアウト:** 30分
+
+#### 3. 本番デプロイ (`deploy.yml`)
+
+**トリガー条件:**
+- `main`ブランチへのプッシュ時
+- 手動実行（任意のタグを指定可能）
+
+**実行内容:**
+```yaml
+# デプロイフロー
+1. verify-images: イメージの存在確認
+2. tag-release: 本番タグの付与（mainブランチのみ）
+3. deployment-info: デプロイ情報の生成
+
+# 生成されるアーティファクト
+- deployment-info.json    # デプロイメント詳細情報
+- deployment-instructions.md  # デプロイ手順書
+```
+
+**本番タグ:**
+- `release` - 本番環境用の最新リリース
+- `latest` - 最新版（互換性のため）
+
+### イメージのセキュリティ
+
+#### 署名と検証
+
+```bash
+# イメージの署名を検証
+cosign verify \
+  --certificate-identity-regexp "https://github.com/kagiyama-baking/kawashiro-server" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
+
+# SBOMの取得
+cosign download sbom ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
+
+# Build Provenanceの確認
+gh attestation verify oci://ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging \
+  --owner kagiyama-baking
+```
+
+#### 脆弱性スキャン
+
+```bash
+# Trivyを使用したスキャン
+trivy image ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
+
+# Dockerスキャン
+docker scout cves ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:staging
+```
+
+### ブランチ保護ルール
+
+#### developブランチ
+- PRが必須
+- ステータスチェック必須（pr-checks）
+- レビュー承認が必要
+- 直接プッシュ禁止
+
+#### mainブランチ
+- PRが必須
+- developからのマージのみ許可
+- 管理者承認が必要
+- タグ付けは自動化
+
+### CI/CD環境変数
+
+GitHub Secretsに設定が必要な環境変数：
+
+```yaml
+# 必須（自動設定）
+GITHUB_TOKEN: ${{ github.token }}
+
+# オプション（カスタムレジストリ使用時）
+REGISTRY_USERNAME: your-username
+REGISTRY_PASSWORD: your-password
+```
+
+### デプロイメント通知
+
+デプロイ完了時にGitHub Actionsのサマリーに以下が表示されます：
+
+```markdown
+## 📦 Deployment Information
+
+### Images
+- reverse-proxy: `ghcr.io/.../reverse-proxy:release`
+- test-web: `ghcr.io/.../test-web:release`
+
+### Deployment Instructions
+1. Pull the latest images
+2. Update docker-compose-prod.yml
+3. Restart services
+```
+
+### ロールバック手順
+
+問題が発生した場合のロールバック：
+
+```bash
+# 特定のSHAタグを使用してロールバック
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:sha-abc1234
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/test-web:sha-abc1234
+
+# docker-compose-prod.ymlを更新してタグを指定
+vim docker-compose-prod.yml
+
+# サービスを再起動
+docker compose -f docker-compose-prod.yml up -d
+```
 
 ### コンテナイメージのタグ戦略
 
--   `staging`: develop ブランチの最新ビルド
--   `release`: 本番環境用の安定版
--   `sha-<commit>`: 特定コミットのビルド
+| タグ | 用途 | 更新タイミング |
+|-----|------|--------------|
+| `staging` | ステージング環境 | developブランチへのプッシュ時 |
+| `release` | 本番環境 | mainブランチへのマージ時 |
+| `latest` | 最新版（互換性） | mainブランチへのマージ時 |
+| `sha-<commit>` | 特定バージョン | 各ビルド時 |
 
 ## 本番環境へのデプロイ
 
-本番環境では`docker-compose-prod.yml`を使用します。このファイルは、GitHub Container Registryにプッシュされたリリースイメージを使用します。
+本番環境では`docker-compose-prod.yml`を使用します。このファイルは、GitHub Container Registry にプッシュされたリリースイメージを使用します。
 
 ### 初回セットアップ
 
 1. **必要なファイルの準備**
-   ```bash
-   # リポジトリのクローン
-   git clone https://github.com/kagiyama-baking/kawashiro-server.git
-   cd kawashiro-server
 
-   # .envファイルの作成（Immich用の環境変数）
-   cp .env.example .env
-   # 必要に応じて.envファイルを編集
-   ```
+    ```bash
+    # リポジトリのクローン
+    git clone https://github.com/kagiyama-baking/kawashiro-server.git
+    cd kawashiro-server
+
+    # .envファイルの作成（Immich用の環境変数）
+    cp .env.example .env
+    # 必要に応じて.envファイルを編集
+    ```
 
 2. **イメージの取得と起動**
-   ```bash
-   # 最新のイメージをプル
-   docker compose -f docker-compose-prod.yml pull
 
-   # サービスの起動
-   docker compose -f docker-compose-prod.yml up -d
-   ```
+    ```bash
+    # 最新のイメージをプル
+    docker compose -f docker-compose-prod.yml pull
+
+    # サービスの起動
+    docker compose -f docker-compose-prod.yml up -d
+    ```
 
 ### 運用コマンド
 
@@ -253,14 +522,14 @@ docker compose -f docker-compose-prod.yml ps
 
 ### 本番環境で使用されるイメージ
 
-- `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
-- `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
+-   `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
+-   `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
 
 ## データのバックアップ・リストア
 
-### Immichボリュームデータのコピー（開発→本番）
+### Immich ボリュームデータのコピー（開発 → 本番）
 
-開発環境から本番環境へImmichのデータをコピーする際は、以下のコマンドを使用します。
+開発環境から本番環境へ Immich のデータをコピーする際は、以下のコマンドを使用します。
 
 #### 1. ホストマシン上のボリュームディレクトリから直接コピー
 
@@ -272,9 +541,9 @@ rsync -avz --progress ./volumes/immich/data/ <本番サーバーユーザー>@<�
 # rsync -avz --progress ./volumes/immich/data/ user@192.168.1.100:~/Repository/kawashiro-server/volumes/immich/data/
 ```
 
-#### 2. Dockerボリュームから本番環境へコピー
+#### 2. Docker ボリュームから本番環境へコピー
 
-名前付きボリューム（PostgreSQL、Redis、MLキャッシュ）の場合：
+名前付きボリューム（PostgreSQL、Redis、ML キャッシュ）の場合：
 
 ```bash
 # PostgreSQLデータのバックアップとコピー
@@ -299,7 +568,7 @@ scp ./backup/immich-ml-cache.tar.gz <本番サーバーユーザー>@<本番サ�
 
 #### 3. 一括コピースクリプト
 
-すべてのImmich関連データを一括でコピーする場合：
+すべての Immich 関連データを一括でコピーする場合：
 
 ```bash
 #!/bin/bash
@@ -344,7 +613,258 @@ echo "docker compose -f docker-compose-prod.yml up -d"
 
 ### 注意事項
 
-- コピー前に本番環境のImmichサービスを停止することを推奨します
-- データベースの整合性を保つため、PostgreSQLとRedisのデータは同時にバックアップしてください
-- 大量のデータがある場合、`rsync`の`--bwlimit`オプションで帯域制限をかけることを検討してください
-- 本番環境へのコピー前に必ず現在のデータをバックアップしてください
+-   コピー前に本番環境の Immich サービスを停止することを推奨します
+-   データベースの整合性を保つため、PostgreSQL と Redis のデータは同時にバックアップしてください
+-   大量のデータがある場合、`rsync`の`--bwlimit`オプションで帯域制限をかけることを検討してください
+-   本番環境へのコピー前に必ず現在のデータをバックアップしてください
+
+## トラブルシューティング
+
+### よくある問題と解決方法
+
+#### 1. コンテナが起動しない
+
+```bash
+# コンテナの状態を確認
+docker compose ps
+
+# 詳細なログを確認
+docker compose logs -f [サービス名]
+
+# 原因と対処法
+# - ポート競合: 他のサービスが80番ポートを使用していないか確認
+#   sudo lsof -i :80
+# - メモリ不足: Docker のメモリ制限を確認
+#   docker system info | grep Memory
+```
+
+#### 2. リバースプロキシが動作しない
+
+```bash
+# Nginx設定の構文チェック
+docker compose exec reverse-proxy nginx -t
+
+# 設定ファイルの再読み込み
+docker compose exec reverse-proxy nginx -s reload
+
+# DNSの確認（サブドメインが解決できるか）
+nslookup test.example.com
+```
+
+#### 3. Immichにアクセスできない
+
+```bash
+# Immich関連コンテナの状態確認
+docker compose ps | grep immich
+
+# データベース接続の確認
+docker compose exec immich-postgres psql -U immich -d immich -c "SELECT version();"
+
+# Redis接続の確認
+docker compose exec immich-redis redis-cli ping
+```
+
+#### 4. ディスク容量不足
+
+```bash
+# Dockerが使用している容量を確認
+docker system df
+
+# 不要なイメージ・コンテナを削除
+docker system prune -a --volumes
+
+# ログファイルのサイズを確認
+du -sh ./volumes/*/log/
+```
+
+#### 5. パーミッションエラー
+
+```bash
+# ボリュームディレクトリの所有者を修正
+sudo chown -R $USER:$USER ./volumes/
+
+# 実行権限を付与（スクリプトの場合）
+chmod +x ./scripts/*.sh
+```
+
+### ログの確認方法
+
+```bash
+# 全サービスのログをリアルタイム表示
+docker compose logs -f
+
+# 特定期間のログを表示（最新100行）
+docker compose logs --tail=100
+
+# エラーログのみ抽出
+docker compose logs 2>&1 | grep -i error
+
+# ログをファイルに保存
+docker compose logs > logs_$(date +%Y%m%d_%H%M%S).txt
+```
+
+## セキュリティ設定
+
+### 推奨されるセキュリティ対策
+
+#### 1. ファイアウォール設定
+
+```bash
+# UFWを使用した例
+sudo ufw allow 22/tcp    # SSH
+sudo ufw allow 80/tcp    # HTTP
+sudo ufw allow 443/tcp   # HTTPS（SSL使用時）
+sudo ufw enable
+```
+
+#### 2. SSL/TLS証明書の設定
+
+Let's Encryptを使用した無料SSL証明書の設定：
+
+```bash
+# Certbotのインストール
+sudo apt-get update
+sudo apt-get install certbot
+
+# 証明書の取得
+sudo certbot certonly --standalone -d example.com -d *.example.com
+
+# Nginx設定に証明書を追加（reverse_proxy/conf.d/default.conf）
+# server {
+#     listen 443 ssl;
+#     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+# }
+```
+
+#### 3. 環境変数のセキュリティ
+
+```bash
+# .envファイルの権限を制限
+chmod 600 .env
+
+# Gitに.envファイルが含まれていないことを確認
+git status --ignored
+```
+
+#### 4. Docker セキュリティ
+
+```bash
+# Dockerデーモンのセキュリティオプション
+# /etc/docker/daemon.json
+{
+  "live-restore": true,
+  "userland-proxy": false,
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+```
+
+#### 5. 定期的なアップデート
+
+```bash
+# システムパッケージのアップデート
+sudo apt-get update && sudo apt-get upgrade
+
+# Dockerイメージの更新
+docker compose pull
+docker compose up -d
+
+# 脆弱性スキャン
+docker scan reverse-proxy
+```
+
+## 開発者向けガイド
+
+### 開発環境のセットアップ
+
+```bash
+# 開発用ブランチの作成
+git checkout -b feature/your-feature-name
+
+# 開発用のdocker-compose.override.ymlを作成
+cat << EOF > docker-compose.override.yml
+services:
+  reverse-proxy:
+    build:
+      context: ./reverse_proxy
+    volumes:
+      - ./reverse_proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./reverse_proxy/conf.d:/etc/nginx/conf.d:ro
+EOF
+```
+
+### テストの実行
+
+```bash
+# 構文チェック
+docker compose exec reverse-proxy nginx -t
+
+# ヘルスチェック
+./scripts/health-check.sh
+
+# 負荷テスト（Apache Benchを使用）
+ab -n 1000 -c 10 http://localhost/
+```
+
+### 新しいサービスの追加
+
+1. `docker-compose.yml`にサービス定義を追加
+2. リバースプロキシ設定を更新（`reverse_proxy/conf.d/`）
+3. 必要に応じて環境変数を追加（`.env.example`）
+4. ドキュメントを更新（README.md）
+
+### デバッグ
+
+```bash
+# コンテナ内でシェルを実行
+docker compose exec [サービス名] /bin/sh
+
+# ネットワークの確認
+docker network inspect kawashiro-server_default
+
+# プロセスの確認
+docker compose exec [サービス名] ps aux
+```
+
+## 貢献ガイドライン
+
+### プルリクエストの作成
+
+1. **Issue の作成**: バグ報告や機能提案は、まず Issue を作成してください
+2. **ブランチの命名規則**:
+   - 機能追加: `feature/機能名`
+   - バグ修正: `bugfix/バグ名`
+   - ドキュメント: `docs/内容`
+3. **コミットメッセージ**: 日本語で簡潔に変更内容を記載
+4. **テスト**: PR作成前に必ずローカルでテストを実行
+
+### コーディング規約
+
+- Dockerfileはベストプラクティスに従う
+- Nginx設定はインデントを統一（スペース4つ）
+- 環境変数は大文字とアンダースコア
+- ドキュメントは日本語で記述
+
+## ライセンス
+
+このプロジェクトはMITライセンスの下で公開されています。詳細は[LICENSE](LICENSE)ファイルを参照してください。
+
+## サポート
+
+- **Issue**: [GitHub Issues](https://github.com/kagiyama-baking/kawashiro-server/issues)
+- **Discussion**: [GitHub Discussions](https://github.com/kagiyama-baking/kawashiro-server/discussions)
+- **Wiki**: [プロジェクトWiki](https://github.com/kagiyama-baking/kawashiro-server/wiki)
+
+## 謝辞
+
+このプロジェクトは以下のオープンソースプロジェクトを使用しています：
+
+- [Immich](https://github.com/immich-app/immich) - セルフホスト型写真管理プラットフォーム
+- [Nginx](https://nginx.org/) - 高性能Webサーバー
+- [Docker](https://www.docker.com/) - コンテナ化プラットフォーム
+- [PostgreSQL](https://www.postgresql.org/) - オープンソースデータベース
+- [Redis](https://redis.io/) - インメモリデータストア

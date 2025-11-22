@@ -17,13 +17,26 @@ django_apiプロジェクトのURL設定
 
 from django.contrib import admin
 from django.urls import include, path
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView
+)
 
 # プロジェクト全体のURLパターン定義
 urlpatterns = [
     # Django管理画面のURL
     path('admin/', admin.site.urls),
+
+    # API Documentation (OpenAPI/Swagger)
+    path('schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Swagger UI (メインのドキュメント)
+    path('swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    # Redoc UI (alternative documentation UI)
+    path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
     # ユーザー関連APIのURL（user.urlsにルーティング）
-    path('api/user/', include('user.urls')),
+    path('user/', include('user.urls')),
     # OneDrive関連APIのURL（onedrive.urlsにルーティング）
-    path('api/onedrive/', include('onedrive.urls')),
+    path('onedrive/', include('onedrive.urls')),
 ]

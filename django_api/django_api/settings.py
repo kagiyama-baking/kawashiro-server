@@ -33,8 +33,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # クイックスタート開発設定 - 本番環境には不適切
 # 参照: https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# 環境変数から取得
+# 環境変数から取得（必須）
 SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    raise ValueError(
+        'SECRET_KEY environment variable is not set. '
+        'Please set SECRET_KEY in your .env file (例: .envファイルに「SECRET_KEY=your-secret-key-here」を追加してください)。'
+    )
 
 # DEBUGモード（環境変数が'True'の場合のみTrue）
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
@@ -62,6 +67,7 @@ INSTALLED_APPS = [
     # サードパーティアプリケーション
     'rest_framework',  # Django REST framework
     'rest_framework.authtoken',  # トークン認証
+    'drf_spectacular',  # OpenAPI/Swagger documentation
     # カスタムアプリケーション
     'core',  # ユーザー認証などのコア機能
     'user',  # ユーザーモデルのApp
@@ -179,10 +185,10 @@ USE_TZ = True
 # 参照: https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 # 静的ファイル（CSS、JavaScript、画像）のURL
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # 本番環境で静的ファイルを集約するディレクトリ
-# STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # 開発環境用の追加静的ファイルディレクトリ
 # STATICFILES_DIRS = [
@@ -202,6 +208,66 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # カスタムユーザーモデルの指定
 # アプリ名.モデル名の形式で指定
 AUTH_USER_MODEL = 'core.User'
+
+# ============================================================
+# REST Framework設定
+# ============================================================
+REST_FRAMEWORK = {
+    # デフォルトのAPIスキーマクラスをdrf-spectacularに設定
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # デフォルトの認証クラス
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    # デフォルトのパーミッションクラス
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+# ============================================================
+# drf-spectacular設定 (OpenAPI/Swagger)
+# ============================================================
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Kawashiro Server API',
+    'DESCRIPTION': 'Kawashiro Server Django API Documentation',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,  # スキーマエンドポイントを含めない
+    # APIのセキュリティスキーマ定義
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': r'/',
+    # Swagger UIの設定
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,  # 認証情報を保持
+        'displayOperationId': False,
+        'defaultModelsExpandDepth': 2,
+        'defaultModelExpandDepth': 2,
+    },
+    # セキュリティ定義
+    'SECURITY': [
+        {
+            'TokenAuth': []
+        }
+    ],
+    'APPEND_COMPONENTS': {
+        'securitySchemes': {
+            'TokenAuth': {
+                'type': 'apiKey',
+                'in': 'header',
+                'name': 'Authorization',
+                'description': 'Token-based authentication with required prefix "Token"',
+            }
+        }
+    },
+    # タグの説明
+    'TAGS': [
+        {'name': 'auth', 'description': '認証関連のAPI'},
+        {'name': 'users', 'description': 'ユーザー管理API'},
+        {'name': 'onedrive', 'description': 'OneDrive連携API'},
+    ],
+}
 
 # ============================================================
 # Microsoft Graph API設定

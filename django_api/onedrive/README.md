@@ -13,7 +13,8 @@ Django REST FrameworkでMicrosoft Graph APIを使用してOneDriveにファイ�
 AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
 AZURE_CERT_THUMBPRINT=your-cert-thumbprint
-AZURE_CERT_KEY_FILE=/path/to/key.pem
+# Docker secretsを使用（コンテナ内のパス）
+AZURE_CERT_KEY_FILE=/run/secrets/django_api_graph_key
 TARGET_USER=user@example.com
 ```
 

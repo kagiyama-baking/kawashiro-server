@@ -10,6 +10,8 @@ on:
             - '.gitignore'
             - '**/*.md'
             - '.github/workflows/!(build).yml'
+            - 'scripts/**'
+            - 'docs/**'
     workflow_dispatch: # テスト用の手動実行
 
 permissions:
@@ -38,6 +40,10 @@ jobs:
                       context: test_web
                       dockerfile: Dockerfile
                       image: ghcr.io/${{ github.repository }}/test-web
+                    - name: django-api
+                      context: django_api
+                      dockerfile: Dockerfile
+                      image: ghcr.io/${{ github.repository }}/django-api
 
         steps:
             # ソースコードの取得
