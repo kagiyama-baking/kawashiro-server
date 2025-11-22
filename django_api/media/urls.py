@@ -8,5 +8,5 @@ app_name = 'media'
 # メディア処理関連のURLパターン定義
 urlpatterns = [
     # ZIP→PDF変換エンドポイント
-    path('zip2pdf/', views.Zip2PdfView.as_view(), name='zip2pdf'),
+    path('zip-to-pdf/', views.ZipToPdfView.as_view(), name='zip-to-pdf'),
 ]

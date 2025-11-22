@@ -13,7 +13,30 @@ from drf_spectacular.utils import extend_schema
 logger = logging.getLogger(__name__)
 
 
-class Zip2PdfView(APIView):
+def is_safe_image_file(filename: str, image_extensions: tuple) -> bool:
+    """
+    ファイル名が安全な画像ファイルかどうかを判定
+
+    Args:
+        filename: チェックするファイル名
+        image_extensions: 許可する画像拡張子のタプル
+
+    Returns:
+        bool: 安全な画像ファイルの場合True
+    """
+    return (
+        filename.lower().endswith(image_extensions)
+        and not filename.startswith('__MACOSX/')
+        # パスセグメントに'..'が含まれないことを確認
+        and not any(part == '..' for part in filename.replace('\\', '/').split('/'))
+        and not filename.startswith('/')
+        and not filename.startswith('\\')
+        and not filename.endswith('/')
+        and filename.strip() != ''
+    )
+
+
+class ZipToPdfView(APIView):
     """
     ZIPファイル内の画像をPDFに変換するビュー
 
@@ -21,6 +44,13 @@ class Zip2PdfView(APIView):
     ファイル名順にソートしてPDFファイルに変換します。
     """
     permission_classes = [IsAuthenticated]
+
+    # ZIPボム対策の制限値
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    MAX_FILES = 1000
+
+    # 対応する画像拡張子
+    IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
 
     @extend_schema(
         tags=['media'],
@@ -84,20 +114,18 @@ class Zip2PdfView(APIView):
             # ZIPファイルとして開く
             with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
                 # ZIPボム対策: ファイル数・サイズ制限
-                MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-                MAX_FILES = 1000
                 infos = zip_ref.infolist()
 
                 # ファイル数チェック
-                if len(infos) > MAX_FILES:
+                if len(infos) > self.MAX_FILES:
                     return Response(
-                        {'error': f'ZIPファイル内のファイル数が多すぎます（最大{MAX_FILES}件まで）'},
+                        {'error': f'ZIPファイル内のファイル数が多すぎます（最大{self.MAX_FILES}件まで）'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
                 # 合計ファイルサイズチェック
                 total_size = sum(info.file_size for info in infos)
-                if total_size > MAX_FILE_SIZE * MAX_FILES:
+                if total_size > self.MAX_FILE_SIZE * self.MAX_FILES:
                     return Response(
                         {'error': 'ZIPファイル内の合計ファイルサイズが大きすぎます'},
                         status=status.HTTP_400_BAD_REQUEST
@@ -105,29 +133,17 @@ class Zip2PdfView(APIView):
 
                 # 個別ファイルサイズチェック
                 for info in infos:
-                    if info.file_size > MAX_FILE_SIZE:
+                    if info.file_size > self.MAX_FILE_SIZE:
                         return Response(
-                            {'error': f'ZIPファイル内のファイルが大きすぎます（最大{MAX_FILE_SIZE // (1024*1024)}MBまで）'},
+                            {'error': f'ZIPファイル内のファイルが大きすぎます（最大{self.MAX_FILE_SIZE // (1024*1024)}MBまで）'},
                             status=status.HTTP_400_BAD_REQUEST
                         )
-
-                # 対応する画像拡張子
-                image_extensions = ('.jpg', '.jpeg', '.png', '.webp')
 
                 # ZIP内のファイルリストを取得し、画像ファイルのみ抽出
                 # パストラバーサル攻撃対策を含む
                 image_files = [
                     name for name in zip_ref.namelist()
-                    if (
-                        name.lower().endswith(image_extensions)
-                        and not name.startswith('__MACOSX/')
-                        # パスセグメントに'..'が含まれないことを確認
-                        and not any(part == '..' for part in name.replace('\\', '/').split('/'))
-                        and not name.startswith('/')
-                        and not name.startswith('\\')
-                        and not name.endswith('/')
-                        and name.strip() != ''
-                    )
+                    if is_safe_image_file(name, self.IMAGE_EXTENSIONS)
                 ]
 
                 # ファイル名順にソート
