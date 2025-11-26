@@ -511,3 +511,47 @@ class TestOneDriveDeleteView:
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert 'ファイルの削除中に問題が発生しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_permanent_delete_true(self, mock_client_class, authenticated_client):
+        """完全削除オプションがTrueの場合、ごみ箱からも削除されること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.return_value = None
+
+        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt&permanent_delete=true')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['message'] == 'ファイルが正常に削除されました'
+
+        # クライアントメソッドがpermanent_delete=Trueで呼ばれたことを確認
+        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=True)
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_permanent_delete_false(self, mock_client_class, authenticated_client):
+        """完全削除オプションがFalseの場合、通常削除されること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.return_value = None
+
+        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt&permanent_delete=false')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['message'] == 'ファイルが正常に削除されました'
+
+        # クライアントメソッドがpermanent_delete=Falseで呼ばれたことを確認
+        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_without_permanent_delete_parameter(self, mock_client_class, authenticated_client):
+        """完全削除オプションが指定されない場合、デフォルトでFalse（通常削除）になること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.return_value = None
+
+        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+
+        assert response.status_code == status.HTTP_200_OK
+
+        # クライアントメソッドがpermanent_delete=Falseで呼ばれたことを確認
+        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
