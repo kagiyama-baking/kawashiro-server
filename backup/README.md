@@ -1,0 +1,226 @@
+# Immich バックアップ・リストア システム
+
+このディレクトリには、Immichのデータベースと写真データをバックアップ・リストアするためのスクリプトが含まれています。
+
+## 概要
+
+- **バックアップ**: PostgreSQLデータベースを定期的にバックアップし、OneDriveにアップロード
+- **リストア**: バックアップからデータベースを復元
+
+## ディレクトリ構成
+
+```
+backup/
+├── Dockerfile              # バックアップコンテナのイメージ定義
+├── README.md              # このファイル
+└── scripts/
+    ├── backup_immich.sh   # バックアップスクリプト
+    └── restore_immich.sh  # リストアスクリプト
+```
+
+## 環境変数
+
+バックアップ・リストアには以下の環境変数が必要です（`.env.backup`に定義）：
+
+### 必須環境変数
+
+- `DB_HOSTNAME`: PostgreSQLホスト名（例: `immich-postgres`）
+- `DB_USERNAME`: PostgreSQLユーザー名
+- `DB_PASSWORD`: PostgreSQLパスワード
+- `DB_DATABASE_NAME`: データベース名（例: `immich`）
+- `DJANGO_API_URL`: Django APIのURL（例: `http://django-api:8000`）
+- `DJANGO_API_TOKEN`: Django APIの認証トークン
+- `ONEDRIVE_BACKUP_PATH`: OneDrive上のバックアップ先パス
+
+### オプション環境変数
+
+- `BACKUP_DATA`: 写真データもバックアップするか（`true`/`false`、デフォルト: `false`）
+- `BACKUP_RETENTION_GENERATIONS`: OneDrive上に保持するバックアップ世代数（デフォルト: `7`）
+- `TZ`: タイムゾーン（例: `Asia/Tokyo`）
+
+## バックアップ
+
+### 自動バックアップ
+
+docker-compose.backup.ymlを使用して自動的にバックアップを実行：
+
+```bash
+# バックアップコンテナを起動（スケジュールに従って自動実行）
+docker compose -f docker-compose.backup.yml up -d
+
+# ログを確認
+docker compose -f docker-compose.backup.yml logs -f
+```
+
+### 手動バックアップ
+
+```bash
+# バックアップを即座に実行
+docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immich.sh
+```
+
+### バックアップの内容
+
+- **データベースバックアップ**: `immich_db_YYYYMMDD_HHMMSS.sql.gz`
+  - PostgreSQLデータベースのダンプファイル（gzip圧縮）
+  - メタデータ、ユーザー情報、アルバム情報などを含む
+
+- **写真データバックアップ**（オプション、`BACKUP_DATA=true`の場合）: `immich_data_YYYYMMDD_HHMMSS.tar.gz`
+  - 写真ファイルのtar.gz圧縮アーカイブ
+
+### バックアップの保存先
+
+1. **ローカル**: `/backup`ディレクトリ（`./volumes/backup`にマウント）
+2. **OneDrive**: `ONEDRIVE_BACKUP_PATH`で指定したパス
+
+### バックアップの世代管理
+
+- ローカル: バックアップ完了後、全ファイルを削除
+- OneDrive: `BACKUP_RETENTION_GENERATIONS`で指定した世代数を保持し、古いファイルは完全削除
+
+## リストア
+
+### 前提条件
+
+⚠️ **重要**: リストアを実行する前に、以下を必ず実行してください：
+
+1. **Immichサービスを停止**
+   ```bash
+   docker compose stop immich
+   ```
+
+2. **現在のデータをバックアップ**（推奨）
+   ```bash
+   docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immich.sh
+   ```
+
+### ローカルファイルからリストア
+
+ローカルの`/backup`ディレクトリに保存されているバックアップファイルからリストア：
+
+```bash
+# バックアップファイル一覧を確認
+ls -lh volumes/backup/
+
+# リストアを実行
+docker compose -f docker-compose.backup.yml run --rm backup \
+  /scripts/restore_immich.sh immich_db_20250127_120000.sql.gz
+
+# または --local オプションを明示的に指定
+docker compose -f docker-compose.backup.yml run --rm backup \
+  /scripts/restore_immich.sh --local immich_db_20250127_120000.sql.gz
+```
+
+### OneDriveからリストア
+
+OneDriveに保存されているバックアップファイルを自動的にダウンロードしてリストア：
+
+```bash
+# OneDrive上のバックアップファイル一覧を確認（Django APIを使用）
+# ブラウザまたはcurlでアクセス
+curl -H "Authorization: Token YOUR_TOKEN" \
+  "http://localhost:8000/onedrive/list/?folder_path=/path/to/backup"
+
+# OneDriveからダウンロードしてリストア
+docker compose -f docker-compose.backup.yml run --rm backup \
+  /scripts/restore_immich.sh --from-onedrive immich_db_20250127_120000.sql.gz
+```
+
+### リストアプロセス
+
+リストアスクリプトは以下の処理を実行します：
+
+1. 環境変数の確認
+2. バックアップファイルの取得（ローカルまたはOneDrive）
+3. リストア確認プロンプトの表示（`yes`を入力して承認）
+4. 既存のデータベース接続を切断
+5. データベースを削除して再作成
+6. バックアップファイルからデータをリストア
+7. 一時ファイルのクリーンアップ（OneDriveからダウンロードした場合）
+
+### リストア後の手順
+
+リストアが完了したら、Immichサービスを再起動してください：
+
+```bash
+# Immichサービスを起動
+docker compose start immich
+
+# または全サービスを再起動
+docker compose restart
+```
+
+## トラブルシューティング
+
+### バックアップが失敗する
+
+1. **環境変数の確認**
+   ```bash
+   docker compose -f docker-compose.backup.yml config
+   ```
+
+2. **ログの確認**
+   ```bash
+   docker compose -f docker-compose.backup.yml logs backup
+   ```
+
+3. **データベース接続の確認**
+   ```bash
+   docker exec backup psql -h immich-postgres -U immich -d immich -c "SELECT 1"
+   ```
+
+### リストアが失敗する
+
+1. **Immichサービスが停止しているか確認**
+   ```bash
+   docker compose ps
+   ```
+
+2. **データベースへの接続を確認**
+   ```bash
+   docker exec backup psql -h immich-postgres -U immich -d postgres -c "SELECT 1"
+   ```
+
+3. **バックアップファイルの整合性を確認**
+   ```bash
+   # gzipファイルが破損していないか確認
+   gunzip -t volumes/backup/immich_db_YYYYMMDD_HHMMSS.sql.gz
+   ```
+
+### OneDriveとの通信が失敗する
+
+1. **Django APIへの接続を確認**
+   ```bash
+   curl -H "Authorization: Token YOUR_TOKEN" http://localhost:8000/onedrive/list/
+   ```
+
+2. **トークンの有効性を確認**
+   - `.env.backup`の`DJANGO_API_TOKEN`が正しいか確認
+
+3. **OneDriveパスの確認**
+   - `ONEDRIVE_BACKUP_PATH`が正しいパスか確認
+
+## セキュリティに関する注意事項
+
+- `.env.backup`ファイルには機密情報（パスワード、トークンなど）が含まれるため、Gitにコミットしないでください
+- バックアップファイルには個人情報が含まれる可能性があるため、適切に保護してください
+- OneDriveへのアクセストークンは定期的に更新してください
+
+## 定期バックアップの設定
+
+cronやsystemd timerを使用して定期的にバックアップを実行できます：
+
+### cronの例
+
+```bash
+# 毎日午前3時にバックアップを実行
+0 3 * * * cd /path/to/kawashiro-server && docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immich.sh
+```
+
+### systemd timerの例
+
+timer設定とservice設定を作成してsystemdで管理することも可能です。
+
+## ライセンス
+
+このプロジェクトのライセンスに従います。
