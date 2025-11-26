@@ -1,12 +1,12 @@
 services:
     # Immichバックアップサービス
-    immich-backup:
+    backup:
         build:
             context: ./backup
             dockerfile: Dockerfile
-        image: immich-backup
-        container_name: immich-backup
-        hostname: immich-backup
+        image: backup
+        container_name: backup
+        hostname: backup
         # バックアップ専用の環境変数ファイルを読み込む
         env_file:
             - .env.backup
