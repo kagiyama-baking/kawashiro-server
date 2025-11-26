@@ -1,3 +1,7 @@
+# バックアップ専用の環境変数ファイルを読み込む
+env_file:
+    - .env.backup
+
 services:
     # Immichバックアップサービス
     immich-backup:
