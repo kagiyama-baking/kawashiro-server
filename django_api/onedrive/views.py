@@ -12,12 +12,14 @@ from .exceptions import (
     UploadError,
     FolderOperationError,
     ListOperationError,
+    DeleteError,
     NetworkError
 )
 from .serializers import (
     FileUploadSerializer,
     CreateFolderSerializer,
     ListFilesSerializer,
+    DeleteFileSerializer,
     FileInfoSerializer
 )
 
@@ -358,5 +360,97 @@ class OneDriveListView(APIView):
             logger.exception("Unexpected error during file listing")
             return Response(
                 {'error': 'ファイル一覧の取得中に問題が発生しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class OneDriveDeleteView(APIView):
+    """OneDriveのファイル削除ビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=['onedrive'],
+        summary='ファイル削除',
+        description='OneDrive上のファイルを削除します。',
+        request=DeleteFileSerializer,
+        responses={
+            200: {
+                'description': '削除成功',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'message': 'ファイルが正常に削除されました'
+                        }
+                    }
+                }
+            },
+            400: {'description': '入力データの検証エラー'},
+            401: {'description': '認証が必要です'},
+            500: {'description': 'サーバーエラー'}
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        """ファイルを削除"""
+        serializer = DeleteFileSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # バリデートされたデータを取得
+        file_path = serializer.validated_data['file_path']
+
+        try:
+            # MS Graphクライアントを作成
+            client = MSGraphClient()
+
+            # ファイルを削除
+            client.delete_file(file_path=file_path)
+
+            # 成功レスポンスを返す
+            return Response(
+                {'message': 'ファイルが正常に削除されました'},
+                status=status.HTTP_200_OK
+            )
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {'error': 'サービスの設定に問題があります。管理者にお問い合わせください。'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except DeleteError as e:
+            # 削除エラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Delete error: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file deletion")
+            return Response(
+                {'error': 'ファイルの削除中に問題が発生しました。しばらく時間をおいて再試行してください。'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

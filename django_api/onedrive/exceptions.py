@@ -31,6 +31,11 @@ class ListOperationError(OneDriveException):
     pass
 
 
+class DeleteError(OneDriveException):
+    """ファイル削除エラー"""
+    pass
+
+
 class NetworkError(OneDriveException):
     """ネットワーク接続エラー"""
     pass

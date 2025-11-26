@@ -42,6 +42,14 @@ class ListFilesSerializer(serializers.Serializer):
     )
 
 
+class DeleteFileSerializer(serializers.Serializer):
+    """ファイル削除用のシリアライザー"""
+    file_path = serializers.CharField(
+        required=True,
+        help_text="削除するファイルのパス"
+    )
+
+
 class FileInfoSerializer(serializers.Serializer):
     """ファイル情報のシリアライザー"""
     id = serializers.CharField(read_only=True)

@@ -10,6 +10,7 @@ from .exceptions import (
     UploadError,
     FolderOperationError,
     ListOperationError,
+    DeleteError,
     NetworkError
 )
 
@@ -457,3 +458,50 @@ class MSGraphClient:
                 raise ListOperationError('ファイル一覧の取得に失敗しました')
         except requests.exceptions.RequestException:
             raise ListOperationError('ファイル一覧の取得に失敗しました')
+
+    def delete_file(self, file_path):
+        """
+        指定したファイルを削除
+
+        Args:
+            file_path: 削除するファイルのパス
+
+        Raises:
+            DeleteError: ファイル削除に失敗した場合
+            AuthenticationError: 認証に失敗した場合
+            NetworkError: ネットワーク接続に失敗した場合
+        """
+        # 先頭のスラッシュを削除
+        if file_path.startswith('/'):
+            file_path = file_path[1:]
+
+        # URLを構築
+        url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+
+        # ヘッダーを取得
+        headers = self.get_headers()
+        headers['Content-Type'] = 'application/json'
+
+        try:
+            # ファイルを削除
+            response = requests.delete(
+                url,
+                headers=headers,
+                timeout=30
+            )
+
+            response.raise_for_status()
+
+        except requests.exceptions.Timeout:
+            raise NetworkError('ファイル削除がタイムアウトしました')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('OneDriveへの接続に失敗しました')
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise AuthenticationError('認証に失敗しました')
+            elif e.response.status_code == 404:
+                raise DeleteError('指定されたファイルが見つかりません')
+            else:
+                raise DeleteError('ファイルの削除に失敗しました')
+        except requests.exceptions.RequestException:
+            raise DeleteError('ファイルの削除に失敗しました')
