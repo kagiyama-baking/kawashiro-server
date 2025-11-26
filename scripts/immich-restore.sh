@@ -53,11 +53,11 @@ fi
 echo "=== バックアップファイルの確認 ==="
 MISSING_FILES=()
 
-if [ ! -f "$BACKUP_DIR/database.sql" ]; then
-  MISSING_FILES+=("database.sql")
+if [ ! -f "$BACKUP_DIR/immich-postgres-database.sql.gz" ]; then
+  MISSING_FILES+=("immich-postgres-database.sql.gz")
 fi
 
-if [ ! -f "$BACKUP_DIR/immich-data.tar.gz" ] && [ ! -f "$BACKUP_DIR/pgdata-volume.tar.gz" ]; then
+if [ ! -f "$BACKUP_DIR/immich-data.tar.gz" ] && [ ! -f "$BACKUP_DIR/immich-postgres-volume.tar.gz" ]; then
   echo "警告: immich-data.tar.gz が見つかりませんが、処理を続行します"
 fi
 
@@ -97,8 +97,8 @@ docker compose up -d immich-postgres
 echo "PostgreSQLの起動を待機中..."
 sleep 10
 
-# データベースのリストア
-docker exec -i immich-postgres psql -U "$DB_USERNAME" -d "$DB_DATABASE_NAME" < "$BACKUP_DIR/database.sql"
+# データベースのリストア（圧縮ファイルを解凍しながらリストア）
+gunzip -c "$BACKUP_DIR/immich-postgres-database.sql.gz" | docker exec -i immich-postgres psql -U "$DB_USERNAME" -d "$DB_DATABASE_NAME"
 echo "✓ データベースリストア完了"
 
 # 3. コンテナを再度停止
@@ -117,25 +117,25 @@ if [ -f "$BACKUP_DIR/immich-data.tar.gz" ]; then
 fi
 
 # 5. PostgreSQLボリュームのリストア（database.sqlでリストアできない場合の代替）
-if [ -f "$BACKUP_DIR/pgdata-volume.tar.gz" ]; then
+if [ -f "$BACKUP_DIR/immich-postgres-volume.tar.gz" ]; then
   echo "PostgreSQLボリュームをリストア中..."
   read -p "PostgreSQLボリュームもリストアしますか？(通常は不要です) (yes/no): " RESTORE_PGVOLUME
   if [ "$RESTORE_PGVOLUME" = "yes" ]; then
     docker run --rm \
       -v immich-pgdata:/target \
       -v "$(pwd)/$BACKUP_DIR":/backup:ro \
-      alpine sh -c "rm -rf /target/* /target/..?* /target/.[!.]* 2>/dev/null || true && tar xzf /backup/pgdata-volume.tar.gz -C /target"
+      alpine sh -c "rm -rf /target/* /target/..?* /target/.[!.]* 2>/dev/null || true && tar xzf /backup/immich-postgres-volume.tar.gz -C /target"
     echo "✓ PostgreSQLボリュームリストア完了"
   fi
 fi
 
 # 6. 設定ファイルのリストア（オプション）
-if [ -f "$BACKUP_DIR/.env" ]; then
-  echo "設定ファイル(.env)が見つかりました。"
+if [ -f "$BACKUP_DIR/immich-env" ]; then
+  echo "設定ファイル(immich-env)が見つかりました。"
   read -p "設定ファイルもリストアしますか？ (yes/no): " RESTORE_CONFIG
   if [ "$RESTORE_CONFIG" = "yes" ]; then
-    cp "$BACKUP_DIR/.env" .env.backup.$(date +%Y%m%d_%H%M%S)
-    cp "$BACKUP_DIR/.env" .env
+    cp .env .env.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+    cp "$BACKUP_DIR/immich-env" .env
     echo "✓ 設定ファイルリストア完了（既存の.envは.env.backupとして保存）"
   fi
 fi

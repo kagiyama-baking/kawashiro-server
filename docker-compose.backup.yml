@@ -1,0 +1,38 @@
+services:
+    # Immichバックアップサービス
+    immich-backup:
+        build:
+            context: ./backup
+            dockerfile: Dockerfile
+        image: immich-backup
+        container_name: immich-backup
+        hostname: immich-backup
+        environment:
+            # PostgreSQL接続情報
+            DB_HOSTNAME: immich-postgres
+            DB_USERNAME: ${DB_USERNAME}
+            DB_PASSWORD: ${DB_PASSWORD}
+            DB_DATABASE_NAME: ${DB_DATABASE_NAME}
+            # Django API設定
+            DJANGO_API_URL: http://django-api:8000
+            DJANGO_API_TOKEN: ${DJANGO_API_TOKEN}
+            # バックアップ設定
+            ONEDRIVE_BACKUP_PATH: ${ONEDRIVE_BACKUP_PATH}
+            BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+            BACKUP_DATA: ${BACKUP_DATA:-false}
+            # タイムゾーン
+            TZ: ${TZ:-Asia/Tokyo}
+        volumes:
+            # Immichの写真データ（読み取り専用）
+            - ./volumes/immich/data:/source/data:ro
+            # バックアップ出力先
+            - ./volumes/backup:/backup
+            # バックアップスクリプト
+            - ./backup/scripts:/scripts:ro
+        networks:
+            - proxy-network
+
+networks:
+    # 既存のproxy-networkを参照
+    proxy-network:
+        external: true
