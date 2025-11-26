@@ -101,12 +101,16 @@ docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immi
 ```bash
 # バックアップファイル一覧を確認
 ls -lh volumes/backup/
+# 例:
+# immich_db_20250127_120000.sql.gz    (データベース)
+# immich_data_20250127_120000.tar.gz  (写真データ、BACKUP_DATA=trueの場合)
 
 # データベースのみリストア
 docker compose -f docker-compose.backup.yml run --rm backup \
   /scripts/restore_immich.sh immich_db_20250127_120000.sql.gz
 
 # データベースと写真データをリストア
+# 注: immich_data_20250127_120000.tar.gz が同じディレクトリに存在する必要があります
 docker compose -f docker-compose.backup.yml run --rm backup \
   /scripts/restore_immich.sh --with-data immich_db_20250127_120000.sql.gz
 
@@ -124,12 +128,16 @@ OneDriveに保存されているバックアップファイルを自動的にダ
 # ブラウザまたはcurlでアクセス
 curl -H "Authorization: Token YOUR_TOKEN" \
   "http://localhost:8000/onedrive/list/?folder_path=/path/to/backup"
+# 戻り値の例:
+# - immich_db_20250127_120000.sql.gz
+# - immich_data_20250127_120000.tar.gz
 
 # データベースのみリストア
 docker compose -f docker-compose.backup.yml run --rm backup \
   /scripts/restore_immich.sh --from-onedrive immich_db_20250127_120000.sql.gz
 
 # データベースと写真データをリストア
+# 注: OneDriveから immich_data_20250127_120000.tar.gz も自動的にダウンロードされます
 docker compose -f docker-compose.backup.yml run --rm backup \
   /scripts/restore_immich.sh --from-onedrive --with-data immich_db_20250127_120000.sql.gz
 ```
@@ -152,8 +160,11 @@ docker compose -f docker-compose.backup.yml run --rm backup \
 ### 写真データのリストアについて
 
 - `--with-data`オプションを指定すると、データベースだけでなく写真データもリストアされます
-- データベースファイル名から写真データファイル名を自動的に推測します
-  - 例: `immich_db_20250127_120000.sql.gz` → `immich_data_20250127_120000.tar.gz`
+- **重要**: バックアップでは2つのファイルが作成されます
+  - データベース: `immich_db_YYYYMMDD_HHMMSS.sql.gz`
+  - 写真データ: `immich_data_YYYYMMDD_HHMMSS.tar.gz`（`BACKUP_DATA=true`の場合のみ）
+- リストアスクリプトは、データベースファイル名から写真データファイル名を自動的に推測します
+  - 例: `immich_db_20250127_120000.sql.gz` を指定すると、自動的に `immich_data_20250127_120000.tar.gz` を探します
 - 写真データファイルが見つからない場合は警告が表示され、データベースのみリストアされます
 - 写真データは完全に上書きされるため、リストア前に必ずバックアップを取ってください
 
