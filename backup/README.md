@@ -102,13 +102,17 @@ docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immi
 # バックアップファイル一覧を確認
 ls -lh volumes/backup/
 
-# リストアを実行
+# データベースのみリストア
 docker compose -f docker-compose.backup.yml run --rm backup \
   /scripts/restore_immich.sh immich_db_20250127_120000.sql.gz
 
+# データベースと写真データをリストア
+docker compose -f docker-compose.backup.yml run --rm backup \
+  /scripts/restore_immich.sh --with-data immich_db_20250127_120000.sql.gz
+
 # または --local オプションを明示的に指定
 docker compose -f docker-compose.backup.yml run --rm backup \
-  /scripts/restore_immich.sh --local immich_db_20250127_120000.sql.gz
+  /scripts/restore_immich.sh --local --with-data immich_db_20250127_120000.sql.gz
 ```
 
 ### OneDriveからリストア
@@ -121,9 +125,13 @@ OneDriveに保存されているバックアップファイルを自動的にダ
 curl -H "Authorization: Token YOUR_TOKEN" \
   "http://localhost:8000/onedrive/list/?folder_path=/path/to/backup"
 
-# OneDriveからダウンロードしてリストア
+# データベースのみリストア
 docker compose -f docker-compose.backup.yml run --rm backup \
   /scripts/restore_immich.sh --from-onedrive immich_db_20250127_120000.sql.gz
+
+# データベースと写真データをリストア
+docker compose -f docker-compose.backup.yml run --rm backup \
+  /scripts/restore_immich.sh --from-onedrive --with-data immich_db_20250127_120000.sql.gz
 ```
 
 ### リストアプロセス
@@ -136,7 +144,18 @@ docker compose -f docker-compose.backup.yml run --rm backup \
 4. 既存のデータベース接続を切断
 5. データベースを削除して再作成
 6. バックアップファイルからデータをリストア
-7. 一時ファイルのクリーンアップ（OneDriveからダウンロードした場合）
+7. **（`--with-data`指定時）** 写真データファイルの取得とリストア
+   - 既存の写真データを削除
+   - バックアップファイルから写真データを展開
+8. 一時ファイルのクリーンアップ（OneDriveからダウンロードした場合）
+
+### 写真データのリストアについて
+
+- `--with-data`オプションを指定すると、データベースだけでなく写真データもリストアされます
+- データベースファイル名から写真データファイル名を自動的に推測します
+  - 例: `immich_db_20250127_120000.sql.gz` → `immich_data_20250127_120000.tar.gz`
+- 写真データファイルが見つからない場合は警告が表示され、データベースのみリストアされます
+- 写真データは完全に上書きされるため、リストア前に必ずバックアップを取ってください
 
 ### リストア後の手順
 

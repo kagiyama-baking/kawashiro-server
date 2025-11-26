@@ -31,19 +31,25 @@ usage() {
 OPTIONS:
   --from-onedrive    OneDriveからバックアップファイルをダウンロードしてリストア
   --local            ローカルのバックアップファイルからリストア（デフォルト）
+  --with-data        写真データもリストアする（対応するdataファイルが必要）
   --help             このヘルプを表示
 
 例:
-  # ローカルファイルからリストア
+  # データベースのみリストア（デフォルト）
   $0 immich_db_20250127_120000.sql.gz
   $0 --local immich_db_20250127_120000.sql.gz
 
+  # データベースと写真データをリストア
+  $0 --with-data immich_db_20250127_120000.sql.gz
+
   # OneDriveからダウンロードしてリストア
   $0 --from-onedrive immich_db_20250127_120000.sql.gz
+  $0 --from-onedrive --with-data immich_db_20250127_120000.sql.gz
 
 注意:
   - リストアを実行する前に、必ずImmichサービスを停止してください
   - データベースの内容は完全に上書きされます
+  - --with-dataを使用すると、写真データも完全に上書きされます
   - リストア前に現在のデータをバックアップすることを強く推奨します
 EOF
     exit 0
@@ -201,6 +207,52 @@ restore_database() {
     unset PGPASSWORD
 }
 
+# 写真データのリストア
+restore_data() {
+    local backup_file="$1"
+
+    log_info "写真データのリストアを開始します..."
+
+    # ファイルの存在確認
+    if [ ! -f "${backup_file}" ]; then
+        log_error "写真データバックアップファイルが見つかりません: ${backup_file}"
+        exit 1
+    fi
+
+    # ファイルサイズを表示
+    local file_size=$(du -h "${backup_file}" | cut -f1)
+    log_info "リストアファイルサイズ: ${file_size}"
+
+    # リストア先ディレクトリ
+    local restore_dir="/restore/data"
+
+    # リストア先ディレクトリが存在しない場合は作成
+    if [ ! -d "/restore" ]; then
+        log_error "/restore ディレクトリが見つかりません"
+        log_error "docker-compose.ymlでImmichのdataボリュームを/restoreにマウントしてください"
+        exit 1
+    fi
+
+    # 既存のデータを削除
+    log_warning "既存の写真データを削除しています..."
+    if [ -d "${restore_dir}" ]; then
+        rm -rf "${restore_dir}"
+    fi
+
+    # バックアップファイルを展開
+    log_info "写真データを展開しています..."
+    if tar -xzf "${backup_file}" -C /restore; then
+        log_success "写真データのリストアが完了しました"
+
+        # 展開されたファイル数を表示
+        local file_count=$(find "${restore_dir}" -type f 2>/dev/null | wc -l)
+        log_info "リストアされたファイル数: ${file_count}"
+    else
+        log_error "写真データのリストアに失敗しました"
+        exit 1
+    fi
+}
+
 # クリーンアップ（OneDriveからダウンロードした一時ファイルを削除）
 cleanup_temp_file() {
     local file_path="$1"
@@ -218,6 +270,7 @@ cleanup_temp_file() {
 
 # 引数のパース
 FROM_ONEDRIVE=false
+WITH_DATA=false
 BACKUP_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -228,6 +281,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --local)
             FROM_ONEDRIVE=false
+            shift
+            ;;
+        --with-data)
+            WITH_DATA=true
             shift
             ;;
         --help)
@@ -277,13 +334,57 @@ fi
 # リストアの確認
 confirm_restore "${BACKUP_FILE_PATH}"
 
-# リストアを実行
+# データベースをリストア
 restore_database "${BACKUP_FILE_PATH}"
 
 # 一時ファイルをクリーンアップ
 cleanup_temp_file "${BACKUP_FILE_PATH}" "${IS_TEMP_FILE}"
 
+# 写真データもリストアする場合
+DATA_FILE_PATH=""
+IS_TEMP_DATA_FILE=false
+if [ "${WITH_DATA}" = "true" ]; then
+    log_info "写真データのリストアを準備しています..."
+
+    # データベースファイル名から写真データファイル名を生成
+    # immich_db_20250127_120000.sql.gz -> immich_data_20250127_120000.tar.gz
+    local data_file_name=$(echo "${BACKUP_FILE}" | sed 's/immich_db_/immich_data_/' | sed 's/\.sql\.gz$/\.tar\.gz/')
+
+    if [ "${FROM_ONEDRIVE}" = "true" ]; then
+        # OneDriveからダウンロード
+        DATA_FILE_PATH=$(download_from_onedrive "${data_file_name}")
+        IS_TEMP_DATA_FILE=true
+    else
+        # ローカルファイルの場合、フルパスを生成
+        if [[ "${data_file_name}" = /* ]]; then
+            DATA_FILE_PATH="${data_file_name}"
+        else
+            DATA_FILE_PATH="/backup/${data_file_name}"
+        fi
+
+        # ファイルの存在確認
+        if [ ! -f "${DATA_FILE_PATH}" ]; then
+            log_warning "写真データバックアップファイルが見つかりません: ${DATA_FILE_PATH}"
+            log_warning "写真データのリストアをスキップします"
+        else
+            restore_data "${DATA_FILE_PATH}"
+            cleanup_temp_file "${DATA_FILE_PATH}" "${IS_TEMP_DATA_FILE}"
+        fi
+    fi
+
+    # OneDriveからダウンロードした場合は必ず存在するのでリストア実行
+    if [ "${FROM_ONEDRIVE}" = "true" ] && [ -f "${DATA_FILE_PATH}" ]; then
+        restore_data "${DATA_FILE_PATH}"
+        cleanup_temp_file "${DATA_FILE_PATH}" "${IS_TEMP_DATA_FILE}"
+    fi
+fi
+
 log_success "==================== 完了 ===================="
 log_success "リストアが正常に完了しました"
+if [ "${WITH_DATA}" = "true" ]; then
+    log_success "データベースと写真データをリストアしました"
+else
+    log_success "データベースをリストアしました"
+fi
 log_success "Immichサービスを再起動してください"
 log_success "=============================================="

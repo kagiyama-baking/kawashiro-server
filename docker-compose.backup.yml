@@ -16,8 +16,10 @@ services:
             # Django API設定
             DJANGO_API_URL: http://django-api:8000
         volumes:
-            # Immichの写真データ（読み取り専用）
+            # Immichの写真データ（読み取り専用 - バックアップ用）
             - ./volumes/immich/data:/source/data:ro
+            # Immichの写真データ（読み書き可能 - リストア用）
+            - ./volumes/immich:/restore
             # バックアップ出力先
             - ./volumes/backup:/backup
             # バックアップスクリプト
