@@ -376,7 +376,15 @@ class OneDriveDeleteView(APIView):
         tags=['onedrive'],
         summary='ファイル削除',
         description='OneDrive上のファイルを削除します。',
-        request=DeleteFileSerializer,
+        parameters=[
+            OpenApiParameter(
+                name='file_path',
+                description='削除するファイルのパス',
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
         responses={
             200: {
                 'description': '削除成功',
@@ -395,7 +403,7 @@ class OneDriveDeleteView(APIView):
     )
     def delete(self, request, *args, **kwargs):
         """ファイルを削除"""
-        serializer = DeleteFileSerializer(data=request.data)
+        serializer = DeleteFileSerializer(data=request.query_params)
 
         if not serializer.is_valid():
             return Response(
