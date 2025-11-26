@@ -431,7 +431,7 @@ class TestOneDriveDeleteView:
         assert response.data['message'] == 'ファイルが正常に削除されました'
 
         # クライアントメソッドが正しく呼ばれたことを確認
-        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt')
+        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
 
     def test_delete_file_without_authentication_fails(self, api_client):
         """認証なしでファイル削除が失敗すること"""

@@ -459,12 +459,13 @@ class MSGraphClient:
         except requests.exceptions.RequestException:
             raise ListOperationError('ファイル一覧の取得に失敗しました')
 
-    def delete_file(self, file_path):
+    def delete_file(self, file_path, permanent_delete=False):
         """
         指定したファイルを削除
 
         Args:
             file_path: 削除するファイルのパス
+            permanent_delete: Trueの場合、ごみ箱からも完全削除する
 
         Raises:
             DeleteError: ファイル削除に失敗した場合
@@ -475,22 +476,43 @@ class MSGraphClient:
         if file_path.startswith('/'):
             file_path = file_path[1:]
 
-        # URLを構築
-        url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
-
         # ヘッダーを取得
         headers = self.get_headers()
         headers['Content-Type'] = 'application/json'
 
         try:
-            # ファイルを削除
-            response = requests.delete(
-                url,
-                headers=headers,
-                timeout=30
-            )
+            if permanent_delete:
+                # 完全削除の場合、まずアイテムIDを取得
+                item_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+                response = requests.get(
+                    item_url,
+                    headers=headers,
+                    timeout=30
+                )
+                response.raise_for_status()
+                item_data = response.json()
+                item_id = item_data.get('id')
 
-            response.raise_for_status()
+                if not item_id:
+                    raise DeleteError('ファイルのIDを取得できませんでした')
+
+                # permanentDeleteアクションを実行
+                permanent_delete_url = f"{self.graph_url}/users/{self.target_user}/drive/items/{item_id}/permanentDelete"
+                response = requests.post(
+                    permanent_delete_url,
+                    headers=headers,
+                    timeout=30
+                )
+                response.raise_for_status()
+            else:
+                # 通常の削除（ごみ箱に移動）
+                url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+                response = requests.delete(
+                    url,
+                    headers=headers,
+                    timeout=30
+                )
+                response.raise_for_status()
 
         except requests.exceptions.Timeout:
             raise NetworkError('ファイル削除がタイムアウトしました')

@@ -48,6 +48,11 @@ class DeleteFileSerializer(serializers.Serializer):
         required=True,
         help_text="削除するファイルのパス"
     )
+    permanent_delete = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="完全削除（ごみ箱からも削除）"
+    )
 
 
 class FileInfoSerializer(serializers.Serializer):

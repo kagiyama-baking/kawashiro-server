@@ -383,6 +383,13 @@ class OneDriveDeleteView(APIView):
                 required=True,
                 type=str,
                 location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='permanent_delete',
+                description='完全削除（ごみ箱からも削除）',
+                required=False,
+                type=bool,
+                location=OpenApiParameter.QUERY
             )
         ],
         responses={
@@ -413,13 +420,14 @@ class OneDriveDeleteView(APIView):
 
         # バリデートされたデータを取得
         file_path = serializer.validated_data['file_path']
+        permanent_delete = serializer.validated_data.get('permanent_delete', False)
 
         try:
             # MS Graphクライアントを作成
             client = MSGraphClient()
 
             # ファイルを削除
-            client.delete_file(file_path=file_path)
+            client.delete_file(file_path=file_path, permanent_delete=permanent_delete)
 
             # 成功レスポンスを返す
             return Response(
