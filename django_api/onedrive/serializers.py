@@ -55,6 +55,14 @@ class DeleteFileSerializer(serializers.Serializer):
     )
 
 
+class DownloadFileSerializer(serializers.Serializer):
+    """ファイルダウンロード用のシリアライザー"""
+    file_path = serializers.CharField(
+        required=True,
+        help_text="ダウンロードするファイルのパス"
+    )
+
+
 class FileInfoSerializer(serializers.Serializer):
     """ファイル情報のシリアライザー"""
     id = serializers.CharField(read_only=True)

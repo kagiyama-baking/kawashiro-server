@@ -11,7 +11,9 @@ from .exceptions import (
     FolderOperationError,
     ListOperationError,
     DeleteError,
-    NetworkError
+    NetworkError,
+    FileNotFoundError,
+    DownloadError
 )
 
 # アップロードセッションの定数
@@ -527,3 +529,63 @@ class MSGraphClient:
                 raise DeleteError('ファイルの削除に失敗しました')
         except requests.exceptions.RequestException:
             raise DeleteError('ファイルの削除に失敗しました')
+
+    def download_file(self, file_path):
+        """
+        指定したファイルをダウンロード
+
+        Args:
+            file_path: ダウンロードするファイルのパス
+
+        Returns:
+            tuple: (ファイル内容(bytes), ファイル名(str))
+
+        Raises:
+            DownloadError: ファイルダウンロードに失敗した場合
+            FileNotFoundError: ファイルが見つからない場合
+            AuthenticationError: 認証に失敗した場合
+            NetworkError: ネットワーク接続に失敗した場合
+        """
+        # 先頭のスラッシュを削除
+        if file_path.startswith('/'):
+            file_path = file_path[1:]
+
+        # ヘッダーを取得
+        headers = self.get_headers()
+
+        try:
+            # ファイルのメタデータを取得してファイル名を取得
+            metadata_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+            metadata_response = requests.get(
+                metadata_url,
+                headers=headers,
+                timeout=30
+            )
+            metadata_response.raise_for_status()
+            metadata = metadata_response.json()
+            file_name = metadata.get('name', file_path.split('/')[-1])
+
+            # ファイルの内容をダウンロード
+            download_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}:/content"
+            response = requests.get(
+                download_url,
+                headers=headers,
+                timeout=300  # 大きなファイルの場合は長めのタイムアウト
+            )
+            response.raise_for_status()
+
+            return (response.content, file_name)
+
+        except requests.exceptions.Timeout:
+            raise NetworkError('ファイルダウンロードがタイムアウトしました')
+        except requests.exceptions.ConnectionError:
+            raise NetworkError('OneDriveへの接続に失敗しました')
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise AuthenticationError('認証に失敗しました')
+            elif e.response.status_code == 404:
+                raise FileNotFoundError('指定されたファイルが見つかりません')
+            else:
+                raise DownloadError('ファイルのダウンロードに失敗しました')
+        except requests.exceptions.RequestException:
+            raise DownloadError('ファイルのダウンロードに失敗しました')

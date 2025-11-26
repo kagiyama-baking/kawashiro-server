@@ -15,4 +15,6 @@ urlpatterns = [
     path('list/', views.OneDriveListView.as_view(), name='list_files'),
     # ファイル削除エンドポイント
     path('delete/', views.OneDriveDeleteView.as_view(), name='delete_file'),
+    # ファイルダウンロードエンドポイント
+    path('download/', views.OneDriveDownloadView.as_view(), name='download_file'),
 ]

@@ -1,5 +1,6 @@
 """OneDriveアプリケーションのビュー"""
 import logging
+from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import status, authentication, permissions
 from rest_framework.response import Response
@@ -13,13 +14,16 @@ from .exceptions import (
     FolderOperationError,
     ListOperationError,
     DeleteError,
-    NetworkError
+    NetworkError,
+    FileNotFoundError,
+    DownloadError
 )
 from .serializers import (
     FileUploadSerializer,
     CreateFolderSerializer,
     ListFilesSerializer,
     DeleteFileSerializer,
+    DownloadFileSerializer,
     FileInfoSerializer
 )
 
@@ -468,5 +472,113 @@ class OneDriveDeleteView(APIView):
             logger.exception("Unexpected error during file deletion")
             return Response(
                 {'error': 'ファイルの削除中に問題が発生しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class OneDriveDownloadView(APIView):
+    """OneDriveのファイルダウンロードビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=['onedrive'],
+        summary='ファイルダウンロード',
+        description='OneDrive上のファイルをダウンロードします。',
+        parameters=[
+            OpenApiParameter(
+                name='file_path',
+                description='ダウンロードするファイルのパス',
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={
+            200: {
+                'description': 'ダウンロード成功',
+                'content': {
+                    'application/octet-stream': {
+                        'schema': {
+                            'type': 'string',
+                            'format': 'binary'
+                        }
+                    }
+                }
+            },
+            400: {'description': '入力データの検証エラー'},
+            401: {'description': '認証が必要です'},
+            404: {'description': 'ファイルが見つかりません'},
+            500: {'description': 'サーバーエラー'}
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        """ファイルをダウンロード"""
+        serializer = DownloadFileSerializer(data=request.query_params)
+
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # バリデートされたデータを取得
+        file_path = serializer.validated_data['file_path']
+
+        try:
+            # MS Graphクライアントを作成
+            client = MSGraphClient()
+
+            # ファイルをダウンロード
+            file_content, file_name = client.download_file(file_path=file_path)
+
+            # バイナリレスポンスとして返す
+            response = HttpResponse(file_content, content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            return response
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {'error': 'サービスの設定に問題があります。管理者にお問い合わせください。'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except FileNotFoundError as e:
+            # ファイルが見つからないエラー
+            logger.warning(f"File not found: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except DownloadError as e:
+            # ダウンロードエラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Download error: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {'error': 'OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file download")
+            return Response(
+                {'error': 'ファイルのダウンロード中に問題が発生しました。しばらく時間をおいて再試行してください。'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

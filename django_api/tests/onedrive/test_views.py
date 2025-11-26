@@ -606,7 +606,7 @@ class TestOneDriveDownloadView:
         response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/nonexistent.txt')
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert 'ファイルが見つかりませんでした' in response.data['error']
+        assert response.data['error'] == "File not found"
 
     @patch('onedrive.views.MSGraphClient')
     def test_download_with_authentication_error(self, mock_client_class, authenticated_client):
