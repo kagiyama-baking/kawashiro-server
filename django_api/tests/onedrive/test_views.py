@@ -412,3 +412,132 @@ class TestOneDriveListView:
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert 'OneDriveへの接続に失敗しました' in response.data['error']
+
+
+@pytest.mark.api
+class TestOneDriveDeleteView:
+    """OneDriveDeleteViewのテストクラス"""
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_success(self, mock_client_class, authenticated_client):
+        """ファイルの削除が成功すること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.return_value = None
+
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['message'] == 'ファイルが正常に削除されました'
+
+        # クライアントメソッドが正しく呼ばれたことを確認
+        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt')
+
+    def test_delete_file_without_authentication_fails(self, api_client):
+        """認証なしでファイル削除が失敗すること"""
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = api_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_delete_without_file_path_fails(self, authenticated_client):
+        """file_pathなしで削除が失敗すること"""
+        payload = {}
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_path' in response.data
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_configuration_error(self, mock_client_class, authenticated_client):
+        """設定エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import ConfigurationError
+
+        mock_client_class.side_effect = ConfigurationError("Missing configuration")
+
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert 'サービスの設定に問題があります' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_authentication_error(self, mock_client_class, authenticated_client):
+        """認証エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import AuthenticationError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.side_effect = AuthenticationError("Token expired")
+
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_delete_error(self, mock_client_class, authenticated_client):
+        """削除エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import DeleteError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.side_effect = DeleteError("File not found")
+
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data['error'] == 'File not found'
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_network_error(self, mock_client_class, authenticated_client):
+        """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import NetworkError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.side_effect = NetworkError("Connection timeout")
+
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_delete_file_with_unexpected_error(self, mock_client_class, authenticated_client):
+        """予期しないエラー時に適切なエラーレスポンスを返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.delete_file.side_effect = Exception("Unexpected error")
+
+        payload = {
+            'file_path': '/test_folder/test_file.txt'
+        }
+
+        response = authenticated_client.delete('/onedrive/delete/', payload, content_type='application/json')
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert 'ファイルの削除中に問題が発生しました' in response.data['error']
