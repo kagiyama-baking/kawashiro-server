@@ -127,10 +127,11 @@ upload_to_onedrive() {
     if [ "${http_code}" -eq 201 ]; then
         log_success "OneDriveへのアップロードが完了しました: ${file_name}"
         log_info "レスポンス: ${response_body}"
+        return 0
     else
         log_error "OneDriveへのアップロードに失敗しました (HTTP ${http_code})"
         log_error "レスポンス: ${response_body}"
-        exit 1
+        return 1
     fi
 }
 
@@ -267,29 +268,51 @@ main() {
     log_info "OneDriveへのアップロードを開始します"
     log_info "------------------------------------------"
 
+    # アップロードエラーを記録する変数
+    local upload_failed=0
+
     # データベースバックアップをアップロード
-    upload_to_onedrive "${DB_BACKUP_FILE}"
+    if ! upload_to_onedrive "${DB_BACKUP_FILE}"; then
+        upload_failed=1
+    fi
 
     # 写真データバックアップをアップロード（存在する場合）
     if [ -f "${DATA_BACKUP_FILE}" ]; then
-        upload_to_onedrive "${DATA_BACKUP_FILE}"
+        if ! upload_to_onedrive "${DATA_BACKUP_FILE}"; then
+            upload_failed=1
+        fi
     fi
 
     # 4. ローカルバックアップディレクトリのクリーンアップ
+    # アップロードが失敗してもクリーンアップは実行する
     log_info "------------------------------------------"
     log_info "ローカルバックアップのクリーンアップ"
     log_info "------------------------------------------"
     cleanup_local_backups
 
     # 5. OneDrive上の古いバックアップの削除
-    log_info "------------------------------------------"
-    log_info "OneDrive上の古いバックアップのクリーンアップ"
-    log_info "------------------------------------------"
-    cleanup_old_onedrive_backups
+    # アップロードが成功した場合のみ実行
+    if [ "${upload_failed}" -eq 0 ]; then
+        log_info "------------------------------------------"
+        log_info "OneDrive上の古いバックアップのクリーンアップ"
+        log_info "------------------------------------------"
+        cleanup_old_onedrive_backups
+    else
+        log_info "------------------------------------------"
+        log_info "OneDrive上の古いバックアップのクリーンアップをスキップします（アップロード失敗のため）"
+        log_info "------------------------------------------"
+    fi
 
     log_info "=========================================="
-    log_success "バックアップ処理が正常に完了しました"
+    if [ "${upload_failed}" -eq 0 ]; then
+        log_success "バックアップ処理が正常に完了しました"
+    else
+        log_error "バックアップ処理が失敗しました（アップロードエラー）"
+    fi
     log_info "=========================================="
+
+    # アップロードが失敗した場合はエラーコードで終了
+    exit ${upload_failed}
 }
 
 # スクリプト実行
