@@ -18,7 +18,7 @@ services:
             DJANGO_API_TOKEN: ${DJANGO_API_TOKEN}
             # バックアップ設定
             ONEDRIVE_BACKUP_PATH: ${ONEDRIVE_BACKUP_PATH}
-            BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+            BACKUP_RETENTION_GENERATIONS: ${BACKUP_RETENTION_GENERATIONS:-7}
             BACKUP_DATA: ${BACKUP_DATA:-false}
             # タイムゾーン
             TZ: ${TZ:-Asia/Tokyo}

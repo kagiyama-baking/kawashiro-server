@@ -16,4 +16,4 @@ RUN apk add --no-cache \
 WORKDIR /scripts
 
 # デフォルトコマンド
-CMD ["/bin/bash", "/scripts/backup.sh"]
+CMD ["/bin/bash", "/scripts/backup_immich.sh"]
