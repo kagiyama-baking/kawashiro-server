@@ -555,3 +555,83 @@ class TestOneDriveDeleteView:
 
         # クライアントメソッドがpermanent_delete=Falseで呼ばれたことを確認
         mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
+
+
+@pytest.mark.api
+class TestOneDriveDownloadView:
+    """OneDriveDownloadViewのテストクラス"""
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_download_file_success(self, mock_client_class, authenticated_client):
+        """ファイルのダウンロードが成功すること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+
+        # ファイル内容とファイル名をモック
+        mock_file_content = b'test file content'
+        mock_client.download_file.return_value = (mock_file_content, 'test_file.txt')
+
+        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response['Content-Type'] == 'application/octet-stream'
+        assert response['Content-Disposition'] == 'attachment; filename="test_file.txt"'
+        assert response.content == mock_file_content
+
+        # クライアントメソッドが正しく呼ばれたことを確認
+        mock_client.download_file.assert_called_once_with(file_path='/test_folder/test_file.txt')
+
+    def test_download_file_without_authentication_fails(self, api_client):
+        """認証なしでファイルダウンロードが失敗すること"""
+        response = api_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_download_without_file_path_fails(self, authenticated_client):
+        """file_pathなしでダウンロードが失敗すること"""
+        response = authenticated_client.get('/onedrive/download/')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_path' in response.data
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_download_nonexistent_file_fails(self, mock_client_class, authenticated_client):
+        """存在しないファイルのダウンロードが失敗すること"""
+        from onedrive.exceptions import FileNotFoundError as OneDriveFileNotFoundError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.download_file.side_effect = OneDriveFileNotFoundError("File not found")
+
+        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/nonexistent.txt')
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert 'ファイルが見つかりませんでした' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_download_with_authentication_error(self, mock_client_class, authenticated_client):
+        """認証エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import AuthenticationError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.download_file.side_effect = AuthenticationError("Invalid credentials")
+
+        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+
+    @patch('onedrive.views.MSGraphClient')
+    def test_download_with_network_error(self, mock_client_class, authenticated_client):
+        """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import NetworkError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client.download_file.side_effect = NetworkError("Connection timeout")
+
+        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert 'OneDriveへの接続に失敗しました' in response.data['error']

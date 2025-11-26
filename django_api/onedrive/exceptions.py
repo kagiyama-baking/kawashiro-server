@@ -39,3 +39,13 @@ class DeleteError(OneDriveException):
 class NetworkError(OneDriveException):
     """ネットワーク接続エラー"""
     pass
+
+
+class FileNotFoundError(OneDriveException):
+    """ファイルが見つからないエラー"""
+    pass
+
+
+class DownloadError(OneDriveException):
+    """ファイルダウンロードエラー"""
+    pass
