@@ -409,7 +409,9 @@ class OneDriveDeleteView(APIView):
             },
             400: {'description': '入力データの検証エラー'},
             401: {'description': '認証が必要です'},
-            500: {'description': 'サーバーエラー'}
+            500: {'description': 'サーバーエラー'},
+            502: {'description': 'OneDriveへの接続エラー'},
+            503: {'description': 'サービス設定エラー'}
         }
     )
     def delete(self, request, *args, **kwargs):
@@ -512,7 +514,9 @@ class OneDriveDownloadView(APIView):
             400: {'description': '入力データの検証エラー'},
             401: {'description': '認証が必要です'},
             404: {'description': 'ファイルが見つかりません'},
-            500: {'description': 'サーバーエラー'}
+            500: {'description': 'サーバーエラー'},
+            502: {'description': 'OneDriveへの接続エラー'},
+            503: {'description': 'サービス設定エラー'}
         }
     )
     def get(self, request, *args, **kwargs):

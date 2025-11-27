@@ -348,7 +348,7 @@ if [ "${WITH_DATA}" = "true" ]; then
 
     # データベースファイル名から写真データファイル名を生成
     # immich_db_20250127_120000.sql.gz -> immich_data_20250127_120000.tar.gz
-    local data_file_name=$(echo "${BACKUP_FILE}" | sed 's/immich_db_/immich_data_/' | sed 's/\.sql\.gz$/\.tar\.gz/')
+    data_file_name=$(echo "${BACKUP_FILE}" | sed 's/immich_db_/immich_data_/' | sed 's/\.sql\.gz$/\.tar\.gz/')
 
     if [ "${FROM_ONEDRIVE}" = "true" ]; then
         # OneDriveからダウンロード
