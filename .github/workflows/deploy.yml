@@ -161,66 +161,75 @@ jobs:
 
                   echo "✅ リリースタグを作成しました"
 
-    # デプロイ情報の生成
-    deployment-info:
+    # 本番サーバーへデプロイ
+    deploy:
         runs-on: ubuntu-latest
         needs: [verify-images, tag-release]
-        if: always() && needs.verify-images.result == 'success'
+        if: always() && needs.verify-images.result == 'success' && (needs.tag-release.result == 'success' || needs.tag-release.result == 'skipped')
+        environment: production
         steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+            - name: Setup Tailscale
+              uses: tailscale/github-action@v4
+              with:
+                  oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+                  oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+                  tags: tag:ci
 
-            - name: Create deployment artifact
+            - name: Wait for Tailscale connection
               run: |
-                  TAG="${{ inputs.tag || 'staging' }}"
-                  ENVIRONMENT="${{ inputs.environment || 'production' }}"
+                  echo "⏳ Tailscale接続を待機中..."
+                  sleep 5
+                  tailscale status
 
-                  cat > deployment-info.json <<EOF
-                  {
-                    "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-                    "environment": "${ENVIRONMENT}",
-                    "tag": "${TAG}",
-                    "images": {
-                      "reverse-proxy": {
-                        "image": "ghcr.io/${{ github.repository }}/reverse-proxy:${TAG}",
-                        "digest": "${{ needs.verify-images.outputs.reverse-proxy-digest }}"
-                      },
-                      "test-web": {
-                        "image": "ghcr.io/${{ github.repository }}/test-web:${TAG}",
-                        "digest": "${{ needs.verify-images.outputs.test-web-digest }}"
-                      },
-                      "django-api": {
-                        "image": "ghcr.io/${{ github.repository }}/django-api:${TAG}",
-                        "digest": "${{ needs.verify-images.outputs.django-api-digest }}"
-                      }
-                    },
-                    "git": {
-                      "ref": "${{ github.ref }}",
-                      "sha": "${{ github.sha }}",
-                      "actor": "${{ github.actor }}"
-                    }
-                  }
-                  EOF
+            - name: Deploy to production server
+              run: |
+                  echo "🚀 本番サーバーへデプロイ開始..."
 
-                  echo "📋 デプロイ情報:"
-                  cat deployment-info.json | jq '.'
+                  ssh -o StrictHostKeyChecking=accept-new \
+                      -o ConnectTimeout=30 \
+                      ${{ secrets.SSH_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
 
-            - name: Upload deployment artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: deployment-info
-                  path: deployment-info.json
+                  set -e
 
-            - name: Upload deployment instructions
-              uses: actions/upload-artifact@v4
-              with:
-                  name: deployment-instructions
-                  path: DEPLOY_INSTRUCTIONS.md
+                  cd /Users/hakotsuki/Repository/kawashiro-server
+
+                  echo "📥 最新コードを取得..."
+                  git fetch origin main
+                  git reset --hard origin/main
+
+                  echo "🐳 イメージを更新..."
+                  docker compose -f docker-compose-prod.yml pull
+
+                  echo "🔄 データベースマイグレーション..."
+                  docker compose -f docker-compose-prod.yml run --rm django-api python manage.py migrate --noinput || true
+
+                  echo "♻️ コンテナを再起動..."
+                  docker compose -f docker-compose-prod.yml up -d --force-recreate
+
+                  echo "🧹 古いイメージをクリーンアップ..."
+                  docker image prune -f
+
+                  echo "✅ デプロイ完了: $(date)"
+                  ENDSSH
+
+            - name: Health check
+              run: |
+                  echo "🏥 ヘルスチェック実行中..."
+                  sleep 10
+
+                  ssh -o StrictHostKeyChecking=accept-new \
+                      -o ConnectTimeout=30 \
+                      ${{ secrets.SSH_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+
+                  cd /Users/hakotsuki/Repository/kawashiro-server
+                  docker compose -f docker-compose-prod.yml ps
+
+                  ENDSSH
 
     # サマリー
     summary:
         runs-on: ubuntu-latest
-        needs: [verify-images, tag-release, deployment-info]
+        needs: [verify-images, tag-release, deploy]
         if: always()
         steps:
             - name: Generate summary
@@ -237,20 +246,24 @@ jobs:
                   echo "- **時刻**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
                   echo "" >> $GITHUB_STEP_SUMMARY
 
-                  echo "## 📦 イメージ" >> $GITHUB_STEP_SUMMARY
-                  echo "| サービス | イメージ | ステータス |" >> $GITHUB_STEP_SUMMARY
-                  echo "|----------|----------|------------|" >> $GITHUB_STEP_SUMMARY
+                  echo "## 📦 イメージ検証" >> $GITHUB_STEP_SUMMARY
+                  echo "| サービス | ステータス |" >> $GITHUB_STEP_SUMMARY
+                  echo "|----------|------------|" >> $GITHUB_STEP_SUMMARY
 
                   if [ "${{ needs.verify-images.result }}" == "success" ]; then
-                    echo "| reverse-proxy | ghcr.io/${{ github.repository }}/reverse-proxy:${TAG} | ✅ |" >> $GITHUB_STEP_SUMMARY
-                    echo "| test-web | ghcr.io/${{ github.repository }}/test-web:${TAG} | ✅ |" >> $GITHUB_STEP_SUMMARY
-                    echo "| django-api | ghcr.io/${{ github.repository }}/django-api:${TAG} | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| reverse-proxy | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| test-web | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| django-api | ✅ |" >> $GITHUB_STEP_SUMMARY
                   else
-                    echo "| - | - | ❌ 検証失敗 |" >> $GITHUB_STEP_SUMMARY
+                    echo "| - | ❌ 検証失敗 |" >> $GITHUB_STEP_SUMMARY
                   fi
 
                   echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "## 📋 次のステップ" >> $GITHUB_STEP_SUMMARY
-                  echo "1. アーティファクトから \`deployment-instructions\` をダウンロード" >> $GITHUB_STEP_SUMMARY
-                  echo "2. 手順に従って本番サーバーでデプロイを実行" >> $GITHUB_STEP_SUMMARY
-                  echo "3. ヘルスチェックでサービスの正常性を確認" >> $GITHUB_STEP_SUMMARY
+                  echo "## 🖥️ デプロイ結果" >> $GITHUB_STEP_SUMMARY
+                  if [ "${{ needs.deploy.result }}" == "success" ]; then
+                    echo "✅ **本番サーバーへのデプロイが完了しました**" >> $GITHUB_STEP_SUMMARY
+                  elif [ "${{ needs.deploy.result }}" == "skipped" ]; then
+                    echo "⏭️ デプロイはスキップされました" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "❌ **デプロイに失敗しました**" >> $GITHUB_STEP_SUMMARY
+                  fi
