@@ -200,9 +200,6 @@ jobs:
                   echo "🐳 イメージを更新..."
                   docker compose -f docker-compose-prod.yml pull
 
-                  echo "🔄 データベースマイグレーション..."
-                  docker compose -f docker-compose-prod.yml run --rm django-api python manage.py migrate --noinput || true
-
                   echo "♻️ コンテナを再起動..."
                   docker compose -f docker-compose-prod.yml up -d --force-recreate
 
