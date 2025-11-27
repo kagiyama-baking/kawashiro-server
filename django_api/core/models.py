@@ -30,7 +30,7 @@ class UserManager(BaseUserManager):
             ValueError: メールアドレスが指定されていない場合
         """
         if not email:
-            raise ValueError('User must have an email address')
+            raise ValueError("User must have an email address")
 
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
@@ -83,4 +83,4 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     # メールアドレスをユーザー名として使用
-    USERNAME_FIELD = 'email'
+    USERNAME_FIELD = "email"
