@@ -20,25 +20,25 @@ from django.urls import include, path
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
-    SpectacularSwaggerView
+    SpectacularSwaggerView,
 )
 
 # プロジェクト全体のURLパターン定義
 urlpatterns = [
     # Django管理画面のURL
-    path('admin/', admin.site.urls),
-
+    path("admin/", admin.site.urls),
     # API Documentation (OpenAPI/Swagger)
-    path('schema/', SpectacularAPIView.as_view(), name='schema'),
+    path("schema/", SpectacularAPIView.as_view(), name="schema"),
     # Swagger UI (メインのドキュメント)
-    path('swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path(
+        "swagger/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"
+    ),
     # Redoc UI (alternative documentation UI)
-    path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-
+    path("redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     # ユーザー関連APIのURL（user.urlsにルーティング）
-    path('user/', include('user.urls')),
+    path("user/", include("user.urls")),
     # OneDrive関連APIのURL（onedrive.urlsにルーティング）
-    path('onedrive/', include('onedrive.urls')),
+    path("onedrive/", include("onedrive.urls")),
     # メディア処理関連APIのURL（media.urlsにルーティング）
-    path('media/', include('media.urls')),
+    path("media/", include("media.urls")),
 ]

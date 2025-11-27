@@ -1,6 +1,8 @@
 """OneDriveアプリのビューテスト"""
-import pytest
+
 from unittest.mock import Mock, patch
+
+import pytest
 from rest_framework import status
 
 
@@ -8,96 +10,108 @@ from rest_framework import status
 class TestOneDriveUploadView:
     """OneDriveUploadViewのテストクラス"""
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_upload_file_success(self, mock_client_class, authenticated_client, mock_file):
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_file_success(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
         """ファイルのアップロードが成功すること"""
         # モッククライアントのセットアップ
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.upload_file_to_onedrive.return_value = {
-            'name': 'test_file.txt',
-            'size': 17,
-            'created_datetime': '2024-01-01T00:00:00Z',
-            'web_url': 'https://example.sharepoint.com/test_file.txt'
+            "name": "test_file.txt",
+            "size": 17,
+            "created_datetime": "2024-01-01T00:00:00Z",
+            "web_url": "https://example.sharepoint.com/test_file.txt",
         }
 
         payload = {
-            'file': mock_file,
-            'folder_path': '/test_folder',
-            'file_name': 'custom_name.txt'
+            "file": mock_file,
+            "folder_path": "/test_folder",
+            "file_name": "custom_name.txt",
         }
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['message'] == 'ファイルが正常にアップロードされました'
-        assert response.data['file_info']['name'] == 'test_file.txt'
+        assert response.data["message"] == "ファイルが正常にアップロードされました"
+        assert response.data["file_info"]["name"] == "test_file.txt"
 
         # クライアントメソッドが正しく呼ばれたことを確認
         mock_client.upload_file_to_onedrive.assert_called_once()
         call_args = mock_client.upload_file_to_onedrive.call_args
-        assert call_args.kwargs['file_name'] == 'custom_name.txt'
-        assert call_args.kwargs['folder_path'] == '/test_folder'
+        assert call_args.kwargs["file_name"] == "custom_name.txt"
+        assert call_args.kwargs["folder_path"] == "/test_folder"
 
     def test_upload_file_without_authentication_fails(self, api_client, mock_file):
         """認証なしでファイルアップロードが失敗すること"""
-        payload = {
-            'file': mock_file
-        }
+        payload = {"file": mock_file}
 
-        response = api_client.post('/onedrive/upload/', payload, format='multipart')
+        response = api_client.post("/onedrive/upload/", payload, format="multipart")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_upload_without_file_fails(self, authenticated_client):
         """ファイルなしでアップロードが失敗すること"""
-        payload = {
-            'folder_path': '/test_folder'
-        }
+        payload = {"folder_path": "/test_folder"}
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'file' in response.data
+        assert "file" in response.data
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_upload_file_with_configuration_error(self, mock_client_class, authenticated_client, mock_file):
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_file_with_configuration_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import ConfigurationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-        mock_client.upload_file_to_onedrive.side_effect = ConfigurationError("Missing configuration")
+        mock_client.upload_file_to_onedrive.side_effect = ConfigurationError(
+            "Missing configuration"
+        )
 
-        payload = {
-            'file': mock_file
-        }
+        payload = {"file": mock_file}
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        assert 'サービスの設定に問題があります' in response.data['error']
+        assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_upload_file_with_authentication_error(self, mock_client_class, authenticated_client, mock_file):
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_file_with_authentication_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-        mock_client.upload_file_to_onedrive.side_effect = AuthenticationError("Token expired")
+        mock_client.upload_file_to_onedrive.side_effect = AuthenticationError(
+            "Token expired"
+        )
 
-        payload = {
-            'file': mock_file
-        }
+        payload = {"file": mock_file}
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_upload_file_with_upload_error(self, mock_client_class, authenticated_client, mock_file):
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_file_with_upload_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
         """アップロードエラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import UploadError
 
@@ -105,166 +119,168 @@ class TestOneDriveUploadView:
         mock_client_class.return_value = mock_client
         mock_client.upload_file_to_onedrive.side_effect = UploadError("File too large")
 
-        payload = {
-            'file': mock_file
-        }
+        payload = {"file": mock_file}
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data['error'] == 'File too large'
+        assert response.data["error"] == "File too large"
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_upload_file_with_network_error(self, mock_client_class, authenticated_client, mock_file):
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_file_with_network_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-        mock_client.upload_file_to_onedrive.side_effect = NetworkError("Connection timeout")
+        mock_client.upload_file_to_onedrive.side_effect = NetworkError(
+            "Connection timeout"
+        )
 
-        payload = {
-            'file': mock_file
-        }
+        payload = {"file": mock_file}
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
-        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
 
 @pytest.mark.api
 class TestOneDriveFolderView:
     """OneDriveFolderViewのテストクラス"""
 
-    @patch('onedrive.views.MSGraphClient')
+    @patch("onedrive.views.MSGraphClient")
     def test_create_folder_success(self, mock_client_class, authenticated_client):
         """フォルダの作成が成功すること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.create_folder.return_value = {
-            'name': 'New Folder',
-            'folder': {},
-            'created_datetime': '2024-01-01T00:00:00Z',
-            'web_url': 'https://example.sharepoint.com/New%20Folder'
+            "name": "New Folder",
+            "folder": {},
+            "created_datetime": "2024-01-01T00:00:00Z",
+            "web_url": "https://example.sharepoint.com/New%20Folder",
         }
 
-        payload = {
-            'folder_name': 'New Folder',
-            'parent_path': '/documents'
-        }
+        payload = {"folder_name": "New Folder", "parent_path": "/documents"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['message'] == 'フォルダが正常に作成されました'
-        assert response.data['folder_info']['name'] == 'New Folder'
+        assert response.data["message"] == "フォルダが正常に作成されました"
+        assert response.data["folder_info"]["name"] == "New Folder"
 
         # クライアントメソッドが正しく呼ばれたことを確認
         mock_client.create_folder.assert_called_once_with(
-            folder_name='New Folder',
-            parent_path='/documents'
+            folder_name="New Folder", parent_path="/documents"
         )
 
     def test_create_folder_without_authentication_fails(self, api_client):
         """認証なしでフォルダ作成が失敗すること"""
-        payload = {
-            'folder_name': 'New Folder'
-        }
+        payload = {"folder_name": "New Folder"}
 
-        response = api_client.post('/onedrive/folder/', payload)
+        response = api_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_create_folder_without_name_fails(self, authenticated_client):
         """フォルダ名なしでフォルダ作成が失敗すること"""
-        payload = {
-            'parent_path': '/documents'
-        }
+        payload = {"parent_path": "/documents"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'folder_name' in response.data
+        assert "folder_name" in response.data
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_create_folder_with_folder_operation_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_folder_with_folder_operation_error(
+        self, mock_client_class, authenticated_client
+    ):
         """フォルダ操作エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import FolderOperationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-        mock_client.create_folder.side_effect = FolderOperationError("Folder already exists")
+        mock_client.create_folder.side_effect = FolderOperationError(
+            "Folder already exists"
+        )
 
-        payload = {
-            'folder_name': 'Existing Folder'
-        }
+        payload = {"folder_name": "Existing Folder"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data['error'] == 'Folder already exists'
+        assert response.data["error"] == "Folder already exists"
 
 
 @pytest.mark.api
 class TestOneDriveListView:
     """OneDriveListViewのテストクラス"""
 
-    @patch('onedrive.views.MSGraphClient')
+    @patch("onedrive.views.MSGraphClient")
     def test_list_files_success(self, mock_client_class, authenticated_client):
         """ファイル一覧の取得が成功すること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.list_files.return_value = [
             {
-                'name': 'file1.pdf',
-                'size': 1024000,
-                'created_datetime': '2024-01-01T00:00:00Z',
-                'web_url': 'https://example.sharepoint.com/file1.pdf'
+                "name": "file1.pdf",
+                "size": 1024000,
+                "created_datetime": "2024-01-01T00:00:00Z",
+                "web_url": "https://example.sharepoint.com/file1.pdf",
             },
             {
-                'name': 'folder1',
-                'folder': {},
-                'created_datetime': '2024-01-01T00:00:00Z',
-                'web_url': 'https://example.sharepoint.com/folder1'
-            }
+                "name": "folder1",
+                "folder": {},
+                "created_datetime": "2024-01-01T00:00:00Z",
+                "web_url": "https://example.sharepoint.com/folder1",
+            },
         ]
 
-        response = authenticated_client.get('/onedrive/list/', {'folder_path': '/documents'})
+        response = authenticated_client.get(
+            "/onedrive/list/", {"folder_path": "/documents"}
+        )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['folder_path'] == '/documents'
-        assert response.data['count'] == 2
-        assert len(response.data['files']) == 2
-        assert response.data['files'][0]['name'] == 'file1.pdf'
+        assert response.data["folder_path"] == "/documents"
+        assert response.data["count"] == 2
+        assert len(response.data["files"]) == 2
+        assert response.data["files"][0]["name"] == "file1.pdf"
 
         # クライアントメソッドが正しく呼ばれたことを確認
-        mock_client.list_files.assert_called_once_with(folder_path='/documents')
+        mock_client.list_files.assert_called_once_with(folder_path="/documents")
 
-    @patch('onedrive.views.MSGraphClient')
+    @patch("onedrive.views.MSGraphClient")
     def test_list_files_root_directory(self, mock_client_class, authenticated_client):
         """ルートディレクトリのファイル一覧が取得できること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.list_files.return_value = []
 
-        response = authenticated_client.get('/onedrive/list/')
+        response = authenticated_client.get("/onedrive/list/")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['folder_path'] == '/'
-        assert response.data['count'] == 0
+        assert response.data["folder_path"] == "/"
+        assert response.data["count"] == 0
 
         # デフォルトでルートディレクトリが指定されることを確認
-        mock_client.list_files.assert_called_once_with(folder_path='/')
+        mock_client.list_files.assert_called_once_with(folder_path="/")
 
     def test_list_files_without_authentication_fails(self, api_client):
         """認証なしでファイル一覧取得が失敗すること"""
-        response = api_client.get('/onedrive/list/')
+        response = api_client.get("/onedrive/list/")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_list_files_with_list_operation_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_list_files_with_list_operation_error(
+        self, mock_client_class, authenticated_client
+    ):
         """一覧取得操作エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import ListOperationError
 
@@ -272,73 +288,81 @@ class TestOneDriveListView:
         mock_client_class.return_value = mock_client
         mock_client.list_files.side_effect = ListOperationError("Folder not found")
 
-        response = authenticated_client.get('/onedrive/list/', {'folder_path': '/nonexistent'})
+        response = authenticated_client.get(
+            "/onedrive/list/", {"folder_path": "/nonexistent"}
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data['error'] == 'Folder not found'
+        assert response.data["error"] == "Folder not found"
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_upload_file_with_unexpected_error(self, mock_client_class, authenticated_client, mock_file):
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_file_with_unexpected_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
         """予期しないエラー時に適切なエラーレスポンスを返すこと"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.upload_file_to_onedrive.side_effect = Exception("Unexpected error")
 
-        payload = {
-            'file': mock_file
-        }
+        payload = {"file": mock_file}
 
-        response = authenticated_client.post('/onedrive/upload/', payload, format='multipart')
+        response = authenticated_client.post(
+            "/onedrive/upload/", payload, format="multipart"
+        )
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        assert 'ファイルのアップロード中に問題が発生しました' in response.data['error']
+        assert "ファイルのアップロード中に問題が発生しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_create_folder_with_unexpected_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_folder_with_unexpected_error(
+        self, mock_client_class, authenticated_client
+    ):
         """予期しないエラー時に適切なエラーレスポンスを返すこと"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.create_folder.side_effect = Exception("Unexpected error")
 
-        payload = {
-            'folder_name': 'New Folder'
-        }
+        payload = {"folder_name": "New Folder"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        assert 'フォルダの作成中に問題が発生しました' in response.data['error']
+        assert "フォルダの作成中に問題が発生しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_list_files_with_unexpected_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_list_files_with_unexpected_error(
+        self, mock_client_class, authenticated_client
+    ):
         """予期しないエラー時に適切なエラーレスポンスを返すこと"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.list_files.side_effect = Exception("Unexpected error")
 
-        response = authenticated_client.get('/onedrive/list/')
+        response = authenticated_client.get("/onedrive/list/")
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        assert 'ファイル一覧の取得中に問題が発生しました' in response.data['error']
+        assert "ファイル一覧の取得中に問題が発生しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_create_folder_with_configuration_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_folder_with_configuration_error(
+        self, mock_client_class, authenticated_client
+    ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
-        payload = {
-            'folder_name': 'New Folder'
-        }
+        payload = {"folder_name": "New Folder"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        assert 'サービスの設定に問題があります' in response.data['error']
+        assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_create_folder_with_authentication_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_folder_with_authentication_error(
+        self, mock_client_class, authenticated_client
+    ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import AuthenticationError
 
@@ -346,17 +370,17 @@ class TestOneDriveListView:
         mock_client_class.return_value = mock_client
         mock_client.create_folder.side_effect = AuthenticationError("Token expired")
 
-        payload = {
-            'folder_name': 'New Folder'
-        }
+        payload = {"folder_name": "New Folder"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_create_folder_with_network_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_folder_with_network_error(
+        self, mock_client_class, authenticated_client
+    ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import NetworkError
 
@@ -364,29 +388,31 @@ class TestOneDriveListView:
         mock_client_class.return_value = mock_client
         mock_client.create_folder.side_effect = NetworkError("Connection timeout")
 
-        payload = {
-            'folder_name': 'New Folder'
-        }
+        payload = {"folder_name": "New Folder"}
 
-        response = authenticated_client.post('/onedrive/folder/', payload)
+        response = authenticated_client.post("/onedrive/folder/", payload)
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
-        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_list_files_with_configuration_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_list_files_with_configuration_error(
+        self, mock_client_class, authenticated_client
+    ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
-        response = authenticated_client.get('/onedrive/list/')
+        response = authenticated_client.get("/onedrive/list/")
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        assert 'サービスの設定に問題があります' in response.data['error']
+        assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_list_files_with_authentication_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_list_files_with_authentication_error(
+        self, mock_client_class, authenticated_client
+    ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import AuthenticationError
 
@@ -394,13 +420,15 @@ class TestOneDriveListView:
         mock_client_class.return_value = mock_client
         mock_client.list_files.side_effect = AuthenticationError("Token expired")
 
-        response = authenticated_client.get('/onedrive/list/')
+        response = authenticated_client.get("/onedrive/list/")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_list_files_with_network_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_list_files_with_network_error(
+        self, mock_client_class, authenticated_client
+    ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import NetworkError
 
@@ -408,58 +436,70 @@ class TestOneDriveListView:
         mock_client_class.return_value = mock_client
         mock_client.list_files.side_effect = NetworkError("Connection timeout")
 
-        response = authenticated_client.get('/onedrive/list/')
+        response = authenticated_client.get("/onedrive/list/")
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
-        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
 
 @pytest.mark.api
 class TestOneDriveDeleteView:
     """OneDriveDeleteViewのテストクラス"""
 
-    @patch('onedrive.views.MSGraphClient')
+    @patch("onedrive.views.MSGraphClient")
     def test_delete_file_success(self, mock_client_class, authenticated_client):
         """ファイルの削除が成功すること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.delete_file.return_value = None
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['message'] == 'ファイルが正常に削除されました'
+        assert response.data["message"] == "ファイルが正常に削除されました"
 
         # クライアントメソッドが正しく呼ばれたことを確認
-        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
+        mock_client.delete_file.assert_called_once_with(
+            file_path="/test_folder/test_file.txt", permanent_delete=False
+        )
 
     def test_delete_file_without_authentication_fails(self, api_client):
         """認証なしでファイル削除が失敗すること"""
-        response = api_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = api_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_delete_without_file_path_fails(self, authenticated_client):
         """file_pathなしで削除が失敗すること"""
-        response = authenticated_client.delete('/onedrive/delete/')
+        response = authenticated_client.delete("/onedrive/delete/")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'file_path' in response.data
+        assert "file_path" in response.data
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_configuration_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_configuration_error(
+        self, mock_client_class, authenticated_client
+    ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        assert 'サービスの設定に問題があります' in response.data['error']
+        assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_authentication_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_authentication_error(
+        self, mock_client_class, authenticated_client
+    ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import AuthenticationError
 
@@ -467,13 +507,17 @@ class TestOneDriveDeleteView:
         mock_client_class.return_value = mock_client
         mock_client.delete_file.side_effect = AuthenticationError("Token expired")
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_delete_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_delete_error(
+        self, mock_client_class, authenticated_client
+    ):
         """削除エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import DeleteError
 
@@ -481,13 +525,17 @@ class TestOneDriveDeleteView:
         mock_client_class.return_value = mock_client
         mock_client.delete_file.side_effect = DeleteError("File not found")
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data['error'] == 'File not found'
+        assert response.data["error"] == "File not found"
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_network_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_network_error(
+        self, mock_client_class, authenticated_client
+    ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import NetworkError
 
@@ -495,134 +543,176 @@ class TestOneDriveDeleteView:
         mock_client_class.return_value = mock_client
         mock_client.delete_file.side_effect = NetworkError("Connection timeout")
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
-        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_unexpected_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_unexpected_error(
+        self, mock_client_class, authenticated_client
+    ):
         """予期しないエラー時に適切なエラーレスポンスを返すこと"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.delete_file.side_effect = Exception("Unexpected error")
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        assert 'ファイルの削除中に問題が発生しました' in response.data['error']
+        assert "ファイルの削除中に問題が発生しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_permanent_delete_true(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_permanent_delete_true(
+        self, mock_client_class, authenticated_client
+    ):
         """完全削除オプションがTrueの場合、ごみ箱からも削除されること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.delete_file.return_value = None
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt&permanent_delete=true')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt&permanent_delete=true"
+        )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['message'] == 'ファイルが正常に削除されました'
+        assert response.data["message"] == "ファイルが正常に削除されました"
 
         # クライアントメソッドがpermanent_delete=Trueで呼ばれたことを確認
-        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=True)
+        mock_client.delete_file.assert_called_once_with(
+            file_path="/test_folder/test_file.txt", permanent_delete=True
+        )
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_with_permanent_delete_false(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_with_permanent_delete_false(
+        self, mock_client_class, authenticated_client
+    ):
         """完全削除オプションがFalseの場合、通常削除されること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.delete_file.return_value = None
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt&permanent_delete=false')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt&permanent_delete=false"
+        )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['message'] == 'ファイルが正常に削除されました'
+        assert response.data["message"] == "ファイルが正常に削除されました"
 
         # クライアントメソッドがpermanent_delete=Falseで呼ばれたことを確認
-        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
+        mock_client.delete_file.assert_called_once_with(
+            file_path="/test_folder/test_file.txt", permanent_delete=False
+        )
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_delete_file_without_permanent_delete_parameter(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_delete_file_without_permanent_delete_parameter(
+        self, mock_client_class, authenticated_client
+    ):
         """完全削除オプションが指定されない場合、デフォルトでFalse（通常削除）になること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
         mock_client.delete_file.return_value = None
 
-        response = authenticated_client.delete('/onedrive/delete/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.delete(
+            "/onedrive/delete/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_200_OK
 
         # クライアントメソッドがpermanent_delete=Falseで呼ばれたことを確認
-        mock_client.delete_file.assert_called_once_with(file_path='/test_folder/test_file.txt', permanent_delete=False)
+        mock_client.delete_file.assert_called_once_with(
+            file_path="/test_folder/test_file.txt", permanent_delete=False
+        )
 
 
 @pytest.mark.api
 class TestOneDriveDownloadView:
     """OneDriveDownloadViewのテストクラス"""
 
-    @patch('onedrive.views.MSGraphClient')
+    @patch("onedrive.views.MSGraphClient")
     def test_download_file_success(self, mock_client_class, authenticated_client):
         """ファイルのダウンロードが成功すること"""
         mock_client = Mock()
         mock_client_class.return_value = mock_client
 
         # ファイル内容とファイル名をモック
-        mock_file_content = b'test file content'
-        mock_client.download_file.return_value = (mock_file_content, 'test_file.txt')
+        mock_file_content = b"test file content"
+        mock_client.download_file.return_value = (mock_file_content, "test_file.txt")
 
-        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.get(
+            "/onedrive/download/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response['Content-Type'] == 'application/octet-stream'
-        assert response['Content-Disposition'] == 'attachment; filename="test_file.txt"'
+        assert response["Content-Type"] == "application/octet-stream"
+        assert response["Content-Disposition"] == 'attachment; filename="test_file.txt"'
         assert response.content == mock_file_content
 
         # クライアントメソッドが正しく呼ばれたことを確認
-        mock_client.download_file.assert_called_once_with(file_path='/test_folder/test_file.txt')
+        mock_client.download_file.assert_called_once_with(
+            file_path="/test_folder/test_file.txt"
+        )
 
     def test_download_file_without_authentication_fails(self, api_client):
         """認証なしでファイルダウンロードが失敗すること"""
-        response = api_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+        response = api_client.get(
+            "/onedrive/download/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_download_without_file_path_fails(self, authenticated_client):
         """file_pathなしでダウンロードが失敗すること"""
-        response = authenticated_client.get('/onedrive/download/')
+        response = authenticated_client.get("/onedrive/download/")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'file_path' in response.data
+        assert "file_path" in response.data
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_download_nonexistent_file_fails(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_download_nonexistent_file_fails(
+        self, mock_client_class, authenticated_client
+    ):
         """存在しないファイルのダウンロードが失敗すること"""
         from onedrive.exceptions import FileNotFoundError as OneDriveFileNotFoundError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-        mock_client.download_file.side_effect = OneDriveFileNotFoundError("File not found")
+        mock_client.download_file.side_effect = OneDriveFileNotFoundError(
+            "File not found"
+        )
 
-        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/nonexistent.txt')
+        response = authenticated_client.get(
+            "/onedrive/download/?file_path=/test_folder/nonexistent.txt"
+        )
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert response.data['error'] == "File not found"
+        assert response.data["error"] == "File not found"
 
-    @patch('onedrive.views.MSGraphClient')
-    def test_download_with_authentication_error(self, mock_client_class, authenticated_client):
+    @patch("onedrive.views.MSGraphClient")
+    def test_download_with_authentication_error(
+        self, mock_client_class, authenticated_client
+    ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
-        mock_client.download_file.side_effect = AuthenticationError("Invalid credentials")
+        mock_client.download_file.side_effect = AuthenticationError(
+            "Invalid credentials"
+        )
 
-        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.get(
+            "/onedrive/download/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert 'OneDriveへの認証に失敗しました' in response.data['error']
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch('onedrive.views.MSGraphClient')
+    @patch("onedrive.views.MSGraphClient")
     def test_download_with_network_error(self, mock_client_class, authenticated_client):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
         from onedrive.exceptions import NetworkError
@@ -631,7 +721,9 @@ class TestOneDriveDownloadView:
         mock_client_class.return_value = mock_client
         mock_client.download_file.side_effect = NetworkError("Connection timeout")
 
-        response = authenticated_client.get('/onedrive/download/?file_path=/test_folder/test_file.txt')
+        response = authenticated_client.get(
+            "/onedrive/download/?file_path=/test_folder/test_file.txt"
+        )
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
-        assert 'OneDriveへの接続に失敗しました' in response.data['error']
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
