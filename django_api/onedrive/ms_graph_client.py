@@ -2,6 +2,7 @@
 
 import os
 import time
+from urllib.parse import quote
 
 import requests
 from django.conf import settings
@@ -12,7 +13,7 @@ from .exceptions import (
     ConfigurationError,
     DeleteError,
     DownloadError,
-    FileNotFoundError,
+    OneDriveFileNotFoundError,
     FolderOperationError,
     ListOperationError,
     NetworkError,
@@ -459,10 +460,13 @@ class MSGraphClient:
         headers["Content-Type"] = "application/json"
 
         try:
+            # ファイルパスをURLエンコード
+            encoded_path = quote(file_path, safe='/')
+
             if permanent_delete:
                 # 完全削除の場合、まずアイテムIDを取得
                 item_url = (
-                    f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+                    f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
                 )
                 response = requests.get(item_url, headers=headers, timeout=30)
                 response.raise_for_status()
@@ -481,7 +485,7 @@ class MSGraphClient:
             else:
                 # 通常の削除（ごみ箱に移動）
                 url = (
-                    f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+                    f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
                 )
                 response = requests.delete(url, headers=headers, timeout=30)
                 response.raise_for_status()
@@ -512,7 +516,7 @@ class MSGraphClient:
 
         Raises:
             DownloadError: ファイルダウンロードに失敗した場合
-            FileNotFoundError: ファイルが見つからない場合
+            OneDriveFileNotFoundError: ファイルが見つからない場合
             AuthenticationError: 認証に失敗した場合
             NetworkError: ネットワーク接続に失敗した場合
         """
@@ -524,9 +528,12 @@ class MSGraphClient:
         headers = self.get_headers()
 
         try:
+            # ファイルパスをURLエンコード
+            encoded_path = quote(file_path, safe='/')
+
             # ファイルのメタデータを取得してファイル名を取得
             metadata_url = (
-                f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}"
+                f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
             )
             metadata_response = requests.get(metadata_url, headers=headers, timeout=30)
             metadata_response.raise_for_status()
@@ -534,7 +541,7 @@ class MSGraphClient:
             file_name = metadata.get("name", file_path.split("/")[-1])
 
             # ファイルの内容をダウンロード
-            download_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{file_path}:/content"
+            download_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}:/content"
             response = requests.get(
                 download_url,
                 headers=headers,
@@ -552,7 +559,7 @@ class MSGraphClient:
             if e.response.status_code == 401:
                 raise AuthenticationError("認証に失敗しました") from e
             elif e.response.status_code == 404:
-                raise FileNotFoundError("指定されたファイルが見つかりません") from e
+                raise OneDriveFileNotFoundError("指定されたファイルが見つかりません") from e
             else:
                 raise DownloadError("ファイルのダウンロードに失敗しました") from e
         except requests.exceptions.RequestException as e:

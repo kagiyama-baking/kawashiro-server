@@ -55,6 +55,9 @@ backup_database() {
     # PGPASSWORD環境変数を設定してパスワードを渡す
     export PGPASSWORD="${DB_PASSWORD}"
 
+    # エラー時にもPGPASSWORDを確実にクリアするためのtrap
+    trap 'unset PGPASSWORD' EXIT ERR
+
     # pg_dumpを実行して圧縮
     if pg_dump -h "${DB_HOSTNAME}" -U "${DB_USERNAME}" -d "${DB_DATABASE_NAME}" | gzip > "${DB_BACKUP_FILE}"; then
         log_success "データベースバックアップが完了しました: ${DB_BACKUP_FILE}"
@@ -69,6 +72,8 @@ backup_database() {
 
     # PGPASSWORD環境変数をクリア
     unset PGPASSWORD
+    # trapをクリア
+    trap - EXIT ERR
 }
 
 # ============================================================
@@ -163,7 +168,9 @@ cleanup_old_onedrive_backups() {
     local api_endpoint="${DJANGO_API_URL}/onedrive/list/"
 
     # OneDriveのバックアップフォルダ内のファイル一覧を取得
-    local response=$(curl -s -w "\n%{http_code}" -X GET "${api_endpoint}?folder_path=${ONEDRIVE_BACKUP_PATH}" \
+    # URLエンコーディング
+    local encoded_path=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${ONEDRIVE_BACKUP_PATH}', safe='/'))")
+    local response=$(curl -s -w "\n%{http_code}" -X GET "${api_endpoint}?folder_path=${encoded_path}" \
         -H "Authorization: Token ${DJANGO_API_TOKEN}")
 
     # HTTPステータスコードを取得
@@ -196,7 +203,7 @@ delete_old_files() {
 
     # jqを使用してファイル名をフィルタリングし、作成日時でソート
     # 該当するファイル名のリストを取得（新しい順）
-    local files=$(echo "${files_json}" | grep -o "\"name\":\"${prefix}[^\"]*${suffix}\"" | sed 's/"name":"\(.*\)"/\1/' | sort -r)
+    local files=$(echo "${files_json}" | jq -r ".files[]? | select(.name | startswith(\"${prefix}\") and endswith(\"${suffix}\")) | .name" | sort -r)
 
     if [ -z "${files}" ]; then
         log_info "${prefix}*${suffix} のバックアップファイルはOneDrive上に見つかりませんでした"
@@ -224,8 +231,11 @@ delete_old_files() {
         local delete_endpoint="${DJANGO_API_URL}/onedrive/delete/"
         local file_path="${ONEDRIVE_BACKUP_PATH}/${file_name}"
 
+        # URLエンコーディング
+        local encoded_file_path=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${file_path}', safe='/'))")
+
         # 完全削除オプション（permanent_delete=true）を指定
-        local delete_response=$(curl -s -w "\n%{http_code}" -X DELETE "${delete_endpoint}?file_path=${file_path}&permanent_delete=true" \
+        local delete_response=$(curl -s -w "\n%{http_code}" -X DELETE "${delete_endpoint}?file_path=${encoded_file_path}&permanent_delete=true" \
             -H "Authorization: Token ${DJANGO_API_TOKEN}")
 
         local delete_http_code=$(echo "${delete_response}" | tail -n1)

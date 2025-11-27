@@ -677,7 +677,7 @@ class TestOneDriveDownloadView:
         self, mock_client_class, authenticated_client
     ):
         """存在しないファイルのダウンロードが失敗すること"""
-        from onedrive.exceptions import FileNotFoundError as OneDriveFileNotFoundError
+        from onedrive.exceptions import OneDriveFileNotFoundError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client

@@ -233,10 +233,13 @@ restore_data() {
         exit 1
     fi
 
-    # 既存のデータを削除
-    log_warning "既存の写真データを削除しています..."
+    # 既存のデータを削除（安全のため、まず一時バックアップを作成）
     if [ -d "${restore_dir}" ]; then
-        rm -rf "${restore_dir}"
+        log_warning "既存の写真データを一時バックアップしています..."
+        local temp_backup_dir="/restore/data.backup.$(date '+%Y%m%d_%H%M%S')"
+        mv "${restore_dir}" "${temp_backup_dir}"
+        log_info "既存データを一時バックアップしました: ${temp_backup_dir}"
+        log_info "リストア成功後、手動で削除してください: rm -rf ${temp_backup_dir}"
     fi
 
     # バックアップファイルを展開

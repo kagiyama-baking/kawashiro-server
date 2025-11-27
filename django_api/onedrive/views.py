@@ -1,6 +1,7 @@
 """OneDriveアプリケーションのビュー"""
 
 import logging
+from urllib.parse import quote
 
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -14,7 +15,7 @@ from .exceptions import (
     ConfigurationError,
     DeleteError,
     DownloadError,
-    FileNotFoundError,
+    OneDriveFileNotFoundError,
     FolderOperationError,
     ListOperationError,
     NetworkError,
@@ -542,7 +543,13 @@ class OneDriveDownloadView(APIView):
             response = HttpResponse(
                 file_content, content_type="application/octet-stream"
             )
-            response["Content-Disposition"] = f'attachment; filename="{file_name}"'
+            # ファイル名をサニタイズしてヘッダーインジェクション攻撃を防ぐ
+            # RFC 5987に従ってUTF-8エンコーディングを使用
+            safe_filename = file_name.replace('"', '\\"').replace('\r', '').replace('\n', '')
+            encoded_filename = quote(file_name)
+            response["Content-Disposition"] = (
+                f'attachment; filename="{safe_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+            )
             return response
 
         except ConfigurationError as e:
@@ -563,7 +570,7 @@ class OneDriveDownloadView(APIView):
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        except FileNotFoundError as e:
+        except OneDriveFileNotFoundError as e:
             # ファイルが見つからないエラー
             logger.warning(f"File not found: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)

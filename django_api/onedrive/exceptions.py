@@ -33,7 +33,7 @@ class NetworkError(OneDriveError):
     """ネットワーク接続エラー"""
 
 
-class FileNotFoundError(OneDriveError):
+class OneDriveFileNotFoundError(OneDriveError):
     """ファイルが見つからないエラー"""
 
 
