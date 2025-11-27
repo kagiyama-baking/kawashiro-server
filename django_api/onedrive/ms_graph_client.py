@@ -461,13 +461,11 @@ class MSGraphClient:
 
         try:
             # ファイルパスをURLエンコード
-            encoded_path = quote(file_path, safe='/')
+            encoded_path = quote(file_path, safe="/")
 
             if permanent_delete:
                 # 完全削除の場合、まずアイテムIDを取得
-                item_url = (
-                    f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
-                )
+                item_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
                 response = requests.get(item_url, headers=headers, timeout=30)
                 response.raise_for_status()
                 item_data = response.json()
@@ -484,9 +482,7 @@ class MSGraphClient:
                 response.raise_for_status()
             else:
                 # 通常の削除（ごみ箱に移動）
-                url = (
-                    f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
-                )
+                url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
                 response = requests.delete(url, headers=headers, timeout=30)
                 response.raise_for_status()
 
@@ -529,7 +525,7 @@ class MSGraphClient:
 
         try:
             # ファイルパスをURLエンコード
-            encoded_path = quote(file_path, safe='/')
+            encoded_path = quote(file_path, safe="/")
 
             # ファイルのメタデータを取得してファイル名を取得
             metadata_url = (
@@ -559,7 +555,9 @@ class MSGraphClient:
             if e.response.status_code == 401:
                 raise AuthenticationError("認証に失敗しました") from e
             elif e.response.status_code == 404:
-                raise OneDriveFileNotFoundError("指定されたファイルが見つかりません") from e
+                raise OneDriveFileNotFoundError(
+                    "指定されたファイルが見つかりません"
+                ) from e
             else:
                 raise DownloadError("ファイルのダウンロードに失敗しました") from e
         except requests.exceptions.RequestException as e:

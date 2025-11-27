@@ -545,10 +545,12 @@ class OneDriveDownloadView(APIView):
             )
             # ファイル名をサニタイズしてヘッダーインジェクション攻撃を防ぐ
             # RFC 5987に従ってUTF-8エンコーディングを使用
-            safe_filename = file_name.replace('"', '\\"').replace('\r', '').replace('\n', '')
+            safe_filename = (
+                file_name.replace('"', '\\"').replace("\r", "").replace("\n", "")
+            )
             encoded_filename = quote(file_name)
             response["Content-Disposition"] = (
-                f'attachment; filename="{safe_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+                f"attachment; filename=\"{safe_filename}\"; filename*=UTF-8''{encoded_filename}"
             )
             return response
 

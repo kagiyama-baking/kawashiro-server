@@ -649,7 +649,10 @@ class TestOneDriveDownloadView:
 
         assert response.status_code == status.HTTP_200_OK
         assert response["Content-Type"] == "application/octet-stream"
-        assert response["Content-Disposition"] == 'attachment; filename="test_file.txt"; filename*=UTF-8\'\'test_file.txt'
+        assert (
+            response["Content-Disposition"]
+            == "attachment; filename=\"test_file.txt\"; filename*=UTF-8''test_file.txt"
+        )
         assert response.content == mock_file_content
 
         # クライアントメソッドが正しく呼ばれたことを確認
