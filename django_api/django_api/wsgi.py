@@ -12,7 +12,7 @@ import os
 from django.core.wsgi import get_wsgi_application
 
 # Django設定モジュールを環境変数に設定（デフォルト値を指定）
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'django_api.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_api.settings")
 
 # WSGIアプリケーションインスタンスを取得
 application = get_wsgi_application()

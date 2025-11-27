@@ -1,9 +1,9 @@
 """pytest設定とフィクスチャ定義"""
+
 import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
-
 
 User = get_user_model()
 
@@ -18,9 +18,7 @@ def api_client():
 def regular_user(db):
     """一般ユーザーのフィクスチャ"""
     user = User.objects.create_user(
-        email='test@example.com',
-        password='testpass123',
-        name='Test User'
+        email="test@example.com", password="testpass123", name="Test User"
     )
     return user
 
@@ -29,10 +27,9 @@ def regular_user(db):
 def superuser(db):
     """スーパーユーザーのフィクスチャ"""
     user = User.objects.create_superuser(
-        email='admin@example.com',
-        password='adminpass123'
+        email="admin@example.com", password="adminpass123"
     )
-    user.name = 'Admin User'
+    user.name = "Admin User"
     user.save()
     return user
 
@@ -54,14 +51,14 @@ def superuser_token(superuser):
 @pytest.fixture
 def authenticated_client(api_client, auth_token):
     """認証済みAPIクライアントのフィクスチャ"""
-    api_client.credentials(HTTP_AUTHORIZATION=f'Token {auth_token.key}')
+    api_client.credentials(HTTP_AUTHORIZATION=f"Token {auth_token.key}")
     return api_client
 
 
 @pytest.fixture
 def superuser_client(api_client, superuser_token):
     """スーパーユーザー認証済みAPIクライアントのフィクスチャ"""
-    api_client.credentials(HTTP_AUTHORIZATION=f'Token {superuser_token.key}')
+    api_client.credentials(HTTP_AUTHORIZATION=f"Token {superuser_token.key}")
     return api_client
 
 
@@ -69,10 +66,9 @@ def superuser_client(api_client, superuser_token):
 def mock_file():
     """テスト用ファイルオブジェクトのフィクスチャ"""
     from django.core.files.uploadedfile import SimpleUploadedFile
+
     return SimpleUploadedFile(
-        name='test_file.txt',
-        content=b'Test file content',
-        content_type='text/plain'
+        name="test_file.txt", content=b"Test file content", content_type="text/plain"
     )
 
 
@@ -80,12 +76,11 @@ def mock_file():
 def mock_pdf_file():
     """テスト用PDFファイルオブジェクトのフィクスチャ"""
     from django.core.files.uploadedfile import SimpleUploadedFile
+
     # 簡単なPDFヘッダー（実際のPDFではないが、テストには十分）
-    pdf_content = b'%PDF-1.4\n%Test PDF content'
+    pdf_content = b"%PDF-1.4\n%Test PDF content"
     return SimpleUploadedFile(
-        name='test_document.pdf',
-        content=pdf_content,
-        content_type='application/pdf'
+        name="test_document.pdf", content=pdf_content, content_type="application/pdf"
     )
 
 
@@ -95,4 +90,3 @@ def enable_db_access_for_all_tests(db):
     すべてのテストでデータベースアクセスを有効にする
     @pytest.mark.djangodbが不要になる
     """
-    pass

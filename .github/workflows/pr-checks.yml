@@ -12,6 +12,7 @@ on:
             - '.github/workflows/!(pr-checks).yml'
             - 'scripts/**'
             - 'docs/**'
+            - 'backup/**'
     workflow_dispatch: # テスト用の手動実行
 
 jobs:
@@ -38,7 +39,21 @@ jobs:
               working-directory: ./django_api
               run: |
                   uv pip install --system .
-                  uv pip install --system pytest pytest-django pytest-cov pytest-mock factory-boy faker
+                  uv pip install --system pytest pytest-django pytest-cov pytest-mock factory-boy faker ruff
+
+            - name: Run ruff linter
+              working-directory: ./django_api
+              run: |
+                  echo "🔍 Ruffリンターチェック実行中..."
+                  uv run ruff check .
+                  echo "✅ リンターチェック完了"
+
+            - name: Run ruff formatter check
+              working-directory: ./django_api
+              run: |
+                  echo "🎨 Ruffフォーマッターチェック実行中..."
+                  uv run ruff format --check .
+                  echo "✅ フォーマッターチェック完了"
 
             - name: Create test environment
               working-directory: ./django_api
