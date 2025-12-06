@@ -36,7 +36,9 @@ class MSGraphConfigForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # 既存の秘密鍵がある場合はヘルプテキストを変更
         if self.instance.pk and self.instance._encrypted_private_key:
-            self.fields["private_key"].help_text = (
+            self.fields[
+                "private_key"
+            ].help_text = (
                 "秘密鍵は既に設定されています。変更する場合のみ入力してください。"
             )
 
@@ -106,4 +108,6 @@ class MSGraphConfigAdmin(admin.ModelAdmin):
         extra_context = extra_context or {}
         extra_context["show_save_and_add_another"] = False
         extra_context["show_save_and_continue"] = True
-        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+        return super().change_view(
+            request, object_id, form_url, extra_context=extra_context
+        )

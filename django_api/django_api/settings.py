@@ -281,4 +281,3 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
     ],
 }
-

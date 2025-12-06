@@ -174,7 +174,9 @@ class TestMSGraphSettingsDataclass:
             cert_thumbprint="thumb-789",
             target_user="user@example.com",
         )
-        config.private_key = "-----BEGIN PRIVATE KEY-----\nkey-content\n-----END PRIVATE KEY-----"
+        config.private_key = (
+            "-----BEGIN PRIVATE KEY-----\nkey-content\n-----END PRIVATE KEY-----"
+        )
         config.save()
 
         settings = get_ms_graph_settings()

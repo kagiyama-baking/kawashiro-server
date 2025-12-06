@@ -27,7 +27,10 @@ class TestMSGraphClientInitialization:
         assert client.tenant_id == "test-tenant"
         assert client.client_id == "test-client"
         assert client.thumbprint == "test-thumb"
-        assert client._private_key == "-----BEGIN PRIVATE KEY-----\nKEY_DATA\n-----END PRIVATE KEY-----"
+        assert (
+            client._private_key
+            == "-----BEGIN PRIVATE KEY-----\nKEY_DATA\n-----END PRIVATE KEY-----"
+        )
         assert client.target_user == "test@example.com"
         assert client.authority == "https://login.microsoftonline.com/test-tenant"
         assert client.scopes == ["https://graph.microsoft.com/.default"]
@@ -212,7 +215,9 @@ class TestMSGraphClientUpload:
 
     @patch("requests.put")
     @patch("onedrive.ms_graph_client.ConfidentialClientApplication")
-    def test_upload_file_token_expired_retry(self, mock_msal, mock_put, ms_graph_client):
+    def test_upload_file_token_expired_retry(
+        self, mock_msal, mock_put, ms_graph_client
+    ):
         """トークン切れ時に再取得してリトライすること"""
         # 最初の呼び出しは401、再試行で成功
         mock_response_401 = Mock()
@@ -361,7 +366,10 @@ class TestMSGraphClientLargeFileUpload:
         # チャンクアップロードのモック
         mock_chunk_response = Mock()
         mock_chunk_response.status_code = 201
-        mock_chunk_response.json.return_value = {"id": "file-id-123", "name": "large.bin"}
+        mock_chunk_response.json.return_value = {
+            "id": "file-id-123",
+            "name": "large.bin",
+        }
         mock_put.return_value = mock_chunk_response
 
         # 4MB以上のファイル
@@ -472,7 +480,9 @@ class TestMSGraphClientLargeFileUpload:
 
     @patch("requests.put")
     @patch("time.sleep")
-    def test_upload_chunk_max_retries_exceeded(self, mock_sleep, mock_put, ms_graph_client):
+    def test_upload_chunk_max_retries_exceeded(
+        self, mock_sleep, mock_put, ms_graph_client
+    ):
         """リトライ上限を超えた場合エラーになること"""
         mock_put.side_effect = requests.exceptions.RequestException("Network error")
 

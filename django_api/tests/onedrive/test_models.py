@@ -92,7 +92,9 @@ class TestMSGraphConfigModel:
             target_user="test@example.com",
         )
 
-        original_key = "-----BEGIN PRIVATE KEY-----\ntest-key-content\n-----END PRIVATE KEY-----"
+        original_key = (
+            "-----BEGIN PRIVATE KEY-----\ntest-key-content\n-----END PRIVATE KEY-----"
+        )
         config.private_key = original_key
         config.save()
 
