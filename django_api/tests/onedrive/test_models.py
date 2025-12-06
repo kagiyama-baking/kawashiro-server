@@ -135,15 +135,15 @@ class TestMSGraphConfigModel:
             target_user="test@example.com",
         )
 
-        assert str(config) == "Microsoft Graph API設定"
+        assert str(config) == "Microsoft Graph API"
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_verbose_name(self):
         """verbose_nameが正しいこと"""
         from onedrive.models import MSGraphConfig
 
-        assert MSGraphConfig._meta.verbose_name == "Microsoft Graph API設定"
-        assert MSGraphConfig._meta.verbose_name_plural == "Microsoft Graph API設定"
+        assert MSGraphConfig._meta.verbose_name == "API Configuration"
+        assert MSGraphConfig._meta.verbose_name_plural == "Microsoft Graph API"
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_timestamps_auto_set(self):
