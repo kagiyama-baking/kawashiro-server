@@ -32,7 +32,7 @@ def get_encryption_key() -> bytes:
     if len(encryption_key) < 32:
         raise ValueError(
             "ENCRYPTION_KEYは32文字以上である必要があります。\n"
-            "十分にランダムな文字列を設定してください。"
+            "例: openssl rand -base64 32 で生成したランダムな文字列を設定してください。"
         )
 
     # ENCRYPTION_KEYをバイト列に変換

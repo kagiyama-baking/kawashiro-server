@@ -46,6 +46,8 @@ if not SECRET_KEY:
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
 # 暗号化キー（データベースに保存する機密情報の暗号化に使用）
+# 32文字以上のランダムな文字列を設定してください
+# 例: openssl rand -base64 32 で生成
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 # ALLOWED_HOSTSをカンマ区切りから配列に変換

@@ -7,7 +7,10 @@ def activate_existing_config(apps, schema_editor):
     """既存の設定を有効にする"""
     MSGraphConfig = apps.get_model("onedrive", "MSGraphConfig")
     # 既存の設定があれば最初の1つを有効にする
-    MSGraphConfig.objects.filter(pk=1).update(is_active=True)
+    config = MSGraphConfig.objects.first()
+    if config:
+        config.is_active = True
+        config.save()
 
 
 def deactivate_existing_config(apps, schema_editor):

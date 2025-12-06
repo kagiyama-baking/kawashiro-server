@@ -1,7 +1,7 @@
 """OneDrive管理画面設定"""
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 
 from .models import MSGraphConfig
 
@@ -118,7 +118,7 @@ class MSGraphConfigAdmin(admin.ModelAdmin):
             self.message_user(
                 request,
                 "有効にする設定は1つだけ選択してください。",
-                level="error",
+                level=messages.ERROR,
             )
             return
 
