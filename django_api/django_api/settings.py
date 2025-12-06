@@ -45,6 +45,11 @@ if not SECRET_KEY:
 # DEBUGモード（環境変数が'True'の場合のみTrue）
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
+# 暗号化キー（データベースに保存する機密情報の暗号化に使用）
+# 32文字以上のランダムな文字列を設定してください
+# 例: openssl rand -base64 32 で生成
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+
 # ALLOWED_HOSTSをカンマ区切りから配列に変換
 ALLOWED_HOSTS = [
     host.strip()
@@ -167,8 +172,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # 参照: https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 # デフォルトの言語コード
-# 日本語にする場合は 'ja' に変更
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "ja"
 
 # タイムゾーン設定
 # 日本時間の場合は 'Asia/Tokyo' に変更
@@ -279,17 +283,3 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
     ],
 }
-
-# ============================================================
-# Microsoft Graph API設定
-# ============================================================
-# Azure AD（Microsoft Entra ID）のテナントID
-AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
-# Azure ADアプリケーションのクライアントID
-AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-# 証明書のサムプリント（拇印）
-AZURE_CERT_THUMBPRINT = os.getenv("AZURE_CERT_THUMBPRINT")
-# 秘密鍵ファイルのパス
-AZURE_CERT_KEY_FILE = os.getenv("AZURE_CERT_KEY_FILE")
-# OneDriveにアクセスする対象ユーザーのメールアドレスまたはユーザーID
-TARGET_USER = os.getenv("TARGET_USER")
