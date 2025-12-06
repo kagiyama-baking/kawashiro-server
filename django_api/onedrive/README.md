@@ -4,18 +4,18 @@ Django REST FrameworkでMicrosoft Graph APIを使用してOneDriveにファイ�
 
 ## セットアップ
 
-### 1. 必要な環境変数を設定
+### 1. 環境変数を設定
 
 `.env.sample`を参考に`.env`ファイルを作成し、以下の環境変数を設定してください：
 
 ```bash
-# Microsoft Graph API設定
-AZURE_TENANT_ID=your-tenant-id
-AZURE_CLIENT_ID=your-client-id
-AZURE_CERT_THUMBPRINT=your-cert-thumbprint
-# Docker secretsを使用（コンテナ内のパス）
-AZURE_CERT_KEY_FILE=/run/secrets/django_api_graph_key
-TARGET_USER=user@example.com
+# Django設定
+SECRET_KEY=your-secret-key
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# 暗号化キー（データベースに保存する機密情報の暗号化に使用）
+ENCRYPTION_KEY=your-encryption-key
 ```
 
 ### 2. 依存関係のインストール
@@ -30,11 +30,26 @@ uv sync
 uv run ./manage.py migrate
 ```
 
-### 4. サーバーの起動
+### 4. Django管理画面でMicrosoft Graph API設定を行う
 
-```bash
-uv run ./manage.py runserver
-```
+1. 管理ユーザーを作成：
+   ```bash
+   uv run ./manage.py createsuperuser
+   ```
+
+2. サーバーを起動：
+   ```bash
+   uv run ./manage.py runserver
+   ```
+
+3. Django管理画面（`http://localhost:8000/admin/`）にログイン
+
+4. 「MS GRAPH CONFIG」を選択し、以下の情報を設定：
+   - **テナントID**: Azure ADテナントID
+   - **クライアントID**: Azure ADアプリケーションID
+   - **証明書サムプリント**: 証明書のサムプリント
+   - **秘密鍵**: PEM形式の秘密鍵
+   - **対象ユーザー**: OneDriveにアクセスするユーザーのメールアドレス
 
 ## API エンドポイント
 
@@ -205,6 +220,13 @@ response = requests.get(
 }
 ```
 
+**設定エラー（500）:**
+```json
+{
+    "error": "Microsoft Graph API設定がデータベースに存在しません。Django管理画面から設定を行ってください。"
+}
+```
+
 **サーバーエラー（500）:**
 ```json
 {
@@ -215,5 +237,6 @@ response = requests.get(
 ## 注意事項
 
 - ファイルサイズの制限はMicrosoft Graph APIの制限に従います（通常4MB、大きなファイルは別途アップロードセッションが必要）
-- 証明書認証を使用しているため、秘密鍵ファイルと証明書のサムプリントが必要です
-- TARGET_USERで指定したユーザーのOneDriveにアクセスします
+- 証明書認証を使用しているため、秘密鍵と証明書のサムプリントが必要です
+- 設定はDjango管理画面から行います（秘密鍵は暗号化されてデータベースに保存されます）
+- 対象ユーザーで指定したユーザーのOneDriveにアクセスします

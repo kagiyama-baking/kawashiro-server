@@ -11,28 +11,7 @@ cd /home/hakotsuki/Repository/kawashiro-server/django_api/
 cp .env.sample .env
 ```
 
-### 2. Azure ADアプリケーションの設定
-
-Azure PortalでAzure ADアプリケーションを作成し、以下の情報を取得してください：
-
-1. **AZURE_TENANT_ID**: Azure ADテナントID
-   - Azure Portal > Azure Active Directory > 概要 > テナントID
-
-2. **AZURE_CLIENT_ID**: アプリケーションID
-   - Azure Portal > Azure Active Directory > アプリの登録 > アプリケーション（クライアント）ID
-
-3. **AZURE_CERT_THUMBPRINT**: 証明書のサムプリント
-   - 証明書を登録後、証明書の詳細から確認
-
-4. **AZURE_CERT_KEY_FILE**: 秘密鍵ファイルのパス
-   - Docker secrets経由でマウントされるパス
-   - Dockerコンテナ内: `/run/secrets/django_api_graph_key`
-
-5. **TARGET_USER**: アクセス対象のユーザー
-   - OneDriveにアクセスするユーザーのメールアドレス
-   - 例: `user@example.com`
-
-### 3. .envファイルの編集
+### 2. .envファイルの編集
 
 `.env`ファイルを以下のように編集してください：
 
@@ -42,23 +21,56 @@ SECRET_KEY=your-secret-key-here
 DEBUG=False
 ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Microsoft Graph API設定
-AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_CERT_THUMBPRINT=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-# Docker secretsを使用（コンテナ内のパス）
-AZURE_CERT_KEY_FILE=/run/secrets/django_api_graph_key
-TARGET_USER=your-email@example.com
+# 暗号化キー（データベースに保存する機密情報の暗号化に使用）
+# 本番環境では十分にランダムな文字列を設定してください
+ENCRYPTION_KEY=your-encryption-key-here
 ```
 
-### 4. 証明書の配置
-
-秘密鍵ファイルを`secrets`ディレクトリに配置してください：
+### 3. マイグレーションの実行
 
 ```bash
-# secretsディレクトリに秘密鍵を配置
-cp /path/to/your/key.pem /home/hakotsuki/Repository/kawashiro-server/secrets/django_api_graph_key.pem
+uv run ./manage.py migrate
 ```
+
+### 4. Django管理画面でMicrosoft Graph API設定を行う
+
+Azure PortalでAzure ADアプリケーションを作成し、以下の情報を取得してください：
+
+1. **テナントID**: Azure ADテナントID
+   - Azure Portal > Azure Active Directory > 概要 > テナントID
+
+2. **クライアントID**: アプリケーションID
+   - Azure Portal > Azure Active Directory > アプリの登録 > アプリケーション（クライアント）ID
+
+3. **証明書サムプリント**: 証明書のサムプリント
+   - 証明書を登録後、証明書の詳細から確認
+
+4. **秘密鍵**: PEM形式の秘密鍵
+   - 証明書の秘密鍵ファイルの内容
+
+5. **対象ユーザー**: アクセス対象のユーザー
+   - OneDriveにアクセスするユーザーのメールアドレス
+   - 例: `user@example.com`
+
+これらの情報をDjango管理画面から設定します：
+
+1. 管理ユーザーを作成：
+   ```bash
+   uv run ./manage.py createsuperuser
+   ```
+
+2. サーバーを起動：
+   ```bash
+   uv run ./manage.py runserver
+   ```
+
+3. Django管理画面（`http://localhost:8000/admin/`）にログイン
+
+4. 「MS GRAPH CONFIG」を選択し、上記の情報を入力
+
+   **注意**: 秘密鍵は暗号化されてデータベースに保存されます。
+
+### 5. 証明書の作成（必要な場合）
 
 もし証明書ファイルがない場合は、以下の手順で作成してください：
 
@@ -76,7 +88,7 @@ openssl x509 -req -days 365 -in cert.csr -signkey key.pem -out cert.cer
 openssl x509 -in cert.cer -fingerprint -noout | sed 's/://g' | cut -d'=' -f2
 ```
 
-### 5. Azure ADでの権限設定
+### 6. Azure ADでの権限設定
 
 Azure ADアプリケーションに以下のAPI権限を付与してください：
 
@@ -86,7 +98,7 @@ Azure ADアプリケーションに以下のAPI権限を付与してください
 
 権限を追加後、管理者の同意を与えてください。
 
-### 6. 環境変数の確認
+### 7. 設定の確認
 
 設定が正しいか確認するには、Djangoシェルを使用します：
 
@@ -96,31 +108,36 @@ uv run ./manage.py shell
 ```
 
 ```python
-from django.conf import settings
-print("AZURE_TENANT_ID:", settings.AZURE_TENANT_ID)
-print("AZURE_CLIENT_ID:", settings.AZURE_CLIENT_ID)
-print("AZURE_CERT_THUMBPRINT:", settings.AZURE_CERT_THUMBPRINT)
-print("AZURE_CERT_KEY_FILE:", settings.AZURE_CERT_KEY_FILE)
-print("TARGET_USER:", settings.TARGET_USER)
+from onedrive.config import get_ms_graph_settings
 
-# ファイルの存在確認
-import os
-if settings.AZURE_CERT_KEY_FILE:
-    print("秘密鍵ファイル存在:", os.path.exists(settings.AZURE_CERT_KEY_FILE))
+try:
+    settings = get_ms_graph_settings()
+    print("テナントID:", settings.tenant_id)
+    print("クライアントID:", settings.client_id)
+    print("サムプリント:", settings.cert_thumbprint)
+    print("対象ユーザー:", settings.target_user)
+    print("秘密鍵が設定されています:", bool(settings.private_key))
+except Exception as e:
+    print("エラー:", e)
 ```
 
 ## トラブルシューティング
 
-### エラー: "以下の環境変数が設定されていません"
+### エラー: "Microsoft Graph API設定がデータベースに存在しません"
 
-`.env`ファイルが正しく配置されているか、環境変数が設定されているか確認してください。
+Django管理画面から設定を行ってください。
 
-### エラー: "秘密鍵ファイルが見つかりません"
+### エラー: "以下の設定が未入力です: ..."
 
-`AZURE_CERT_KEY_FILE`のパスが正しいか確認してください。絶対パスで指定する必要があります。
+Django管理画面で、表示されている設定項目を入力してください。
 
 ### エラー: "Failed to acquire token"
 
 - Azure ADのテナントIDとクライアントIDが正しいか確認
 - 証明書のサムプリントが正しいか確認
+- 秘密鍵が正しいPEM形式か確認
 - API権限が正しく設定されているか確認
+
+### エラー: "ENCRYPTION_KEY環境変数が設定されていません"
+
+`.env`ファイルに`ENCRYPTION_KEY`を設定してください。この値は、データベースに保存される秘密鍵の暗号化に使用されます。
