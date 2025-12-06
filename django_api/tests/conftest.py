@@ -90,3 +90,32 @@ def enable_db_access_for_all_tests(db):
     すべてのテストでデータベースアクセスを有効にする
     @pytest.mark.djangodbが不要になる
     """
+
+
+@pytest.fixture
+def mock_ms_graph_settings():
+    """MSGraphSettings用のモックフィクスチャ"""
+    from unittest.mock import patch
+
+    from onedrive.config import MSGraphSettings
+
+    settings = MSGraphSettings(
+        tenant_id="test-tenant",
+        client_id="test-client",
+        cert_thumbprint="test-thumb",
+        private_key="-----BEGIN PRIVATE KEY-----\nKEY_DATA\n-----END PRIVATE KEY-----",
+        target_user="test@example.com",
+    )
+
+    with patch("onedrive.ms_graph_client.get_ms_graph_settings", return_value=settings):
+        yield settings
+
+
+@pytest.fixture
+def ms_graph_client(mock_ms_graph_settings):
+    """モック設定を使用したMSGraphClientのフィクスチャ"""
+    from onedrive.ms_graph_client import MSGraphClient
+
+    client = MSGraphClient()
+    client._access_token = "test-token"
+    return client

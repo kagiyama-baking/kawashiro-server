@@ -1,16 +1,14 @@
 """Microsoft Graph APIクライアント"""
 
-import os
 import time
 from urllib.parse import quote
 
 import requests
-from django.conf import settings
 from msal import ConfidentialClientApplication
 
+from .config import get_ms_graph_settings
 from .exceptions import (
     AuthenticationError,
-    ConfigurationError,
     DeleteError,
     DownloadError,
     FolderOperationError,
@@ -30,38 +28,14 @@ class MSGraphClient:
 
     def __init__(self):
         """クライアントを初期化"""
-        # 環境変数のチェック
-        self.tenant_id = settings.AZURE_TENANT_ID
-        self.client_id = settings.AZURE_CLIENT_ID
-        self.thumbprint = settings.AZURE_CERT_THUMBPRINT
-        self.key_file = settings.AZURE_CERT_KEY_FILE
-        self.target_user = settings.TARGET_USER
+        # データベースから設定を取得
+        config = get_ms_graph_settings()
 
-        # 必須の環境変数が設定されているか確認
-        missing_vars = []
-        if not self.tenant_id:
-            missing_vars.append("AZURE_TENANT_ID")
-        if not self.client_id:
-            missing_vars.append("AZURE_CLIENT_ID")
-        if not self.thumbprint:
-            missing_vars.append("AZURE_CERT_THUMBPRINT")
-        if not self.key_file:
-            missing_vars.append("AZURE_CERT_KEY_FILE")
-        if not self.target_user:
-            missing_vars.append("TARGET_USER")
-
-        if missing_vars:
-            raise ConfigurationError(
-                f"以下の環境変数が設定されていません: {', '.join(missing_vars)}\n"
-                ".envファイルを作成し、必要な環境変数を設定してください。"
-            )
-
-        # 秘密鍵ファイルの存在確認
-        if not os.path.exists(self.key_file):
-            raise ConfigurationError(
-                f"秘密鍵ファイルが見つかりません: {self.key_file}\n"
-                "AZURE_CERT_KEY_FILE環境変数で指定されたパスを確認してください。"
-            )
+        self.tenant_id = config.tenant_id
+        self.client_id = config.client_id
+        self.thumbprint = config.cert_thumbprint
+        self._private_key = config.private_key  # 秘密鍵をメモリに保持
+        self.target_user = config.target_user
 
         self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
         self.scopes = ["https://graph.microsoft.com/.default"]
@@ -71,16 +45,12 @@ class MSGraphClient:
 
     def acquire_token(self):
         """アクセストークンを取得"""
-        # 秘密鍵ファイルを読み込み（バイナリモードで読み込んでからデコード）
-        with open(self.key_file, "rb") as fp:
-            private_key = fp.read().decode("utf-8")
-
-        # MSALアプリケーションを作成
+        # MSALアプリケーションを作成（秘密鍵はメモリから使用）
         app = ConfidentialClientApplication(
             self.client_id,
             authority=self.authority,
             client_credential={
-                "private_key": private_key,
+                "private_key": self._private_key,
                 "thumbprint": self.thumbprint,
             },
         )
@@ -328,6 +298,18 @@ class MSGraphClient:
                 else:
                     response.raise_for_status()
 
+            except (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+            ):
+                if attempt < max_retries - 1:
+                    # 指数バックオフでリトライ
+                    wait_time = 2**attempt
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # ネットワークエラーは呼び出し元でNetworkErrorに変換
+                    raise
             except requests.exceptions.RequestException as e:
                 if attempt < max_retries - 1:
                     # 指数バックオフでリトライ

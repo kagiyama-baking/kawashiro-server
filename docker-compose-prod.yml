@@ -47,8 +47,6 @@ services:
             - ./volumes/django-api/staticfiles:/django_api/staticfiles
             # SQLiteデータベースの永続化
             - ./volumes/django-api/db.sqlite3:/django_api/db.sqlite3
-        secrets:
-            - django_api_graph_key
         restart: unless-stopped
         networks:
             - proxy-network
