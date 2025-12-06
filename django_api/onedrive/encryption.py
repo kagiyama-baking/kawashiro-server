@@ -29,6 +29,11 @@ def get_encryption_key() -> bytes:
             "ENCRYPTION_KEY環境変数が設定されていません。\n"
             ".envファイルにENCRYPTION_KEYを追加してください。"
         )
+    if len(encryption_key) < 32:
+        raise ValueError(
+            "ENCRYPTION_KEYは32文字以上である必要があります。\n"
+            "十分にランダムな文字列を設定してください。"
+        )
 
     # ENCRYPTION_KEYをバイト列に変換
     key_bytes = encryption_key.encode("utf-8")

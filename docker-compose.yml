@@ -180,6 +180,3 @@ volumes:
     immich-ml-cache:
         name: immich-ml-cache
 
-secrets:
-    django_api_graph_key:
-        file: ./secrets/django_api_graph_key.pem

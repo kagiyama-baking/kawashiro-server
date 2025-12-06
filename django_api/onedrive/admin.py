@@ -50,7 +50,10 @@ class MSGraphConfigForm(forms.ModelForm):
         # 秘密鍵が入力された場合のみ更新
         private_key = self.cleaned_data.get("private_key")
         if private_key:
-            instance.private_key = private_key
+            try:
+                instance.private_key = private_key
+            except ValueError as e:
+                raise forms.ValidationError(f"秘密鍵の暗号化に失敗しました: {e}") from e
 
         if commit:
             instance.save()

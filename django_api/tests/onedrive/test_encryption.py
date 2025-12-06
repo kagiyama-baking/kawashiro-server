@@ -8,7 +8,7 @@ from django.test import override_settings
 class TestGetEncryptionKey:
     """get_encryption_key関数のテスト"""
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_returns_bytes(self):
         """暗号化キーがバイト列で返されること"""
         from onedrive.encryption import get_encryption_key
@@ -16,7 +16,7 @@ class TestGetEncryptionKey:
         key = get_encryption_key()
         assert isinstance(key, bytes)
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_returns_valid_fernet_key_length(self):
         """Fernetキーとして有効な長さ（44バイト）が返されること"""
         from onedrive.encryption import get_encryption_key
@@ -25,7 +25,7 @@ class TestGetEncryptionKey:
         # Base64エンコードされた32バイト = 44文字
         assert len(key) == 44
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_same_input_produces_same_key(self):
         """同じENCRYPTION_KEYから同じキーが生成されること"""
         from onedrive.encryption import get_encryption_key
@@ -48,7 +48,7 @@ class TestGetEncryptionKey:
 class TestEncryptValue:
     """encrypt_value関数のテスト"""
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_encrypts_string(self):
         """文字列が暗号化されること"""
         from onedrive.encryption import encrypt_value
@@ -59,14 +59,14 @@ class TestEncryptValue:
         assert encrypted != original
         assert len(encrypted) > 0
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_empty_string_returns_empty(self):
         """空文字列は空文字列を返すこと"""
         from onedrive.encryption import encrypt_value
 
         assert encrypt_value("") == ""
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_encrypts_multiline_pem_key(self):
         """複数行のPEM形式秘密鍵が暗号化できること"""
         from onedrive.encryption import encrypt_value
@@ -85,7 +85,7 @@ test-content-here
 class TestDecryptValue:
     """decrypt_value関数のテスト"""
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_decrypts_encrypted_string(self):
         """暗号化された文字列を復号化できること"""
         from onedrive.encryption import decrypt_value, encrypt_value
@@ -96,14 +96,14 @@ class TestDecryptValue:
 
         assert decrypted == original
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_empty_string_returns_empty(self):
         """空文字列は空文字列を返すこと"""
         from onedrive.encryption import decrypt_value
 
         assert decrypt_value("") == ""
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_roundtrip_multiline_pem_key(self):
         """複数行のPEM形式秘密鍵が暗号化・復号化できること"""
         from onedrive.encryption import decrypt_value, encrypt_value
@@ -118,7 +118,7 @@ test-content-here
 
         assert decrypted == pem_key
 
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-12345")
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_roundtrip_unicode_content(self):
         """日本語などのUnicode文字を含む文字列が暗号化・復号化できること"""
         from onedrive.encryption import decrypt_value, encrypt_value
@@ -129,7 +129,7 @@ test-content-here
 
         assert decrypted == original
 
-    @override_settings(ENCRYPTION_KEY="different-key-for-decrypt")
+    @override_settings(ENCRYPTION_KEY="different-key-for-decrypt-testing")
     def test_decrypt_with_wrong_key_fails(self):
         """異なるキーで復号化すると失敗すること"""
         from cryptography.fernet import InvalidToken
