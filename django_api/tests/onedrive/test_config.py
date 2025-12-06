@@ -12,15 +12,17 @@ class TestGetMSGraphSettings:
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_success(self):
-        """設定を正常に取得できること"""
+        """有効な設定を正常に取得できること"""
         from onedrive.config import get_ms_graph_settings
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
             target_user="test@example.com",
+            is_active=True,
         )
         config.private_key = "test-private-key"
         config.save()
@@ -34,13 +36,67 @@ class TestGetMSGraphSettings:
         assert settings.target_user == "test@example.com"
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
+    def test_get_settings_returns_active_config(self):
+        """複数設定がある場合に有効な設定が返されること"""
+        from onedrive.config import get_ms_graph_settings
+        from onedrive.models import MSGraphConfig
+
+        # 無効な設定
+        inactive = MSGraphConfig.objects.create(
+            name="無効な設定",
+            tenant_id="inactive-tenant",
+            client_id="inactive-client",
+            cert_thumbprint="inactive-thumb",
+            target_user="inactive@example.com",
+            is_active=False,
+        )
+        inactive.private_key = "inactive-key"
+        inactive.save()
+
+        # 有効な設定
+        active = MSGraphConfig.objects.create(
+            name="有効な設定",
+            tenant_id="active-tenant",
+            client_id="active-client",
+            cert_thumbprint="active-thumb",
+            target_user="active@example.com",
+            is_active=True,
+        )
+        active.private_key = "active-key"
+        active.save()
+
+        settings = get_ms_graph_settings()
+
+        assert settings.tenant_id == "active-tenant"
+        assert settings.client_id == "active-client"
+
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
+    def test_get_settings_no_active_config(self):
+        """有効な設定がない場合にConfigurationErrorが発生すること"""
+        from onedrive.config import get_ms_graph_settings
+        from onedrive.models import MSGraphConfig
+
+        MSGraphConfig.objects.create(
+            name="無効な設定",
+            tenant_id="test-tenant",
+            client_id="test-client",
+            cert_thumbprint="test-thumb",
+            target_user="test@example.com",
+            is_active=False,
+        )
+
+        with pytest.raises(ConfigurationError) as excinfo:
+            get_ms_graph_settings()
+        assert "有効なMicrosoft Graph API設定がありません" in str(excinfo.value)
+
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_not_exists(self):
         """設定が存在しない場合にConfigurationErrorが発生すること"""
         from onedrive.config import get_ms_graph_settings
 
         with pytest.raises(ConfigurationError) as excinfo:
             get_ms_graph_settings()
-        assert "データベースに存在しません" in str(excinfo.value)
+        assert "有効なMicrosoft Graph API設定がありません" in str(excinfo.value)
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_missing_tenant_id(self):
@@ -49,10 +105,12 @@ class TestGetMSGraphSettings:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="",  # 空
             client_id="test-client",
             cert_thumbprint="test-thumb",
             target_user="test@example.com",
+            is_active=True,
         )
         config.private_key = "test-key"
         config.save()
@@ -68,10 +126,12 @@ class TestGetMSGraphSettings:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="",  # 空
             cert_thumbprint="test-thumb",
             target_user="test@example.com",
+            is_active=True,
         )
         config.private_key = "test-key"
         config.save()
@@ -87,10 +147,12 @@ class TestGetMSGraphSettings:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="",  # 空
             target_user="test@example.com",
+            is_active=True,
         )
         config.private_key = "test-key"
         config.save()
@@ -106,10 +168,12 @@ class TestGetMSGraphSettings:
         from onedrive.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
             target_user="test@example.com",
+            is_active=True,
             # private_key は設定しない
         )
 
@@ -124,10 +188,12 @@ class TestGetMSGraphSettings:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
             target_user="",  # 空
+            is_active=True,
         )
         config.private_key = "test-key"
         config.save()
@@ -143,10 +209,12 @@ class TestGetMSGraphSettings:
         from onedrive.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="",  # 空
             client_id="",  # 空
             cert_thumbprint="test-thumb",
             target_user="test@example.com",
+            is_active=True,
             # private_key は設定しない
         )
 
@@ -169,10 +237,12 @@ class TestMSGraphSettingsDataclass:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="tenant-123",
             client_id="client-456",
             cert_thumbprint="thumb-789",
             target_user="user@example.com",
+            is_active=True,
         )
         config.private_key = (
             "-----BEGIN PRIVATE KEY-----\nkey-content\n-----END PRIVATE KEY-----"

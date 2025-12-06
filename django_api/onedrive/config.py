@@ -18,22 +18,22 @@ class MSGraphSettings:
 
 def get_ms_graph_settings() -> MSGraphSettings:
     """
-    データベースからMicrosoft Graph API設定を取得する
+    データベースから有効なMicrosoft Graph API設定を取得する
 
     Returns:
         MSGraphSettings: 設定データクラス
 
     Raises:
-        ConfigurationError: 設定が存在しないか、必須フィールドが空の場合
+        ConfigurationError: 有効な設定が存在しないか、必須フィールドが空の場合
     """
     from .models import MSGraphConfig
 
     try:
-        config = MSGraphConfig.objects.get_config()
+        config = MSGraphConfig.objects.get_active_config()
     except MSGraphConfig.DoesNotExist as err:
         raise ConfigurationError(
-            "Microsoft Graph API設定がデータベースに存在しません。\n"
-            "Django管理画面から設定を行ってください。"
+            "有効なMicrosoft Graph API設定がありません。\n"
+            "Django管理画面から設定を作成し、有効にしてください。"
         ) from err
 
     # 必須フィールドのバリデーション
@@ -51,7 +51,7 @@ def get_ms_graph_settings() -> MSGraphSettings:
 
     if missing_fields:
         raise ConfigurationError(
-            f"以下の設定が未入力です: {', '.join(missing_fields)}\n"
+            f"設定「{config.name}」の以下の項目が未入力です: {', '.join(missing_fields)}\n"
             "Django管理画面から設定を行ってください。"
         )
 

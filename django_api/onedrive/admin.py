@@ -26,6 +26,8 @@ class MSGraphConfigForm(forms.ModelForm):
     class Meta:
         model = MSGraphConfig
         fields = [
+            "name",
+            "is_active",
             "tenant_id",
             "client_id",
             "cert_thumbprint",
@@ -61,10 +63,19 @@ class MSGraphConfigAdmin(admin.ModelAdmin):
 
     form = MSGraphConfigForm
 
-    list_display = ["__str__", "tenant_id", "target_user", "updated_at"]
+    list_display = ["name", "is_active", "tenant_id", "target_user", "updated_at"]
+    list_filter = ["is_active"]
+    search_fields = ["name", "tenant_id", "target_user"]
     readonly_fields = ["created_at", "updated_at"]
 
     fieldsets = (
+        (
+            "基本設定",
+            {
+                "fields": ("name", "is_active"),
+                "description": "設定の名前と有効/無効を設定します。有効にできる設定は1つだけです。",
+            },
+        ),
         (
             "Azure AD設定",
             {
@@ -95,19 +106,24 @@ class MSGraphConfigAdmin(admin.ModelAdmin):
         ),
     )
 
-    def has_add_permission(self, request):
-        """既に設定が存在する場合は追加を禁止"""
-        return not MSGraphConfig.objects.exists()
+    actions = ["activate_config"]
 
-    def has_delete_permission(self, request, obj=None):
-        """削除を禁止"""
-        return False
+    @admin.action(description="選択した設定を有効にする")
+    def activate_config(self, request, queryset):
+        """選択した設定を有効にするアクション"""
+        if queryset.count() != 1:
+            self.message_user(
+                request,
+                "有効にする設定は1つだけ選択してください。",
+                level="error",
+            )
+            return
 
-    def change_view(self, request, object_id, form_url="", extra_context=None):
-        """変更画面のカスタマイズ"""
-        extra_context = extra_context or {}
-        extra_context["show_save_and_add_another"] = False
-        extra_context["show_save_and_continue"] = True
-        return super().change_view(
-            request, object_id, form_url, extra_context=extra_context
+        config = queryset.first()
+        config.is_active = True
+        config.save()
+
+        self.message_user(
+            request,
+            f"設定「{config.name}」を有効にしました。",
         )

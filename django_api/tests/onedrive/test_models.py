@@ -15,70 +15,166 @@ class TestMSGraphConfigModel:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant-id",
             client_id="test-client-id",
             cert_thumbprint="test-thumbprint",
             target_user="test@example.com",
         )
 
-        assert config.pk == 1
+        assert config.pk is not None
+        assert config.name == "テスト設定"
         assert config.tenant_id == "test-tenant-id"
         assert config.client_id == "test-client-id"
         assert config.cert_thumbprint == "test-thumbprint"
         assert config.target_user == "test@example.com"
+        assert config.is_active is False  # デフォルトは無効
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
-    def test_singleton_pk_is_always_one(self):
-        """pkが常に1になること（シングルトン）"""
+    def test_create_multiple_configs(self):
+        """複数の設定を作成できること"""
         from onedrive.models import MSGraphConfig
 
-        config = MSGraphConfig(
-            tenant_id="test-tenant",
-            client_id="test-client",
-            cert_thumbprint="test-thumb",
-            target_user="test@example.com",
+        config1 = MSGraphConfig.objects.create(
+            name="設定1",
+            tenant_id="tenant-1",
+            client_id="client-1",
+            cert_thumbprint="thumb-1",
+            target_user="user1@example.com",
         )
-        config.save()
+        config2 = MSGraphConfig.objects.create(
+            name="設定2",
+            tenant_id="tenant-2",
+            client_id="client-2",
+            cert_thumbprint="thumb-2",
+            target_user="user2@example.com",
+        )
 
-        assert config.pk == 1
+        assert MSGraphConfig.objects.count() == 2
+        assert config1.pk != config2.pk
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
-    def test_singleton_constraint_on_create(self):
-        """2つ目の設定を作成しようとするとIntegrityErrorになること"""
+    def test_unique_name_constraint(self):
+        """設定名が一意であること"""
         from onedrive.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
-            tenant_id="first-tenant",
-            client_id="first-client",
-            cert_thumbprint="first-thumb",
-            target_user="first@example.com",
+            name="同じ名前",
+            tenant_id="tenant-1",
+            client_id="client-1",
+            cert_thumbprint="thumb-1",
+            target_user="user1@example.com",
         )
 
         with pytest.raises(IntegrityError):
             MSGraphConfig.objects.create(
-                tenant_id="second-tenant",
-                client_id="second-client",
-                cert_thumbprint="second-thumb",
-                target_user="second@example.com",
+                name="同じ名前",
+                tenant_id="tenant-2",
+                client_id="client-2",
+                cert_thumbprint="thumb-2",
+                target_user="user2@example.com",
             )
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
-    def test_update_existing_config(self):
-        """既存の設定を更新できること"""
+    def test_only_one_active_config(self):
+        """有効な設定は1つだけであること"""
         from onedrive.models import MSGraphConfig
 
-        config = MSGraphConfig.objects.create(
-            tenant_id="original-tenant",
-            client_id="original-client",
-            cert_thumbprint="original-thumb",
-            target_user="original@example.com",
+        config1 = MSGraphConfig.objects.create(
+            name="設定1",
+            tenant_id="tenant-1",
+            client_id="client-1",
+            cert_thumbprint="thumb-1",
+            target_user="user1@example.com",
+            is_active=True,
+        )
+        config2 = MSGraphConfig.objects.create(
+            name="設定2",
+            tenant_id="tenant-2",
+            client_id="client-2",
+            cert_thumbprint="thumb-2",
+            target_user="user2@example.com",
+            is_active=True,
         )
 
-        config.tenant_id = "updated-tenant"
-        config.save()
+        # config2を有効にすると、config1は自動的に無効になる
+        config1.refresh_from_db()
+        assert config1.is_active is False
+        assert config2.is_active is True
 
-        config.refresh_from_db()
-        assert config.tenant_id == "updated-tenant"
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
+    def test_activate_config(self):
+        """設定を有効化できること"""
+        from onedrive.models import MSGraphConfig
+
+        config1 = MSGraphConfig.objects.create(
+            name="設定1",
+            tenant_id="tenant-1",
+            client_id="client-1",
+            cert_thumbprint="thumb-1",
+            target_user="user1@example.com",
+            is_active=True,
+        )
+        config2 = MSGraphConfig.objects.create(
+            name="設定2",
+            tenant_id="tenant-2",
+            client_id="client-2",
+            cert_thumbprint="thumb-2",
+            target_user="user2@example.com",
+        )
+
+        # config2を有効化
+        config2.is_active = True
+        config2.save()
+
+        config1.refresh_from_db()
+        config2.refresh_from_db()
+
+        assert config1.is_active is False
+        assert config2.is_active is True
+
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
+    def test_get_active_config(self):
+        """有効な設定を取得できること"""
+        from onedrive.models import MSGraphConfig
+
+        MSGraphConfig.objects.create(
+            name="無効な設定",
+            tenant_id="tenant-1",
+            client_id="client-1",
+            cert_thumbprint="thumb-1",
+            target_user="user1@example.com",
+            is_active=False,
+        )
+        active_config = MSGraphConfig.objects.create(
+            name="有効な設定",
+            tenant_id="tenant-2",
+            client_id="client-2",
+            cert_thumbprint="thumb-2",
+            target_user="user2@example.com",
+            is_active=True,
+        )
+
+        result = MSGraphConfig.objects.get_active_config()
+        assert result.pk == active_config.pk
+        assert result.name == "有効な設定"
+
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
+    def test_get_active_config_raises_when_none_active(self):
+        """有効な設定がない場合にDoesNotExistが発生すること"""
+        from onedrive.models import MSGraphConfig
+
+        MSGraphConfig.objects.create(
+            name="無効な設定",
+            tenant_id="tenant-1",
+            client_id="client-1",
+            cert_thumbprint="thumb-1",
+            target_user="user1@example.com",
+            is_active=False,
+        )
+
+        with pytest.raises(MSGraphConfig.DoesNotExist):
+            MSGraphConfig.objects.get_active_config()
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_private_key_encryption(self):
@@ -86,6 +182,7 @@ class TestMSGraphConfigModel:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
@@ -114,6 +211,7 @@ class TestMSGraphConfigModel:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
@@ -125,25 +223,43 @@ class TestMSGraphConfigModel:
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_str_representation(self):
-        """__str__が正しい文字列を返すこと"""
+        """__str__が設定名を返すこと"""
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="本番環境設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
             target_user="test@example.com",
         )
 
-        assert str(config) == "Microsoft Graph API"
+        assert str(config) == "本番環境設定"
+
+    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
+    def test_str_representation_with_active_status(self):
+        """__str__が有効状態を含むこと"""
+        from onedrive.models import MSGraphConfig
+
+        config = MSGraphConfig.objects.create(
+            name="本番環境設定",
+            tenant_id="test-tenant",
+            client_id="test-client",
+            cert_thumbprint="test-thumb",
+            target_user="test@example.com",
+            is_active=True,
+        )
+
+        assert "本番環境設定" in str(config)
+        assert "有効" in str(config)
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_verbose_name(self):
         """verbose_nameが正しいこと"""
         from onedrive.models import MSGraphConfig
 
-        assert MSGraphConfig._meta.verbose_name == "API Configuration"
-        assert MSGraphConfig._meta.verbose_name_plural == "Microsoft Graph API"
+        assert MSGraphConfig._meta.verbose_name == "Microsoft Graph API設定"
+        assert MSGraphConfig._meta.verbose_name_plural == "Microsoft Graph API設定"
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_timestamps_auto_set(self):
@@ -151,6 +267,7 @@ class TestMSGraphConfigModel:
         from onedrive.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
+            name="テスト設定",
             tenant_id="test-tenant",
             client_id="test-client",
             cert_thumbprint="test-thumb",
@@ -159,26 +276,3 @@ class TestMSGraphConfigModel:
 
         assert config.created_at is not None
         assert config.updated_at is not None
-
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
-    def test_get_config_method(self):
-        """objects.get_config()で設定を取得できること"""
-        from onedrive.models import MSGraphConfig
-
-        MSGraphConfig.objects.create(
-            tenant_id="test-tenant",
-            client_id="test-client",
-            cert_thumbprint="test-thumb",
-            target_user="test@example.com",
-        )
-
-        config = MSGraphConfig.objects.get_config()
-        assert config.tenant_id == "test-tenant"
-
-    @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
-    def test_get_config_raises_when_not_exists(self):
-        """設定が存在しない場合にDoesNotExistが発生すること"""
-        from onedrive.models import MSGraphConfig
-
-        with pytest.raises(MSGraphConfig.DoesNotExist):
-            MSGraphConfig.objects.get_config()
