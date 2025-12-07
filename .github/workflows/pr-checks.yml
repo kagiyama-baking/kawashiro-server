@@ -58,16 +58,11 @@ jobs:
             - name: Create test environment
               working-directory: ./django_api
               run: |
-                  # テスト用.envファイル作成
+                  # テスト用.envファイル作成（.env.sampleに準拠）
                   echo "SECRET_KEY=test-secret-key-for-ci-testing" > .env
                   echo "DEBUG=False" >> .env
                   echo "ALLOWED_HOSTS=localhost,testserver" >> .env
-
-                  # ダミー秘密鍵ファイル作成
-                  mkdir -p ../secrets
-                  echo "-----BEGIN PRIVATE KEY-----" > ../secrets/django_api_graph_key.pem
-                  echo "DUMMY_KEY_FOR_CI_TESTING" >> ../secrets/django_api_graph_key.pem
-                  echo "-----END PRIVATE KEY-----" >> ../secrets/django_api_graph_key.pem
+                  echo "ENCRYPTION_KEY=test-encryption-key-for-ci-testing" >> .env
 
             - name: Run tests with coverage
               working-directory: ./django_api
@@ -110,23 +105,12 @@ jobs:
                   echo "IMMICH_LOG_LEVEL=verbose" >> .env
                   echo "TZ=Asia/Tokyo" >> .env
 
-                  # Django API用の環境変数
+                  # Django API用の環境変数（.env.sampleに準拠）
                   cp django_api/.env.sample django_api/.env
                   echo "SECRET_KEY=test-secret-key-for-ci-environment" >> django_api/.env
                   echo "DEBUG=False" >> django_api/.env
                   echo "ALLOWED_HOSTS=api.localhost,localhost" >> django_api/.env
-
-            # CI環境用のダミー秘密鍵ファイル作成
-            - name: Create dummy secret files for CI
-              run: |
-                  echo "🔐 ダミー秘密鍵ファイルを作成..."
-                  mkdir -p secrets
-                  # CI環境用のダミー秘密鍵（実際には使用されない）
-                  echo "-----BEGIN PRIVATE KEY-----" > secrets/django_api_graph_key.pem
-                  echo "DUMMY_KEY_FOR_CI_TESTING" >> secrets/django_api_graph_key.pem
-                  echo "-----END PRIVATE KEY-----" >> secrets/django_api_graph_key.pem
-                  chmod 600 secrets/django_api_graph_key.pem
-                  echo "✅ ダミー秘密鍵ファイル作成完了"
+                  echo "ENCRYPTION_KEY=test-encryption-key-for-ci-environment" >> django_api/.env
 
             # ログディレクトリと永続化ディレクトリの準備（コンテナマウント用）
             - name: Prepare volume directories
