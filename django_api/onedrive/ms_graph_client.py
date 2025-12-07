@@ -19,7 +19,7 @@ from .exceptions import (
 )
 
 # アップロードセッションの定数
-CHUNK_SIZE = 10 * 1024 * 1024  # 10MB (320KiBの倍数)
+CHUNK_SIZE = 60 * 1024 * 1024  # 60MB (320KiBの倍数、Graph API最大値)
 SIMPLE_UPLOAD_THRESHOLD = 4 * 1024 * 1024  # 4MB未満はシンプルアップロード
 
 
@@ -42,6 +42,7 @@ class MSGraphClient:
         self.graph_url = "https://graph.microsoft.com/v1.0"
 
         self._access_token = None
+        self._session = requests.Session()  # TCP接続を再利用するためのセッション
 
     def acquire_token(self):
         """アクセストークンを取得"""
@@ -126,8 +127,10 @@ class MSGraphClient:
         headers = self.get_headers()
 
         try:
-            # ファイルをアップロード
-            response = requests.put(url, headers=headers, data=file_content, timeout=60)
+            # ファイルをアップロード（セッションを使用して接続を再利用）
+            response = self._session.put(
+                url, headers=headers, data=file_content, timeout=60
+            )
 
             # トークンの有効期限切れの可能性があるため再取得を試みる
             if response.status_code == 401:
@@ -136,7 +139,7 @@ class MSGraphClient:
                     headers = self.get_headers()
 
                     # 再試行
-                    response = requests.put(
+                    response = self._session.put(
                         url, headers=headers, data=file_content, timeout=60
                     )
                     response.raise_for_status()
@@ -239,7 +242,7 @@ class MSGraphClient:
         body = {"item": {"@microsoft.graph.conflictBehavior": "replace"}}
 
         try:
-            response = requests.post(url, headers=headers, json=body, timeout=30)
+            response = self._session.post(url, headers=headers, json=body, timeout=30)
             response.raise_for_status()
             result = response.json()
             return result["uploadUrl"]
@@ -282,7 +285,7 @@ class MSGraphClient:
 
         for attempt in range(max_retries):
             try:
-                response = requests.put(
+                response = self._session.put(
                     upload_url,
                     headers=headers,
                     data=chunk_data,
@@ -353,8 +356,8 @@ class MSGraphClient:
         headers["Content-Type"] = "application/json"
 
         try:
-            # フォルダを作成
-            response = requests.post(url, headers=headers, json=body, timeout=30)
+            # フォルダを作成（セッションを使用して接続を再利用）
+            response = self._session.post(url, headers=headers, json=body, timeout=30)
 
             response.raise_for_status()
             return response.json()
@@ -399,8 +402,8 @@ class MSGraphClient:
         headers["Content-Type"] = "application/json"
 
         try:
-            # ファイル一覧を取得
-            response = requests.get(url, headers=headers, timeout=30)
+            # ファイル一覧を取得（セッションを使用して接続を再利用）
+            response = self._session.get(url, headers=headers, timeout=30)
 
             response.raise_for_status()
             result = response.json()
@@ -448,7 +451,7 @@ class MSGraphClient:
             if permanent_delete:
                 # 完全削除の場合、まずアイテムIDを取得
                 item_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
-                response = requests.get(item_url, headers=headers, timeout=30)
+                response = self._session.get(item_url, headers=headers, timeout=30)
                 response.raise_for_status()
                 item_data = response.json()
                 item_id = item_data.get("id")
@@ -458,14 +461,14 @@ class MSGraphClient:
 
                 # permanentDeleteアクションを実行
                 permanent_delete_url = f"{self.graph_url}/users/{self.target_user}/drive/items/{item_id}/permanentDelete"
-                response = requests.post(
+                response = self._session.post(
                     permanent_delete_url, headers=headers, timeout=30
                 )
                 response.raise_for_status()
             else:
                 # 通常の削除（ごみ箱に移動）
                 url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
-                response = requests.delete(url, headers=headers, timeout=30)
+                response = self._session.delete(url, headers=headers, timeout=30)
                 response.raise_for_status()
 
         except requests.exceptions.Timeout as e:
@@ -513,14 +516,16 @@ class MSGraphClient:
             metadata_url = (
                 f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}"
             )
-            metadata_response = requests.get(metadata_url, headers=headers, timeout=30)
+            metadata_response = self._session.get(
+                metadata_url, headers=headers, timeout=30
+            )
             metadata_response.raise_for_status()
             metadata = metadata_response.json()
             file_name = metadata.get("name", file_path.split("/")[-1])
 
-            # ファイルの内容をダウンロード
+            # ファイルの内容をダウンロード（セッションを使用して接続を再利用）
             download_url = f"{self.graph_url}/users/{self.target_user}/drive/root:/{encoded_path}:/content"
-            response = requests.get(
+            response = self._session.get(
                 download_url,
                 headers=headers,
                 timeout=300,  # 大きなファイルの場合は長めのタイムアウト
