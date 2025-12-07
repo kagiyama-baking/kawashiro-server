@@ -10,7 +10,9 @@ RUN apk add --no-cache \
     tar \
     gzip \
     bash \
-    findutils
+    findutils \
+    python3 \
+    jq
 
 # バックアップスクリプトの実行権限を設定
 WORKDIR /scripts

@@ -67,9 +67,12 @@ kawashiro-server/
 │   ├── core/                   # 共通コアアプリ
 │   └── tests/                  # テストコード
 │
-├── scripts/                    # 運用スクリプト
-│   ├── immich-backup.sh        # Immichバックアップ
-│   └── immich-restore.sh       # Immichリストア
+├── backup/                     # バックアップシステム
+│   ├── Dockerfile              # バックアップコンテナ
+│   ├── README.md               # バックアップ詳細ドキュメント
+│   └── scripts/                # バックアップスクリプト
+│       ├── backup_immich.sh    # Immichバックアップ
+│       └── restore_immich.sh   # Immichリストア
 │
 ├── docs/                       # ドキュメント
 │   └── archtecture.drawio      # アーキテクチャ図
@@ -79,9 +82,10 @@ kawashiro-server/
     │   └── log/nginx/          # リバースプロキシのログ
     ├── test-web/
     │   └── log/nginx/          # テストWebのログ
-    └── immich/
-        ├── data/               # アップロード写真データ
-        └── log/                # アプリケーションログ
+    ├── immich/
+    │   ├── data/               # アップロード写真データ
+    │   └── log/                # アプリケーションログ
+    └── backup/                 # バックアップ出力先
 ```
 
 ## アーキテクチャ

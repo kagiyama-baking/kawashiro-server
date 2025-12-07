@@ -13,7 +13,11 @@ from onedrive.exceptions import (
     NetworkError,
     UploadError,
 )
-from onedrive.ms_graph_client import CHUNK_SIZE, SIMPLE_UPLOAD_THRESHOLD, MSGraphClient
+from onedrive.ms_graph_client import (
+    CHUNK_SIZE,
+    SIMPLE_UPLOAD_THRESHOLD,
+    MSGraphClient,
+)
 
 
 @pytest.mark.unit
@@ -167,8 +171,7 @@ class TestMSGraphClientToken:
 class TestMSGraphClientUpload:
     """ファイルアップロード関連のテスト"""
 
-    @patch("requests.put")
-    def test_upload_file_success(self, mock_put, ms_graph_client):
+    def test_upload_file_success(self, ms_graph_client):
         """ファイルアップロードが成功すること（小さいファイル）"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -177,7 +180,7 @@ class TestMSGraphClientUpload:
             "size": 1024,
             "web_url": "https://example.sharepoint.com/test.txt",
         }
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         # 小さいファイルなのでシンプルアップロードが使われる
         result = ms_graph_client.upload_file_to_onedrive(
@@ -187,7 +190,7 @@ class TestMSGraphClientUpload:
         assert result["name"] == "test.txt"
 
         expected_url = "https://graph.microsoft.com/v1.0/users/test@example.com/drive/root:/documents/test.txt:/content"
-        mock_put.assert_called_once_with(
+        ms_graph_client._session.put.assert_called_once_with(
             expected_url,
             headers={
                 "Authorization": "Bearer test-token",
@@ -198,26 +201,22 @@ class TestMSGraphClientUpload:
             timeout=60,
         )
 
-    @patch("requests.put")
-    def test_upload_file_with_root_path(self, mock_put, ms_graph_client):
+    def test_upload_file_with_root_path(self, ms_graph_client):
         """ルートパスへのファイルアップロード"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"name": "test.txt"}
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         ms_graph_client.upload_file_to_onedrive(
             file_content=b"test content", file_name="test.txt", folder_path="/"
         )
 
         expected_url = "https://graph.microsoft.com/v1.0/users/test@example.com/drive/root:/test.txt:/content"
-        assert mock_put.call_args[0][0] == expected_url
+        assert ms_graph_client._session.put.call_args[0][0] == expected_url
 
-    @patch("requests.put")
     @patch("onedrive.ms_graph_client.ConfidentialClientApplication")
-    def test_upload_file_token_expired_retry(
-        self, mock_msal, mock_put, ms_graph_client
-    ):
+    def test_upload_file_token_expired_retry(self, mock_msal, ms_graph_client):
         """トークン切れ時に再取得してリトライすること"""
         # 最初の呼び出しは401、再試行で成功
         mock_response_401 = Mock()
@@ -228,7 +227,9 @@ class TestMSGraphClientUpload:
         mock_response_200.json.return_value = {"name": "test.txt"}
         mock_response_200.raise_for_status = Mock()
 
-        mock_put.side_effect = [mock_response_401, mock_response_200]
+        ms_graph_client._session.put = Mock(
+            side_effect=[mock_response_401, mock_response_200]
+        )
 
         # トークン再取得のモック
         mock_app = Mock()
@@ -242,12 +243,11 @@ class TestMSGraphClientUpload:
         )
 
         assert result["name"] == "test.txt"
-        assert mock_put.call_count == 2
+        assert ms_graph_client._session.put.call_count == 2
 
-    @patch("requests.put")
-    def test_upload_file_timeout(self, mock_put, ms_graph_client):
+    def test_upload_file_timeout(self, ms_graph_client):
         """タイムアウト時にNetworkErrorになること"""
-        mock_put.side_effect = requests.exceptions.Timeout()
+        ms_graph_client._session.put = Mock(side_effect=requests.exceptions.Timeout())
 
         with pytest.raises(NetworkError) as excinfo:
             ms_graph_client.upload_file_to_onedrive(
@@ -255,10 +255,11 @@ class TestMSGraphClientUpload:
             )
         assert "タイムアウト" in str(excinfo.value)
 
-    @patch("requests.put")
-    def test_upload_file_connection_error(self, mock_put, ms_graph_client):
+    def test_upload_file_connection_error(self, ms_graph_client):
         """接続エラー時にNetworkErrorになること"""
-        mock_put.side_effect = requests.exceptions.ConnectionError()
+        ms_graph_client._session.put = Mock(
+            side_effect=requests.exceptions.ConnectionError()
+        )
 
         with pytest.raises(NetworkError) as excinfo:
             ms_graph_client.upload_file_to_onedrive(
@@ -266,15 +267,14 @@ class TestMSGraphClientUpload:
             )
         assert "接続" in str(excinfo.value)
 
-    @patch("requests.put")
-    def test_upload_file_not_found(self, mock_put, ms_graph_client):
+    def test_upload_file_not_found(self, ms_graph_client):
         """フォルダが見つからない場合UploadErrorになること"""
         mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         with pytest.raises(UploadError) as excinfo:
             ms_graph_client.upload_file_to_onedrive(
@@ -282,15 +282,14 @@ class TestMSGraphClientUpload:
             )
         assert "フォルダが見つかりません" in str(excinfo.value)
 
-    @patch("requests.put")
-    def test_upload_file_insufficient_storage(self, mock_put, ms_graph_client):
+    def test_upload_file_insufficient_storage(self, ms_graph_client):
         """容量不足時にUploadErrorになること"""
         mock_response = Mock()
         mock_response.status_code = 507
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         with pytest.raises(UploadError) as excinfo:
             ms_graph_client.upload_file_to_onedrive(
@@ -298,15 +297,14 @@ class TestMSGraphClientUpload:
             )
         assert "容量" in str(excinfo.value)
 
-    @patch("requests.put")
-    def test_upload_file_too_large(self, mock_put, ms_graph_client):
+    def test_upload_file_too_large(self, ms_graph_client):
         """ファイルが大きすぎる場合UploadErrorになること"""
         mock_response = Mock()
         mock_response.status_code = 413
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         with pytest.raises(UploadError) as excinfo:
             ms_graph_client.upload_file_to_onedrive(
@@ -314,15 +312,14 @@ class TestMSGraphClientUpload:
             )
         assert "大きすぎ" in str(excinfo.value)
 
-    @patch("requests.put")
-    def test_upload_file_generic_http_error(self, mock_put, ms_graph_client):
+    def test_upload_file_generic_http_error(self, ms_graph_client):
         """その他のHTTPエラー時にUploadErrorになること"""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         with pytest.raises(UploadError):
             ms_graph_client.upload_file_to_onedrive(
@@ -334,13 +331,12 @@ class TestMSGraphClientUpload:
 class TestMSGraphClientLargeFileUpload:
     """大きなファイルのアップロードテスト"""
 
-    @patch("requests.put")
-    def test_small_file_uses_simple_upload(self, mock_put, ms_graph_client):
+    def test_small_file_uses_simple_upload(self, ms_graph_client):
         """小さいファイルはシンプルアップロードを使用すること"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"name": "small.txt"}
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         # 4MB未満のファイル
         small_content = b"x" * (SIMPLE_UPLOAD_THRESHOLD - 1)
@@ -349,11 +345,9 @@ class TestMSGraphClientLargeFileUpload:
         )
 
         # シンプルアップロードのURL形式を確認
-        assert ":/content" in mock_put.call_args[0][0]
+        assert ":/content" in ms_graph_client._session.put.call_args[0][0]
 
-    @patch("requests.put")
-    @patch("requests.post")
-    def test_large_file_uses_upload_session(self, mock_post, mock_put, ms_graph_client):
+    def test_large_file_uses_upload_session(self, ms_graph_client):
         """大きいファイルはアップロードセッションを使用すること"""
         # セッション作成のモック
         mock_session_response = Mock()
@@ -361,7 +355,7 @@ class TestMSGraphClientLargeFileUpload:
         mock_session_response.json.return_value = {
             "uploadUrl": "https://upload.example.com/session123"
         }
-        mock_post.return_value = mock_session_response
+        ms_graph_client._session.post = Mock(return_value=mock_session_response)
 
         # チャンクアップロードのモック
         mock_chunk_response = Mock()
@@ -370,7 +364,7 @@ class TestMSGraphClientLargeFileUpload:
             "id": "file-id-123",
             "name": "large.bin",
         }
-        mock_put.return_value = mock_chunk_response
+        ms_graph_client._session.put = Mock(return_value=mock_chunk_response)
 
         # 4MB以上のファイル
         large_content = b"x" * (SIMPLE_UPLOAD_THRESHOLD + 1)
@@ -380,56 +374,52 @@ class TestMSGraphClientLargeFileUpload:
 
         assert result["id"] == "file-id-123"
         # セッション作成が呼ばれたことを確認
-        assert "createUploadSession" in mock_post.call_args[0][0]
+        assert "createUploadSession" in ms_graph_client._session.post.call_args[0][0]
 
-    @patch("requests.post")
-    def test_create_upload_session_success(self, mock_post, ms_graph_client):
+    def test_create_upload_session_success(self, ms_graph_client):
         """アップロードセッション作成が成功すること"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "uploadUrl": "https://upload.example.com/session123"
         }
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         url = ms_graph_client._create_upload_session("test.bin", "/uploads")
 
         assert url == "https://upload.example.com/session123"
 
-    @patch("requests.post")
-    def test_create_upload_session_auth_error(self, mock_post, ms_graph_client):
+    def test_create_upload_session_auth_error(self, ms_graph_client):
         """セッション作成時の認証エラー"""
         mock_response = Mock()
         mock_response.status_code = 401
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         with pytest.raises(AuthenticationError):
             ms_graph_client._create_upload_session("test.bin", "/uploads")
 
-    @patch("requests.post")
-    def test_create_upload_session_folder_not_found(self, mock_post, ms_graph_client):
+    def test_create_upload_session_folder_not_found(self, ms_graph_client):
         """セッション作成時のフォルダ未検出エラー"""
         mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         with pytest.raises(UploadError) as excinfo:
             ms_graph_client._create_upload_session("test.bin", "/uploads")
         assert "フォルダが見つかりません" in str(excinfo.value)
 
-    @patch("requests.put")
-    def test_upload_chunk_success(self, mock_put, ms_graph_client):
+    def test_upload_chunk_success(self, ms_graph_client):
         """チャンクアップロードが成功すること（継続）"""
         mock_response = Mock()
         mock_response.status_code = 202
         mock_response.json.return_value = {"nextExpectedRanges": ["10485760-"]}
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         result = ms_graph_client._upload_chunk(
             "https://upload.example.com/session",
@@ -440,13 +430,12 @@ class TestMSGraphClientLargeFileUpload:
 
         assert "nextExpectedRanges" in result
 
-    @patch("requests.put")
-    def test_upload_chunk_complete(self, mock_put, ms_graph_client):
+    def test_upload_chunk_complete(self, ms_graph_client):
         """チャンクアップロード完了時"""
         mock_response = Mock()
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": "file-id", "name": "completed.bin"}
-        mock_put.return_value = mock_response
+        ms_graph_client._session.put = Mock(return_value=mock_response)
 
         result = ms_graph_client._upload_chunk(
             "https://upload.example.com/session",
@@ -457,16 +446,17 @@ class TestMSGraphClientLargeFileUpload:
 
         assert result["id"] == "file-id"
 
-    @patch("requests.put")
     @patch("time.sleep")
-    def test_upload_chunk_retry_on_failure(self, mock_sleep, mock_put, ms_graph_client):
+    def test_upload_chunk_retry_on_failure(self, mock_sleep, ms_graph_client):
         """チャンクアップロード失敗時にリトライすること"""
         # 最初の2回は失敗、3回目で成功
-        mock_put.side_effect = [
-            requests.exceptions.RequestException("Network error"),
-            requests.exceptions.RequestException("Network error"),
-            Mock(status_code=202, json=lambda: {"nextExpectedRanges": []}),
-        ]
+        ms_graph_client._session.put = Mock(
+            side_effect=[
+                requests.exceptions.RequestException("Network error"),
+                requests.exceptions.RequestException("Network error"),
+                Mock(status_code=202, json=lambda: {"nextExpectedRanges": []}),
+            ]
+        )
 
         ms_graph_client._upload_chunk(
             "https://upload.example.com/session",
@@ -475,16 +465,15 @@ class TestMSGraphClientLargeFileUpload:
             2000,
         )
 
-        assert mock_put.call_count == 3
+        assert ms_graph_client._session.put.call_count == 3
         assert mock_sleep.call_count == 2  # 2回リトライ
 
-    @patch("requests.put")
     @patch("time.sleep")
-    def test_upload_chunk_max_retries_exceeded(
-        self, mock_sleep, mock_put, ms_graph_client
-    ):
+    def test_upload_chunk_max_retries_exceeded(self, mock_sleep, ms_graph_client):
         """リトライ上限を超えた場合エラーになること"""
-        mock_put.side_effect = requests.exceptions.RequestException("Network error")
+        ms_graph_client._session.put = Mock(
+            side_effect=requests.exceptions.RequestException("Network error")
+        )
 
         with pytest.raises(UploadError):
             ms_graph_client._upload_chunk(
@@ -495,21 +484,23 @@ class TestMSGraphClientLargeFileUpload:
                 max_retries=3,
             )
 
-        assert mock_put.call_count == 3
+        assert ms_graph_client._session.put.call_count == 3
 
-    @patch("requests.put")
-    @patch("requests.post")
-    def test_upload_large_file_success(self, mock_post, mock_put, ms_graph_client):
+    def test_upload_large_file_success(self, ms_graph_client):
         """大きなファイルのアップロードが成功すること"""
         # セッション作成
-        mock_post.return_value = Mock(
-            status_code=200,
-            json=lambda: {"uploadUrl": "https://upload.example.com/session"},
+        ms_graph_client._session.post = Mock(
+            return_value=Mock(
+                status_code=200,
+                json=lambda: {"uploadUrl": "https://upload.example.com/session"},
+            )
         )
 
         # 最後のチャンクで完了を返す
-        mock_put.return_value = Mock(
-            status_code=201, json=lambda: {"id": "file-id", "name": "large.bin"}
+        ms_graph_client._session.put = Mock(
+            return_value=Mock(
+                status_code=201, json=lambda: {"id": "file-id", "name": "large.bin"}
+            )
         )
 
         large_content = b"x" * (SIMPLE_UPLOAD_THRESHOLD + 100)
@@ -519,15 +510,15 @@ class TestMSGraphClientLargeFileUpload:
 
         assert result["id"] == "file-id"
 
-    @patch("requests.put")
-    @patch("requests.post")
-    def test_upload_large_file_timeout(self, mock_post, mock_put, ms_graph_client):
+    def test_upload_large_file_timeout(self, ms_graph_client):
         """大きなファイルのアップロード中にタイムアウトした場合"""
-        mock_post.return_value = Mock(
-            status_code=200,
-            json=lambda: {"uploadUrl": "https://upload.example.com/session"},
+        ms_graph_client._session.post = Mock(
+            return_value=Mock(
+                status_code=200,
+                json=lambda: {"uploadUrl": "https://upload.example.com/session"},
+            )
         )
-        mock_put.side_effect = requests.exceptions.Timeout()
+        ms_graph_client._session.put = Mock(side_effect=requests.exceptions.Timeout())
 
         large_content = b"x" * (SIMPLE_UPLOAD_THRESHOLD + 100)
         with pytest.raises(NetworkError) as excinfo:
@@ -541,8 +532,7 @@ class TestMSGraphClientLargeFileUpload:
 class TestMSGraphClientFolder:
     """フォルダ操作関連のテスト"""
 
-    @patch("requests.post")
-    def test_create_folder_success(self, mock_post, ms_graph_client):
+    def test_create_folder_success(self, ms_graph_client):
         """フォルダ作成が成功すること"""
         mock_response = Mock()
         mock_response.status_code = 201
@@ -551,70 +541,65 @@ class TestMSGraphClientFolder:
             "name": "new_folder",
             "folder": {},
         }
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         result = ms_graph_client.create_folder("new_folder", "/documents")
 
         assert result["name"] == "new_folder"
 
-    @patch("requests.post")
-    def test_create_folder_at_root(self, mock_post, ms_graph_client):
+    def test_create_folder_at_root(self, ms_graph_client):
         """ルートにフォルダを作成できること"""
         mock_response = Mock()
         mock_response.status_code = 201
         mock_response.json.return_value = {"name": "root_folder"}
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         ms_graph_client.create_folder("root_folder", "/")
 
         expected_url = "https://graph.microsoft.com/v1.0/users/test@example.com/drive/root/children"
-        assert mock_post.call_args[0][0] == expected_url
+        assert ms_graph_client._session.post.call_args[0][0] == expected_url
 
-    @patch("requests.post")
-    def test_create_folder_timeout(self, mock_post, ms_graph_client):
+    def test_create_folder_timeout(self, ms_graph_client):
         """フォルダ作成タイムアウト"""
-        mock_post.side_effect = requests.exceptions.Timeout()
+        ms_graph_client._session.post = Mock(side_effect=requests.exceptions.Timeout())
 
         with pytest.raises(NetworkError) as excinfo:
             ms_graph_client.create_folder("folder", "/")
         assert "タイムアウト" in str(excinfo.value)
 
-    @patch("requests.post")
-    def test_create_folder_auth_error(self, mock_post, ms_graph_client):
+    def test_create_folder_auth_error(self, ms_graph_client):
         """フォルダ作成時の認証エラー"""
         mock_response = Mock()
         mock_response.status_code = 401
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         with pytest.raises(AuthenticationError):
             ms_graph_client.create_folder("folder", "/")
 
-    @patch("requests.post")
-    def test_create_folder_parent_not_found(self, mock_post, ms_graph_client):
+    def test_create_folder_parent_not_found(self, ms_graph_client):
         """親フォルダが見つからない場合"""
         mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         with pytest.raises(FolderOperationError) as excinfo:
             ms_graph_client.create_folder("folder", "/nonexistent")
         assert "親フォルダ" in str(excinfo.value)
 
-    @patch("requests.post")
-    def test_create_folder_already_exists(self, mock_post, ms_graph_client):
+    def test_create_folder_already_exists(self, ms_graph_client):
         """フォルダが既に存在する場合"""
         mock_response = Mock()
         mock_response.status_code = 409
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_post.return_value = mock_response
+        ms_graph_client._session.post = Mock(return_value=mock_response)
 
         with pytest.raises(FolderOperationError) as excinfo:
             ms_graph_client.create_folder("existing", "/")
@@ -625,8 +610,7 @@ class TestMSGraphClientFolder:
 class TestMSGraphClientList:
     """ファイル一覧取得関連のテスト"""
 
-    @patch("requests.get")
-    def test_list_files_success(self, mock_get, ms_graph_client):
+    def test_list_files_success(self, ms_graph_client):
         """ファイル一覧取得が成功すること"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -636,71 +620,135 @@ class TestMSGraphClientList:
                 {"name": "file2.txt", "id": "2"},
             ]
         }
-        mock_get.return_value = mock_response
+        ms_graph_client._session.get = Mock(return_value=mock_response)
 
         result = ms_graph_client.list_files("/documents")
 
         assert len(result) == 2
         assert result[0]["name"] == "file1.txt"
 
-    @patch("requests.get")
-    def test_list_files_root(self, mock_get, ms_graph_client):
+    def test_list_files_root(self, ms_graph_client):
         """ルートのファイル一覧取得"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"value": []}
-        mock_get.return_value = mock_response
+        ms_graph_client._session.get = Mock(return_value=mock_response)
 
         ms_graph_client.list_files("/")
 
         expected_url = "https://graph.microsoft.com/v1.0/users/test@example.com/drive/root/children"
-        assert mock_get.call_args[0][0] == expected_url
+        assert ms_graph_client._session.get.call_args[0][0] == expected_url
 
-    @patch("requests.get")
-    def test_list_files_timeout(self, mock_get, ms_graph_client):
+    def test_list_files_timeout(self, ms_graph_client):
         """ファイル一覧取得タイムアウト"""
-        mock_get.side_effect = requests.exceptions.Timeout()
+        ms_graph_client._session.get = Mock(side_effect=requests.exceptions.Timeout())
 
         with pytest.raises(NetworkError) as excinfo:
             ms_graph_client.list_files("/")
         assert "タイムアウト" in str(excinfo.value)
 
-    @patch("requests.get")
-    def test_list_files_auth_error(self, mock_get, ms_graph_client):
+    def test_list_files_auth_error(self, ms_graph_client):
         """ファイル一覧取得時の認証エラー"""
         mock_response = Mock()
         mock_response.status_code = 401
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_get.return_value = mock_response
+        ms_graph_client._session.get = Mock(return_value=mock_response)
 
         with pytest.raises(AuthenticationError):
             ms_graph_client.list_files("/")
 
-    @patch("requests.get")
-    def test_list_files_not_found(self, mock_get, ms_graph_client):
+    def test_list_files_not_found(self, ms_graph_client):
         """フォルダが見つからない場合"""
         mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_get.return_value = mock_response
+        ms_graph_client._session.get = Mock(return_value=mock_response)
 
         with pytest.raises(ListOperationError) as excinfo:
             ms_graph_client.list_files("/nonexistent")
         assert "見つかりません" in str(excinfo.value)
 
-    @patch("requests.get")
-    def test_list_files_generic_error(self, mock_get, ms_graph_client):
+    def test_list_files_generic_error(self, ms_graph_client):
         """その他のエラー"""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
-        mock_get.return_value = mock_response
+        ms_graph_client._session.get = Mock(return_value=mock_response)
 
         with pytest.raises(ListOperationError):
             ms_graph_client.list_files("/")
+
+
+@pytest.mark.unit
+class TestMSGraphClientPerformanceOptimization:
+    """パフォーマンス最適化関連のテスト"""
+
+    def test_chunk_size_is_60mb(self):
+        """チャンクサイズが60MB（最大値）であること"""
+        # Graph APIの最大チャンクサイズは60MB
+        expected_chunk_size = 60 * 1024 * 1024
+        assert expected_chunk_size == CHUNK_SIZE
+
+    def test_chunk_size_is_multiple_of_320kib(self):
+        """チャンクサイズが320KiBの倍数であること（Graph API要件）"""
+        # Graph APIはチャンクサイズが320KiBの倍数である必要がある
+        assert CHUNK_SIZE % (320 * 1024) == 0
+
+    def test_client_has_session_attribute(self, ms_graph_client):
+        """クライアントがセッション属性を持つこと"""
+        assert hasattr(ms_graph_client, "_session")
+        assert ms_graph_client._session is not None
+
+    def test_session_is_requests_session(self, ms_graph_client):
+        """セッションがrequests.Sessionインスタンスであること"""
+        import requests
+
+        assert isinstance(ms_graph_client._session, requests.Session)
+
+    def test_upload_chunk_uses_session(self, ms_graph_client):
+        """チャンクアップロードがセッションを使用すること"""
+        # セッションのputメソッドをモック
+        mock_response = Mock()
+        mock_response.status_code = 202
+        mock_response.json.return_value = {"nextExpectedRanges": ["10485760-"]}
+        ms_graph_client._session.put = Mock(return_value=mock_response)
+
+        ms_graph_client._upload_chunk(
+            "https://upload.example.com/session",
+            b"x" * 1000,
+            0,
+            2000,
+        )
+
+        # セッションのputが呼ばれたことを確認
+        ms_graph_client._session.put.assert_called_once()
+
+    def test_simple_upload_uses_session(self, ms_graph_client):
+        """シンプルアップロードがセッションを使用すること"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"name": "test.txt"}
+        ms_graph_client._session.put = Mock(return_value=mock_response)
+
+        ms_graph_client._simple_upload(b"test content", "test.txt", "/")
+
+        ms_graph_client._session.put.assert_called_once()
+
+    def test_create_upload_session_uses_session(self, ms_graph_client):
+        """アップロードセッション作成がセッションを使用すること"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "uploadUrl": "https://upload.example.com/session123"
+        }
+        ms_graph_client._session.post = Mock(return_value=mock_response)
+
+        ms_graph_client._create_upload_session("test.bin", "/uploads")
+
+        ms_graph_client._session.post.assert_called_once()
