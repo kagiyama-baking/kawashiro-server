@@ -19,12 +19,12 @@ jobs:
                     - django-api
         steps:
             - name: Delete old images (${{ matrix.image }})
-              uses: snok/container-retention-policy@v3
+              uses: snok/container-retention-policy@v3.0.0
               with:
-                  account: kagiyama-baking
+                  account: user
                   token: ${{ secrets.GHCR_CLEANUP_TOKEN }}
                   image-names: 'kawashiro-server/${{ matrix.image }}'
                   cut-off: 2w # 2週間以上前のイメージを対象
                   keep-n-most-recent: 5 # 最新5つは保持
-                  skip-tags: 'latest,release,staging' # 重要タグは除外
+                  image-tags: '!latest !release !staging' # 重要タグは除外
                   dry-run: false
