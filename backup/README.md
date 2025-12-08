@@ -40,24 +40,26 @@ backup/
 
 ## バックアップ
 
-### 自動バックアップ
-
-docker-compose.backup.ymlを使用して自動的にバックアップを実行：
-
-```bash
-# バックアップコンテナを起動（スケジュールに従って自動実行）
-docker compose -f docker-compose.backup.yml up -d
-
-# ログを確認
-docker compose -f docker-compose.backup.yml logs -f
-```
-
 ### 手動バックアップ
 
 ```bash
-# バックアップを即座に実行
-docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immich.sh
+# バックアップを実行（以下のコマンドはどちらも同じ動作）
+docker compose -f docker-compose.backup.yml up
+docker compose -f docker-compose.backup.yml run --rm backup
+
+# ログを確認しながら実行（フォアグラウンド）
+docker compose -f docker-compose.backup.yml up
+
+# バックグラウンドで実行
+docker compose -f docker-compose.backup.yml up -d
+
+# バックグラウンド実行時のログ確認
+docker compose -f docker-compose.backup.yml logs -f
 ```
+
+> **注意**: 現在のDockerfileには`CMD`でバックアップスクリプトが指定されているため、
+> コンテナ起動時に自動的にバックアップが1回実行されます。
+> スケジューラによる定期実行機能は含まれていません。
 
 ### バックアップの内容
 
