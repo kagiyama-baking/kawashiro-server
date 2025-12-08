@@ -26,25 +26,51 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
+    # 変更検出ジョブ - 各サービスディレクトリの変更を検出
+    detect-changes:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        outputs:
+            reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
+            django-api: ${{ steps.filter.outputs.django-api }}
+            services: ${{ steps.build-matrix.outputs.services }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Detect changes
+              uses: dorny/paths-filter@v3
+              id: filter
+              with:
+                  filters: |
+                      reverse-proxy:
+                        - 'reverse_proxy/**'
+                      django-api:
+                        - 'django_api/**'
+
+            - name: Build service matrix
+              id: build-matrix
+              run: |
+                  services='[]'
+                  if [ "${{ steps.filter.outputs.reverse-proxy }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    services=$(echo "$services" | jq -c '. + [{"name": "reverse-proxy", "context": "reverse_proxy", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/reverse-proxy"}]')
+                  fi
+                  if [ "${{ steps.filter.outputs.django-api }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    services=$(echo "$services" | jq -c '. + [{"name": "django-api", "context": "django_api", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/django-api"}]')
+                  fi
+                  echo "services=$services" >> "$GITHUB_OUTPUT"
+                  echo "📋 ビルド対象サービス: $services"
+
     # developブランチへのプッシュ時のビルド・プッシュジョブ
     build:
+        needs: detect-changes
+        if: needs.detect-changes.outputs.services != '[]'
         runs-on: ubuntu-latest
         timeout-minutes: 30 # 全体のタイムアウトを設定
         strategy:
+            fail-fast: false
             matrix:
-                service:
-                    - name: reverse-proxy
-                      context: reverse_proxy
-                      dockerfile: Dockerfile
-                      image: ghcr.io/${{ github.repository }}/reverse-proxy
-                    - name: test-web
-                      context: test_web
-                      dockerfile: Dockerfile
-                      image: ghcr.io/${{ github.repository }}/test-web
-                    - name: django-api
-                      context: django_api
-                      dockerfile: Dockerfile
-                      image: ghcr.io/${{ github.repository }}/django-api
+                service: ${{ fromJson(needs.detect-changes.outputs.services) }}
 
         steps:
             # ソースコードの取得

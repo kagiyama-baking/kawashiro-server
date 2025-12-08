@@ -44,7 +44,6 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             reverse-proxy-digest: ${{ steps.verify-reverse-proxy.outputs.digest }}
-            test-web-digest: ${{ steps.verify-test-web.outputs.digest }}
             django-api-digest: ${{ steps.verify-django-api.outputs.digest }}
         steps:
             - name: Checkout
@@ -64,25 +63,6 @@ jobs:
                   IMAGE="ghcr.io/${{ github.repository }}/reverse-proxy:${TAG}"
 
                   echo "🔍 reverse-proxyイメージの検証: ${IMAGE}"
-
-                  # イメージの存在確認とダイジェスト取得
-                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
-                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
-                    echo "✅ イメージが見つかりました"
-                    echo "📦 ダイジェスト: ${DIGEST}"
-                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
-                  else
-                    echo "❌ イメージが見つかりません: ${IMAGE}"
-                    exit 1
-                  fi
-
-            - name: Verify test-web image
-              id: verify-test-web
-              run: |
-                  TAG="${{ inputs.tag || 'staging' }}"
-                  IMAGE="ghcr.io/${{ github.repository }}/test-web:${TAG}"
-
-                  echo "🔍 test-webイメージの検証: ${IMAGE}"
 
                   # イメージの存在確認とダイジェスト取得
                   if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
@@ -140,15 +120,6 @@ jobs:
                              ghcr.io/${{ github.repository }}/reverse-proxy:latest
                   docker push ghcr.io/${{ github.repository }}/reverse-proxy:release
                   docker push ghcr.io/${{ github.repository }}/reverse-proxy:latest
-
-                  # test-web
-                  docker pull ghcr.io/${{ github.repository }}/test-web:staging
-                  docker tag ghcr.io/${{ github.repository }}/test-web:staging \
-                             ghcr.io/${{ github.repository }}/test-web:release
-                  docker tag ghcr.io/${{ github.repository }}/test-web:staging \
-                             ghcr.io/${{ github.repository }}/test-web:latest
-                  docker push ghcr.io/${{ github.repository }}/test-web:release
-                  docker push ghcr.io/${{ github.repository }}/test-web:latest
 
                   # django-api
                   docker pull ghcr.io/${{ github.repository }}/django-api:staging
@@ -249,7 +220,6 @@ jobs:
 
                   if [ "${{ needs.verify-images.result }}" == "success" ]; then
                     echo "| reverse-proxy | ✅ |" >> $GITHUB_STEP_SUMMARY
-                    echo "| test-web | ✅ |" >> $GITHUB_STEP_SUMMARY
                     echo "| django-api | ✅ |" >> $GITHUB_STEP_SUMMARY
                   else
                     echo "| - | ❌ 検証失敗 |" >> $GITHUB_STEP_SUMMARY

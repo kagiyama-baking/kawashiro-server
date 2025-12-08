@@ -16,8 +16,35 @@ on:
     workflow_dispatch: # テスト用の手動実行
 
 jobs:
-    # Django APIテストジョブ（他のチェックと並列実行）
-    django-test:
+    # 変更検出ジョブ - 各サービスディレクトリの変更を検出
+    detect-changes:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        outputs:
+            django-api: ${{ steps.filter.outputs.django-api }}
+            reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
+            docker-compose: ${{ steps.filter.outputs.docker-compose }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Detect changes
+              uses: dorny/paths-filter@v3
+              id: filter
+              with:
+                  filters: |
+                      django-api:
+                        - 'django_api/**'
+                      reverse-proxy:
+                        - 'reverse_proxy/**'
+                      docker-compose:
+                        - 'docker-compose.yml'
+                        - '.env.sample'
+
+    # Django APIテストジョブ（django_apiに変更がある場合のみ実行）
+    django-api-test:
+        needs: detect-changes
+        if: needs.detect-changes.outputs.django-api == 'true' || github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 10
 
@@ -84,8 +111,14 @@ jobs:
                   name: django-coverage-report
                   path: django_api/htmlcov/
 
-    # PRチェック用のメインジョブ
-    pr-checks:
+    # PRチェック用のメインジョブ（いずれかのサービスに変更がある場合のみ実行）
+    container-integration-tests:
+        needs: detect-changes
+        if: |
+            needs.detect-changes.outputs.django-api == 'true' ||
+            needs.detect-changes.outputs.reverse-proxy == 'true' ||
+            needs.detect-changes.outputs.docker-compose == 'true' ||
+            github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 10 # 全体のタイムアウトを設定
 
@@ -116,7 +149,6 @@ jobs:
             - name: Prepare volume directories
               run: |
                   mkdir -p volumes/reverse-proxy/log/nginx
-                  mkdir -p volumes/test-web/log/nginx
                   mkdir -p volumes/django-api/log
                   mkdir -p volumes/django-api/staticfiles
                   # SQLiteデータベースファイルを事前に作成
@@ -134,14 +166,6 @@ jobs:
                   echo "🔧 Nginx設定構文チェック..."
                   # 一時的にコンテナを起動して構文チェック
                   docker compose run --rm --no-deps reverse-proxy nginx -t
-                  echo "✅ 構文チェック: OK"
-
-            # 構文チェック（test-web）
-            - name: Test configuration syntax (Nginx) :test-web
-              run: |
-                  echo "🔧 Nginx設定構文チェック..."
-                  # 一時的にコンテナを起動して構文チェック
-                  docker compose run --rm --no-deps test-web nginx -t
                   echo "✅ 構文チェック: OK"
 
             # Django API: マイグレーション確認
@@ -184,20 +208,6 @@ jobs:
                   for i in {1..20}; do
                     if docker exec reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
                       echo "✅ reverse-proxy準備完了"
-                      break
-                    fi
-                    echo "  [$i/20] 待機中..."
-                    sleep 2
-                  done
-
-            # 準備完了待機（test-web）
-            - name: Wait for readiness :test-web
-              run: |
-                  # プロセス確認
-                  echo "🔍 test-web確認中..."
-                  for i in {1..20}; do
-                    if docker exec test-web sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
-                      echo "✅ test-web準備完了"
                       break
                     fi
                     echo "  [$i/20] 待機中..."
@@ -253,16 +263,6 @@ jobs:
                     exit 1
                   fi
 
-                  # サブドメインルーティング確認（test）
-                  echo "  🔀 ルーティング... (test.localhost -> localhost:8080)"
-                  status=$(curl --resolve test.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://test.localhost/)
-                  if [ "$status" = "200" ]; then
-                    echo "  ✅ ルーティング(test): OK"
-                  else
-                    echo "  ❌ ルーティング(test): NG (HTTP $status)"
-                    exit 1
-                  fi
-
                   # サブドメインルーティング確認（api）
                   echo "  🔀 ルーティング... (api.localhost -> django-api:8000)"
                   status=$(curl --resolve api.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://api.localhost/schema/)
@@ -307,8 +307,6 @@ jobs:
                   docker compose ps
                   echo "\n📋 reverse-proxy ログ:"
                   docker compose logs reverse-proxy | tail -n 50
-                  echo "\n📋 test-web ログ:"
-                  docker compose logs test-web | tail -n 50
                   echo "\n📋 django-api ログ:"
                   docker compose logs django-api | tail -n 50
 
