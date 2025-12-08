@@ -85,7 +85,7 @@ jobs:
                   path: django_api/htmlcov/
 
     # PRチェック用のメインジョブ
-    pr-checks:
+    container-integration-tests:
         runs-on: ubuntu-latest
         timeout-minutes: 10 # 全体のタイムアウトを設定
 
