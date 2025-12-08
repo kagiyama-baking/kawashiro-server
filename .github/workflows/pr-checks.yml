@@ -16,8 +16,35 @@ on:
     workflow_dispatch: # テスト用の手動実行
 
 jobs:
-    # Django APIテストジョブ（他のチェックと並列実行）
+    # 変更検出ジョブ - 各サービスディレクトリの変更を検出
+    detect-changes:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        outputs:
+            django-api: ${{ steps.filter.outputs.django-api }}
+            reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
+            docker-compose: ${{ steps.filter.outputs.docker-compose }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Detect changes
+              uses: dorny/paths-filter@v3
+              id: filter
+              with:
+                  filters: |
+                      django-api:
+                        - 'django_api/**'
+                      reverse-proxy:
+                        - 'reverse_proxy/**'
+                      docker-compose:
+                        - 'docker-compose.yml'
+                        - '.env.sample'
+
+    # Django APIテストジョブ（django_apiに変更がある場合のみ実行）
     django-api-test:
+        needs: detect-changes
+        if: needs.detect-changes.outputs.django-api == 'true' || github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 10
 
@@ -84,8 +111,14 @@ jobs:
                   name: django-coverage-report
                   path: django_api/htmlcov/
 
-    # PRチェック用のメインジョブ
+    # PRチェック用のメインジョブ（いずれかのサービスに変更がある場合のみ実行）
     container-integration-tests:
+        needs: detect-changes
+        if: |
+            needs.detect-changes.outputs.django-api == 'true' ||
+            needs.detect-changes.outputs.reverse-proxy == 'true' ||
+            needs.detect-changes.outputs.docker-compose == 'true' ||
+            github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 10 # 全体のタイムアウトを設定
 

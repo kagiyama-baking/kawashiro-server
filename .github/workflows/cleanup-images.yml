@@ -1,0 +1,30 @@
+name: Cleanup old container images
+
+on:
+    schedule:
+        - cron: '0 0 * * 0' # 毎週日曜0時 (UTC)
+    workflow_dispatch: # 手動実行用
+
+permissions:
+    packages: write
+
+jobs:
+    cleanup:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        strategy:
+            matrix:
+                image:
+                    - reverse-proxy
+                    - django-api
+        steps:
+            - name: Delete old images (${{ matrix.image }})
+              uses: snok/container-retention-policy@v3
+              with:
+                  account: kagiyama-baking
+                  token: ${{ secrets.GHCR_CLEANUP_TOKEN }}
+                  image-names: 'kawashiro-server/${{ matrix.image }}'
+                  cut-off: 2w # 2週間以上前のイメージを対象
+                  keep-n-most-recent: 5 # 最新5つは保持
+                  skip-tags: 'latest,release,staging' # 重要タグは除外
+                  dry-run: false
