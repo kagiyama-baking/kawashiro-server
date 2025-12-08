@@ -20,30 +20,8 @@ services:
             - ./volumes/reverse-proxy/log/nginx:/var/log/nginx
         restart: unless-stopped
         depends_on:
-            - test-web
             - django-api
             - immich
-        networks:
-            - proxy-network
-
-    # テスト用Webサーバー
-    test-web:
-        build:
-            context: ./test_web
-            dockerfile: Dockerfile
-        image: test-web
-        container_name: test-web
-        hostname: test-web
-        ports:
-            # 開発環境用：直接アクセス
-            - '8081:80'
-        volumes:
-            # ファイルのマウント
-            - ./test_web/conf.d:/etc/nginx/conf.d:ro
-            - ./test_web/html:/usr/share/nginx/html:ro
-            # ログの永続化
-            - ./volumes/test-web/log/nginx:/var/log/nginx
-        restart: unless-stopped
         networks:
             - proxy-network
 
