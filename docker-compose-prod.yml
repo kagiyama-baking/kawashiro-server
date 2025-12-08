@@ -13,21 +13,8 @@ services:
             - ./volumes/reverse-proxy/log/nginx:/var/log/nginx
         restart: unless-stopped
         depends_on:
-            - test-web
             - django-api
             - immich
-        networks:
-            - proxy-network
-
-    # テスト用Webサーバー
-    test-web:
-        image: ghcr.io/kagiyama-baking/kawashiro-server/test-web:release
-        container_name: test-web
-        hostname: test-web
-        volumes:
-            # ログの永続化
-            - ./volumes/test-web/log/nginx:/var/log/nginx
-        restart: unless-stopped
         networks:
             - proxy-network
 

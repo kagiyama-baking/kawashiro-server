@@ -12,7 +12,6 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 ## サービス
 
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
--   🧪 **テスト環境**: 開発・検証用のテスト Web サーバー内蔵
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 -   🐍 **Django API**: OneDrive バックアップ機能を提供する REST API
 
@@ -46,13 +45,6 @@ kawashiro-server/
 │       ├── index.html          # トップページ
 │       └── 404.html            # カスタム404ページ
 │
-├── test_web/                   # テスト用Webサーバー
-│   ├── Dockerfile              # テストサーバーコンテナ
-│   ├── conf.d/                 # Nginx設定
-│   │   └── default.conf        # デフォルト設定
-│   └── html/                   # 静的ファイル
-│       └── index.html          # テストページ
-│
 ├── django_api/                 # Django REST API
 │   ├── Dockerfile              # Django APIコンテナ
 │   ├── pyproject.toml          # Python依存関係
@@ -80,8 +72,6 @@ kawashiro-server/
 └── volumes/                    # 永続化データ
     ├── reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
-    ├── test-web/
-    │   └── log/nginx/          # テストWebのログ
     ├── immich/
     │   ├── data/               # アップロード写真データ
     │   └── log/                # アプリケーションログ
@@ -104,10 +94,6 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
 │ Reverse Proxy │ :80（ホスト）
 │ (Nginx)       │
 └───────────────┘
-      │                         ┌───────────────┐
-      ├── test.example.com ──►  │ Test Web      │ :8080 (コンテナ)
-      │                         │ (Nginx)       │
-      │                         └───────────────┘
       │                         ┌───────────────┐
       ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
       │                         │ (Server)      │
@@ -161,9 +147,6 @@ docker compose logs -f
 ```bash
 # ヘルスチェック
 curl http://localhost/health
-
-# テストサーバー（サブドメイン経由）
-curl -H "Host: test.localhost" http://localhost/
 
 # Immich（サブドメイン経由）
 curl -H "Host: album.localhost" http://localhost/
@@ -233,7 +216,6 @@ docker compose logs -f
 
 # 特定のサービスのログ
 docker compose logs -f reverse-proxy
-docker compose logs -f test-web
 docker compose logs -f immich
 docker compose logs -f immich-machine-learning
 docker compose logs -f immich-redis
@@ -340,7 +322,7 @@ flowchart LR
 # ビルド対象サービス
 services:
   - reverse-proxy
-  - test-web
+  - django-api
 
 # 各サービスに対して実行
 - マルチアーキテクチャビルド (linux/amd64, linux/arm64)
@@ -443,7 +425,7 @@ REGISTRY_PASSWORD: your-password
 
 ### Images
 - reverse-proxy: `ghcr.io/.../reverse-proxy:release`
-- test-web: `ghcr.io/.../test-web:release`
+- django-api: `ghcr.io/.../django-api:release`
 
 ### Deployment Instructions
 1. Pull the latest images
@@ -458,7 +440,7 @@ REGISTRY_PASSWORD: your-password
 ```bash
 # 特定のSHAタグを使用してロールバック
 docker pull ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:sha-abc1234
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/test-web:sha-abc1234
+docker pull ghcr.io/kagiyama-baking/kawashiro-server/django-api:sha-abc1234
 
 # docker-compose-prod.ymlを更新してタグを指定
 vim docker-compose-prod.yml
@@ -527,7 +509,7 @@ docker compose -f docker-compose-prod.yml ps
 ### 本番環境で使用されるイメージ
 
 -   `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
--   `ghcr.io/kagiyama-baking/kawashiro-server/test-web:release`
+-   `ghcr.io/kagiyama-baking/kawashiro-server/django-api:release`
 
 ## データのバックアップ・リストア
 
