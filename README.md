@@ -14,6 +14,11 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 -   🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
+    -   🔐 **User**: ユーザー認証・管理機能
+    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（Microsoft Graph API）
+    -   📁 **Media**: メディアファイル管理機能
+    -   🛠️ **Core**: 共通機能・ユーティリティ
+-   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
 
 ## 特徴
 
@@ -22,19 +27,27 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
 -   📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
 -   🛡️ **脆弱性スキャン**: Trivy によるイメージ検査
+-   💾 **自動バックアップ**: OneDrive への定期バックアップ機能
+-   🔒 **暗号化**: 機密情報の暗号化保存（OneDrive 設定など）
+-   🐍 **最新 Python 環境**: uv を使用した高速なパッケージ管理
+-   ✅ **テストカバレッジ**: pytest によるテスト自動化とカバレッジ計測
 
 ## プロジェクト構成
 
 ```
 kawashiro-server/
-├── docker-compose.yml          # メインのDocker Compose設定
+├── docker-compose.yml          # 開発用のDocker Compose設定
+├── docker-compose-prod.yml     # 本番用Docker Compose設定
+├── docker-compose.backup.yml   # バックアップコンテナ用のDocker Compose設定
 ├── README.md                   # このファイル
 │
 ├── .github/                    # GitHub設定
 │   ├── workflows/              # GitHub Actionsワークフロー
 │   │   ├── build.yml           # ビルド・プッシュ（develop）
 │   │   ├── deploy.yml          # デプロイ（main）
-│   │   └── pr-checks.yml       # PRチェック
+│   │   ├── pr-checks.yml       # PRチェック
+│   │   ├── security-scan.yml   # セキュリティスキャン
+│   │   └── cleanup-images.yml  # 古いイメージのクリーンアップ
 │   └── copilot-instructions.md # Copilotレビュー設定
 │
 ├── reverse_proxy/              # リバースプロキシ設定
@@ -48,24 +61,49 @@ kawashiro-server/
 │
 ├── django_api/                 # Django REST API
 │   ├── Dockerfile              # Django APIコンテナ
-│   ├── pyproject.toml          # Python依存関係
+│   ├── pyproject.toml          # Python依存関係（uv使用）
 │   ├── manage.py               # Djangoコマンド
 │   ├── pytest.ini              # pytestの設定
 │   ├── django_api/             # メインプロジェクト
 │   │   ├── settings.py         # Django設定
 │   │   ├── urls.py             # URLルーティング
+│   │   ├── asgi.py             # ASGIエントリーポイント
 │   │   └── wsgi.py             # WSGIエントリーポイント
 │   ├── user/                   # ユーザー認証アプリ
-│   ├── onedrive/               # OneDrive統合アプリ
+│   │   ├── models.py           # ユーザーモデル
+│   │   ├── serializers.py      # シリアライザー
+│   │   ├── views.py            # APIビュー
+│   │   └── tests.py            # テストコード
+│   ├── onedrive/               # OneDrive統合アプリ（Microsoft Graph API）
+│   │   ├── models.py           # 設定モデル（暗号化保存）
+│   │   ├── ms_graph_client.py  # Microsoft Graph APIクライアント
+│   │   ├── encryption.py       # 暗号化ユーティリティ
+│   │   ├── views.py            # APIビュー
+│   │   └── tests.py            # テストコード
+│   ├── media/                  # メディアファイル管理アプリ
+│   │   ├── models.py           # メディアモデル
+│   │   ├── views.py            # APIビュー
+│   │   └── tests.py            # テストコード
 │   ├── core/                   # 共通コアアプリ
-│   └── tests/                  # テストコード
+│   │   ├── models.py           # 共通モデル
+│   │   └── views.py            # 共通ビュー
+│   ├── tests/                  # 統合テストコード
+│   └── htmlcov/                # カバレッジレポート
 │
 ├── backup/                     # バックアップシステム
 │   ├── Dockerfile              # バックアップコンテナ
+│   ├── pyproject.toml          # Python依存関係（uv使用）
 │   ├── README.md               # バックアップ詳細ドキュメント
-│   └── scripts/                # バックアップスクリプト
-│       ├── backup_immich.sh    # Immichバックアップ
-│       └── restore_immich.sh   # Immichリストア
+│   ├── scripts/                # バックアップスクリプト（Python）
+│   │   ├── backup_all.py       # 統合バックアップスクリプト
+│   │   ├── backup_immich.py    # Immichバックアップ
+│   │   ├── backup_django.py    # Django APIバックアップ
+│   │   └── restore_immich.py   # Immichリストア
+│   └── tests/                  # テストコード
+│       ├── test_backup_immich.py
+│       ├── test_backup_django.py
+│       ├── test_restore_immich.py
+│       └── test_backup_all.py
 │
 ├── docs/                       # ドキュメント
 │   └── archtecture.drawio      # アーキテクチャ図
@@ -187,6 +225,35 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 # 本番環境では十分にランダムな文字列を設定してください
 ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY
 
+# OneDrive統合機能（オプション）
+# Microsoft Graph API を使用する場合に設定
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+```
+
+### バックアップシステム設定
+
+バックアップを使用する場合は、`.env.backup`ファイルを作成して以下の環境変数を設定してください：
+
+```bash
+# PostgreSQL設定（Immich用）
+DB_HOSTNAME=immich-postgres
+DB_USERNAME=immich
+DB_PASSWORD=strongpassword
+DB_DATABASE_NAME=immich
+
+# Django API設定
+DJANGO_API_URL=http://django-api:8000
+DJANGO_API_TOKEN=your-api-token
+
+# OneDriveバックアップ設定
+ONEDRIVE_BACKUP_PATH=/Backup/kawashiro-server
+
+# バックアップオプション
+BACKUP_DATA=false                      # 写真データもバックアップするか
+BACKUP_RETENTION_GENERATIONS=7         # 保持する世代数
+TZ=Asia/Tokyo                          # タイムゾーン
 ```
 
 ## 使用方法
@@ -194,8 +261,14 @@ ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY
 ### サービスの管理
 
 ```bash
-# サービスの起動
+# 開発環境: サービスの起動
 docker compose up -d
+
+# 本番環境: サービスの起動
+docker compose -f docker-compose-prod.yml up -d
+
+# バックアップコンテナの実行
+docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py
 
 # サービスの停止
 docker compose down
@@ -207,6 +280,22 @@ docker compose restart
 docker compose restart reverse-proxy
 ```
 
+### バックアップの実行
+
+```bash
+# 全てをバックアップ（ImmichとDjango API）
+docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py
+
+# Immichのみバックアップ
+docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py --immich-only
+
+# Django APIのみバックアップ
+docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py --django-only
+
+# Immichのリストア
+docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/restore_immich.py /backup/immich_backup_20241210_120000.tar.gz
+```
+
 ### ログの確認
 
 ```bash
@@ -215,10 +304,14 @@ docker compose logs -f
 
 # 特定のサービスのログ
 docker compose logs -f reverse-proxy
+docker compose logs -f django-api
 docker compose logs -f immich
 docker compose logs -f immich-machine-learning
 docker compose logs -f immich-redis
 docker compose logs -f immich-postgres
+
+# バックアップログ
+docker compose -f docker-compose.backup.yml logs backup
 ```
 
 ### 設定の更新
@@ -856,12 +949,43 @@ docker compose exec [サービス名] ps aux
 -   **Discussion**: [GitHub Discussions](https://github.com/kagiyama-baking/kawashiro-server/discussions)
 -   **Wiki**: [プロジェクト Wiki](https://github.com/kagiyama-baking/kawashiro-server/wiki)
 
+## 技術スタック
+
+### バックエンド
+
+-   **Django**: Python Web フレームワーク
+-   **Django REST Framework**: REST API 構築
+-   **Gunicorn**: WSGI HTTP サーバー（本番環境）
+-   **PostgreSQL**: リレーショナルデータベース（Immich 用）
+-   **SQLite**: 軽量データベース（Django API 用）
+
+### インフラ・DevOps
+
+-   **Docker & Docker Compose**: コンテナ化とオーケストレーション
+-   **Nginx**: リバースプロキシ・Web サーバー
+-   **GitHub Actions**: CI/CD パイプライン
+-   **GitHub Container Registry**: コンテナイメージレジストリ
+
+### ツール・ユーティリティ
+
+-   **uv**: 高速 Python パッケージマネージャー
+-   **pytest**: Python テストフレームワーク
+-   **Ruff**: Python リンター・フォーマッター
+-   **Trivy**: コンテナセキュリティスキャナー
+
+### 外部サービス連携
+
+-   **Microsoft Graph API**: OneDrive 連携
+-   **Valkey (Redis)**: キャッシュ・セッション管理
+
 ## 謝辞
 
 このプロジェクトは以下のオープンソースプロジェクトを使用しています：
 
 -   [Immich](https://github.com/immich-app/immich) - セルフホスト型写真管理プラットフォーム
+-   [Django](https://www.djangoproject.com/) - Python Web フレームワーク
 -   [Nginx](https://nginx.org/) - 高性能 Web サーバー
 -   [Docker](https://www.docker.com/) - コンテナ化プラットフォーム
 -   [PostgreSQL](https://www.postgresql.org/) - オープンソースデータベース
--   [Redis](https://redis.io/) - インメモリデータストア
+-   [Valkey](https://valkey.io/) - Redis 互換インメモリデータストア
+-   [uv](https://github.com/astral-sh/uv) - 高速 Python パッケージマネージャー
