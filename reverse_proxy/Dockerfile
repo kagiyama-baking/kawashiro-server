@@ -16,10 +16,8 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY conf.d/*.conf /etc/nginx/conf.d/
 COPY html/* /usr/share/nginx/html/
 
-# nginxユーザーに必要なディレクトリの権限を設定
+# 非rootユーザーで実行するために必要なディレクトリの権限を設定
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d /tmp /var/run
-
-# 非rootで動かす
 USER nginx
 
 # コンテナがリッスンするポートを指定
