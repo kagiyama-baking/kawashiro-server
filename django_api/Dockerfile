@@ -1,4 +1,4 @@
-FROM python:3.13-alpine
+FROM python:3.13-alpine AS base
 
 # リアルタイムでログを見れるように環境変数を指定
 ENV PYTHONUNBUFFERED=1
@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1
 # セキュリティのため、OSパッケージを最新版にアップデート
 # curlも追加（ヘルスチェック用）
 # libheifも追加（HEIF/HEIC画像形式サポート用）
+# ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
