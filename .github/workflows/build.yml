@@ -111,8 +111,32 @@ jobs:
                       org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
                       org.opencontainers.image.created=${{ github.run_id }}
 
-            # Dockerイメージのビルドとプッシュ
-            - name: Build & Push
+            # Step 1: amd64のみでビルド（スキャン用）
+            - name: Build for scan (amd64 only)
+              uses: docker/build-push-action@v6
+              with:
+                  context: ./${{ matrix.service.context }}
+                  file: ./${{ matrix.service.context }}/${{ matrix.service.dockerfile }}
+                  platforms: linux/amd64
+                  push: false
+                  load: true
+                  tags: ${{ matrix.service.image }}:scan
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            # Step 2: 脆弱性スキャン
+            - name: Scan for vulnerabilities
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                  image-ref: '${{ matrix.service.image }}:scan'
+                  format: 'table'
+                  exit-code: '1'
+                  severity: 'CRITICAL,HIGH'
+                  ignore-unfixed: true
+                  timeout: '10m'
+
+            # Step 3: スキャン成功時のみマルチプラットフォームでプッシュ
+            - name: Build & Push (multi-platform)
               id: build
               uses: docker/build-push-action@v6
               with:
