@@ -41,6 +41,39 @@ jobs:
                         - 'docker-compose.yml'
                         - '.env.sample'
 
+    # Dockerfile静的解析ジョブ（セキュリティスキャン）
+    dockerfile-security-scan:
+        needs: detect-changes
+        if: |
+            needs.detect-changes.outputs.django-api == 'true' ||
+            needs.detect-changes.outputs.reverse-proxy == 'true' ||
+            github.event_name == 'workflow_dispatch'
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: django-api
+                      path: ./django_api
+                      changed: django-api
+                    - name: reverse-proxy
+                      path: ./reverse_proxy
+                      changed: reverse-proxy
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Run Trivy config scan (${{ matrix.name }})
+              if: needs.detect-changes.outputs[matrix.changed] == 'true' || github.event_name == 'workflow_dispatch'
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                  scan-type: 'config'
+                  scan-ref: ${{ matrix.path }}
+                  exit-code: '1'
+                  severity: 'CRITICAL,HIGH'
+                  format: 'table'
+
     # Django APIテストジョブ（django_apiに変更がある場合のみ実行）
     django-api-test:
         needs: detect-changes
