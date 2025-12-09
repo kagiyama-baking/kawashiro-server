@@ -59,6 +59,21 @@ class TestBackupConfig:
         assert config.backup_data is True
         assert config.backup_retention_generations == 14
 
+    def test_from_env_with_immich_specific_onedrive_path(self, monkeypatch):
+        """IMMICH_ONEDRIVE_BACKUP_PATH が優先されること"""
+        monkeypatch.setenv("DB_HOSTNAME", "localhost")
+        monkeypatch.setenv("DB_USERNAME", "testuser")
+        monkeypatch.setenv("DB_PASSWORD", "testpass")
+        monkeypatch.setenv("DB_DATABASE_NAME", "testdb")
+        monkeypatch.setenv("DJANGO_API_URL", "http://api.example.com")
+        monkeypatch.setenv("DJANGO_API_TOKEN", "token123")
+        monkeypatch.setenv("ONEDRIVE_BACKUP_PATH", "/backup/common")
+        monkeypatch.setenv("IMMICH_ONEDRIVE_BACKUP_PATH", "/backup/immich-specific")
+
+        config = BackupConfig.from_env()
+
+        assert config.onedrive_backup_path == "/backup/immich-specific"
+
     def test_from_env_missing_required_var_raises_error(self, monkeypatch):
         """必須環境変数が不足している場合、エラーが発生すること"""
         monkeypatch.setenv("DB_HOSTNAME", "localhost")

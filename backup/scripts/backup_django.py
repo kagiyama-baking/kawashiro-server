@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Immich バックアップスクリプト"""
+"""Django API SQLite バックアップスクリプト"""
 
 import gzip
 import os
-import subprocess
+import shutil
 import sys
-import tarfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,37 +14,30 @@ import requests
 
 
 @dataclass
-class BackupConfig:
-    """バックアップ設定"""
+class DjangoBackupConfig:
+    """Django バックアップ設定"""
 
-    db_hostname: str
-    db_username: str
-    db_password: str
-    db_database_name: str
+    sqlite_path: str
     django_api_url: str
     django_api_token: str
     onedrive_backup_path: str
-    backup_data: bool = False
     backup_retention_generations: int = 7
 
     @classmethod
-    def from_env(cls) -> "BackupConfig":
+    def from_env(cls) -> "DjangoBackupConfig":
         """環境変数から設定を読み込む"""
         required_vars = [
-            "DB_HOSTNAME",
-            "DB_USERNAME",
-            "DB_PASSWORD",
-            "DB_DATABASE_NAME",
+            "DJANGO_SQLITE_PATH",
             "DJANGO_API_URL",
             "DJANGO_API_TOKEN",
         ]
 
-        # OneDrive パスは IMMICH_ONEDRIVE_BACKUP_PATH または ONEDRIVE_BACKUP_PATH のいずれか
-        onedrive_path = os.environ.get("IMMICH_ONEDRIVE_BACKUP_PATH") or os.environ.get(
+        # OneDrive パスは DJANGO_ONEDRIVE_BACKUP_PATH または ONEDRIVE_BACKUP_PATH のいずれか
+        onedrive_path = os.environ.get("DJANGO_ONEDRIVE_BACKUP_PATH") or os.environ.get(
             "ONEDRIVE_BACKUP_PATH"
         )
         if not onedrive_path:
-            required_vars.append("IMMICH_ONEDRIVE_BACKUP_PATH")
+            required_vars.append("DJANGO_ONEDRIVE_BACKUP_PATH")
 
         missing_vars = [var for var in required_vars if not os.environ.get(var)]
         if missing_vars:
@@ -54,14 +46,10 @@ class BackupConfig:
             )
 
         return cls(
-            db_hostname=os.environ["DB_HOSTNAME"],
-            db_username=os.environ["DB_USERNAME"],
-            db_password=os.environ["DB_PASSWORD"],
-            db_database_name=os.environ["DB_DATABASE_NAME"],
+            sqlite_path=os.environ["DJANGO_SQLITE_PATH"],
             django_api_url=os.environ["DJANGO_API_URL"],
             django_api_token=os.environ["DJANGO_API_TOKEN"],
             onedrive_backup_path=onedrive_path,
-            backup_data=os.environ.get("BACKUP_DATA", "").lower() == "true",
             backup_retention_generations=int(
                 os.environ.get("BACKUP_RETENTION_GENERATIONS", "7")
             ),
@@ -86,84 +74,31 @@ def log_success(message: str) -> None:
     print(f"[{timestamp}] [SUCCESS] {message}")
 
 
-def check_env_vars() -> BackupConfig:
+def check_env_vars() -> DjangoBackupConfig:
     """環境変数をチェックして設定を返す"""
-    config = BackupConfig.from_env()
+    config = DjangoBackupConfig.from_env()
     log_info("環境変数の確認が完了しました")
     return config
 
 
-def generate_backup_filename(backup_type: str, timestamp: str) -> str:
+def generate_backup_filename(timestamp: str) -> str:
     """バックアップファイル名を生成する"""
-    if backup_type == "db":
-        return f"immich_db_{timestamp}.sql.gz"
-    elif backup_type == "data":
-        return f"immich_data_{timestamp}.tar.gz"
-    else:
-        raise ValueError(f"不明なバックアップタイプ: {backup_type}")
+    return f"django_db_{timestamp}.sqlite3.gz"
 
 
-def backup_database(
-    hostname: str,
-    username: str,
-    password: str,
-    database: str,
-    output_file: Path,
-) -> bool:
-    """PostgreSQL データベースをバックアップする"""
-    log_info("PostgreSQLデータベースのバックアップを開始します...")
+def backup_sqlite(source_path: Path, output_file: Path) -> bool:
+    """SQLite データベースをバックアップする"""
+    log_info("SQLiteデータベースのバックアップを開始します...")
 
-    env = os.environ.copy()
-    env["PGPASSWORD"] = password
+    if not source_path.exists():
+        raise RuntimeError(f"SQLiteファイルが見つかりません: {source_path}")
 
-    try:
-        result = subprocess.run(
-            [
-                "pg_dump",
-                "-h",
-                hostname,
-                "-U",
-                username,
-                "-d",
-                database,
-            ],
-            capture_output=True,
-            env=env,
-            check=False,
-        )
-
-        if result.returncode != 0:
-            error_msg = result.stderr.decode() if result.stderr else "不明なエラー"
-            raise RuntimeError(f"データベースバックアップに失敗しました: {error_msg}")
-
-        # gzip 圧縮して保存
-        with gzip.open(output_file, "wb") as f:
-            f.write(result.stdout)
-
-        file_size = output_file.stat().st_size
-        log_success(f"データベースバックアップが完了しました: {output_file}")
-        log_info(f"バックアップファイルサイズ: {file_size / 1024 / 1024:.2f} MB")
-
-        return True
-
-    except FileNotFoundError as e:
-        raise RuntimeError(
-            "データベースバックアップに失敗しました: pg_dump が見つかりません"
-        ) from e
-
-
-def backup_data(source_dir: Path, output_file: Path) -> bool:
-    """写真データをバックアップする"""
-    log_info("写真データのバックアップを開始します...")
-
-    if not source_dir.exists():
-        raise RuntimeError(f"{source_dir} ディレクトリが見つかりません")
-
-    with tarfile.open(output_file, "w:gz") as tar:
-        tar.add(source_dir, arcname="data")
+    # gzip 圧縮して保存
+    with open(source_path, "rb") as f_in, gzip.open(output_file, "wb") as f_out:
+        shutil.copyfileobj(f_in, f_out)
 
     file_size = output_file.stat().st_size
-    log_success(f"写真データバックアップが完了しました: {output_file}")
+    log_success(f"SQLiteバックアップが完了しました: {output_file}")
     log_info(f"バックアップファイルサイズ: {file_size / 1024 / 1024:.2f} MB")
 
     return True
@@ -308,7 +243,6 @@ def cleanup_old_onedrive_backups(
     api_token: str,
     folder_path: str,
     retention_generations: int,
-    backup_data: bool,
 ) -> bool:
     """OneDrive 上の古いバックアップを削除する"""
     log_info(
@@ -335,28 +269,16 @@ def cleanup_old_onedrive_backups(
 
         files = response.json().get("files", [])
 
-        # データベースバックアップファイルの削除
+        # SQLiteバックアップファイルの削除
         delete_old_files(
             files=files,
-            prefix="immich_db_",
-            suffix=".sql.gz",
+            prefix="django_db_",
+            suffix=".sqlite3.gz",
             retention_generations=retention_generations,
             api_url=api_url,
             api_token=api_token,
             folder_path=folder_path,
         )
-
-        # 写真データバックアップファイルの削除
-        if backup_data:
-            delete_old_files(
-                files=files,
-                prefix="immich_data_",
-                suffix=".tar.gz",
-                retention_generations=retention_generations,
-                api_url=api_url,
-                api_token=api_token,
-                folder_path=folder_path,
-            )
 
         return True
 
@@ -368,7 +290,7 @@ def cleanup_old_onedrive_backups(
 def main() -> int:
     """メイン処理"""
     log_info("==========================================")
-    log_info("Immichバックアップ処理を開始します")
+    log_info("Django SQLiteバックアップ処理を開始します")
     log_info("==========================================")
 
     # 環境変数のチェック
@@ -383,54 +305,27 @@ def main() -> int:
     backup_dir = Path("/backup")
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    db_backup_file = backup_dir / generate_backup_filename("db", timestamp)
-    data_backup_file = backup_dir / generate_backup_filename("data", timestamp)
+    backup_file = backup_dir / generate_backup_filename(timestamp)
 
     upload_failed = False
 
     try:
-        # 1. PostgreSQL バックアップ
-        backup_database(
-            hostname=config.db_hostname,
-            username=config.db_username,
-            password=config.db_password,
-            database=config.db_database_name,
-            output_file=db_backup_file,
+        # 1. SQLite バックアップ
+        backup_sqlite(
+            source_path=Path(config.sqlite_path),
+            output_file=backup_file,
         )
 
-        # 2. 写真データバックアップ（オプション）
-        if config.backup_data:
-            backup_data(
-                source_dir=Path("/source/data"),
-                output_file=data_backup_file,
-            )
-        else:
-            log_info(
-                f"写真データのバックアップはスキップします (BACKUP_DATA={config.backup_data})"
-            )
-
-        # 3. OneDrive へアップロード
+        # 2. OneDrive へアップロード
         log_info("------------------------------------------")
         log_info("OneDriveへのアップロードを開始します")
         log_info("------------------------------------------")
 
         if not upload_to_onedrive(
-            file_path=db_backup_file,
+            file_path=backup_file,
             api_url=config.django_api_url,
             api_token=config.django_api_token,
             folder_path=config.onedrive_backup_path,
-        ):
-            upload_failed = True
-
-        if (
-            config.backup_data
-            and data_backup_file.exists()
-            and not upload_to_onedrive(
-                file_path=data_backup_file,
-                api_url=config.django_api_url,
-                api_token=config.django_api_token,
-                folder_path=config.onedrive_backup_path,
-            )
         ):
             upload_failed = True
 
@@ -438,13 +333,13 @@ def main() -> int:
         log_error(str(e))
         upload_failed = True
 
-    # 4. ローカルバックアップのクリーンアップ
+    # 3. ローカルバックアップのクリーンアップ
     log_info("------------------------------------------")
     log_info("ローカルバックアップのクリーンアップ")
     log_info("------------------------------------------")
     cleanup_local_backups(backup_dir)
 
-    # 5. OneDrive 上の古いバックアップの削除
+    # 4. OneDrive 上の古いバックアップの削除
     if not upload_failed:
         log_info("------------------------------------------")
         log_info("OneDrive上の古いバックアップのクリーンアップ")
@@ -454,7 +349,6 @@ def main() -> int:
             api_token=config.django_api_token,
             folder_path=config.onedrive_backup_path,
             retention_generations=config.backup_retention_generations,
-            backup_data=config.backup_data,
         )
     else:
         log_info("------------------------------------------")
