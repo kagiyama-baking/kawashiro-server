@@ -123,6 +123,7 @@ jobs:
                   tags: ${{ matrix.service.image }}:scan
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+                  no-cache-filters: base
 
             # Step 2: 脆弱性スキャン
             - name: Scan for vulnerabilities
@@ -148,6 +149,7 @@ jobs:
                   labels: ${{ steps.meta.outputs.labels }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+                  no-cache-filters: base
                   provenance: false # 後で別ジョブで付与
 
             # ビルド結果の確認
