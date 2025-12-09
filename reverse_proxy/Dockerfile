@@ -1,6 +1,7 @@
-FROM nginx:alpine
+FROM nginx:alpine AS base
 
 # セキュリティのため、OSパッケージを最新版にアップデート
+# ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
