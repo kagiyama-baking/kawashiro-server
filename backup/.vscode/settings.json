@@ -3,7 +3,7 @@
     "python.testing.unittestEnabled": false,
     "python.testing.nosetestsEnabled": false,
     "python.testing.pytestArgs": ["tests", "-v", "--tb=short"],
-    "python.testing.cwd": "${workspaceFolder}/django_api",
+    "python.testing.cwd": "${workspaceFolder}/backup",
     "python.envFile": "${workspaceFolder}/.env",
     "python.testing.autoTestDiscoverOnSaveEnabled": true
 }
