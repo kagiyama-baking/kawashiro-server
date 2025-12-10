@@ -14,6 +14,32 @@ from pathlib import Path
 
 import requests
 
+# PostgreSQL識別子として有効な文字のパターン（英数字とアンダースコアのみ）
+VALID_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def validate_sql_identifier(value: str, name: str) -> str:
+    """SQLインジェクション対策: PostgreSQL識別子として有効な値かを検証する
+
+    Args:
+        value: 検証する値
+        name: エラーメッセージ用の識別子名
+
+    Returns:
+        検証済みの値
+
+    Raises:
+        ValueError: 無効な文字が含まれている場合
+    """
+    if not VALID_IDENTIFIER_PATTERN.match(value):
+        raise ValueError(
+            f"{name} に無効な文字が含まれています。"
+            f"英数字とアンダースコアのみ使用可能です: {value}"
+        )
+    if len(value) > 63:  # PostgreSQLの識別子の最大長
+        raise ValueError(f"{name} が長すぎます（最大63文字）: {value}")
+    return value
+
 
 @dataclass
 class RestoreConfig:
@@ -216,6 +242,10 @@ def restore_database(
 ) -> bool:
     """PostgreSQL データベースをリストアする"""
     log_info("PostgreSQLデータベースのリストアを開始します...")
+
+    # SQLインジェクション対策: データベース名とユーザー名を検証
+    validate_sql_identifier(database, "データベース名")
+    validate_sql_identifier(username, "ユーザー名")
 
     if not backup_file.exists():
         raise RuntimeError(f"バックアップファイルが見つかりません: {backup_file}")

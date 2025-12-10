@@ -29,8 +29,11 @@ RUN mkdir -p scripts && \
     rm -rf scripts
 
 # アプリケーションを実行するためのユーザを作成する
+# /backup と /restore はボリュームマウント用ディレクトリ
 RUN adduser -D -g backup backup && \
-    chown -R backup:backup /app
+    chown -R backup:backup /app && \
+    mkdir -p /backup /restore && \
+    chown backup:backup /backup /restore
 
 # ユーザをrootから変更
 USER backup

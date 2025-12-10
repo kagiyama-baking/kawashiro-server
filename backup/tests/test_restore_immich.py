@@ -22,6 +22,7 @@ from scripts.restore_immich import (
     parse_args,
     restore_data,
     restore_database,
+    validate_sql_identifier,
 )
 
 
@@ -288,6 +289,43 @@ class TestRestoreData:
                 backup_file=backup_file,
                 restore_dir=restore_dir,
             )
+
+
+class TestValidateSqlIdentifier:
+    """validate_sql_identifier のテスト"""
+
+    def test_valid_identifier(self):
+        """有効な識別子が検証を通過すること"""
+        assert validate_sql_identifier("immich", "データベース名") == "immich"
+        assert validate_sql_identifier("test_db", "データベース名") == "test_db"
+        assert validate_sql_identifier("DB123", "データベース名") == "DB123"
+        assert validate_sql_identifier("_private", "データベース名") == "_private"
+
+    def test_invalid_identifier_with_special_chars(self):
+        """特殊文字を含む識別子がエラーになること"""
+        with pytest.raises(ValueError, match="無効な文字が含まれています"):
+            validate_sql_identifier("test; DROP TABLE users;--", "データベース名")
+
+    def test_invalid_identifier_with_hyphen(self):
+        """ハイフンを含む識別子がエラーになること"""
+        with pytest.raises(ValueError, match="無効な文字が含まれています"):
+            validate_sql_identifier("test-db", "データベース名")
+
+    def test_invalid_identifier_starting_with_number(self):
+        """数字で始まる識別子がエラーになること"""
+        with pytest.raises(ValueError, match="無効な文字が含まれています"):
+            validate_sql_identifier("123db", "データベース名")
+
+    def test_invalid_identifier_too_long(self):
+        """長すぎる識別子がエラーになること"""
+        long_name = "a" * 64
+        with pytest.raises(ValueError, match="長すぎます"):
+            validate_sql_identifier(long_name, "データベース名")
+
+    def test_valid_identifier_max_length(self):
+        """最大長の識別子が検証を通過すること"""
+        max_name = "a" * 63
+        assert validate_sql_identifier(max_name, "データベース名") == max_name
 
 
 class TestLogFunctions:
