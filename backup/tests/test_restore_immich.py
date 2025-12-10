@@ -5,13 +5,20 @@ import tarfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from scripts.restore_immich import (
     RestoreConfig,
     check_env_vars,
     check_onedrive_env_vars,
+    cleanup_temp_file,
     download_from_onedrive,
     generate_data_filename_from_db,
+    log_error,
+    log_info,
+    log_success,
+    log_warning,
+    main,
     parse_args,
     restore_data,
     restore_database,
@@ -281,3 +288,233 @@ class TestRestoreData:
                 backup_file=backup_file,
                 restore_dir=restore_dir,
             )
+
+
+class TestLogFunctions:
+    """ログ関数のテスト"""
+
+    def test_log_info(self, capsys):
+        """log_info が正しくログを出力すること"""
+        log_info("テストメッセージ")
+        captured = capsys.readouterr()
+        assert "[INFO] テストメッセージ" in captured.out
+
+    def test_log_error(self, capsys):
+        """log_error が正しくログを出力すること"""
+        log_error("エラーメッセージ")
+        captured = capsys.readouterr()
+        assert "[ERROR] エラーメッセージ" in captured.err
+
+    def test_log_success(self, capsys):
+        """log_success が正しくログを出力すること"""
+        log_success("成功メッセージ")
+        captured = capsys.readouterr()
+        assert "[SUCCESS] 成功メッセージ" in captured.out
+
+    def test_log_warning(self, capsys):
+        """log_warning が正しくログを出力すること"""
+        log_warning("警告メッセージ")
+        captured = capsys.readouterr()
+        assert "[WARNING] 警告メッセージ" in captured.out
+
+
+class TestDownloadRequestException:
+    """download_from_onedrive の例外テスト"""
+
+    def test_download_request_exception(self, tmp_path):
+        """OneDrive からのダウンロードで例外が発生した場合、エラーが発生すること"""
+        with patch("requests.get") as mock_get:
+            mock_get.side_effect = requests.RequestException("Connection error")
+
+            with pytest.raises(RuntimeError, match="OneDriveからのダウンロードに失敗"):
+                download_from_onedrive(
+                    file_name="backup.sql.gz",
+                    api_url="http://api.example.com",
+                    api_token="token123",
+                    folder_path="/backup/immich",
+                    local_dir=tmp_path,
+                )
+
+
+class TestCleanupTempFile:
+    """cleanup_temp_file のテスト"""
+
+    def test_cleanup_temp_file_deletes_when_temp(self, tmp_path):
+        """一時ファイルの場合、削除されること"""
+        temp_file = tmp_path / "temp.sql.gz"
+        temp_file.write_bytes(b"temp data")
+
+        cleanup_temp_file(temp_file, is_temp=True)
+
+        assert not temp_file.exists()
+
+    def test_cleanup_temp_file_keeps_when_not_temp(self, tmp_path):
+        """一時ファイルでない場合、削除されないこと"""
+        file = tmp_path / "data.sql.gz"
+        file.write_bytes(b"data")
+
+        cleanup_temp_file(file, is_temp=False)
+
+        assert file.exists()
+
+    def test_cleanup_temp_file_nonexistent(self, tmp_path):
+        """存在しないファイルの場合でもエラーにならないこと"""
+        nonexistent_file = tmp_path / "nonexistent.sql.gz"
+
+        # エラーが発生しないこと
+        cleanup_temp_file(nonexistent_file, is_temp=True)
+
+
+class TestMain:
+    """main 関数のテスト"""
+
+    def test_main_env_error(self, monkeypatch):
+        """環境変数エラーの場合、1を返すこと"""
+        monkeypatch.delenv("DB_HOSTNAME", raising=False)
+        monkeypatch.delenv("DB_USERNAME", raising=False)
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        monkeypatch.delenv("DB_DATABASE_NAME", raising=False)
+
+        with patch("sys.argv", ["restore_immich.py", "backup.sql.gz"]):
+            result = main()
+
+        assert result == 1
+
+    def test_main_onedrive_env_error(self, monkeypatch):
+        """OneDrive環境変数エラーの場合、1を返すこと"""
+        monkeypatch.setenv("DB_HOSTNAME", "localhost")
+        monkeypatch.setenv("DB_USERNAME", "testuser")
+        monkeypatch.setenv("DB_PASSWORD", "testpass")
+        monkeypatch.setenv("DB_DATABASE_NAME", "testdb")
+        monkeypatch.delenv("DJANGO_API_URL", raising=False)
+        monkeypatch.delenv("DJANGO_API_TOKEN", raising=False)
+        monkeypatch.delenv("ONEDRIVE_BACKUP_PATH", raising=False)
+
+        with patch(
+            "sys.argv", ["restore_immich.py", "--from-onedrive", "backup.sql.gz"]
+        ):
+            result = main()
+
+        assert result == 1
+
+    def test_main_local_file_not_found(self, tmp_path, monkeypatch):
+        """ローカルファイルが見つからない場合、1を返すこと"""
+        monkeypatch.setenv("DB_HOSTNAME", "localhost")
+        monkeypatch.setenv("DB_USERNAME", "testuser")
+        monkeypatch.setenv("DB_PASSWORD", "testpass")
+        monkeypatch.setenv("DB_DATABASE_NAME", "testdb")
+
+        backup_dir = tmp_path / "backup"
+        backup_dir.mkdir()
+
+        with (
+            patch("sys.argv", ["restore_immich.py", "nonexistent.sql.gz"]),
+            patch("scripts.restore_immich.Path") as mock_path_class,
+        ):
+
+            def path_side_effect(path_str):
+                if path_str == "/backup":
+                    return backup_dir
+                return MagicMock()
+
+            mock_path_class.side_effect = path_side_effect
+
+            result = main()
+
+        assert result == 1
+
+    def test_main_restore_success(self, tmp_path, monkeypatch):
+        """リストアが成功した場合、0を返すこと"""
+        monkeypatch.setenv("DB_HOSTNAME", "localhost")
+        monkeypatch.setenv("DB_USERNAME", "testuser")
+        monkeypatch.setenv("DB_PASSWORD", "testpass")
+        monkeypatch.setenv("DB_DATABASE_NAME", "testdb")
+
+        # バックアップファイルを作成
+        backup_dir = tmp_path / "backup"
+        backup_dir.mkdir()
+        backup_file = backup_dir / "backup.sql.gz"
+        with gzip.open(backup_file, "wt") as f:
+            f.write("CREATE TABLE test;")
+
+        with (
+            patch("sys.argv", ["restore_immich.py", "backup.sql.gz"]),
+            patch("scripts.restore_immich.restore_database") as mock_restore,
+            patch("scripts.restore_immich.Path") as mock_path_class,
+        ):
+            mock_restore.return_value = True
+
+            def path_side_effect(path_str):
+                if path_str == "/backup":
+                    return backup_dir
+                return MagicMock()
+
+            mock_path_class.side_effect = path_side_effect
+
+            result = main()
+
+            assert result == 0
+
+    def test_main_restore_failure(self, tmp_path, monkeypatch):
+        """リストアが失敗した場合、1を返すこと"""
+        monkeypatch.setenv("DB_HOSTNAME", "localhost")
+        monkeypatch.setenv("DB_USERNAME", "testuser")
+        monkeypatch.setenv("DB_PASSWORD", "testpass")
+        monkeypatch.setenv("DB_DATABASE_NAME", "testdb")
+
+        backup_dir = tmp_path / "backup"
+        backup_dir.mkdir()
+        backup_file = backup_dir / "backup.sql.gz"
+        with gzip.open(backup_file, "wt") as f:
+            f.write("CREATE TABLE test;")
+
+        with (
+            patch("sys.argv", ["restore_immich.py", "backup.sql.gz"]),
+            patch("scripts.restore_immich.restore_database") as mock_restore,
+            patch("scripts.restore_immich.Path") as mock_path_class,
+        ):
+            mock_restore.side_effect = RuntimeError("Restore failed")
+
+            def path_side_effect(path_str):
+                if path_str == "/backup":
+                    return backup_dir
+                return MagicMock()
+
+            mock_path_class.side_effect = path_side_effect
+
+            result = main()
+
+            assert result == 1
+
+    def test_main_onedrive_download_failure(self, tmp_path, monkeypatch):
+        """OneDriveからのダウンロードが失敗した場合、1を返すこと"""
+        monkeypatch.setenv("DB_HOSTNAME", "localhost")
+        monkeypatch.setenv("DB_USERNAME", "testuser")
+        monkeypatch.setenv("DB_PASSWORD", "testpass")
+        monkeypatch.setenv("DB_DATABASE_NAME", "testdb")
+        monkeypatch.setenv("DJANGO_API_URL", "http://api.example.com")
+        monkeypatch.setenv("DJANGO_API_TOKEN", "token123")
+        monkeypatch.setenv("ONEDRIVE_BACKUP_PATH", "/backup/immich")
+
+        backup_dir = tmp_path / "backup"
+        backup_dir.mkdir()
+
+        with (
+            patch(
+                "sys.argv", ["restore_immich.py", "--from-onedrive", "backup.sql.gz"]
+            ),
+            patch("scripts.restore_immich.download_from_onedrive") as mock_download,
+            patch("scripts.restore_immich.Path") as mock_path_class,
+        ):
+            mock_download.side_effect = RuntimeError("Download failed")
+
+            def path_side_effect(path_str):
+                if path_str == "/backup":
+                    return backup_dir
+                return MagicMock()
+
+            mock_path_class.side_effect = path_side_effect
+
+            result = main()
+
+            assert result == 1
