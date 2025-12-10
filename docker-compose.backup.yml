@@ -26,8 +26,6 @@ services:
             - ./volumes/django-api/db.sqlite3:/source/django/db.sqlite3:ro
             # バックアップ出力先
             - ./volumes/backup:/backup
-            # バックアップスクリプト
-            - ./backup/scripts:/scripts:ro
         networks:
             - proxy-network
 
