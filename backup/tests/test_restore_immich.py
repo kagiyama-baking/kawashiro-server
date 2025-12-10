@@ -20,9 +20,10 @@ from scripts.restore_immich import (
     log_warning,
     main,
     parse_args,
+    quote_identifier,
+    quote_literal,
     restore_data,
     restore_database,
-    validate_sql_identifier,
 )
 
 
@@ -240,6 +241,87 @@ class TestRestoreDatabase:
             )
 
 
+class TestQuoteIdentifier:
+    """quote_identifier のテスト（SQLインジェクション対策）"""
+
+    def test_quote_identifier_escapes_double_quotes(self):
+        """quote_identifier がダブルクォートを正しくエスケープすること"""
+        # 悪意のある入力例
+        malicious_input = 'test"; DROP TABLE users;--'
+        result = quote_identifier(malicious_input)
+
+        # ダブルクォートが "" にエスケープされることを確認
+        assert result == '"test""; DROP TABLE users;--"'
+
+    def test_quote_identifier_with_normal_name(self):
+        """通常のデータベース名が正しく処理されること"""
+        result = quote_identifier("immich")
+
+        assert result == '"immich"'
+
+    def test_quote_identifier_with_underscore(self):
+        """アンダースコアを含む名前が正しく処理されること"""
+        result = quote_identifier("test_db")
+
+        assert result == '"test_db"'
+
+
+class TestQuoteLiteral:
+    """quote_literal のテスト（SQLインジェクション対策）"""
+
+    def test_quote_literal_escapes_single_quotes(self):
+        """quote_literal がシングルクォートを正しくエスケープすること"""
+        # 悪意のある入力例
+        malicious_input = "test'; DROP TABLE users;--"
+        result = quote_literal(malicious_input)
+
+        # シングルクォートが '' にエスケープされることを確認
+        assert result == "'test''; DROP TABLE users;--'"
+
+    def test_quote_literal_with_normal_value(self):
+        """通常の値が正しく処理されること"""
+        result = quote_literal("immich")
+
+        assert result == "'immich'"
+
+    def test_quote_literal_with_multiple_quotes(self):
+        """複数のシングルクォートが正しくエスケープされること"""
+        result = quote_literal("it's a test's value")
+
+        assert result == "'it''s a test''s value'"
+
+
+class TestSqlInjectionPrevention:
+    """SQLインジェクション対策が正しく機能することのテスト"""
+
+    def test_create_database_sql_is_safe(self):
+        """CREATE DATABASE文がSQLインジェクションから保護されること"""
+        database = 'test"; DROP DATABASE immich;--'
+        username = "testuser"
+
+        create_sql = (
+            f"CREATE DATABASE {quote_identifier(database)} "
+            f"OWNER {quote_identifier(username)};"
+        )
+
+        # 悪意のあるコードが実行されない形式になっていることを確認
+        assert create_sql == (
+            'CREATE DATABASE "test""; DROP DATABASE immich;--" OWNER "testuser";'
+        )
+
+    def test_terminate_connections_sql_is_safe(self):
+        """接続切断SQLがSQLインジェクションから保護されること"""
+        database = "test'; DELETE FROM users;--"
+
+        terminate_sql = (
+            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE datname = {quote_literal(database)} AND pid <> pg_backend_pid();"
+        )
+
+        # 悪意のあるコードが実行されない形式になっていることを確認
+        assert "test''; DELETE FROM users;--" in terminate_sql
+
+
 class TestRestoreData:
     """restore_data のテスト"""
 
@@ -289,43 +371,6 @@ class TestRestoreData:
                 backup_file=backup_file,
                 restore_dir=restore_dir,
             )
-
-
-class TestValidateSqlIdentifier:
-    """validate_sql_identifier のテスト"""
-
-    def test_valid_identifier(self):
-        """有効な識別子が検証を通過すること"""
-        assert validate_sql_identifier("immich", "データベース名") == "immich"
-        assert validate_sql_identifier("test_db", "データベース名") == "test_db"
-        assert validate_sql_identifier("DB123", "データベース名") == "DB123"
-        assert validate_sql_identifier("_private", "データベース名") == "_private"
-
-    def test_invalid_identifier_with_special_chars(self):
-        """特殊文字を含む識別子がエラーになること"""
-        with pytest.raises(ValueError, match="無効な文字が含まれています"):
-            validate_sql_identifier("test; DROP TABLE users;--", "データベース名")
-
-    def test_invalid_identifier_with_hyphen(self):
-        """ハイフンを含む識別子がエラーになること"""
-        with pytest.raises(ValueError, match="無効な文字が含まれています"):
-            validate_sql_identifier("test-db", "データベース名")
-
-    def test_invalid_identifier_starting_with_number(self):
-        """数字で始まる識別子がエラーになること"""
-        with pytest.raises(ValueError, match="無効な文字が含まれています"):
-            validate_sql_identifier("123db", "データベース名")
-
-    def test_invalid_identifier_too_long(self):
-        """長すぎる識別子がエラーになること"""
-        long_name = "a" * 64
-        with pytest.raises(ValueError, match="長すぎます"):
-            validate_sql_identifier(long_name, "データベース名")
-
-    def test_valid_identifier_max_length(self):
-        """最大長の識別子が検証を通過すること"""
-        max_name = "a" * 63
-        assert validate_sql_identifier(max_name, "データベース名") == max_name
 
 
 class TestLogFunctions:

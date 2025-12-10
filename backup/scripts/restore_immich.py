@@ -14,31 +14,39 @@ from pathlib import Path
 
 import requests
 
-# PostgreSQL識別子として有効な文字のパターン（英数字とアンダースコアのみ）
-VALID_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
+def quote_identifier(value: str) -> str:
+    """PostgreSQL識別子を安全にクォートする（psycopg2.sql.Identifier相当）
 
-def validate_sql_identifier(value: str, name: str) -> str:
-    """SQLインジェクション対策: PostgreSQL識別子として有効な値かを検証する
+    PostgreSQLの識別子（テーブル名、データベース名など）をダブルクォートで囲み、
+    内部のダブルクォートをエスケープする。これにより、SQLインジェクションを防止する。
 
     Args:
-        value: 検証する値
-        name: エラーメッセージ用の識別子名
+        value: クォートする識別子
 
     Returns:
-        検証済みの値
-
-    Raises:
-        ValueError: 無効な文字が含まれている場合
+        ダブルクォートで囲まれた識別子
     """
-    if not VALID_IDENTIFIER_PATTERN.match(value):
-        raise ValueError(
-            f"{name} に無効な文字が含まれています。"
-            f"英数字とアンダースコアのみ使用可能です: {value}"
-        )
-    if len(value) > 63:  # PostgreSQLの識別子の最大長
-        raise ValueError(f"{name} が長すぎます（最大63文字）: {value}")
-    return value
+    # ダブルクォートをエスケープ（" -> ""）
+    escaped = value.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def quote_literal(value: str) -> str:
+    """PostgreSQLリテラル値を安全にクォートする（psycopg2.sql.Literal相当）
+
+    PostgreSQLの文字列リテラルをシングルクォートで囲み、
+    内部のシングルクォートをエスケープする。これにより、SQLインジェクションを防止する。
+
+    Args:
+        value: クォートする値
+
+    Returns:
+        シングルクォートで囲まれた文字列リテラル
+    """
+    # シングルクォートをエスケープ（' -> ''）
+    escaped = value.replace("'", "''")
+    return f"'{escaped}'"
 
 
 @dataclass
@@ -243,10 +251,6 @@ def restore_database(
     """PostgreSQL データベースをリストアする"""
     log_info("PostgreSQLデータベースのリストアを開始します...")
 
-    # SQLインジェクション対策: データベース名とユーザー名を検証
-    validate_sql_identifier(database, "データベース名")
-    validate_sql_identifier(username, "ユーザー名")
-
     if not backup_file.exists():
         raise RuntimeError(f"バックアップファイルが見つかりません: {backup_file}")
 
@@ -255,6 +259,21 @@ def restore_database(
 
     env = os.environ.copy()
     env["PGPASSWORD"] = password
+
+    # SQLインジェクション対策: 識別子とリテラルを安全にクォートしたSQL文を生成
+    # quote_identifier: ダブルクォートで囲み、内部の"を""にエスケープ
+    # quote_literal: シングルクォートで囲み、内部の'を''にエスケープ
+    terminate_sql = (
+        f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+        f"WHERE datname = {quote_literal(database)} AND pid <> pg_backend_pid();"
+    )
+
+    drop_sql = f"DROP DATABASE IF EXISTS {quote_identifier(database)};"
+
+    create_sql = (
+        f"CREATE DATABASE {quote_identifier(database)} "
+        f"OWNER {quote_identifier(username)};"
+    )
 
     # データベース接続確認
     log_info("データベース接続を確認しています...")
@@ -279,8 +298,7 @@ def restore_database(
             "-d",
             "postgres",
             "-c",
-            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            f"WHERE datname = '{database}' AND pid <> pg_backend_pid();",
+            terminate_sql,
         ],
         capture_output=True,
         env=env,
@@ -299,7 +317,7 @@ def restore_database(
             "-d",
             "postgres",
             "-c",
-            f"DROP DATABASE IF EXISTS {database};",
+            drop_sql,
         ],
         capture_output=True,
         env=env,
@@ -318,7 +336,7 @@ def restore_database(
             "-d",
             "postgres",
             "-c",
-            f"CREATE DATABASE {database} OWNER {username};",
+            create_sql,
         ],
         capture_output=True,
         env=env,
