@@ -13,9 +13,15 @@
 backup/
 ├── Dockerfile              # バックアップコンテナのイメージ定義
 ├── README.md              # このファイル
-└── scripts/
-    ├── backup_immich.sh   # バックアップスクリプト
-    └── restore_immich.sh  # リストアスクリプト
+├── pyproject.toml         # Python依存関係
+├── scripts/
+│   ├── __init__.py
+│   ├── backup_immich.py   # バックアップスクリプト
+│   └── restore_immich.py  # リストアスクリプト
+└── tests/                 # テストコード
+    ├── __init__.py
+    ├── test_backup_immich.py
+    └── test_restore_immich.py
 ```
 
 ## 環境変数
@@ -93,7 +99,7 @@ docker compose -f docker-compose.backup.yml logs -f
 
 2. **現在のデータをバックアップ**（推奨）
    ```bash
-   docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immich.sh
+   docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_immich.py
    ```
 
 ### ローカルファイルからリストア
@@ -109,16 +115,16 @@ ls -lh volumes/backup/
 
 # データベースのみリストア
 docker compose -f docker-compose.backup.yml run --rm backup \
-  /scripts/restore_immich.sh immich_db_20250127_120000.sql.gz
+  python /app/scripts/restore_immich.py immich_db_20250127_120000.sql.gz
 
 # データベースと写真データをリストア
 # 注: immich_data_20250127_120000.tar.gz が同じディレクトリに存在する必要があります
 docker compose -f docker-compose.backup.yml run --rm backup \
-  /scripts/restore_immich.sh --with-data immich_db_20250127_120000.sql.gz
+  python /app/scripts/restore_immich.py --with-data immich_db_20250127_120000.sql.gz
 
 # または --local オプションを明示的に指定
 docker compose -f docker-compose.backup.yml run --rm backup \
-  /scripts/restore_immich.sh --local --with-data immich_db_20250127_120000.sql.gz
+  python /app/scripts/restore_immich.py --local --with-data immich_db_20250127_120000.sql.gz
 ```
 
 ### OneDriveからリストア
@@ -136,12 +142,12 @@ curl -H "Authorization: Token YOUR_TOKEN" \
 
 # データベースのみリストア
 docker compose -f docker-compose.backup.yml run --rm backup \
-  /scripts/restore_immich.sh --from-onedrive immich_db_20250127_120000.sql.gz
+  python /app/scripts/restore_immich.py --from-onedrive immich_db_20250127_120000.sql.gz
 
 # データベースと写真データをリストア
 # 注: OneDriveから immich_data_20250127_120000.tar.gz も自動的にダウンロードされます
 docker compose -f docker-compose.backup.yml run --rm backup \
-  /scripts/restore_immich.sh --from-onedrive --with-data immich_db_20250127_120000.sql.gz
+  python /app/scripts/restore_immich.py --from-onedrive --with-data immich_db_20250127_120000.sql.gz
 ```
 
 ### リストアプロセス
@@ -150,14 +156,13 @@ docker compose -f docker-compose.backup.yml run --rm backup \
 
 1. 環境変数の確認
 2. バックアップファイルの取得（ローカルまたはOneDrive）
-3. リストア確認プロンプトの表示（`yes`を入力して承認）
-4. 既存のデータベース接続を切断
-5. データベースを削除して再作成
-6. バックアップファイルからデータをリストア
-7. **（`--with-data`指定時）** 写真データファイルの取得とリストア
+3. 既存のデータベース接続を切断
+4. データベースを削除して再作成
+5. バックアップファイルからデータをリストア
+6. **（`--with-data`指定時）** 写真データファイルの取得とリストア
    - 既存の写真データを削除
    - バックアップファイルから写真データを展開
-8. 一時ファイルのクリーンアップ（OneDriveからダウンロードした場合）
+7. 一時ファイルのクリーンアップ（OneDriveからダウンロードした場合）
 
 ### 写真データのリストアについて
 
@@ -180,6 +185,23 @@ docker compose start immich
 
 # または全サービスを再起動
 docker compose restart
+```
+
+## 開発
+
+### テストの実行
+
+```bash
+cd backup
+uv run pytest tests/ -v
+```
+
+### リントとフォーマット
+
+```bash
+cd backup
+uv run ruff check scripts/ tests/
+uv run ruff format scripts/ tests/
 ```
 
 ## トラブルシューティング
@@ -246,7 +268,7 @@ cronやsystemd timerを使用して定期的にバックアップを実行でき
 
 ```bash
 # 毎日午前3時にバックアップを実行
-0 3 * * * cd /path/to/kawashiro-server && docker compose -f docker-compose.backup.yml run --rm backup /scripts/backup_immich.sh
+0 3 * * * cd /path/to/kawashiro-server && docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_immich.py
 ```
 
 ### systemd timerの例
