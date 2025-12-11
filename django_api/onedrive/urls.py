@@ -19,4 +19,16 @@ urlpatterns = [
     path("delete/", views.OneDriveDeleteView.as_view(), name="delete_file"),
     # ファイルダウンロードエンドポイント
     path("download/", views.OneDriveDownloadView.as_view(), name="download_file"),
+    # アップロードセッション作成エンドポイント（大容量ファイル用）
+    path(
+        "upload-session/",
+        views.OneDriveCreateUploadSessionView.as_view(),
+        name="create_upload_session",
+    ),
+    # チャンクアップロードエンドポイント（大容量ファイル用）
+    path(
+        "upload-chunk/",
+        views.OneDriveUploadChunkView.as_view(),
+        name="upload_chunk",
+    ),
 ]
