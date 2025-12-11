@@ -157,6 +157,130 @@ def upload_to_onedrive(
         return False
 
 
+# チャンクアップロードの定数
+CHUNK_SIZE = 10 * 1024 * 1024  # 10MB（メモリ効率のため小さめに設定）
+LARGE_FILE_THRESHOLD = 50 * 1024 * 1024  # 50MB以上はチャンクアップロード
+
+
+def upload_to_onedrive_chunked(
+    file_path: Path,
+    api_url: str,
+    api_token: str,
+    folder_path: str,
+) -> bool:
+    """OneDrive に大容量ファイルをチャンクアップロードする"""
+    file_name = file_path.name
+    file_size = file_path.stat().st_size
+    log_info(
+        f"OneDriveへのチャンクアップロードを開始します: {file_name} "
+        f"({file_size / 1024 / 1024:.2f} MB)"
+    )
+
+    headers = {"Authorization": f"Token {api_token}"}
+
+    try:
+        # 1. アップロードセッションを作成
+        session_endpoint = f"{api_url}/onedrive/upload-session/"
+        session_response = requests.post(
+            session_endpoint,
+            json={
+                "file_name": file_name,
+                "file_size": file_size,
+                "folder_path": folder_path,
+            },
+            headers=headers,
+            timeout=60,
+        )
+
+        if session_response.status_code != 201:
+            log_error(
+                f"アップロードセッションの作成に失敗しました "
+                f"(HTTP {session_response.status_code})"
+            )
+            log_error(f"レスポンス: {session_response.text}")
+            return False
+
+        session_data = session_response.json()
+        upload_url = session_data["upload_url"]
+        log_info("アップロードセッションを作成しました")
+
+        # 2. ファイルをチャンクに分割してアップロード
+        chunk_endpoint = f"{api_url}/onedrive/upload-chunk/"
+        offset = 0
+        chunk_count = 0
+        total_chunks = (file_size + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+        with open(file_path, "rb") as f:
+            while offset < file_size:
+                chunk_data = f.read(CHUNK_SIZE)
+                chunk_size = len(chunk_data)
+                chunk_count += 1
+
+                log_info(
+                    f"チャンク {chunk_count}/{total_chunks} をアップロード中 "
+                    f"({offset / 1024 / 1024:.1f} - "
+                    f"{(offset + chunk_size) / 1024 / 1024:.1f} MB)"
+                )
+
+                # チャンクをアップロード
+                files = {"chunk": ("chunk", chunk_data, "application/octet-stream")}
+                data = {
+                    "upload_url": upload_url,
+                    "offset": str(offset),
+                    "total_size": str(file_size),
+                }
+
+                chunk_response = requests.put(
+                    chunk_endpoint,
+                    files=files,
+                    data=data,
+                    headers=headers,
+                    timeout=300,  # チャンクごとに5分
+                )
+
+                if chunk_response.status_code == 201:
+                    # アップロード完了
+                    log_success(
+                        f"OneDriveへのチャンクアップロードが完了しました: {file_name}"
+                    )
+                    log_info(f"レスポンス: {chunk_response.json()}")
+                    return True
+                elif chunk_response.status_code == 200:
+                    # 継続中
+                    offset += chunk_size
+                else:
+                    log_error(
+                        f"チャンクアップロードに失敗しました "
+                        f"(HTTP {chunk_response.status_code})"
+                    )
+                    log_error(f"レスポンス: {chunk_response.text}")
+                    return False
+
+        log_error("チャンクアップロードが完了しませんでした")
+        return False
+
+    except requests.RequestException as e:
+        log_error(f"OneDriveへのチャンクアップロードに失敗しました: {e}")
+        return False
+
+
+def upload_file_to_onedrive(
+    file_path: Path,
+    api_url: str,
+    api_token: str,
+    folder_path: str,
+) -> bool:
+    """OneDrive にファイルをアップロード（サイズに応じて方式を選択）"""
+    file_size = file_path.stat().st_size
+
+    if file_size >= LARGE_FILE_THRESHOLD:
+        # 大容量ファイルはチャンクアップロード
+        return upload_to_onedrive_chunked(file_path, api_url, api_token, folder_path)
+    else:
+        # 小さいファイルは従来のアップロード
+        return upload_to_onedrive(file_path, api_url, api_token, folder_path)
+
+
 def cleanup_local_backups(backup_dir: Path) -> int:
     """ローカルバックアップディレクトリを空にする"""
     log_info("バックアップ出力先ディレクトリを空にします...")
@@ -332,7 +456,7 @@ def main() -> int:
         log_info("OneDriveへのアップロードを開始します")
         log_info("------------------------------------------")
 
-        if not upload_to_onedrive(
+        if not upload_file_to_onedrive(
             file_path=backup_file,
             api_url=config.django_api_url,
             api_token=config.django_api_token,

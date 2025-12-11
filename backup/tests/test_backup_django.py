@@ -455,7 +455,7 @@ class TestMain:
 
         with (
             patch("scripts.backup_django.Path") as mock_path_class,
-            patch("scripts.backup_django.upload_to_onedrive") as mock_upload,
+            patch("scripts.backup_django.upload_file_to_onedrive") as mock_upload,
             patch("scripts.backup_django.cleanup_local_backups"),
             patch("scripts.backup_django.cleanup_old_onedrive_backups"),
         ):
@@ -501,7 +501,7 @@ class TestMain:
 
         with (
             patch("scripts.backup_django.Path") as mock_path_class,
-            patch("scripts.backup_django.upload_to_onedrive") as mock_upload,
+            patch("scripts.backup_django.upload_file_to_onedrive") as mock_upload,
             patch("scripts.backup_django.cleanup_local_backups"),
             patch("scripts.backup_django.cleanup_old_onedrive_backups"),
             patch("scripts.backup_django.backup_sqlite") as mock_backup_sqlite,
