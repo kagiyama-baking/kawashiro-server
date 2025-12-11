@@ -12,7 +12,6 @@ on:
             - '.github/workflows/!(deploy).yml'
             - 'scripts/**'
             - 'docs/**'
-            - 'backup/**'
     workflow_dispatch: # テスト用の手動実行
         inputs:
             tag:
@@ -45,6 +44,7 @@ jobs:
         outputs:
             reverse-proxy-digest: ${{ steps.verify-reverse-proxy.outputs.digest }}
             django-api-digest: ${{ steps.verify-django-api.outputs.digest }}
+            backup-digest: ${{ steps.verify-backup.outputs.digest }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -94,6 +94,25 @@ jobs:
                     exit 1
                   fi
 
+            - name: Verify backup image
+              id: verify-backup
+              run: |
+                  TAG="${{ inputs.tag || 'staging' }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/backup:${TAG}"
+
+                  echo "🔍 backupイメージの検証: ${IMAGE}"
+
+                  # イメージの存在確認とダイジェスト取得
+                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
+                    echo "✅ イメージが見つかりました"
+                    echo "📦 ダイジェスト: ${DIGEST}"
+                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+                  else
+                    echo "❌ イメージが見つかりません: ${IMAGE}"
+                    exit 1
+                  fi
+
     # リリースタグの作成
     tag-release:
         runs-on: ubuntu-latest
@@ -129,6 +148,15 @@ jobs:
                              ghcr.io/${{ github.repository }}/django-api:latest
                   docker push ghcr.io/${{ github.repository }}/django-api:release
                   docker push ghcr.io/${{ github.repository }}/django-api:latest
+
+                  # backup
+                  docker pull ghcr.io/${{ github.repository }}/backup:staging
+                  docker tag ghcr.io/${{ github.repository }}/backup:staging \
+                             ghcr.io/${{ github.repository }}/backup:release
+                  docker tag ghcr.io/${{ github.repository }}/backup:staging \
+                             ghcr.io/${{ github.repository }}/backup:latest
+                  docker push ghcr.io/${{ github.repository }}/backup:release
+                  docker push ghcr.io/${{ github.repository }}/backup:latest
 
                   echo "✅ リリースタグを作成しました"
 
@@ -221,6 +249,7 @@ jobs:
                   if [ "${{ needs.verify-images.result }}" == "success" ]; then
                     echo "| reverse-proxy | ✅ |" >> $GITHUB_STEP_SUMMARY
                     echo "| django-api | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| backup | ✅ |" >> $GITHUB_STEP_SUMMARY
                   else
                     echo "| - | ❌ 検証失敗 |" >> $GITHUB_STEP_SUMMARY
                   fi

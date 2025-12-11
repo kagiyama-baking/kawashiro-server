@@ -158,8 +158,8 @@ def upload_to_onedrive(
 
 
 # チャンクアップロードの定数
-CHUNK_SIZE = 10 * 1024 * 1024  # 10MB（メモリ効率のため小さめに設定）
-LARGE_FILE_THRESHOLD = 50 * 1024 * 1024  # 50MB以上はチャンクアップロード
+CHUNK_SIZE = 100 * 1024 * 1024  # 100MB（メモリ効率のため小さめに設定）
+LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100MB以上はチャンクアップロード
 
 
 def upload_to_onedrive_chunked(
