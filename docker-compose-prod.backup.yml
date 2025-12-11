@@ -1,10 +1,7 @@
 services:
-    # バックアップサービス（開発環境用）
+    # バックアップサービス（本番環境用）
     backup:
-        build:
-            context: ./backup
-            dockerfile: Dockerfile
-        image: backup
+        image: ghcr.io/kagiyama-baking/kawashiro-server/backup:release
         container_name: backup
         hostname: backup
         # バックアップ専用の環境変数ファイルを読み込む
@@ -18,9 +15,6 @@ services:
             # Django SQLite バックアップ設定
             DJANGO_SQLITE_PATH: /source/django/db.sqlite3
         volumes:
-            # ソースコードのマウント（開発環境用）
-            - ./backup/scripts:/app/scripts
-            - ./backup/pyproject.toml:/app/pyproject.toml:ro
             # Immichの写真データ（読み取り専用 - バックアップ用）
             - ./volumes/immich/data:/source/data:ro
             # Immichの写真データ（読み書き可能 - リストア用）
