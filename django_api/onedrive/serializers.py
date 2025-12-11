@@ -55,6 +55,35 @@ class DownloadFileSerializer(serializers.Serializer):
     )
 
 
+class CreateUploadSessionSerializer(serializers.Serializer):
+    """アップロードセッション作成用のシリアライザー"""
+
+    file_name = serializers.CharField(
+        required=True, help_text="アップロードするファイル名"
+    )
+    file_size = serializers.IntegerField(
+        required=True, help_text="ファイルサイズ（バイト）"
+    )
+    folder_path = serializers.CharField(
+        required=False,
+        default="/",
+        help_text="OneDrive上のフォルダパス（デフォルト: ルート）",
+    )
+
+
+class UploadChunkSerializer(serializers.Serializer):
+    """チャンクアップロード用のシリアライザー"""
+
+    upload_url = serializers.CharField(
+        required=True, help_text="アップロードセッションURL"
+    )
+    chunk = serializers.FileField(required=True, help_text="チャンクデータ")
+    offset = serializers.IntegerField(
+        required=True, help_text="ファイル内のオフセット位置"
+    )
+    total_size = serializers.IntegerField(required=True, help_text="ファイルの総サイズ")
+
+
 class FileInfoSerializer(serializers.Serializer):
     """ファイル情報のシリアライザー"""
 

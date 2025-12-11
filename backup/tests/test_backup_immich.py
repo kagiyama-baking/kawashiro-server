@@ -598,7 +598,7 @@ class TestMain:
         with (
             patch("scripts.backup_immich.Path") as mock_path_class,
             patch("scripts.backup_immich.backup_database") as mock_backup_db,
-            patch("scripts.backup_immich.upload_to_onedrive") as mock_upload,
+            patch("scripts.backup_immich.upload_file_to_onedrive") as mock_upload,
             patch("scripts.backup_immich.cleanup_local_backups"),
             patch("scripts.backup_immich.cleanup_old_onedrive_backups"),
         ):
@@ -628,7 +628,7 @@ class TestMain:
         with (
             patch("scripts.backup_immich.Path") as mock_path_class,
             patch("scripts.backup_immich.backup_database") as mock_backup_db,
-            patch("scripts.backup_immich.upload_to_onedrive") as mock_upload,
+            patch("scripts.backup_immich.upload_file_to_onedrive") as mock_upload,
             patch("scripts.backup_immich.cleanup_local_backups"),
             patch("scripts.backup_immich.cleanup_old_onedrive_backups"),
         ):
