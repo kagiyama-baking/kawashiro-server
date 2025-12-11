@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+from requests_toolbelt import MultipartEncoder
 
 
 @dataclass
@@ -185,9 +186,6 @@ def upload_to_onedrive(
     endpoint = f"{api_url}/onedrive/upload/"
 
     try:
-        # requests-toolbelt の MultipartEncoder でストリーミングアップロード
-        from requests_toolbelt import MultipartEncoder
-
         with open(file_path, "rb") as f:
             encoder = MultipartEncoder(
                 fields={
@@ -205,7 +203,7 @@ def upload_to_onedrive(
                 endpoint,
                 data=encoder,
                 headers=headers,
-                timeout=7200,  # 2時間（大容量ファイル対応）
+                timeout=1800,  # 30分（大容量ファイル対応）
             )
 
         if response.status_code == 201:

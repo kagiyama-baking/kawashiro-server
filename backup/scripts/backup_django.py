@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+from requests_toolbelt import MultipartEncoder
 
 
 @dataclass
@@ -110,24 +111,34 @@ def upload_to_onedrive(
     api_token: str,
     folder_path: str,
 ) -> bool:
-    """OneDrive にファイルをアップロードする"""
+    """OneDrive にファイルをアップロードする（ストリーミング）"""
     file_name = file_path.name
-    log_info(f"OneDriveへのアップロードを開始します: {file_name}")
+    file_size = file_path.stat().st_size
+    log_info(
+        f"OneDriveへのアップロードを開始します: {file_name} ({file_size / 1024 / 1024:.2f} MB)"
+    )
 
     endpoint = f"{api_url}/onedrive/upload/"
 
     try:
         with open(file_path, "rb") as f:
-            files = {"file": (file_name, f)}
-            data = {"folder_path": folder_path, "file_name": file_name}
-            headers = {"Authorization": f"Token {api_token}"}
+            encoder = MultipartEncoder(
+                fields={
+                    "folder_path": folder_path,
+                    "file_name": file_name,
+                    "file": (file_name, f, "application/octet-stream"),
+                }
+            )
+            headers = {
+                "Authorization": f"Token {api_token}",
+                "Content-Type": encoder.content_type,
+            }
 
             response = requests.post(
                 endpoint,
-                files=files,
-                data=data,
+                data=encoder,
                 headers=headers,
-                timeout=600,
+                timeout=1800,  # 30分（大容量ファイル対応）
             )
 
         if response.status_code == 201:
