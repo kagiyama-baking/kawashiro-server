@@ -730,3 +730,487 @@ class TestOneDriveDownloadView:
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "OneDriveへの接続に失敗しました" in response.data["error"]
+
+
+@pytest.mark.api
+class TestOneDriveCreateUploadSessionView:
+    """OneDriveCreateUploadSessionViewのテストクラス"""
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_success(
+        self, mock_client_class, authenticated_client
+    ):
+        """アップロードセッションの作成が成功すること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._create_upload_session.return_value = (
+            "https://graph.microsoft.com/upload/session/123"
+        )
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+            "folder_path": "/backup",
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert (
+            response.data["upload_url"]
+            == "https://graph.microsoft.com/upload/session/123"
+        )
+        assert response.data["file_name"] == "large_file.tar.gz"
+        assert response.data["file_size"] == 100000000
+        assert response.data["folder_path"] == "/backup"
+
+        mock_client._create_upload_session.assert_called_once_with(
+            file_name="large_file.tar.gz", folder_path="/backup"
+        )
+
+    def test_create_upload_session_without_authentication_fails(self, api_client):
+        """認証なしでアップロードセッション作成が失敗すること"""
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = api_client.post("/onedrive/upload-session/", payload, format="json")
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_upload_session_without_file_name_fails(self, authenticated_client):
+        """ファイル名なしでセッション作成が失敗すること"""
+        payload = {
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "file_name" in response.data
+
+    def test_create_upload_session_without_file_size_fails(self, authenticated_client):
+        """ファイルサイズなしでセッション作成が失敗すること"""
+        payload = {
+            "file_name": "large_file.tar.gz",
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "file_size" in response.data
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_with_configuration_error(
+        self, mock_client_class, authenticated_client
+    ):
+        """設定エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import ConfigurationError
+
+        mock_client_class.side_effect = ConfigurationError("Missing configuration")
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "サービスの設定に問題があります" in response.data["error"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_with_authentication_error(
+        self, mock_client_class, authenticated_client
+    ):
+        """認証エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import AuthenticationError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._create_upload_session.side_effect = AuthenticationError(
+            "Token expired"
+        )
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_with_upload_error(
+        self, mock_client_class, authenticated_client
+    ):
+        """アップロードエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import UploadError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._create_upload_session.side_effect = UploadError(
+            "Failed to create session"
+        )
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["error"] == "Failed to create session"
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_with_network_error(
+        self, mock_client_class, authenticated_client
+    ):
+        """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import NetworkError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._create_upload_session.side_effect = NetworkError(
+            "Connection timeout"
+        )
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_with_unexpected_error(
+        self, mock_client_class, authenticated_client
+    ):
+        """予期しないエラー時に適切なエラーレスポンスを返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._create_upload_session.side_effect = Exception("Unexpected error")
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert (
+            "アップロードセッションの作成中に問題が発生しました"
+            in response.data["error"]
+        )
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_create_upload_session_with_default_folder_path(
+        self, mock_client_class, authenticated_client
+    ):
+        """フォルダパスが指定されない場合、デフォルトでルートになること"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._create_upload_session.return_value = (
+            "https://graph.microsoft.com/upload/session/123"
+        )
+
+        payload = {
+            "file_name": "large_file.tar.gz",
+            "file_size": 100000000,
+        }
+
+        response = authenticated_client.post(
+            "/onedrive/upload-session/", payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["folder_path"] == "/"
+
+        mock_client._create_upload_session.assert_called_once_with(
+            file_name="large_file.tar.gz", folder_path="/"
+        )
+
+
+@pytest.mark.api
+class TestOneDriveUploadChunkView:
+    """OneDriveUploadChunkViewのテストクラス"""
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_in_progress(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """チャンクアップロードが継続中の場合、200を返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._upload_chunk.return_value = {
+            "nextExpectedRanges": ["10485760-"],
+        }
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["status"] == "in_progress"
+        assert response.data["next_expected_ranges"] == ["10485760-"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_complete(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """チャンクアップロードが完了した場合、201を返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._upload_chunk.return_value = {
+            "id": "file-id-123",
+            "name": "large_file.tar.gz",
+            "size": 100000000,
+            "createdDateTime": "2024-01-01T00:00:00Z",
+            "webUrl": "https://example.sharepoint.com/large_file.tar.gz",
+        }
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 90000000,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["status"] == "completed"
+        assert "file_info" in response.data
+
+    def test_upload_chunk_without_authentication_fails(self, api_client, mock_file):
+        """認証なしでチャンクアップロードが失敗すること"""
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = api_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_upload_chunk_without_upload_url_fails(
+        self, authenticated_client, mock_file
+    ):
+        """upload_urlなしでアップロードが失敗すること"""
+        payload = {
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "upload_url" in response.data
+
+    def test_upload_chunk_without_chunk_fails(self, authenticated_client):
+        """chunkなしでアップロードが失敗すること"""
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "chunk" in response.data
+
+    def test_upload_chunk_without_offset_fails(self, authenticated_client, mock_file):
+        """offsetなしでアップロードが失敗すること"""
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "offset" in response.data
+
+    def test_upload_chunk_without_total_size_fails(
+        self, authenticated_client, mock_file
+    ):
+        """total_sizeなしでアップロードが失敗すること"""
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "total_size" in response.data
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_with_configuration_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """設定エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import ConfigurationError
+
+        mock_client_class.side_effect = ConfigurationError("Missing configuration")
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "サービスの設定に問題があります" in response.data["error"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_with_authentication_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """認証エラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import AuthenticationError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._upload_chunk.side_effect = AuthenticationError("Token expired")
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert "OneDriveへの認証に失敗しました" in response.data["error"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_with_upload_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """アップロードエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import UploadError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._upload_chunk.side_effect = UploadError("Chunk upload failed")
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["error"] == "Chunk upload failed"
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_with_network_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
+        from onedrive.exceptions import NetworkError
+
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._upload_chunk.side_effect = NetworkError("Connection timeout")
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "OneDriveへの接続に失敗しました" in response.data["error"]
+
+    @patch("onedrive.views.MSGraphClient")
+    def test_upload_chunk_with_unexpected_error(
+        self, mock_client_class, authenticated_client, mock_file
+    ):
+        """予期しないエラー時に適切なエラーレスポンスを返すこと"""
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        mock_client._upload_chunk.side_effect = Exception("Unexpected error")
+
+        payload = {
+            "upload_url": "https://graph.microsoft.com/upload/session/123",
+            "chunk": mock_file,
+            "offset": 0,
+            "total_size": 100000000,
+        }
+
+        response = authenticated_client.put(
+            "/onedrive/upload-chunk/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert "チャンクのアップロード中に問題が発生しました" in response.data["error"]
