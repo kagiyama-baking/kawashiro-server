@@ -20,6 +20,7 @@ jobs:
                 image:
                     - reverse-proxy
                     - django-api
+                    - backup
         steps:
             - name: Checkout
               uses: actions/checkout@v4
