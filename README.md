@@ -149,10 +149,10 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
       ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
       │                         │ (Server)      │
       │                         └───────────────┘
-      │                         ┌───────────────┐     ┌───────────────┐
-      ├── api.example.com ───►  │ Django API    │ ──► │ sbv2-api      │ :5000 (内部)
-      │                         │ (Gunicorn)    │     │ (TTS Engine)  │
-      │                         └───────────────┘     └───────────────┘
+      │                         ┌───────────────┐     ┌────────────────────┐
+      ├── api.example.com ───►  │ Django API    │ ──► │ Style-BERT-VITS2   │ :5000 (内部)
+      │                         │ (Gunicorn)    │     │ (TTS Engine)       │
+      │                         └───────────────┘     └────────────────────┘
       │                         ┌───────────────┐
       └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
                                 │ (Nginx)       │
