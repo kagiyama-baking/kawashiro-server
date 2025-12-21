@@ -17,7 +17,9 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
     -   🔐 **User**: ユーザー認証・管理機能
     -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（Microsoft Graph API）
     -   📁 **Media**: メディアファイル管理機能
+    -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
     -   🛠️ **Core**: 共通機能・ユーティリティ
+-   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
 -   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
 
 ## 特徴
@@ -87,8 +89,18 @@ kawashiro-server/
 │   ├── core/                   # 共通コアアプリ
 │   │   ├── models.py           # 共通モデル
 │   │   └── views.py            # 共通ビュー
+│   ├── tts/                    # TTS読み上げアプリ（sbv2-apiプロキシ）
+│   │   ├── views.py            # APIビュー
+│   │   ├── serializers.py      # シリアライザー（Swagger UI対応）
+│   │   ├── renderers.py        # カスタムレンダラー（音声データ用）
+│   │   └── urls.py             # URLルーティング
 │   ├── tests/                  # 統合テストコード
 │   └── htmlcov/                # カバレッジレポート
+│
+├── sbv2_api/                   # Style-BERT-VITS2 APIサーバー
+│   ├── Dockerfile              # コンテナ定義
+│   ├── server.py               # FastAPIサーバー
+│   └── config.yml              # モデル設定
 │
 ├── backup/                     # バックアップシステム
 │   ├── Dockerfile              # バックアップコンテナ
@@ -137,10 +149,10 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
       ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
       │                         │ (Server)      │
       │                         └───────────────┘
-      │                         ┌───────────────┐
-      ├── api.example.com ───►  │ Django API    │ :8000 (コンテナ)
-      │                         │ (Gunicorn)    │
-      │                         └───────────────┘
+      │                         ┌───────────────┐     ┌───────────────┐
+      ├── api.example.com ───►  │ Django API    │ ──► │ sbv2-api      │ :5000 (内部)
+      │                         │ (Gunicorn)    │     │ (TTS Engine)  │
+      │                         └───────────────┘     └───────────────┘
       │                         ┌───────────────┐
       └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
                                 │ (Nginx)       │
@@ -977,6 +989,7 @@ docker compose exec [サービス名] ps aux
 
 -   **Microsoft Graph API**: OneDrive 連携
 -   **Valkey (Redis)**: キャッシュ・セッション管理
+-   **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
 
 ## 謝辞
 
@@ -989,3 +1002,4 @@ docker compose exec [サービス名] ps aux
 -   [PostgreSQL](https://www.postgresql.org/) - オープンソースデータベース
 -   [Valkey](https://valkey.io/) - Redis 互換インメモリデータストア
 -   [uv](https://github.com/astral-sh/uv) - 高速 Python パッケージマネージャー
+-   [Style-BERT-VITS2](https://github.com/litagin02/Style-Bert-VITS2) - 高品質日本語音声合成エンジン
