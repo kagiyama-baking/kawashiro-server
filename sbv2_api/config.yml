@@ -1,0 +1,5 @@
+# デフォルトモデル（nullの場合は最初に見つかったモデル）
+default_model: null
+
+# テキスト最大文字数
+max_length: 500

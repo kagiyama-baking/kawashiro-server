@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     "user",  # ユーザーモデルのApp
     "onedrive",  # OneDrive連携機能
     "media",  # 画像処理などのメディア関連機能
+    "tts",  # Text-to-Speech機能
 ]
 
 # ミドルウェアの設定
@@ -281,5 +282,12 @@ SPECTACULAR_SETTINGS = {
         {"name": "users", "description": "ユーザー管理API"},
         {"name": "onedrive", "description": "OneDrive連携API"},
         {"name": "media", "description": "画像処理などのメディア関連API"},
+        {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
     ],
 }
+
+# ============================================================
+# TTS設定
+# ============================================================
+TTS_SERVICE_URL = os.getenv("TTS_SERVICE_URL", "http://sbv2-api:5000")
+TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "60"))
