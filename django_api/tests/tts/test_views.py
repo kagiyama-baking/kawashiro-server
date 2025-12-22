@@ -190,24 +190,25 @@ class TestTTSSynthesizeView:
         assert response["Content-Type"] == "audio/wav"
         assert "attachment" in response["Content-Disposition"]
 
-    @patch("tts.views.requests.post")
-    def test_synthesize_post_with_query_params_returns_audio_attachment(
-        self, mock_post, authenticated_client
-    ):
-        """POSTリクエスト(クエリパラメータ)で音声合成が成功し、attachmentで返す"""
-        mock_post.return_value = Mock(
-            status_code=200,
-            content=b"fake audio data",
-            headers={"X-Model": "test", "X-Style": "Neutral"},
-        )
-
+    def test_synthesize_post_without_text_returns_400(self, authenticated_client):
+        """POSTリクエストでtextパラメータがない場合、400を返す"""
         response = authenticated_client.post(
-            f"{reverse('tts:synthesize')}?text=こんにちは"
+            reverse("tts:synthesize"),
+            data={"style": "Happy"},
+            format="json",
         )
 
-        assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/wav"
-        assert "attachment" in response["Content-Disposition"]
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_synthesize_post_with_invalid_speed_returns_400(self, authenticated_client):
+        """POSTリクエストでspeedパラメータの範囲外の場合、400を返す"""
+        response = authenticated_client.post(
+            reverse("tts:synthesize"),
+            data={"text": "テスト", "speed": 10.0},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_synthesize_without_text_returns_400(self, authenticated_client):
         """textパラメータがない場合、400を返す"""
