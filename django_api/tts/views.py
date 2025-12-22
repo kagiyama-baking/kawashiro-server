@@ -95,7 +95,7 @@ class TTSSynthesizeView(APIView):
         return self._synthesize(request.query_params, inline=True)
 
     @extend_schema(
-        parameters=[TTSSynthesizeSerializer],
+        request=TTSSynthesizeSerializer,
         responses={
             (200, "audio/wav"): OpenApiResponse(
                 response=OpenApiTypes.BINARY,
@@ -109,9 +109,9 @@ class TTSSynthesizeView(APIView):
     )
     def post(self, request):
         """POSTリクエストで音声合成（ダウンロード用）"""
-        # POSTではリクエストボディを優先、空の場合はクエリパラメータを使用
-        params = request.data if request.data else request.query_params
-        return self._synthesize(params, inline=False)
+        serializer = TTSSynthesizeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self._synthesize(serializer.validated_data, inline=False)
 
     def _synthesize(self, params, inline=True):
         """内部TTSサービスに転送して音声を取得"""
