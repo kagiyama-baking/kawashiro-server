@@ -95,7 +95,7 @@ def get_model(model_name: str) -> TTSModel:
         if not style_vec_file.exists():
             raise HTTPException(status_code=404, detail="style_vectors.npy not found")
 
-        model_file = sorted(safetensors_files)[-1]
+        model_file = max(safetensors_files, key=lambda p: p.stat().st_mtime)
         logger.info(f"Loading model: {model_name}")
 
         _models[model_name] = TTSModel(
@@ -232,4 +232,6 @@ async def _synthesize(
         raise
     except Exception as e:
         logger.error(f"Synthesis error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail="Internal server error occurred during synthesis."
+        )
