@@ -34,7 +34,7 @@ class TTSHealthView(APIView):
         except requests.exceptions.RequestException as e:
             logger.error(f"TTS health check failed: {e}")
             return Response(
-                {"status": "unhealthy", "error": str(e)},
+                {"status": "unhealthy", "error": "TTS service unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -49,7 +49,7 @@ class TTSModelsView(APIView):
         except requests.exceptions.RequestException as e:
             logger.error(f"TTS models request failed: {e}")
             return Response(
-                {"error": str(e)},
+                {"error": "TTS service unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -67,7 +67,7 @@ class TTSModelStylesView(APIView):
         except requests.exceptions.RequestException as e:
             logger.error(f"TTS styles request failed: {e}")
             return Response(
-                {"error": str(e)},
+                {"error": "TTS service unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -171,6 +171,6 @@ class TTSSynthesizeView(APIView):
         except requests.exceptions.RequestException as e:
             logger.error(f"TTS request failed: {e}")
             return Response(
-                {"error": str(e)},
+                {"error": "TTS service unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )

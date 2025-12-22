@@ -192,12 +192,26 @@ jobs:
 
                   cd /Users/hakotsuki/Repository/kawashiro-server
 
+                  # 現在のsbv2_apiのコミットハッシュを取得
+                  PREV_SBV2_HASH=$(git log -1 --format="%H" -- sbv2_api/ 2>/dev/null || echo "")
+
                   echo "📥 最新コードを取得..."
                   git fetch origin main
                   git reset --hard origin/main
 
+                  # 新しいsbv2_apiのコミットハッシュを取得
+                  CURR_SBV2_HASH=$(git log -1 --format="%H" -- sbv2_api/)
+
                   echo "🐳 イメージを更新..."
                   docker compose -f docker-compose-prod.yml pull
+
+                  # sbv2_apiに変更がある場合のみビルド
+                  if [ "$PREV_SBV2_HASH" != "$CURR_SBV2_HASH" ] || [ -z "$(docker images -q sbv2-api:local 2>/dev/null)" ]; then
+                    echo "🔨 sbv2-apiをビルド中（変更を検出またはイメージなし）..."
+                    docker compose -f docker-compose-prod.yml build sbv2-api
+                  else
+                    echo "⏭️ sbv2-apiは変更なし、ビルドをスキップ"
+                  fi
 
                   echo "♻️ コンテナを再起動..."
                   docker compose -f docker-compose-prod.yml up -d --force-recreate
