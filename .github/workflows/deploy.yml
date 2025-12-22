@@ -203,7 +203,8 @@ jobs:
                   CURR_SBV2_HASH=$(git log -1 --format="%H" -- sbv2_api/)
 
                   echo "🐳 イメージを更新..."
-                  docker compose -f docker-compose-prod.yml pull
+                  # sbv2-apiはローカルビルドのため除外
+                  docker compose -f docker-compose-prod.yml pull reverse-proxy django-api immich immich-machine-learning immich-redis immich-postgres
 
                   # sbv2_apiに変更がある場合のみビルド
                   if [ "$PREV_SBV2_HASH" != "$CURR_SBV2_HASH" ] || [ -z "$(docker images -q sbv2-api:local 2>/dev/null)" ]; then
