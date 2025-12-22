@@ -46,6 +46,7 @@ services:
             - ./django_api/user:/django_api/user
             - ./django_api/onedrive:/django_api/onedrive
             - ./django_api/media:/django_api/media
+            - ./django_api/tts:/django_api/tts
             # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
             # ログの永続化
@@ -145,6 +146,33 @@ services:
         networks:
             - proxy-network
 
+    # Style-BERT-VITS2 読み上げAPI
+    sbv2-api:
+        build:
+            context: ./sbv2_api
+            dockerfile: Dockerfile
+        image: sbv2-api
+        container_name: sbv2-api
+        hostname: sbv2-api
+        volumes:
+            # ソースコードのマウント（開発環境用）
+            - ./sbv2_api/server.py:/app/server.py
+            # 学習済みモデル（読み取り専用）
+            - ./volumes/sbv2-api/model_assets:/app/model_assets:ro
+            # 設定ファイル
+            - ./sbv2_api/config.yml:/app/config.yml:ro
+            # ログ
+            - ./volumes/sbv2-api/log:/app/logs
+        environment:
+            - TZ=Asia/Tokyo
+            - OMP_NUM_THREADS=4
+            - MKL_NUM_THREADS=4
+        restart: unless-stopped
+        networks:
+            - proxy-network
+        # Intel Mac対応
+        platform: linux/amd64
+
 networks:
     proxy-network:
         driver: bridge
@@ -157,4 +185,3 @@ volumes:
         name: immich-redis-data
     immich-ml-cache:
         name: immich-ml-cache
-

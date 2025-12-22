@@ -32,7 +32,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["django_api", "core", "user", "onedrive", "media"]
+packages = ["django_api", "core", "user", "onedrive", "media", "tts"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "django_api.settings"
@@ -80,7 +80,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["django_api", "core", "user", "onedrive", "media"]
+known-first-party = ["django_api", "core", "user", "onedrive", "media", "tts"]
 
 [tool.ruff.format]
 quote-style = "double"

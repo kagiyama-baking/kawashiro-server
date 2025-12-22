@@ -41,4 +41,6 @@ urlpatterns = [
     path("onedrive/", include("onedrive.urls")),
     # メディア処理関連APIのURL（media.urlsにルーティング）
     path("media/", include("media.urls")),
+    # TTS読み上げ関連APIのURL（tts.urlsにルーティング）
+    path("tts/", include("tts.urls")),
 ]
