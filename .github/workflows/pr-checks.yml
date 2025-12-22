@@ -23,6 +23,7 @@ jobs:
             django-api: ${{ steps.filter.outputs.django-api }}
             reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
             backup: ${{ steps.filter.outputs.backup }}
+            sbv2-api: ${{ steps.filter.outputs.sbv2-api }}
             docker-compose: ${{ steps.filter.outputs.docker-compose }}
         steps:
             - name: Checkout
@@ -39,6 +40,8 @@ jobs:
                         - 'reverse_proxy/**'
                       backup:
                         - 'backup/**'
+                      sbv2-api:
+                        - 'sbv2_api/**'
                       docker-compose:
                         - 'docker-compose.yml'
                         - '.env.sample'
@@ -50,6 +53,7 @@ jobs:
             needs.detect-changes.outputs.django-api == 'true' ||
             needs.detect-changes.outputs.reverse-proxy == 'true' ||
             needs.detect-changes.outputs.backup == 'true' ||
+            needs.detect-changes.outputs.sbv2-api == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 5
@@ -66,6 +70,9 @@ jobs:
                     - name: backup
                       path: ./backup
                       changed: backup
+                    - name: sbv2-api
+                      path: ./sbv2_api
+                      changed: sbv2-api
         steps:
             - name: Checkout
               uses: actions/checkout@v4
