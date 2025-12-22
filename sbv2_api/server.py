@@ -39,6 +39,9 @@ def load_config() -> dict:
 
 config = load_config()
 
+# 設定値を取得
+MAX_TEXT_LENGTH = config.get("max_length", 500)
+
 # FastAPIアプリ（内部サービスのためCORS不要）
 app = FastAPI(
     title="Style-BERT-VITS2 TTS API",
@@ -118,7 +121,7 @@ def get_default_model() -> str:
 
 # リクエストモデル
 class SynthesizeRequest(BaseModel):
-    text: str = Field(..., max_length=500)
+    text: str = Field(...)
     model: Optional[str] = None
     style: str = "Neutral"
     style_weight: float = Field(1.0, ge=0.0, le=10.0)
@@ -147,7 +150,7 @@ async def get_model_styles(model_name: str):
 
 @app.get("/synthesize")
 async def synthesize_get(
-    text: str = Query(..., max_length=500),
+    text: str = Query(...),
     model: Optional[str] = None,
     style: str = "Neutral",
     style_weight: float = Query(1.0, ge=0.0, le=10.0),
@@ -185,6 +188,13 @@ async def _synthesize(
     noise_scale: float,
     noise_scale_w: float,
 ) -> Response:
+    # テキスト長のバリデーション（config.ymlから読み込み）
+    if len(text) > MAX_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Text too long. Maximum length is {MAX_TEXT_LENGTH} characters.",
+        )
+
     model_name = model or get_default_model()
 
     try:
@@ -196,7 +206,7 @@ async def _synthesize(
                 detail=f"Style '{style}' not found. Available: {list(tts_model.style2id.keys())}",
             )
 
-        logger.info(f"Synthesizing: model={model_name}, text={text[:30]}...")
+        logger.info(f"Synthesizing: model={model_name}, text={text}")
 
         sr, audio = tts_model.infer(
             text=text,

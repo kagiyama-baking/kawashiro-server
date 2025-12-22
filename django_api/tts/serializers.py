@@ -12,7 +12,7 @@ class TTSSynthesizeSerializer(serializers.Serializer):
     text = serializers.CharField(
         required=True,
         help_text="合成したいテキスト（セリフ）",
-        max_length=1000,
+        max_length=500,
     )
     model = serializers.CharField(
         required=False,

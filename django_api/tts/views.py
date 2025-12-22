@@ -27,8 +27,6 @@ TTS_TIMEOUT = getattr(settings, "TTS_TIMEOUT", 60)  # 音声合成は時間が�
 class TTSHealthView(APIView):
     """TTSサービスのヘルスチェック"""
 
-    permission_classes = []  # 認証不要
-
     def get(self, request):
         try:
             response = requests.get(f"{TTS_SERVICE_URL}/health", timeout=10)
@@ -44,8 +42,6 @@ class TTSHealthView(APIView):
 class TTSModelsView(APIView):
     """利用可能なモデル一覧"""
 
-    permission_classes = []  # 認証不要
-
     def get(self, request):
         try:
             response = requests.get(f"{TTS_SERVICE_URL}/models", timeout=10)
@@ -60,8 +56,6 @@ class TTSModelsView(APIView):
 
 class TTSModelStylesView(APIView):
     """指定モデルのスタイル一覧"""
-
-    permission_classes = []  # 認証不要
 
     def get(self, request, model_name):
         try:
@@ -81,7 +75,6 @@ class TTSModelStylesView(APIView):
 class TTSSynthesizeView(APIView):
     """音声合成プロキシ"""
 
-    permission_classes = []  # 認証不要
     renderer_classes = [AudioWavRenderer, JSONRenderer]
 
     @extend_schema(
@@ -116,7 +109,9 @@ class TTSSynthesizeView(APIView):
     )
     def post(self, request):
         """POSTリクエストで音声合成（ダウンロード用）"""
-        return self._synthesize(request.query_params, inline=False)
+        # POSTではリクエストボディを優先、空の場合はクエリパラメータを使用
+        params = request.data if request.data else request.query_params
+        return self._synthesize(params, inline=False)
 
     def _synthesize(self, params, inline=True):
         """内部TTSサービスに転送して音声を取得"""
@@ -143,11 +138,11 @@ class TTSSynthesizeView(APIView):
         tts_params = {k: v for k, v in tts_params.items() if v is not None}
 
         try:
-            logger.info(f"TTS request: text={text[:30]}...")
+            logger.info(f"TTS request: text={text}")
 
-            response = requests.get(
+            response = requests.post(
                 f"{TTS_SERVICE_URL}/synthesize",
-                params=tts_params,
+                json=tts_params,
                 timeout=TTS_TIMEOUT,
             )
 
