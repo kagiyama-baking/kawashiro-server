@@ -15,9 +15,11 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 -   🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     -   🔐 **User**: ユーザー認証・管理機能
-    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（Microsoft Graph API）
+    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
+    -   📅 **Outlook**: Outlook Calendar 予定取得機能
     -   📁 **Media**: メディアファイル管理機能
     -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
+    -   🔗 **MS Graph**: Microsoft Graph API 共通設定・認証モジュール
     -   🛠️ **Core**: 共通機能・ユーティリティ
 -   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
 -   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
