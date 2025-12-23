@@ -10,14 +10,13 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+
 from .exceptions import (
-    AuthenticationError,
-    ConfigurationError,
     DeleteError,
     DownloadError,
     FolderOperationError,
     ListOperationError,
-    NetworkError,
     OneDriveFileNotFoundError,
     UploadError,
 )

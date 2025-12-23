@@ -69,7 +69,7 @@ class TestOneDriveUploadView:
         self, mock_client_class, authenticated_client, mock_file
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -91,7 +91,7 @@ class TestOneDriveUploadView:
         self, mock_client_class, authenticated_client, mock_file
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -133,7 +133,7 @@ class TestOneDriveUploadView:
         self, mock_client_class, authenticated_client, mock_file
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -348,7 +348,7 @@ class TestOneDriveListView:
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -364,7 +364,7 @@ class TestOneDriveListView:
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -382,7 +382,7 @@ class TestOneDriveListView:
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -400,7 +400,7 @@ class TestOneDriveListView:
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -414,7 +414,7 @@ class TestOneDriveListView:
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -430,7 +430,7 @@ class TestOneDriveListView:
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -485,7 +485,7 @@ class TestOneDriveDeleteView:
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -501,7 +501,7 @@ class TestOneDriveDeleteView:
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -537,7 +537,7 @@ class TestOneDriveDeleteView:
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -700,7 +700,7 @@ class TestOneDriveDownloadView:
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -718,7 +718,7 @@ class TestOneDriveDownloadView:
     @patch("onedrive.views.MSGraphClient")
     def test_download_with_network_error(self, mock_client_class, authenticated_client):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -812,7 +812,7 @@ class TestOneDriveCreateUploadSessionView:
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -833,7 +833,7 @@ class TestOneDriveCreateUploadSessionView:
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -883,7 +883,7 @@ class TestOneDriveCreateUploadSessionView:
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -1099,7 +1099,7 @@ class TestOneDriveUploadChunkView:
         self, mock_client_class, authenticated_client, mock_file
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -1122,7 +1122,7 @@ class TestOneDriveUploadChunkView:
         self, mock_client_class, authenticated_client, mock_file
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -1172,7 +1172,7 @@ class TestOneDriveUploadChunkView:
         self, mock_client_class, authenticated_client, mock_file
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from onedrive.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client

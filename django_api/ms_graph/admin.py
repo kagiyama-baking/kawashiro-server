@@ -1,4 +1,4 @@
-"""OneDrive管理画面設定"""
+"""Microsoft Graph API設定管理画面"""
 
 from django import forms
 from django.contrib import admin, messages
@@ -97,7 +97,7 @@ class MSGraphConfigAdmin(admin.ModelAdmin):
             "対象設定",
             {
                 "fields": ("target_user",),
-                "description": "OneDriveにアクセスする対象ユーザーを設定します。",
+                "description": "Microsoft Graph APIでアクセスする対象ユーザーを設定します。",
             },
         ),
         (

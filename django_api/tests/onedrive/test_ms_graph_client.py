@@ -5,12 +5,10 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
+from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
 from onedrive.exceptions import (
-    AuthenticationError,
-    ConfigurationError,
     FolderOperationError,
     ListOperationError,
-    NetworkError,
     UploadError,
 )
 from onedrive.ms_graph_client import (

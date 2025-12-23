@@ -77,7 +77,9 @@ INSTALLED_APPS = [
     # カスタムアプリケーション
     "core",  # ユーザー認証などのコア機能
     "user",  # ユーザーモデルのApp
+    "ms_graph",  # Microsoft Graph API共通設定
     "onedrive",  # OneDrive連携機能
+    "outlook",  # Outlook Calendar連携機能
     "media",  # 画像処理などのメディア関連機能
     "tts",  # Text-to-Speech機能
 ]
@@ -281,6 +283,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "auth", "description": "認証関連のAPI"},
         {"name": "users", "description": "ユーザー管理API"},
         {"name": "onedrive", "description": "OneDrive連携API"},
+        {"name": "outlook", "description": "Outlook Calendar連携API"},
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
     ],

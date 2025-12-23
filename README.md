@@ -932,34 +932,12 @@ docker network inspect kawashiro-server_default
 docker compose exec [サービス名] ps aux
 ```
 
-## 貢献ガイドライン
-
-### プルリクエストの作成
-
-1. **Issue の作成**: バグ報告や機能提案は、まず Issue を作成してください
-2. **ブランチの命名規則**:
-    - 機能追加: `feature/機能名`
-    - バグ修正: `bugfix/バグ名`
-    - ドキュメント: `docs/内容`
-3. **コミットメッセージ**: 日本語で簡潔に変更内容を記載
-4. **テスト**: PR 作成前に必ずローカルでテストを実行
-
 ### コーディング規約
 
 -   Dockerfile はベストプラクティスに従う
 -   Nginx 設定はインデントを統一（スペース 4 つ）
 -   環境変数は大文字とアンダースコア
 -   ドキュメントは日本語で記述
-
-## ライセンス
-
-このプロジェクトは MIT ライセンスの下で公開されています。詳細は[LICENSE](LICENSE)ファイルを参照してください。
-
-## サポート
-
--   **Issue**: [GitHub Issues](https://github.com/kagiyama-baking/kawashiro-server/issues)
--   **Discussion**: [GitHub Discussions](https://github.com/kagiyama-baking/kawashiro-server/discussions)
--   **Wiki**: [プロジェクト Wiki](https://github.com/kagiyama-baking/kawashiro-server/wiki)
 
 ## 技術スタック
 

@@ -5,14 +5,6 @@ class OneDriveError(Exception):
     """OneDrive API関連の基底例外クラス"""
 
 
-class ConfigurationError(OneDriveError):
-    """設定エラー（環境変数の不足、ファイルの不在など）"""
-
-
-class AuthenticationError(OneDriveError):
-    """認証エラー（トークン取得失敗、認証期限切れなど）"""
-
-
 class UploadError(OneDriveError):
     """ファイルアップロードエラー"""
 
@@ -27,10 +19,6 @@ class ListOperationError(OneDriveError):
 
 class DeleteError(OneDriveError):
     """ファイル削除エラー"""
-
-
-class NetworkError(OneDriveError):
-    """ネットワーク接続エラー"""
 
 
 class OneDriveFileNotFoundError(OneDriveError):
