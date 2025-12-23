@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     "outlook",  # Outlook Calendar連携機能
     "media",  # 画像処理などのメディア関連機能
     "tts",  # Text-to-Speech機能
+    "weather",  # 気象庁天気予報機能
 ]
 
 # ミドルウェアの設定
@@ -286,6 +287,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "outlook", "description": "Outlook Calendar連携API"},
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
+        {"name": "weather", "description": "気象庁天気予報API"},
     ],
 }
 
