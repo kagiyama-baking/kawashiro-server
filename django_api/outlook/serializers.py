@@ -23,12 +23,6 @@ class EventsQuerySerializer(serializers.Serializer):
         help_text="取得日数（1-365、デフォルト: 1、end_dateが指定されていない場合に使用）",
     )
 
-    def validate_days(self, value):
-        """daysの値を検証"""
-        if value is not None and value < 1:
-            raise serializers.ValidationError("daysは1以上を指定してください")
-        return value
-
     def validate(self, attrs):
         """日付の組み合わせを検証"""
         start_date = attrs.get("start_date")
