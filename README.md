@@ -15,9 +15,12 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 -   🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     -   🔐 **User**: ユーザー認証・管理機能
-    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（Microsoft Graph API）
+    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
+    -   📅 **Outlook**: Outlook Calendar 予定取得機能
     -   📁 **Media**: メディアファイル管理機能
     -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
+    -   🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
+    -   🔗 **MS Graph**: Microsoft Graph API 共通設定・認証モジュール
     -   🛠️ **Core**: 共通機能・ユーティリティ
 -   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
 -   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
@@ -93,6 +96,12 @@ kawashiro-server/
 │   │   ├── views.py            # APIビュー
 │   │   ├── serializers.py      # シリアライザー（Swagger UI対応）
 │   │   ├── renderers.py        # カスタムレンダラー（音声データ用）
+│   │   └── urls.py             # URLルーティング
+│   ├── weather/                # 気象庁天気予報アプリ
+│   │   ├── jma_client.py       # 気象庁APIクライアント
+│   │   ├── views.py            # APIビュー
+│   │   ├── serializers.py      # シリアライザー
+│   │   ├── exceptions.py       # カスタム例外
 │   │   └── urls.py             # URLルーティング
 │   ├── tests/                  # 統合テストコード
 │   └── htmlcov/                # カバレッジレポート
@@ -966,6 +975,7 @@ docker compose exec [サービス名] ps aux
 ### 外部サービス連携
 
 -   **Microsoft Graph API**: OneDrive 連携
+-   **気象庁天気予報 API**: 天気予報データ取得
 -   **Valkey (Redis)**: キャッシュ・セッション管理
 -   **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
 
