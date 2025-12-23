@@ -71,19 +71,25 @@ class EventInfoSerializer(serializers.Serializer):
     body_preview = serializers.CharField(source="bodyPreview", read_only=True)
 
     def get_start(self, obj):
-        """開始日時を取得"""
+        """開始日時を取得（タイムゾーン情報付き）"""
         start = obj.get("start", {})
         if isinstance(start, dict):
             date_time = start.get("dateTime", "")
-            return f"{date_time}+09:00" if date_time else None
+            time_zone = start.get("timeZone", "")
+            if date_time:
+                return {"dateTime": date_time, "timeZone": time_zone}
+            return None
         return start
 
     def get_end(self, obj):
-        """終了日時を取得"""
+        """終了日時を取得（タイムゾーン情報付き）"""
         end = obj.get("end", {})
         if isinstance(end, dict):
             date_time = end.get("dateTime", "")
-            return f"{date_time}+09:00" if date_time else None
+            time_zone = end.get("timeZone", "")
+            if date_time:
+                return {"dateTime": date_time, "timeZone": time_zone}
+            return None
         return end
 
     def get_location(self, obj):
