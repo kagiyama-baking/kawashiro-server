@@ -45,6 +45,7 @@ services:
             - ./django_api/core:/django_api/core
             - ./django_api/user:/django_api/user
             - ./django_api/onedrive:/django_api/onedrive
+            - ./django_api/outlook:/django_api/outlook
             - ./django_api/media:/django_api/media
             - ./django_api/tts:/django_api/tts
             # 環境変数ファイル
