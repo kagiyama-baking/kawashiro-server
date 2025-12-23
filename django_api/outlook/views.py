@@ -33,7 +33,8 @@ class OutlookEventsView(APIView):
             "日付範囲の指定方法:\n"
             "- デフォルト: 今日1日分の予定を取得\n"
             "- `days`を指定: start_dateからdays日分の予定を取得\n"
-            "- `end_date`を指定: start_dateからend_dateまでの予定を取得"
+            "- `end_date`を指定: start_dateからend_dateまでの予定を取得\n\n"
+            "※ `days`と`end_date`を同時に指定した場合は`end_date`が優先されます。"
         ),
         parameters=[
             OpenApiParameter(
