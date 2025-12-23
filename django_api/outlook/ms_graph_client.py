@@ -5,13 +5,10 @@ from datetime import date, datetime, timedelta
 import requests
 from msal import ConfidentialClientApplication
 
-from onedrive.config import get_ms_graph_settings
+from ms_graph.config import get_ms_graph_settings
+from ms_graph.exceptions import AuthenticationError, NetworkError
 
-from .exceptions import (
-    AuthenticationError,
-    CalendarError,
-    NetworkError,
-)
+from .exceptions import CalendarError
 
 
 class OutlookGraphClient:

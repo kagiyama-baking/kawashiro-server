@@ -7,12 +7,9 @@ from rest_framework import authentication, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .exceptions import (
-    AuthenticationError,
-    CalendarError,
-    ConfigurationError,
-    NetworkError,
-)
+from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+
+from .exceptions import CalendarError
 from .ms_graph_client import OutlookGraphClient
 from .serializers import EventInfoSerializer, EventsQuerySerializer
 

@@ -6,18 +6,14 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from outlook.exceptions import (
-    AuthenticationError,
-    CalendarError,
-    ConfigurationError,
-    NetworkError,
-)
+from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+from outlook.exceptions import CalendarError
 
 
 @pytest.fixture
 def mock_outlook_graph_settings():
     """OutlookGraphSettings用のモックフィクスチャ"""
-    from onedrive.config import MSGraphSettings
+    from ms_graph.config import MSGraphSettings
 
     settings = MSGraphSettings(
         tenant_id="test-tenant",
@@ -58,10 +54,13 @@ class TestOutlookGraphClientInit:
         """設定エラー時に例外が発生すること"""
         from outlook.ms_graph_client import OutlookGraphClient
 
-        with patch(
-            "outlook.ms_graph_client.get_ms_graph_settings",
-            side_effect=ConfigurationError("Missing config"),
-        ), pytest.raises(ConfigurationError):
+        with (
+            patch(
+                "outlook.ms_graph_client.get_ms_graph_settings",
+                side_effect=ConfigurationError("Missing config"),
+            ),
+            pytest.raises(ConfigurationError),
+        ):
             OutlookGraphClient()
 
 

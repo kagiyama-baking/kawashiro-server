@@ -124,7 +124,7 @@ class TestOutlookEventsView:
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from outlook.exceptions import ConfigurationError
+        from ms_graph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -138,7 +138,7 @@ class TestOutlookEventsView:
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from outlook.exceptions import AuthenticationError
+        from ms_graph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -174,7 +174,7 @@ class TestOutlookEventsView:
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from outlook.exceptions import NetworkError
+        from ms_graph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client

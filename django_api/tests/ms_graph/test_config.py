@@ -3,7 +3,7 @@
 import pytest
 from django.test import override_settings
 
-from onedrive.exceptions import ConfigurationError
+from ms_graph.exceptions import ConfigurationError
 
 
 @pytest.mark.django_db
@@ -13,8 +13,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_success(self):
         """有効な設定を正常に取得できること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -38,8 +38,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_returns_active_config(self):
         """複数設定がある場合に有効な設定が返されること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         # 無効な設定
         inactive = MSGraphConfig.objects.create(
@@ -73,8 +73,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_no_active_config(self):
         """有効な設定がない場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
             name="無効な設定",
@@ -92,7 +92,7 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_not_exists(self):
         """設定が存在しない場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
+        from ms_graph.config import get_ms_graph_settings
 
         with pytest.raises(ConfigurationError) as excinfo:
             get_ms_graph_settings()
@@ -101,8 +101,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_missing_tenant_id(self):
         """テナントIDが空の場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -122,8 +122,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_missing_client_id(self):
         """クライアントIDが空の場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -143,8 +143,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_missing_cert_thumbprint(self):
         """証明書サムプリントが空の場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -164,8 +164,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_missing_private_key(self):
         """秘密鍵が空の場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
             name="テスト設定",
@@ -184,8 +184,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_missing_target_user(self):
         """対象ユーザーが空の場合にConfigurationErrorが発生すること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -205,8 +205,8 @@ class TestGetMSGraphSettings:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_get_settings_multiple_missing_fields(self):
         """複数のフィールドが空の場合にすべてがエラーメッセージに含まれること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
             name="テスト設定",
@@ -233,8 +233,8 @@ class TestMSGraphSettingsDataclass:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-config-tests")
     def test_dataclass_attributes(self):
         """データクラスの属性が正しく設定されること"""
-        from onedrive.config import get_ms_graph_settings
-        from onedrive.models import MSGraphConfig
+        from ms_graph.config import get_ms_graph_settings
+        from ms_graph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",

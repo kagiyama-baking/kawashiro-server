@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     # カスタムアプリケーション
     "core",  # ユーザー認証などのコア機能
     "user",  # ユーザーモデルのApp
+    "ms_graph",  # Microsoft Graph API共通設定
     "onedrive",  # OneDrive連携機能
     "outlook",  # Outlook Calendar連携機能
     "media",  # 画像処理などのメディア関連機能
