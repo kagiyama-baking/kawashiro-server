@@ -25,18 +25,18 @@ class TestGreetingRequestSerializer:
 
     def test_valid_data_with_defaults(self):
         """デフォルト値が適用される."""
-        data = {"area_code": "130010"}
+        data = {}
         serializer = GreetingRequestSerializer(data=data)
         assert serializer.is_valid()
         assert serializer.validated_data["greeting_type"] == "morning"
         assert serializer.validated_data["include_audio"] is False
 
-    def test_area_code_required(self):
-        """area_codeが必須."""
+    def test_area_code_optional(self):
+        """area_codeはオプション."""
         data = {"greeting_type": "morning"}
         serializer = GreetingRequestSerializer(data=data)
-        assert not serializer.is_valid()
-        assert "area_code" in serializer.errors
+        assert serializer.is_valid()
+        assert serializer.validated_data.get("area_code") is None
 
     def test_invalid_greeting_type(self):
         """無効なgreeting_typeでエラー."""
@@ -62,11 +62,15 @@ class TestGreetingResponseSerializer:
             "text": "おはようございます。",
             "events_count": 2,
             "weather_summary": "晴れ 最高気温15℃",
-            "audio": "base64data",
+            "thinking": "予定と天気を確認しました。",
+            "tools_used": ["get_today_events", "get_weather_forecast"],
+            "audio": "data:audio/wav;base64,UklGRg==",
         }
         serializer = GreetingResponseSerializer(data)
         assert serializer.data["text"] == "おはようございます。"
         assert serializer.data["events_count"] == 2
+        assert serializer.data["thinking"] == "予定と天気を確認しました。"
+        assert "get_today_events" in serializer.data["tools_used"]
 
     def test_response_without_audio(self):
         """音声なしのレスポンス."""
@@ -74,10 +78,27 @@ class TestGreetingResponseSerializer:
             "text": "おはようございます。",
             "events_count": 0,
             "weather_summary": "晴れ",
+            "thinking": None,
+            "tools_used": [],
             "audio": None,
         }
         serializer = GreetingResponseSerializer(data)
         assert serializer.data["audio"] is None
+        assert serializer.data["thinking"] is None
+        assert serializer.data["tools_used"] == []
+
+    def test_response_without_weather(self):
+        """天気情報なしのレスポンス."""
+        data = {
+            "text": "おはようございます。",
+            "events_count": 1,
+            "weather_summary": None,
+            "thinking": "予定を確認しました。",
+            "tools_used": ["get_today_events"],
+            "audio": None,
+        }
+        serializer = GreetingResponseSerializer(data)
+        assert serializer.data["weather_summary"] is None
 
 
 class TestChatRequestSerializer:

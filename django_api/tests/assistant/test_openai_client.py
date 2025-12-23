@@ -10,7 +10,7 @@ from assistant.exceptions import (
     OpenAIConfigurationError,
     OpenAITimeoutError,
 )
-from assistant.openai_client import OpenAIClient
+from assistant.openai_client import DEFAULT_MODEL, OpenAIClient
 
 
 class TestOpenAIClientInitialization:
@@ -20,7 +20,7 @@ class TestOpenAIClientInitialization:
         """APIキーを指定して初期化できる."""
         client = OpenAIClient(api_key="test-api-key")
         assert client.api_key == "test-api-key"
-        assert client.model == "gpt-4o-mini"
+        assert client.model == DEFAULT_MODEL
 
     def test_init_with_custom_model(self):
         """カスタムモデルを指定して初期化できる."""

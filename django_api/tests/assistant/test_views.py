@@ -65,6 +65,8 @@ class TestGreetingView:
             "text": "おはようございます。",
             "events_count": 2,
             "weather_summary": "晴れ",
+            "thinking": "予定と天気を確認します。",
+            "tools_used": ["get_today_events", "get_weather_forecast"],
             "audio": None,
         }
         mock_assistant_service.return_value = mock_service
@@ -78,6 +80,39 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["text"] == "おはようございます。"
         assert response.data["events_count"] == 2
+        assert response.data["thinking"] == "予定と天気を確認します。"
+        assert "get_today_events" in response.data["tools_used"]
+
+    def test_greeting_without_area_code(
+        self,
+        api_client,
+        mock_assistant_service,
+        mock_openai_client,
+        mock_outlook_client,
+        mock_weather_client,
+    ):
+        """area_code未指定時、天気情報なしで挨拶生成."""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = {
+            "text": "おはようございます。2件の予定があります。",
+            "events_count": 2,
+            "weather_summary": None,
+            "thinking": "予定を確認します。",
+            "tools_used": ["get_today_events"],
+            "audio": None,
+        }
+        mock_assistant_service.return_value = mock_service
+
+        response = api_client.post(
+            reverse("assistant:greeting"),
+            {"greeting_type": "morning"},  # area_code省略
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["text"] == "おはようございます。2件の予定があります。"
+        assert response.data["weather_summary"] is None
+        assert "get_weather_forecast" not in response.data["tools_used"]
 
     def test_greeting_with_audio(
         self,
@@ -87,13 +122,15 @@ class TestGreetingView:
         mock_outlook_client,
         mock_weather_client,
     ):
-        """音声付き挨拶生成."""
+        """音声付き挨拶生成（data URI形式）."""
         mock_service = MagicMock()
         mock_service.generate_greeting.return_value = {
             "text": "おはようございます。",
             "events_count": 1,
             "weather_summary": "晴れ",
-            "audio": "base64audiodata",
+            "thinking": None,
+            "tools_used": ["get_today_events"],
+            "audio": "data:audio/wav;base64,UklGRg==",
         }
         mock_assistant_service.return_value = mock_service
 
@@ -104,17 +141,7 @@ class TestGreetingView:
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["audio"] == "base64audiodata"
-
-    def test_greeting_validation_error(self, api_client):
-        """バリデーションエラー."""
-        response = api_client.post(
-            reverse("assistant:greeting"),
-            {"greeting_type": "morning"},  # area_code missing
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["audio"].startswith("data:audio/wav;base64,")
 
     def test_greeting_unauthenticated(self):
         """認証なしでアクセス拒否."""
@@ -279,6 +306,69 @@ class TestChatView:
         )
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+
+@pytest.mark.django_db
+class TestGreetingAudioView:
+    """GreetingAudioViewのテスト."""
+
+    def test_greeting_audio_success(
+        self,
+        api_client,
+        mock_assistant_service,
+        mock_openai_client,
+        mock_outlook_client,
+        mock_weather_client,
+    ):
+        """音声付き挨拶生成でWAVファイルを返す."""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = {
+            "text": "おはようございます。",
+            "events_count": 1,
+            "weather_summary": "晴れ",
+            "thinking": None,
+            "tools_used": ["get_today_events"],
+            "audio": "data:audio/wav;base64,UklGRg==",
+        }
+        mock_assistant_service.return_value = mock_service
+
+        response = api_client.post(
+            reverse("assistant:greeting-audio"),
+            {"area_code": "130010"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "audio/wav"
+        assert response["Content-Disposition"] == 'attachment; filename="greeting.wav"'
+
+    def test_greeting_audio_no_audio_generated(
+        self,
+        api_client,
+        mock_assistant_service,
+        mock_openai_client,
+        mock_outlook_client,
+        mock_weather_client,
+    ):
+        """音声生成に失敗した場合は404."""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = {
+            "text": "おはようございます。",
+            "events_count": 1,
+            "weather_summary": "晴れ",
+            "thinking": None,
+            "tools_used": ["get_today_events"],
+            "audio": None,
+        }
+        mock_assistant_service.return_value = mock_service
+
+        response = api_client.post(
+            reverse("assistant:greeting-audio"),
+            {"area_code": "130010"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db

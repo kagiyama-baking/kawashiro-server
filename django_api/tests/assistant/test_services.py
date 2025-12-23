@@ -15,10 +15,6 @@ class TestAssistantServiceGenerateGreeting:
     def mock_openai_client(self):
         """OpenAIクライアントのモック."""
         mock = MagicMock()
-        mock.generate_text.return_value = (
-            "おはようございます。今日は晴れで、最高気温は15度です。"
-            "本日は朝会とランチミーティングの2件の予定があります。"
-        )
         return mock
 
     @pytest.fixture
@@ -61,8 +57,35 @@ class TestAssistantServiceGenerateGreeting:
             tts_service_url="http://localhost:5000",
         )
 
-    def test_generate_greeting_morning(self, service, mock_openai_client):
-        """朝の挨拶生成."""
+    def test_generate_greeting_with_area_code(self, service, mock_openai_client):
+        """area_code指定時、天気と予定のツールを使用."""
+        # ツール呼び出しを含む応答
+        mock_tool_call_events = Mock()
+        mock_tool_call_events.id = "call_events"
+        mock_tool_call_events.function.name = "get_today_events"
+        mock_tool_call_events.function.arguments = "{}"
+
+        mock_tool_call_weather = Mock()
+        mock_tool_call_weather.id = "call_weather"
+        mock_tool_call_weather.function.name = "get_weather_forecast"
+        mock_tool_call_weather.function.arguments = '{"area_code": "130010"}'
+
+        mock_first_message = Mock()
+        mock_first_message.content = "予定と天気を確認します。"
+        mock_first_message.tool_calls = [mock_tool_call_events, mock_tool_call_weather]
+
+        mock_final_message = Mock()
+        mock_final_message.content = (
+            "おはようございます。今日は晴れで最高気温15度です。"
+            "朝会とランチミーティングの2件の予定があります。"
+        )
+        mock_final_message.tool_calls = None
+
+        mock_openai_client.chat_completion.side_effect = [
+            mock_first_message,
+            mock_final_message,
+        ]
+
         result = service.generate_greeting(
             area_code="130010", greeting_type="morning", include_audio=False
         )
@@ -72,14 +95,57 @@ class TestAssistantServiceGenerateGreeting:
         assert "events_count" in result
         assert result["events_count"] == 2
         assert "weather_summary" in result
-        mock_openai_client.generate_text.assert_called_once()
+        assert result["weather_summary"] is not None
+        assert "thinking" in result
+        assert result["thinking"] == "予定と天気を確認します。"
+        assert "tools_used" in result
+        assert "get_today_events" in result["tools_used"]
+        assert "get_weather_forecast" in result["tools_used"]
+
+    def test_generate_greeting_without_area_code(self, service, mock_openai_client):
+        """area_code未指定時、予定のみ取得."""
+        mock_tool_call_events = Mock()
+        mock_tool_call_events.id = "call_events"
+        mock_tool_call_events.function.name = "get_today_events"
+        mock_tool_call_events.function.arguments = "{}"
+
+        mock_first_message = Mock()
+        mock_first_message.content = "予定を確認します。"
+        mock_first_message.tool_calls = [mock_tool_call_events]
+
+        mock_final_message = Mock()
+        mock_final_message.content = (
+            "おはようございます。朝会とランチミーティングの2件の予定があります。"
+        )
+        mock_final_message.tool_calls = None
+
+        mock_openai_client.chat_completion.side_effect = [
+            mock_first_message,
+            mock_final_message,
+        ]
+
+        result = service.generate_greeting(
+            area_code=None, greeting_type="morning", include_audio=False
+        )
+
+        assert result["text"] is not None
+        assert result["events_count"] == 2
+        assert result["weather_summary"] is None
+        assert "get_today_events" in result["tools_used"]
+        assert "get_weather_forecast" not in result["tools_used"]
 
     def test_generate_greeting_with_greeting_types(self, service, mock_openai_client):
         """異なる挨拶タイプで生成できる."""
         for greeting_type in ["morning", "afternoon", "evening"]:
             mock_openai_client.reset_mock()
+
+            mock_message = Mock()
+            mock_message.content = f"{greeting_type}の挨拶です。"
+            mock_message.tool_calls = None
+            mock_openai_client.chat_completion.return_value = mock_message
+
             result = service.generate_greeting(
-                area_code="130010",
+                area_code=None,
                 greeting_type=greeting_type,
                 include_audio=False,
             )
@@ -87,26 +153,39 @@ class TestAssistantServiceGenerateGreeting:
 
     @patch("assistant.services.requests.post")
     def test_generate_greeting_with_audio(self, mock_post, service, mock_openai_client):
-        """音声付きの挨拶生成."""
+        """音声付きの挨拶生成（data URI形式）."""
+        mock_message = Mock()
+        mock_message.content = "おはようございます。"
+        mock_message.tool_calls = None
+        mock_openai_client.chat_completion.return_value = mock_message
+
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.content = b"fake audio data"
         mock_post.return_value = mock_response
 
         result = service.generate_greeting(
-            area_code="130010", greeting_type="morning", include_audio=True
+            area_code=None, greeting_type="morning", include_audio=True
         )
 
         assert "audio" in result
         assert result["audio"] is not None
-        # Base64エンコードされている
-        decoded = base64.b64decode(result["audio"])
+        # data URI形式でエンコードされている
+        assert result["audio"].startswith("data:audio/wav;base64,")
+        # Base64部分をデコードして確認
+        base64_data = result["audio"].replace("data:audio/wav;base64,", "")
+        decoded = base64.b64decode(base64_data)
         assert decoded == b"fake audio data"
 
-    def test_generate_greeting_without_audio(self, service):
+    def test_generate_greeting_without_audio(self, service, mock_openai_client):
         """音声なしの挨拶生成."""
+        mock_message = Mock()
+        mock_message.content = "おはようございます。"
+        mock_message.tool_calls = None
+        mock_openai_client.chat_completion.return_value = mock_message
+
         result = service.generate_greeting(
-            area_code="130010", greeting_type="morning", include_audio=False
+            area_code=None, greeting_type="morning", include_audio=False
         )
 
         assert result.get("audio") is None

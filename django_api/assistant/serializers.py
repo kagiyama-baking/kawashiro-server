@@ -13,8 +13,10 @@ class GreetingRequestSerializer(serializers.Serializer):
     """挨拶生成リクエストのシリアライザ."""
 
     area_code = serializers.CharField(
-        required=True,
-        help_text="予報区コード（6桁）。例: 130010=東京地方",
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="予報区コード（6桁）。例: 130010=東京地方。指定時のみ天気を取得",
     )
     greeting_type = serializers.ChoiceField(
         choices=GREETING_TYPE_CHOICES,
@@ -40,12 +42,23 @@ class GreetingResponseSerializer(serializers.Serializer):
     )
     weather_summary = serializers.CharField(
         read_only=True,
-        help_text="天気サマリー",
+        allow_null=True,
+        help_text="天気サマリー（area_code指定時のみ）",
+    )
+    thinking = serializers.CharField(
+        read_only=True,
+        allow_null=True,
+        help_text="エージェントの思考内容",
+    )
+    tools_used = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+        help_text="使用されたツール名のリスト",
     )
     audio = serializers.CharField(
         read_only=True,
         allow_null=True,
-        help_text="Base64エンコードされた音声データ（WAV形式）",
+        help_text="data URI形式の音声データ（data:audio/wav;base64,...）",
     )
 
 
