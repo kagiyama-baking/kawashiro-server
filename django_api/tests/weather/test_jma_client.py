@@ -185,16 +185,46 @@ class TestJMAWeatherClient:
     def test_fetch_forecast_http_404_error(self, mock_get):
         """存在しない都道府県コードの場合（HTTP 404）にJMAAreaNotFoundErrorを発生させる"""
         mock_response = Mock()
-        mock_response.raise_for_status.side_effect = requests.HTTPError(
-            "404 Client Error: Not Found"
-        )
         mock_response.status_code = 404
+        http_error = requests.HTTPError("404 Client Error: Not Found")
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
         mock_get.return_value = mock_response
 
         client = JMAWeatherClient()
 
         with pytest.raises(JMAAreaNotFoundError):
             client.fetch_forecast("999900")
+
+    @patch("weather.jma_client.requests.get")
+    def test_fetch_forecast_http_500_error(self, mock_get):
+        """サーバーエラー（HTTP 500）の場合にJMANetworkErrorを発生させる"""
+        mock_response = Mock()
+        mock_response.status_code = 500
+        http_error = requests.HTTPError("500 Server Error: Internal Server Error")
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
+        mock_get.return_value = mock_response
+
+        client = JMAWeatherClient()
+
+        with pytest.raises(JMANetworkError):
+            client.fetch_forecast("130000")
+
+    @patch("weather.jma_client.requests.get")
+    def test_fetch_forecast_http_503_error(self, mock_get):
+        """サービス利用不可（HTTP 503）の場合にJMANetworkErrorを発生させる"""
+        mock_response = Mock()
+        mock_response.status_code = 503
+        http_error = requests.HTTPError("503 Server Error: Service Unavailable")
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
+        mock_get.return_value = mock_response
+
+        client = JMAWeatherClient()
+
+        with pytest.raises(JMANetworkError):
+            client.fetch_forecast("130000")
 
     @patch("weather.jma_client.datetime")
     @patch("weather.jma_client.requests.get")

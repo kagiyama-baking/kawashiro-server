@@ -142,9 +142,12 @@ class JMAWeatherClient:
             return response.json()
         except requests.HTTPError as e:
             # HTTP 404 は存在しない都道府県コードを示す
-            raise JMAAreaNotFoundError(
-                f"指定された都道府県コード '{prefecture_code}' が見つかりません"
-            ) from e
+            if e.response is not None and e.response.status_code == 404:
+                raise JMAAreaNotFoundError(
+                    f"指定された都道府県コード '{prefecture_code}' が見つかりません"
+                ) from e
+            # その他のHTTPエラー（500, 503など）はネットワークエラーとして扱う
+            raise JMANetworkError("気象庁APIへの接続に失敗しました") from e
         except requests.ConnectionError as e:
             raise JMANetworkError("気象庁APIへの接続に失敗しました") from e
         except requests.Timeout as e:
