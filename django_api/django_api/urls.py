@@ -47,4 +47,6 @@ urlpatterns = [
     path("outlook/", include("outlook.urls")),
     # 気象庁天気予報関連APIのURL（weather.urlsにルーティング）
     path("weather/", include("weather.urls")),
+    # AIアシスタント関連APIのURL（assistant.urlsにルーティング）
+    path("assistant/", include("assistant.urls")),
 ]
