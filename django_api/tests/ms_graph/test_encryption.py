@@ -11,7 +11,7 @@ class TestGetEncryptionKey:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_returns_bytes(self):
         """暗号化キーがバイト列で返されること"""
-        from onedrive.encryption import get_encryption_key
+        from ms_graph.encryption import get_encryption_key
 
         key = get_encryption_key()
         assert isinstance(key, bytes)
@@ -19,7 +19,7 @@ class TestGetEncryptionKey:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_returns_valid_fernet_key_length(self):
         """Fernetキーとして有効な長さ（44バイト）が返されること"""
-        from onedrive.encryption import get_encryption_key
+        from ms_graph.encryption import get_encryption_key
 
         key = get_encryption_key()
         # Base64エンコードされた32バイト = 44文字
@@ -28,7 +28,7 @@ class TestGetEncryptionKey:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_same_input_produces_same_key(self):
         """同じENCRYPTION_KEYから同じキーが生成されること"""
-        from onedrive.encryption import get_encryption_key
+        from ms_graph.encryption import get_encryption_key
 
         key1 = get_encryption_key()
         key2 = get_encryption_key()
@@ -37,7 +37,7 @@ class TestGetEncryptionKey:
     @override_settings(ENCRYPTION_KEY=None)
     def test_raises_error_when_encryption_key_not_set(self):
         """ENCRYPTION_KEYが設定されていない場合にエラーになること"""
-        from onedrive.encryption import get_encryption_key
+        from ms_graph.encryption import get_encryption_key
 
         with pytest.raises(ValueError) as excinfo:
             get_encryption_key()
@@ -51,7 +51,7 @@ class TestEncryptValue:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_encrypts_string(self):
         """文字列が暗号化されること"""
-        from onedrive.encryption import encrypt_value
+        from ms_graph.encryption import encrypt_value
 
         original = "secret-data"
         encrypted = encrypt_value(original)
@@ -62,14 +62,14 @@ class TestEncryptValue:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_empty_string_returns_empty(self):
         """空文字列は空文字列を返すこと"""
-        from onedrive.encryption import encrypt_value
+        from ms_graph.encryption import encrypt_value
 
         assert encrypt_value("") == ""
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_encrypts_multiline_pem_key(self):
         """複数行のPEM形式秘密鍵が暗号化できること"""
-        from onedrive.encryption import encrypt_value
+        from ms_graph.encryption import encrypt_value
 
         pem_key = """-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7
@@ -88,7 +88,7 @@ class TestDecryptValue:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_decrypts_encrypted_string(self):
         """暗号化された文字列を復号化できること"""
-        from onedrive.encryption import decrypt_value, encrypt_value
+        from ms_graph.encryption import decrypt_value, encrypt_value
 
         original = "secret-data"
         encrypted = encrypt_value(original)
@@ -99,14 +99,14 @@ class TestDecryptValue:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_empty_string_returns_empty(self):
         """空文字列は空文字列を返すこと"""
-        from onedrive.encryption import decrypt_value
+        from ms_graph.encryption import decrypt_value
 
         assert decrypt_value("") == ""
 
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_roundtrip_multiline_pem_key(self):
         """複数行のPEM形式秘密鍵が暗号化・復号化できること"""
-        from onedrive.encryption import decrypt_value, encrypt_value
+        from ms_graph.encryption import decrypt_value, encrypt_value
 
         pem_key = """-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7
@@ -121,7 +121,7 @@ test-content-here
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-unit-tests")
     def test_roundtrip_unicode_content(self):
         """日本語などのUnicode文字を含む文字列が暗号化・復号化できること"""
-        from onedrive.encryption import decrypt_value, encrypt_value
+        from ms_graph.encryption import decrypt_value, encrypt_value
 
         original = "テスト文字列 🔐 secure data"
         encrypted = encrypt_value(original)
@@ -134,7 +134,7 @@ test-content-here
         """異なるキーで復号化すると失敗すること"""
         from cryptography.fernet import InvalidToken
 
-        from onedrive.encryption import decrypt_value
+        from ms_graph.encryption import decrypt_value
 
         # 別のキーで暗号化されたデータ（シミュレーション）
         # 実際にはInvalidTokenが発生する

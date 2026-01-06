@@ -97,7 +97,7 @@ def mock_ms_graph_settings():
     """MSGraphSettings用のモックフィクスチャ"""
     from unittest.mock import patch
 
-    from onedrive.config import MSGraphSettings
+    from ms_graph.config import MSGraphSettings
 
     settings = MSGraphSettings(
         tenant_id="test-tenant",

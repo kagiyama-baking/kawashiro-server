@@ -15,9 +15,12 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 -   🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     -   🔐 **User**: ユーザー認証・管理機能
-    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（Microsoft Graph API）
+    -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
+    -   📅 **Outlook**: Outlook Calendar 予定取得機能
     -   📁 **Media**: メディアファイル管理機能
     -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
+    -   🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
+    -   🔗 **MS Graph**: Microsoft Graph API 共通設定・認証モジュール
     -   🛠️ **Core**: 共通機能・ユーティリティ
 -   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
 -   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
@@ -93,6 +96,12 @@ kawashiro-server/
 │   │   ├── views.py            # APIビュー
 │   │   ├── serializers.py      # シリアライザー（Swagger UI対応）
 │   │   ├── renderers.py        # カスタムレンダラー（音声データ用）
+│   │   └── urls.py             # URLルーティング
+│   ├── weather/                # 気象庁天気予報アプリ
+│   │   ├── jma_client.py       # 気象庁APIクライアント
+│   │   ├── views.py            # APIビュー
+│   │   ├── serializers.py      # シリアライザー
+│   │   ├── exceptions.py       # カスタム例外
 │   │   └── urls.py             # URLルーティング
 │   ├── tests/                  # 統合テストコード
 │   └── htmlcov/                # カバレッジレポート
@@ -932,34 +941,12 @@ docker network inspect kawashiro-server_default
 docker compose exec [サービス名] ps aux
 ```
 
-## 貢献ガイドライン
-
-### プルリクエストの作成
-
-1. **Issue の作成**: バグ報告や機能提案は、まず Issue を作成してください
-2. **ブランチの命名規則**:
-    - 機能追加: `feature/機能名`
-    - バグ修正: `bugfix/バグ名`
-    - ドキュメント: `docs/内容`
-3. **コミットメッセージ**: 日本語で簡潔に変更内容を記載
-4. **テスト**: PR 作成前に必ずローカルでテストを実行
-
 ### コーディング規約
 
 -   Dockerfile はベストプラクティスに従う
 -   Nginx 設定はインデントを統一（スペース 4 つ）
 -   環境変数は大文字とアンダースコア
 -   ドキュメントは日本語で記述
-
-## ライセンス
-
-このプロジェクトは MIT ライセンスの下で公開されています。詳細は[LICENSE](LICENSE)ファイルを参照してください。
-
-## サポート
-
--   **Issue**: [GitHub Issues](https://github.com/kagiyama-baking/kawashiro-server/issues)
--   **Discussion**: [GitHub Discussions](https://github.com/kagiyama-baking/kawashiro-server/discussions)
--   **Wiki**: [プロジェクト Wiki](https://github.com/kagiyama-baking/kawashiro-server/wiki)
 
 ## 技術スタック
 
@@ -988,6 +975,7 @@ docker compose exec [サービス名] ps aux
 ### 外部サービス連携
 
 -   **Microsoft Graph API**: OneDrive 連携
+-   **気象庁天気予報 API**: 天気予報データ取得
 -   **Valkey (Redis)**: キャッシュ・セッション管理
 -   **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
 

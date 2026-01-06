@@ -45,8 +45,10 @@ services:
             - ./django_api/core:/django_api/core
             - ./django_api/user:/django_api/user
             - ./django_api/onedrive:/django_api/onedrive
+            - ./django_api/outlook:/django_api/outlook
             - ./django_api/media:/django_api/media
             - ./django_api/tts:/django_api/tts
+            - ./django_api/weather:/django_api/weather
             # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
             # ログの永続化

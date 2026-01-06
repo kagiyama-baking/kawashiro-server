@@ -1,11 +1,11 @@
-"""OneDrive管理画面のテスト"""
+"""Microsoft Graph API設定管理画面のテスト"""
 
 import pytest
 from django import forms
 from django.test import override_settings
 
-from onedrive.admin import MSGraphConfigForm
-from onedrive.models import MSGraphConfig
+from ms_graph.admin import MSGraphConfigForm
+from ms_graph.models import MSGraphConfig
 
 
 @pytest.mark.django_db
@@ -166,7 +166,7 @@ class TestMSGraphConfigAdmin:
         from django.contrib.messages.storage.fallback import FallbackStorage
         from django.test import RequestFactory
 
-        from onedrive.admin import MSGraphConfigAdmin
+        from ms_graph.admin import MSGraphConfigAdmin
 
         config1 = MSGraphConfig.objects.create(
             name="設定1",
@@ -208,7 +208,7 @@ class TestMSGraphConfigAdmin:
         from django.contrib.messages.storage.fallback import FallbackStorage
         from django.test import RequestFactory
 
-        from onedrive.admin import MSGraphConfigAdmin
+        from ms_graph.admin import MSGraphConfigAdmin
 
         MSGraphConfig.objects.create(
             name="設定1",

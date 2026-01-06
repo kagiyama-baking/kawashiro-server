@@ -1,4 +1,4 @@
-"""OneDrive設定モデル"""
+"""Microsoft Graph API設定モデル"""
 
 from django.db import models
 
@@ -64,7 +64,7 @@ class MSGraphConfig(models.Model):
     target_user = models.CharField(
         "対象ユーザー",
         max_length=255,
-        help_text="OneDriveにアクセスする対象ユーザーのメールアドレスまたはユーザーID",
+        help_text="Microsoft Graph APIでアクセスする対象ユーザーのメールアドレスまたはユーザーID",
     )
 
     # 暗号化フィールド（秘密鍵）

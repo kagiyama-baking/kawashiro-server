@@ -43,4 +43,8 @@ urlpatterns = [
     path("media/", include("media.urls")),
     # TTS読み上げ関連APIのURL（tts.urlsにルーティング）
     path("tts/", include("tts.urls")),
+    # Outlook Calendar関連APIのURL（outlook.urlsにルーティング）
+    path("outlook/", include("outlook.urls")),
+    # 気象庁天気予報関連APIのURL（weather.urlsにルーティング）
+    path("weather/", include("weather.urls")),
 ]
