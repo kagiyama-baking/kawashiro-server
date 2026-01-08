@@ -19,16 +19,6 @@ class YahooTransitClient:
     BASE_URL = "https://transit.yahoo.co.jp/diainfo"
     NORMAL_STATUSES = ["平常運転"]
     DEFAULT_TIMEOUT = 10
-    # ボット検知回避のためブラウザらしいUser-Agentを設定
-    DEFAULT_HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ja,en-US;q=0.7,en;q=0.3",
-    }
 
     def __init__(self, timeout: int | None = None):
         self.timeout = timeout or self.DEFAULT_TIMEOUT
@@ -105,9 +95,7 @@ class YahooTransitClient:
         url = self._build_url(rail_id)
 
         try:
-            response = requests.get(
-                url, timeout=self.timeout, headers=self.DEFAULT_HEADERS
-            )
+            response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
         except requests.ConnectionError as e:
             raise YahooNetworkError(f"接続エラー: {e}") from e

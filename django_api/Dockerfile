@@ -32,7 +32,7 @@ RUN mkdir -p django_api core user onedrive outlook media tts ms_graph weather as
     touch django_api/__init__.py core/__init__.py user/__init__.py onedrive/__init__.py outlook/__init__.py media/__init__.py tts/__init__.py ms_graph/__init__.py weather/__init__.py assistant/__init__.py train/__init__.py && \
     uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock && \
-    rm -rf django_api core user onedrive outlook media tts ms_graph weather
+    rm -rf django_api core user onedrive outlook media tts ms_graph weather assistant train
 
 # アプリケーションを実行するためのユーザを作成する（先に作成）
 RUN adduser -D -g django django && \
