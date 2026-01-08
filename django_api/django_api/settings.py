@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "tts",  # Text-to-Speech機能
     "weather",  # 気象庁天気予報機能
     "assistant",  # AIアシスタント機能
+    "train",  # 路線運行情報機能
 ]
 
 # ミドルウェアの設定
@@ -290,6 +291,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
         {"name": "assistant", "description": "AIアシスタントAPI"},
+        {"name": "train", "description": "路線運行情報API"},
     ],
 }
 

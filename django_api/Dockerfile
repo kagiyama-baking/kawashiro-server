@@ -28,8 +28,8 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # uv pip installでシステムPythonに直接インストール
 # パッケージディレクトリが必要なため、先に作成
 COPY pyproject.toml ./
-RUN mkdir -p django_api core user onedrive outlook media tts ms_graph weather assistant && \
-    touch django_api/__init__.py core/__init__.py user/__init__.py onedrive/__init__.py outlook/__init__.py media/__init__.py tts/__init__.py ms_graph/__init__.py weather/__init__.py assistant/__init__.py && \
+RUN mkdir -p django_api core user onedrive outlook media tts ms_graph weather assistant train && \
+    touch django_api/__init__.py core/__init__.py user/__init__.py onedrive/__init__.py outlook/__init__.py media/__init__.py tts/__init__.py ms_graph/__init__.py weather/__init__.py assistant/__init__.py train/__init__.py && \
     uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock && \
     rm -rf django_api core user onedrive outlook media tts ms_graph weather
@@ -54,6 +54,7 @@ COPY --chown=django:django tts ./tts
 COPY --chown=django:django ms_graph ./ms_graph
 COPY --chown=django:django weather ./weather
 COPY --chown=django:django assistant ./assistant
+COPY --chown=django:django train ./train
 
 # セキュリティヘッダーを設定
 ENV PYTHONDONTWRITEBYTECODE=1

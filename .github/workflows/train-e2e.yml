@@ -1,0 +1,49 @@
+name: Train API E2E Test
+
+on:
+    schedule:
+        # 毎日 18:00 JST (09:00 UTC) に実行
+        - cron: '0 9 * * *'
+    workflow_dispatch: # 手動実行用
+
+jobs:
+    e2e-test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.13'
+
+            - name: Install uv
+              run: |
+                  pip install --upgrade pip
+                  pip install uv
+
+            - name: Install dependencies
+              working-directory: ./django_api
+              run: |
+                  uv pip install --system .
+                  uv pip install --system pytest pytest-django pytest-cov pytest-mock
+
+            - name: Create test environment
+              working-directory: ./django_api
+              run: |
+                  echo "SECRET_KEY=test-secret-key-for-e2e-testing" > .env
+                  echo "DEBUG=False" >> .env
+                  echo "ALLOWED_HOSTS=localhost,testserver" >> .env
+
+            - name: Run E2E tests
+              working-directory: ./django_api
+              env:
+                  DJANGO_SETTINGS_MODULE: django_api.settings
+              run: |
+                  echo "🧪 Train API E2Eテスト実行中..."
+                  echo "Yahoo!乗換案内のJSON構造変更を検知します"
+                  python -m pytest tests/train/test_yahoo_client_e2e.py -v -m e2e
+                  echo "✅ E2Eテスト完了"

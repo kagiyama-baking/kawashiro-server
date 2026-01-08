@@ -49,4 +49,6 @@ urlpatterns = [
     path("weather/", include("weather.urls")),
     # AIアシスタント関連APIのURL（assistant.urlsにルーティング）
     path("assistant/", include("assistant.urls")),
+    # 路線運行情報関連APIのURL（train.urlsにルーティング）
+    path("train/", include("train.urls")),
 ]
