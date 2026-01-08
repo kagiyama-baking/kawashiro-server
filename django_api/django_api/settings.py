@@ -83,6 +83,8 @@ INSTALLED_APPS = [
     "media",  # 画像処理などのメディア関連機能
     "tts",  # Text-to-Speech機能
     "weather",  # 気象庁天気予報機能
+    "assistant",  # AIアシスタント機能
+    "train",  # 路線運行情報機能
 ]
 
 # ミドルウェアの設定
@@ -288,6 +290,8 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
+        {"name": "assistant", "description": "AIアシスタントAPI"},
+        {"name": "train", "description": "路線運行情報API"},
     ],
 }
 
@@ -296,3 +300,9 @@ SPECTACULAR_SETTINGS = {
 # ============================================================
 TTS_SERVICE_URL = os.getenv("TTS_SERVICE_URL", "http://sbv2-api:5000")
 TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "60"))
+
+# ============================================================
+# OpenAI設定
+# ============================================================
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

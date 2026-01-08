@@ -181,16 +181,18 @@ jobs:
                   tailscale status
 
             - name: Deploy to production server
+              env:
+                  DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
               run: |
                   echo "🚀 本番サーバーへデプロイ開始..."
 
                   ssh -o StrictHostKeyChecking=accept-new \
                       -o ConnectTimeout=30 \
-                      ${{ secrets.SSH_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+                      ${{ secrets.SSH_USER }}@${{ secrets.DEPLOY_HOST }} << ENDSSH
 
                   set -e
 
-                  cd /Users/hakotsuki/Repository/kawashiro-server
+                  cd ${DEPLOY_PATH}
 
                   # 現在のsbv2_apiのコミットハッシュを取得
                   PREV_SBV2_HASH=$(git log -1 --format="%H" -- sbv2_api/ 2>/dev/null || echo "")
@@ -224,15 +226,17 @@ jobs:
                   ENDSSH
 
             - name: Health check
+              env:
+                  DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
               run: |
                   echo "🏥 ヘルスチェック実行中..."
                   sleep 10
 
                   ssh -o StrictHostKeyChecking=accept-new \
                       -o ConnectTimeout=30 \
-                      ${{ secrets.SSH_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+                      ${{ secrets.SSH_USER }}@${{ secrets.DEPLOY_HOST }} << ENDSSH
 
-                  cd /Users/hakotsuki/Repository/kawashiro-server
+                  cd ${DEPLOY_PATH}
                   docker compose -f docker-compose-prod.yml ps
 
                   ENDSSH
