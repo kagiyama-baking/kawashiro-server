@@ -144,10 +144,11 @@ jobs:
               run: |
                   echo "🧪 テスト実行中..."
                   python -m pytest tests/ -v --tb=short \
-                    --cov=user --cov=onedrive --cov=outlook --cov=core --cov=ms_graph \
+                    --cov=user --cov=onedrive --cov=outlook --cov=core --cov=ms_graph --cov=train \
                     --cov-report=term-missing \
                     --cov-report=html \
-                    --cov-fail-under=80
+                    --cov-fail-under=80 \
+                    -m "not e2e"
                   echo "✅ テスト完了"
 
             - name: Upload coverage report

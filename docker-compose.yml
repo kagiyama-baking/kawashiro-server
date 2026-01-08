@@ -49,6 +49,7 @@ services:
             - ./django_api/media:/django_api/media
             - ./django_api/tts:/django_api/tts
             - ./django_api/weather:/django_api/weather
+            - ./django_api/assistant:/django_api/assistant
             # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
             # ログの永続化

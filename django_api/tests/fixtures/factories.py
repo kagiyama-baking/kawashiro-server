@@ -14,8 +14,7 @@ class UserFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = User
 
-    username = factory.Sequence(lambda n: f"user{n}")
-    email = factory.LazyAttribute(lambda obj: f"{obj.username}@example.com")
+    email = factory.Sequence(lambda n: f"user{n}@example.com")
     name = factory.Faker("name", locale="ja_JP")
     password = factory.PostGenerationMethodCall("set_password", "defaultpassword123")
     is_active = True
@@ -44,9 +43,9 @@ class UserFactory(factory.django.DjangoModelFactory):
 class SuperUserFactory(UserFactory):
     """スーパーユーザーのファクトリ"""
 
+    email = factory.Sequence(lambda n: f"admin{n}@example.com")
     is_superuser = True
     is_staff = True
-    username = factory.Sequence(lambda n: f"admin{n}")
 
 
 class FileUploadFactory:
