@@ -65,7 +65,6 @@ class TestYahooTransitClientE2E:
         response = requests.get(
             url,
             timeout=30,
-            headers=YahooTransitClient.DEFAULT_HEADERS,
         )
 
         # __NEXT_DATA__ の存在確認

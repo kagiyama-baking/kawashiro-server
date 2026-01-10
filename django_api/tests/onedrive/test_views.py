@@ -10,7 +10,7 @@ from rest_framework import status
 class TestOneDriveUploadView:
     """OneDriveUploadViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_file_success(
         self, mock_client_class, authenticated_client, mock_file
     ):
@@ -64,12 +64,12 @@ class TestOneDriveUploadView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "file" in response.data
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_file_with_configuration_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import ConfigurationError
+        from msgraph_config.exceptions import ConfigurationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -86,12 +86,12 @@ class TestOneDriveUploadView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_file_with_authentication_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -108,7 +108,7 @@ class TestOneDriveUploadView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_file_with_upload_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
@@ -128,12 +128,12 @@ class TestOneDriveUploadView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"] == "File too large"
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_file_with_network_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -155,7 +155,7 @@ class TestOneDriveUploadView:
 class TestOneDriveFolderView:
     """OneDriveFolderViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_folder_success(self, mock_client_class, authenticated_client):
         """フォルダの作成が成功すること"""
         mock_client = Mock()
@@ -197,7 +197,7 @@ class TestOneDriveFolderView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "folder_name" in response.data
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_folder_with_folder_operation_error(
         self, mock_client_class, authenticated_client
     ):
@@ -222,7 +222,7 @@ class TestOneDriveFolderView:
 class TestOneDriveListView:
     """OneDriveListViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_success(self, mock_client_class, authenticated_client):
         """ファイル一覧の取得が成功すること"""
         mock_client = Mock()
@@ -255,7 +255,7 @@ class TestOneDriveListView:
         # クライアントメソッドが正しく呼ばれたことを確認
         mock_client.list_files.assert_called_once_with(folder_path="/documents")
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_root_directory(self, mock_client_class, authenticated_client):
         """ルートディレクトリのファイル一覧が取得できること"""
         mock_client = Mock()
@@ -277,7 +277,7 @@ class TestOneDriveListView:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_with_list_operation_error(
         self, mock_client_class, authenticated_client
     ):
@@ -295,7 +295,7 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"] == "Folder not found"
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_file_with_unexpected_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
@@ -313,7 +313,7 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "ファイルのアップロード中に問題が発生しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_folder_with_unexpected_error(
         self, mock_client_class, authenticated_client
     ):
@@ -329,7 +329,7 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "フォルダの作成中に問題が発生しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_with_unexpected_error(
         self, mock_client_class, authenticated_client
     ):
@@ -343,12 +343,12 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "ファイル一覧の取得中に問題が発生しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_folder_with_configuration_error(
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import ConfigurationError
+        from msgraph_config.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -359,12 +359,12 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_folder_with_authentication_error(
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -377,12 +377,12 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_folder_with_network_error(
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -395,12 +395,12 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_with_configuration_error(
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import ConfigurationError
+        from msgraph_config.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -409,12 +409,12 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_with_authentication_error(
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -425,12 +425,12 @@ class TestOneDriveListView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_list_files_with_network_error(
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -446,7 +446,7 @@ class TestOneDriveListView:
 class TestOneDriveDeleteView:
     """OneDriveDeleteViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_success(self, mock_client_class, authenticated_client):
         """ファイルの削除が成功すること"""
         mock_client = Mock()
@@ -480,12 +480,12 @@ class TestOneDriveDeleteView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "file_path" in response.data
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_configuration_error(
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import ConfigurationError
+        from msgraph_config.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -496,12 +496,12 @@ class TestOneDriveDeleteView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_authentication_error(
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -514,7 +514,7 @@ class TestOneDriveDeleteView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_delete_error(
         self, mock_client_class, authenticated_client
     ):
@@ -532,12 +532,12 @@ class TestOneDriveDeleteView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"] == "File not found"
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_network_error(
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -550,7 +550,7 @@ class TestOneDriveDeleteView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_unexpected_error(
         self, mock_client_class, authenticated_client
     ):
@@ -566,7 +566,7 @@ class TestOneDriveDeleteView:
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "ファイルの削除中に問題が発生しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_permanent_delete_true(
         self, mock_client_class, authenticated_client
     ):
@@ -587,7 +587,7 @@ class TestOneDriveDeleteView:
             file_path="/test_folder/test_file.txt", permanent_delete=True
         )
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_with_permanent_delete_false(
         self, mock_client_class, authenticated_client
     ):
@@ -608,7 +608,7 @@ class TestOneDriveDeleteView:
             file_path="/test_folder/test_file.txt", permanent_delete=False
         )
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_delete_file_without_permanent_delete_parameter(
         self, mock_client_class, authenticated_client
     ):
@@ -633,7 +633,7 @@ class TestOneDriveDeleteView:
 class TestOneDriveDownloadView:
     """OneDriveDownloadViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_download_file_success(self, mock_client_class, authenticated_client):
         """ファイルのダウンロードが成功すること"""
         mock_client = Mock()
@@ -675,7 +675,7 @@ class TestOneDriveDownloadView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "file_path" in response.data
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_download_nonexistent_file_fails(
         self, mock_client_class, authenticated_client
     ):
@@ -695,12 +695,12 @@ class TestOneDriveDownloadView:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert response.data["error"] == "File not found"
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_download_with_authentication_error(
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -715,10 +715,10 @@ class TestOneDriveDownloadView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_download_with_network_error(self, mock_client_class, authenticated_client):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -736,7 +736,7 @@ class TestOneDriveDownloadView:
 class TestOneDriveCreateUploadSessionView:
     """OneDriveCreateUploadSessionViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_success(
         self, mock_client_class, authenticated_client
     ):
@@ -807,12 +807,12 @@ class TestOneDriveCreateUploadSessionView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "file_size" in response.data
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_with_configuration_error(
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import ConfigurationError
+        from msgraph_config.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -828,12 +828,12 @@ class TestOneDriveCreateUploadSessionView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_with_authentication_error(
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -853,7 +853,7 @@ class TestOneDriveCreateUploadSessionView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_with_upload_error(
         self, mock_client_class, authenticated_client
     ):
@@ -878,12 +878,12 @@ class TestOneDriveCreateUploadSessionView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"] == "Failed to create session"
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_with_network_error(
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -903,7 +903,7 @@ class TestOneDriveCreateUploadSessionView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_with_unexpected_error(
         self, mock_client_class, authenticated_client
     ):
@@ -927,7 +927,7 @@ class TestOneDriveCreateUploadSessionView:
             in response.data["error"]
         )
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_create_upload_session_with_default_folder_path(
         self, mock_client_class, authenticated_client
     ):
@@ -959,7 +959,7 @@ class TestOneDriveCreateUploadSessionView:
 class TestOneDriveUploadChunkView:
     """OneDriveUploadChunkViewのテストクラス"""
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_in_progress(
         self, mock_client_class, authenticated_client, mock_file
     ):
@@ -985,7 +985,7 @@ class TestOneDriveUploadChunkView:
         assert response.data["status"] == "in_progress"
         assert response.data["next_expected_ranges"] == ["10485760-"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_complete(
         self, mock_client_class, authenticated_client, mock_file
     ):
@@ -1094,12 +1094,12 @@ class TestOneDriveUploadChunkView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "total_size" in response.data
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_with_configuration_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import ConfigurationError
+        from msgraph_config.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -1117,12 +1117,12 @@ class TestOneDriveUploadChunkView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_with_authentication_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import AuthenticationError
+        from msgraph_config.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -1142,7 +1142,7 @@ class TestOneDriveUploadChunkView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "OneDriveへの認証に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_with_upload_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
@@ -1167,12 +1167,12 @@ class TestOneDriveUploadChunkView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"] == "Chunk upload failed"
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_with_network_error(
         self, mock_client_class, authenticated_client, mock_file
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from ms_graph.exceptions import NetworkError
+        from msgraph_config.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -1192,7 +1192,7 @@ class TestOneDriveUploadChunkView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "OneDriveへの接続に失敗しました" in response.data["error"]
 
-    @patch("onedrive.views.MSGraphClient")
+    @patch("onedrive.views.OneDriveMSGraphClient")
     def test_upload_chunk_with_unexpected_error(
         self, mock_client_class, authenticated_client, mock_file
     ):

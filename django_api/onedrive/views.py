@@ -10,7 +10,12 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+from msgraph_client import OneDriveMSGraphClient
+from msgraph_config.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NetworkError,
+)
 
 from .exceptions import (
     DeleteError,
@@ -20,7 +25,6 @@ from .exceptions import (
     OneDriveFileNotFoundError,
     UploadError,
 )
-from .ms_graph_client import MSGraphClient
 from .serializers import (
     CreateFolderSerializer,
     CreateUploadSessionSerializer,
@@ -87,7 +91,7 @@ class OneDriveUploadView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # ファイルの内容を読み込み
             file_content = file.read()
@@ -195,7 +199,7 @@ class OneDriveFolderView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # フォルダを作成
             result = client.create_folder(
@@ -317,7 +321,7 @@ class OneDriveListView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # ファイル一覧を取得
             files = client.list_files(folder_path=folder_path)
@@ -433,7 +437,7 @@ class OneDriveDeleteView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # ファイルを削除
             client.delete_file(file_path=file_path, permanent_delete=permanent_delete)
@@ -535,7 +539,7 @@ class OneDriveDownloadView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # ファイルをダウンロード
             file_content, file_name = client.download_file(file_path=file_path)
@@ -645,7 +649,7 @@ class OneDriveCreateUploadSessionView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # アップロードセッションを作成
             upload_url = client._create_upload_session(
@@ -762,7 +766,7 @@ class OneDriveUploadChunkView(APIView):
 
         try:
             # MS Graphクライアントを作成
-            client = MSGraphClient()
+            client = OneDriveMSGraphClient()
 
             # チャンクデータを読み込み
             chunk_data = chunk.read()

@@ -20,7 +20,12 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
     -   📁 **Media**: メディアファイル管理機能
     -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
     -   🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
-    -   🔗 **MS Graph**: Microsoft Graph API 共通設定・認証モジュール
+    -   🚃 **Train**: 路線運行情報 API（Yahoo! 路線情報から遅延・運休情報を取得）
+    -   🎙️ **Greeting**: 朝のあいさつ API（天気・予定・運行情報を統合して AI が挨拶を生成、TTS 音声合成対応）
+    -   🤖 **LLM Client**: OpenAI API クライアント（テキスト生成）
+    -   🔧 **LLM Config**: LLM 設定管理
+    -   🔗 **MS Graph Config**: Microsoft Graph API 共通設定・認証モジュール
+    -   🔗 **MS Graph Client**: OneDrive/Outlook 統一クライアント
     -   🛠️ **Core**: 共通機能・ユーティリティ
 -   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
 -   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
@@ -75,34 +80,18 @@ kawashiro-server/
 │   │   ├── asgi.py             # ASGIエントリーポイント
 │   │   └── wsgi.py             # WSGIエントリーポイント
 │   ├── user/                   # ユーザー認証アプリ
-│   │   ├── models.py           # ユーザーモデル
-│   │   ├── serializers.py      # シリアライザー
-│   │   ├── views.py            # APIビュー
-│   │   └── tests.py            # テストコード
-│   ├── onedrive/               # OneDrive統合アプリ（Microsoft Graph API）
-│   │   ├── models.py           # 設定モデル（暗号化保存）
-│   │   ├── ms_graph_client.py  # Microsoft Graph APIクライアント
-│   │   ├── encryption.py       # 暗号化ユーティリティ
-│   │   ├── views.py            # APIビュー
-│   │   └── tests.py            # テストコード
+│   ├── onedrive/               # OneDrive統合アプリ
+│   ├── outlook/                # Outlook Calendar予定取得アプリ
 │   ├── media/                  # メディアファイル管理アプリ
-│   │   ├── models.py           # メディアモデル
-│   │   ├── views.py            # APIビュー
-│   │   └── tests.py            # テストコード
-│   ├── core/                   # 共通コアアプリ
-│   │   ├── models.py           # 共通モデル
-│   │   └── views.py            # 共通ビュー
+│   ├── core/                   # 共通コアアプリ（暗号化ユーティリティ等）
 │   ├── tts/                    # TTS読み上げアプリ（sbv2-apiプロキシ）
-│   │   ├── views.py            # APIビュー
-│   │   ├── serializers.py      # シリアライザー（Swagger UI対応）
-│   │   ├── renderers.py        # カスタムレンダラー（音声データ用）
-│   │   └── urls.py             # URLルーティング
 │   ├── weather/                # 気象庁天気予報アプリ
-│   │   ├── jma_client.py       # 気象庁APIクライアント
-│   │   ├── views.py            # APIビュー
-│   │   ├── serializers.py      # シリアライザー
-│   │   ├── exceptions.py       # カスタム例外
-│   │   └── urls.py             # URLルーティング
+│   ├── train/                  # 路線運行情報アプリ（Yahoo!路線情報）
+│   ├── greeting/               # 朝のあいさつアプリ（AI生成・TTS対応）
+│   ├── llm_client/             # OpenAI APIクライアント
+│   ├── llm_config/             # LLM設定管理
+│   ├── msgraph_client/         # Microsoft Graph統一クライアント
+│   ├── msgraph_config/         # Microsoft Graph設定・認証管理
 │   ├── tests/                  # 統合テストコード
 │   └── htmlcov/                # カバレッジレポート
 │
@@ -121,10 +110,6 @@ kawashiro-server/
 │   │   ├── backup_django.py    # Django APIバックアップ
 │   │   └── restore_immich.py   # Immichリストア
 │   └── tests/                  # テストコード
-│       ├── test_backup_immich.py
-│       ├── test_backup_django.py
-│       ├── test_restore_immich.py
-│       └── test_backup_all.py
 │
 ├── docs/                       # ドキュメント
 │   └── archtecture.drawio      # アーキテクチャ図
@@ -246,11 +231,16 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 # 本番環境では十分にランダムな文字列を設定してください
 ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY
 
-# OneDrive統合機能（オプション）
-# Microsoft Graph API を使用する場合に設定
+# Microsoft Graph API（OneDrive/Outlook統合機能）
 AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
 AZURE_CLIENT_SECRET=your-client-secret
+
+# OpenAI API（朝のあいさつ機能などのAI生成に使用）
+OPENAI_API_KEY=your-openai-api-key
+
+# Style-BERT-VITS2 API（音声合成機能）
+TTS_API_URL=http://sbv2-api:5000
 ```
 
 ### バックアップシステム設定
@@ -974,14 +964,16 @@ docker compose exec [サービス名] ps aux
 
 ### 外部サービス連携
 
--   **Microsoft Graph API**: OneDrive 連携
+-   **Microsoft Graph API**: OneDrive/Outlook 連携
+-   **OpenAI API**: テキスト生成（朝のあいさつ機能）
 -   **気象庁天気予報 API**: 天気予報データ取得
+-   **Yahoo! 路線情報**: 路線運行情報（遅延・運休情報）
 -   **Valkey (Redis)**: キャッシュ・セッション管理
 -   **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
 
 ## 謝辞
 
-このプロジェクトは以下のオープンソースプロジェクトを使用しています：
+このプロジェクトは以下のオープンソースプロジェクト・サービスを使用しています：
 
 -   [Immich](https://github.com/immich-app/immich) - セルフホスト型写真管理プラットフォーム
 -   [Django](https://www.djangoproject.com/) - Python Web フレームワーク
@@ -991,3 +983,4 @@ docker compose exec [サービス名] ps aux
 -   [Valkey](https://valkey.io/) - Redis 互換インメモリデータストア
 -   [uv](https://github.com/astral-sh/uv) - 高速 Python パッケージマネージャー
 -   [Style-BERT-VITS2](https://github.com/litagin02/Style-Bert-VITS2) - 高品質日本語音声合成エンジン
+-   [OpenAI](https://openai.com/) - AI テキスト生成 API

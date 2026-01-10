@@ -1,4 +1,4 @@
-# Migration to remove MSGraphConfig from onedrive (moved to ms_graph)
+# Migration to remove MSGraphConfig from onedrive (moved to msgraph_config)
 
 from django.db import migrations
 
@@ -7,13 +7,13 @@ class Migration(migrations.Migration):
     """
     onedrive.MSGraphConfigモデルを削除するマイグレーション
 
-    実際のテーブルはms_graphアプリに移動済みのため、
+    実際のテーブルはmsgraph_configアプリに移動済みのため、
     Djangoの状態からモデル定義を削除するだけです。
     """
 
     dependencies = [
         ("onedrive", "0002_multiple_configs"),
-        ("ms_graph", "0001_initial"),
+        ("msgraph_config", "0001_initial"),
     ]
 
     operations = [
