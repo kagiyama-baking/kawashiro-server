@@ -3,12 +3,17 @@
 from rest_framework import serializers
 
 
-class MorningGreetingResponseSerializer(serializers.Serializer):
-    """朝の挨拶レスポンスのシリアライザー."""
+class GreetingResponseSerializer(serializers.Serializer):
+    """挨拶レスポンスのシリアライザー."""
 
     greeting_text = serializers.CharField(
         help_text="生成された挨拶テキスト",
     )
+
+
+# 後方互換性のためのエイリアス
+MorningGreetingResponseSerializer = GreetingResponseSerializer
+EveningGreetingResponseSerializer = GreetingResponseSerializer
 
 
 class TodayInfoResponseSerializer(serializers.Serializer):
