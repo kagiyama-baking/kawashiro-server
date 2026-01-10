@@ -12,7 +12,6 @@ REST API で複数の機能を提供するバックエンドサーバです。
 | media | `/media/` | メディアファイル管理 |
 | tts | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） |
 | weather | `/weather/` | 気象庁天気予報 |
-| train | `/train/` | 路線運行情報（Yahoo! 路線情報） |
 | greeting | `/greeting/` | 朝のあいさつ（AI 生成・TTS 対応） |
 
 ## セットアップ
@@ -87,9 +86,8 @@ Django 管理画面（`http://localhost:8000/admin/`）で以下の設定を行�
 | 項目 | 説明 |
 |------|------|
 | 予報区コード | 6 桁の数字（例: `130010` = 東京地方） |
-| 路線 ID | カンマ区切りの路線 ID（例: `131,22,35`） |
 | システムプロンプト | AI のキャラクター設定 |
-| ユーザープロンプト | `{{weather}}`, `{{events}}`, `{{diainfo}}` をプレースホルダーとして使用 |
+| ユーザープロンプト | `{{datetime}}`, `{{weather}}`, `{{events}}` をプレースホルダーとして使用 |
 | TTS 有効 | 音声合成を有効にするか |
 | TTS 設定 | モデル名、スタイル、速度など |
 
@@ -181,9 +179,22 @@ Django 管理画面から MS Graph 設定を作成し、有効にしてくださ
 
 Django 管理画面から朝のあいさつ設定を作成してください。
 
+## 外部サービス・API
+
+本プロジェクトは以下の外部サービス・API を使用しています。利用時は各サービスの規約を遵守してください。
+
+| サービス | 用途 | ライセンス・規約 |
+|----------|------|------------------|
+| [気象庁天気予報](https://www.jma.go.jp/bosai/forecast/) | 天気予報データ取得 | [政府標準利用規約（第2.0版）](https://www.jma.go.jp/jma/kishou/info/coment.html) - 出典記載必須 |
+| [holidays-jp API](https://github.com/holidays-jp/api) | 日本の祝日判定 | MIT License |
+| [OpenAI API](https://platform.openai.com/docs/) | AI テキスト生成 | 商用 API - 要 API キー |
+| [Microsoft Graph API](https://learn.microsoft.com/ja-jp/graph/overview) | OneDrive/Outlook 連携 | 商用 API - 要 Azure AD 設定 |
+
+### 注意事項
+
+- **気象庁データ**: 利用時は「出典：気象庁ホームページ」の記載が必要です
+
 ## 参考資料
 
 - [Django REST Framework](https://www.django-rest-framework.org/)
-- [Microsoft Graph API](https://learn.microsoft.com/ja-jp/graph/overview)
-- [気象庁天気予報 API](https://www.jma.go.jp/bosai/forecast/)
-- [OpenAI API](https://platform.openai.com/docs/)
+- [Style-BERT-VITS2](https://github.com/litagin02/Style-Bert-VITS2) - 音声合成エンジン

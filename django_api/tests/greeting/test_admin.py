@@ -51,7 +51,6 @@ class TestMorningGreetingConfigAdmin:
         """設定が既に存在する場合は追加不可"""
         MorningGreetingConfig.objects.create(
             area_code="130010",
-            rail_ids="131",
             system_prompt="テスト",
             user_prompt="テスト",
         )
