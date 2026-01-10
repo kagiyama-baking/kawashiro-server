@@ -53,23 +53,6 @@ class TestMorningGreetingService:
         }
 
     @pytest.fixture
-    def mock_diainfo_response(self):
-        """路線運行情報APIのモックレスポンス"""
-        return [
-            {
-                "rail_id": "131",
-                "rail_name": "JR山手線",
-                "company_name": "JR東日本",
-                "status": "平常運転",
-                "is_delayed": False,
-                "message": None,
-                "cause": None,
-                "update_time": "2025-12-24T07:00:00",
-                "error": None,
-            }
-        ]
-
-    @pytest.fixture
     def mock_openai_response(self):
         """OpenAI APIのモックレスポンス"""
         return "おはようございます、先輩。\n今日は晴れですね。最高気温は10度、最低気温は4度です。\n午後から雨が降るかもしれないので、傘を持っていくといいですよ。\n今日も頑張ってくださいね。"
@@ -82,21 +65,20 @@ class TestMorningGreetingService:
     @pytest.fixture
     def user_prompt_template(self):
         """テスト用ユーザープロンプトテンプレート"""
-        return "朝の挨拶: {{weather}} {{events}} {{diainfo}}"
+        return "朝の挨拶: {{weather}} {{events}} {{datetime}}"
 
+    @patch("greeting.services.HolidayClient")
     @patch("greeting.services.JMAWeatherClient")
     @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.YahooTransitClient")
     @patch("greeting.services.OpenAIClient")
     def test_generate_greeting_success(
         self,
         mock_openai_class,
-        mock_yahoo_class,
         mock_outlook_class,
         mock_jma_class,
+        mock_holiday_class,
         mock_weather_response,
         mock_events_response,
-        mock_diainfo_response,
         mock_openai_response,
         system_prompt,
         user_prompt_template,
@@ -111,9 +93,9 @@ class TestMorningGreetingService:
         mock_outlook.get_calendar_events.return_value = mock_events_response["events"]
         mock_outlook_class.return_value = mock_outlook
 
-        mock_yahoo = MagicMock()
-        mock_yahoo.fetch_multiple_diainfo.return_value = mock_diainfo_response
-        mock_yahoo_class.return_value = mock_yahoo
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
 
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
@@ -123,7 +105,6 @@ class TestMorningGreetingService:
         service = MorningGreetingService()
         result = service.generate_greeting(
             area_code="130010",
-            rail_ids=["131"],
             system_prompt=system_prompt,
             user_prompt=user_prompt_template,
         )
@@ -136,21 +117,19 @@ class TestMorningGreetingService:
         # 各APIが呼ばれたことを確認
         mock_jma.get_weather.assert_called_once_with("130010", 0)
         mock_outlook.get_calendar_events.assert_called_once()
-        mock_yahoo.fetch_multiple_diainfo.assert_called_once_with(["131"])
         mock_openai.generate_text.assert_called_once()
 
+    @patch("greeting.services.HolidayClient")
     @patch("greeting.services.JMAWeatherClient")
     @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.YahooTransitClient")
     @patch("greeting.services.OpenAIClient")
     def test_generate_greeting_with_empty_events(
         self,
         mock_openai_class,
-        mock_yahoo_class,
         mock_outlook_class,
         mock_jma_class,
+        mock_holiday_class,
         mock_weather_response,
-        mock_diainfo_response,
         mock_openai_response,
         system_prompt,
         user_prompt_template,
@@ -164,9 +143,9 @@ class TestMorningGreetingService:
         mock_outlook.get_calendar_events.return_value = []  # 予定なし
         mock_outlook_class.return_value = mock_outlook
 
-        mock_yahoo = MagicMock()
-        mock_yahoo.fetch_multiple_diainfo.return_value = mock_diainfo_response
-        mock_yahoo_class.return_value = mock_yahoo
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
 
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
@@ -175,7 +154,6 @@ class TestMorningGreetingService:
         service = MorningGreetingService()
         result = service.generate_greeting(
             area_code="130010",
-            rail_ids=["131"],
             system_prompt=system_prompt,
             user_prompt=user_prompt_template,
         )
@@ -202,7 +180,6 @@ class TestMorningGreetingService:
         with pytest.raises(JMANetworkError):
             service.generate_greeting(
                 area_code="130010",
-                rail_ids=["131"],
                 system_prompt=system_prompt,
                 user_prompt=user_prompt_template,
             )
@@ -211,35 +188,30 @@ class TestMorningGreetingService:
         """ユーザープロンプトが正しく構築される"""
         service = MorningGreetingService()
 
-        template = "朝の挨拶: {{weather}} {{events}} {{diainfo}}"
+        template = "朝の挨拶: {{weather}} {{events}}"
         weather_data = {"area_name": "東京地方", "weather": "晴れ"}
         events_data = [{"subject": "会議"}]
-        diainfo_data = [{"rail_name": "JR山手線", "is_delayed": False}]
 
-        prompt = service._build_user_prompt(
-            template, weather_data, events_data, diainfo_data
-        )
+        prompt = service._build_user_prompt(template, weather_data, events_data)
 
         assert "朝の挨拶" in prompt
         assert "東京地方" in prompt
         assert "会議" in prompt
-        assert "JR山手線" in prompt
 
+    @patch("greeting.services.HolidayClient")
     @patch("greeting.services.JMAWeatherClient")
     @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.YahooTransitClient")
     @patch("greeting.services.OpenAIClient")
     @patch("greeting.services.TTSClient")
     def test_generate_greeting_with_tts(
         self,
         mock_tts_class,
         mock_openai_class,
-        mock_yahoo_class,
         mock_outlook_class,
         mock_jma_class,
+        mock_holiday_class,
         mock_weather_response,
         mock_events_response,
-        mock_diainfo_response,
         mock_openai_response,
         system_prompt,
         user_prompt_template,
@@ -254,9 +226,9 @@ class TestMorningGreetingService:
         mock_outlook.get_calendar_events.return_value = mock_events_response["events"]
         mock_outlook_class.return_value = mock_outlook
 
-        mock_yahoo = MagicMock()
-        mock_yahoo.fetch_multiple_diainfo.return_value = mock_diainfo_response
-        mock_yahoo_class.return_value = mock_yahoo
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
 
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
@@ -280,7 +252,6 @@ class TestMorningGreetingService:
         service = MorningGreetingService()
         result = service.generate_greeting(
             area_code="130010",
-            rail_ids=["131"],
             system_prompt=system_prompt,
             user_prompt=user_prompt_template,
             tts_options=tts_options,
@@ -300,19 +271,18 @@ class TestMorningGreetingService:
         assert call_kwargs["style"] == "Happy"
         assert call_kwargs["speed"] == 1.2
 
+    @patch("greeting.services.HolidayClient")
     @patch("greeting.services.JMAWeatherClient")
     @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.YahooTransitClient")
     @patch("greeting.services.OpenAIClient")
     def test_generate_greeting_without_tts(
         self,
         mock_openai_class,
-        mock_yahoo_class,
         mock_outlook_class,
         mock_jma_class,
+        mock_holiday_class,
         mock_weather_response,
         mock_events_response,
-        mock_diainfo_response,
         mock_openai_response,
         system_prompt,
         user_prompt_template,
@@ -326,9 +296,9 @@ class TestMorningGreetingService:
         mock_outlook.get_calendar_events.return_value = mock_events_response["events"]
         mock_outlook_class.return_value = mock_outlook
 
-        mock_yahoo = MagicMock()
-        mock_yahoo.fetch_multiple_diainfo.return_value = mock_diainfo_response
-        mock_yahoo_class.return_value = mock_yahoo
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
 
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
@@ -338,7 +308,6 @@ class TestMorningGreetingService:
         service = MorningGreetingService()
         result = service.generate_greeting(
             area_code="130010",
-            rail_ids=["131"],
             system_prompt=system_prompt,
             user_prompt=user_prompt_template,
             tts_options=None,
@@ -358,28 +327,24 @@ class TestMorningGreetingService:
         # 天気データにテンプレートマーカーが含まれる場合
         weather_data = {"area_name": "東京地方", "note": "{{events}}は無視"}
         events_data = []
-        diainfo_data = []
 
-        prompt = service._build_user_prompt(
-            template, weather_data, events_data, diainfo_data
-        )
+        prompt = service._build_user_prompt(template, weather_data, events_data)
 
         # データ内の{{events}}がそのまま残っている（テンプレート置換されていない）
         assert "{{events}}は無視" in prompt
 
+    @patch("greeting.services.HolidayClient")
     @patch("greeting.services.JMAWeatherClient")
     @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.YahooTransitClient")
     @patch("greeting.services.OpenAIClient")
     def test_generate_greeting_parallel_execution(
         self,
         mock_openai_class,
-        mock_yahoo_class,
         mock_outlook_class,
         mock_jma_class,
+        mock_holiday_class,
         mock_weather_response,
         mock_events_response,
-        mock_diainfo_response,
         mock_openai_response,
         system_prompt,
         user_prompt_template,
@@ -399,10 +364,10 @@ class TestMorningGreetingService:
             time.sleep(0.1)
             return mock_events_response["events"]
 
-        def slow_diainfo(*args, **kwargs):
-            call_times.append(("diainfo", time.time()))
+        def slow_datetime(*args, **kwargs):
+            call_times.append(("datetime", time.time()))
             time.sleep(0.1)
-            return mock_diainfo_response
+            return None
 
         mock_jma = MagicMock()
         mock_jma.get_weather.side_effect = slow_weather
@@ -412,9 +377,9 @@ class TestMorningGreetingService:
         mock_outlook.get_calendar_events.side_effect = slow_events
         mock_outlook_class.return_value = mock_outlook
 
-        mock_yahoo = MagicMock()
-        mock_yahoo.fetch_multiple_diainfo.side_effect = slow_diainfo
-        mock_yahoo_class.return_value = mock_yahoo
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.side_effect = slow_datetime
+        mock_holiday_class.return_value = mock_holiday
 
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
@@ -424,7 +389,6 @@ class TestMorningGreetingService:
         start = time.time()
         result = service.generate_greeting(
             area_code="130010",
-            rail_ids=["131"],
             system_prompt=system_prompt,
             user_prompt=user_prompt_template,
         )
@@ -435,3 +399,103 @@ class TestMorningGreetingService:
         # 並列実行なら0.2秒未満（直列なら0.3秒以上）
         # 許容誤差を考慮して0.25秒未満を期待
         assert elapsed < 0.25, f"並列実行されていません: {elapsed:.2f}秒かかりました"
+
+    def test_build_user_prompt_with_datetime(self):
+        """{{datetime}}プレースホルダーが正しく置換される"""
+        service = MorningGreetingService()
+
+        template = "日時: {{datetime}} 天気: {{weather}}"
+        weather_data = {"area_name": "東京地方", "weather": "晴れ"}
+        events_data = []
+        datetime_data = {
+            "date": "2025-01-11",
+            "time": "09:30:00",
+            "day_of_week": "Saturday",
+            "day_of_week_ja": "土曜日",
+            "holiday_name": None,
+        }
+
+        prompt = service._build_user_prompt(
+            template, weather_data, events_data, datetime_data
+        )
+
+        assert "日時" in prompt
+        assert "2025-01-11" in prompt
+        assert "土曜日" in prompt
+        assert "東京地方" in prompt
+
+    def test_build_user_prompt_with_datetime_holiday(self):
+        """祝日の場合も{{datetime}}プレースホルダーが正しく置換される"""
+        service = MorningGreetingService()
+
+        template = "{{datetime}}"
+        weather_data = {}
+        events_data = []
+        datetime_data = {
+            "date": "2025-01-01",
+            "time": "08:00:00",
+            "day_of_week": "Wednesday",
+            "day_of_week_ja": "水曜日",
+            "holiday_name": "元日",
+        }
+
+        prompt = service._build_user_prompt(
+            template, weather_data, events_data, datetime_data
+        )
+
+        assert "元日" in prompt
+        assert "2025-01-01" in prompt
+        assert "水曜日" in prompt
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.JMAWeatherClient")
+    @patch("greeting.services.OutlookMSGraphClient")
+    @patch("greeting.services.OpenAIClient")
+    def test_generate_greeting_includes_datetime(
+        self,
+        mock_openai_class,
+        mock_outlook_class,
+        mock_jma_class,
+        mock_holiday_class,
+        mock_weather_response,
+        mock_events_response,
+        mock_openai_response,
+        system_prompt,
+    ):
+        """generate_greetingが日時情報を含む"""
+        mock_jma = MagicMock()
+        mock_jma.get_weather.return_value = mock_weather_response
+        mock_jma_class.return_value = mock_jma
+
+        mock_outlook = MagicMock()
+        mock_outlook.get_calendar_events.return_value = mock_events_response["events"]
+        mock_outlook_class.return_value = mock_outlook
+
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        # {{datetime}}を含むテンプレート
+        user_prompt = "日時: {{datetime}} 天気: {{weather}} 予定: {{events}}"
+
+        service = MorningGreetingService()
+        result = service.generate_greeting(
+            area_code="130010",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+
+        assert result is not None
+        assert "greeting_text" in result
+
+        # OpenAI APIに渡されたプロンプトを確認
+        call_args = mock_openai.generate_text.call_args
+        prompt_sent = call_args.kwargs["prompt"]
+
+        # 日時情報が含まれていることを確認
+        assert "date" in prompt_sent
+        assert "day_of_week" in prompt_sent

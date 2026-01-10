@@ -2,8 +2,10 @@
 
 import logging
 import re
+from datetime import datetime
 
 from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import authentication, permissions, status
@@ -17,12 +19,6 @@ from msgraph_config.exceptions import (
     ConfigurationError,
     NetworkError,
 )
-from train.exceptions import (
-    YahooNetworkError,
-    YahooParseError,
-    YahooRailNotFoundError,
-    YahooTimeoutError,
-)
 from tts.exceptions import TTSNetworkError, TTSTimeoutError
 from weather.exceptions import (
     JMAAreaNotFoundError,
@@ -31,8 +27,10 @@ from weather.exceptions import (
     JMATimeoutError,
 )
 
+from .exceptions import HolidayNetworkError, HolidayTimeoutError
+from .holiday_client import HolidayClient
 from .models import MorningGreetingConfig
-from .serializers import MorningGreetingResponseSerializer
+from .serializers import MorningGreetingResponseSerializer, TodayInfoResponseSerializer
 from .services import MorningGreetingService
 
 logger = logging.getLogger(__name__)
@@ -66,13 +64,66 @@ class MorningGreetingView(APIView):
 
 1. 天気予報API（/weather/forecast/）から本日の天気を取得
 2. 予定取得API（/outlook/events/）から本日の予定を取得
-3. 路線運行情報API（/train/diainfo/）から運行情報を取得
+3. 日時情報（日付、曜日、祝日）を取得
 4. OpenAI APIであいさつテキストを生成
+
+## プレースホルダー
+
+ユーザープロンプトで以下のプレースホルダーが使用可能です：
+
+| プレースホルダー | 内容 |
+|----------------|------|
+| `{{datetime}}` | 日時情報（日付、曜日、祝日） |
+| `{{weather}}` | 天気予報データ |
+| `{{events}}` | 本日の予定データ |
+
+### {{datetime}} の例
+
+```json
+{
+  "date": "2025-01-11",
+  "time": "09:30:00",
+  "day_of_week": "Saturday",
+  "day_of_week_ja": "土曜日",
+  "holiday_name": null
+}
+```
+
+### {{weather}} の例
+
+```json
+{
+  "area_name": "東京都 東京地方",
+  "area_code": "130010",
+  "date": "2025-01-11",
+  "weather": "晴れ　夜　くもり",
+  "weather_code": "111",
+  "temp_min": 4,
+  "temp_max": 10,
+  "pop_00_06": 10,
+  "pop_06_12": 20,
+  "pop_12_18": 30,
+  "pop_18_24": 40
+}
+```
+
+### {{events}} の例
+
+```json
+[
+  {
+    "subject": "チーム定例",
+    "start": {"dateTime": "2025-01-11T10:00:00", "timeZone": "Tokyo Standard Time"},
+    "end": {"dateTime": "2025-01-11T11:00:00", "timeZone": "Tokyo Standard Time"},
+    "location": "会議室A",
+    "is_all_day": false
+  }
+]
+```
 
 ## 注意事項
 
 - 予定がない場合、予定に関する言及はありません
-- 遅延がない場合、路線運行情報に関する言及はありません
 
 ## 音声合成
 
@@ -90,7 +141,7 @@ TTS無効の場合はJSONでテキストのみ返します。
             ),
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(
-                description="設定が見つからない / 予報区コードまたは路線IDが見つからない"
+                description="設定が見つからない / 予報区コードが見つからない"
             ),
             502: OpenApiResponse(description="外部APIへの接続エラー"),
             503: OpenApiResponse(description="サービス設定エラー"),
@@ -111,7 +162,6 @@ TTS無効の場合はJSONでテキストのみ返します。
             service = MorningGreetingService()
             result = service.generate_greeting(
                 area_code=config.area_code,
-                rail_ids=config.get_rail_ids_list(),
                 system_prompt=config.system_prompt,
                 user_prompt=config.user_prompt,
                 tts_options=config.get_tts_options(),
@@ -139,14 +189,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        except YahooRailNotFoundError as e:
-            logger.warning("路線IDが見つからない: %s", str(e))
-            return Response(
-                {"error": "指定された路線IDが見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        except (JMATimeoutError, YahooTimeoutError) as e:
+        except JMATimeoutError as e:
             logger.error("外部APIタイムアウト: %s", str(e))
             return Response(
                 {"error": "外部サービスへのリクエストがタイムアウトしました"},
@@ -163,8 +206,6 @@ TTS無効の場合はJSONでテキストのみ返します。
         except (
             JMANetworkError,
             JMAParseError,
-            YahooNetworkError,
-            YahooParseError,
             NetworkError,
         ) as e:
             logger.error("外部API接続エラー: %s", str(e))
@@ -198,5 +239,113 @@ TTS無効の場合はJSONでテキストのみ返します。
             logger.exception("予期しないエラー: %s", str(e))
             return Response(
                 {"error": "あいさつの生成中に問題が発生しました"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# 曜日の日本語マッピング
+DAY_OF_WEEK_JA = {
+    "Monday": "月曜日",
+    "Tuesday": "火曜日",
+    "Wednesday": "水曜日",
+    "Thursday": "木曜日",
+    "Friday": "金曜日",
+    "Saturday": "土曜日",
+    "Sunday": "日曜日",
+}
+
+
+class TodayInfoView(APIView):
+    """本日の日時情報API."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    renderer_classes = [JSONRenderer]
+
+    @extend_schema(
+        tags=["greeting"],
+        summary="本日の日時情報を取得",
+        description="""本日の日時情報を取得します。
+
+日本時間での日付、時刻、曜日、祝日情報を返します。
+
+## レスポンス例
+
+```json
+{
+    "date": "2025-01-11",
+    "time": "09:30:00",
+    "day_of_week": "Saturday",
+    "day_of_week_ja": "土曜日",
+    "holiday_name": null
+}
+```
+
+祝日の場合:
+
+```json
+{
+    "date": "2025-01-01",
+    "time": "08:00:00",
+    "day_of_week": "Wednesday",
+    "day_of_week_ja": "水曜日",
+    "holiday_name": "元日"
+}
+```
+""",
+        responses={
+            200: OpenApiResponse(
+                response=TodayInfoResponseSerializer,
+                description="日時情報取得成功",
+            ),
+            401: OpenApiResponse(description="認証エラー"),
+            502: OpenApiResponse(description="祝日APIへの接続エラー"),
+            504: OpenApiResponse(description="祝日APIタイムアウト"),
+        },
+    )
+    def get(self, request):
+        """本日の日時情報を取得."""
+        try:
+            now = datetime.now(timezone.get_current_timezone())
+            date_str = now.strftime("%Y-%m-%d")
+            time_str = now.strftime("%H:%M:%S")
+            day_of_week = now.strftime("%A")
+            day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
+
+            # 祝日を取得
+            holiday_client = HolidayClient()
+            holiday_name = holiday_client.get_holiday_name(date_str)
+
+            data = {
+                "date": date_str,
+                "time": time_str,
+                "day_of_week": day_of_week,
+                "day_of_week_ja": day_of_week_ja,
+                "holiday_name": holiday_name,
+            }
+
+            serializer = TodayInfoResponseSerializer(data=data)
+            serializer.is_valid(raise_exception=True)
+
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except HolidayTimeoutError as e:
+            logger.error("祝日APIタイムアウト: %s", str(e))
+            return Response(
+                {"error": "祝日APIへのリクエストがタイムアウトしました"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
+
+        except HolidayNetworkError as e:
+            logger.error("祝日API接続エラー: %s", str(e))
+            return Response(
+                {"error": "祝日APIへの接続に失敗しました"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        except Exception as e:
+            logger.exception("予期しないエラー: %s", str(e))
+            return Response(
+                {"error": "日時情報の取得中に問題が発生しました"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

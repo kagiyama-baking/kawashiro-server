@@ -144,7 +144,7 @@ jobs:
               run: |
                   echo "🧪 テスト実行中..."
                   python -m pytest tests/ -v --tb=short \
-                    --cov=user --cov=onedrive --cov=outlook --cov=core --cov=ms_graph --cov=train \
+                    --cov=user --cov=onedrive --cov=outlook --cov=core \
                     --cov-report=term-missing \
                     --cov-report=html \
                     --cov-fail-under=80 \

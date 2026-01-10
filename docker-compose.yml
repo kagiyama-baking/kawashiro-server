@@ -49,7 +49,6 @@ services:
             - ./django_api/media:/django_api/media
             - ./django_api/tts:/django_api/tts
             - ./django_api/weather:/django_api/weather
-            - ./django_api/train:/django_api/train
             - ./django_api/msgraph_config:/django_api/msgraph_config
             - ./django_api/greeting:/django_api/greeting
             - ./django_api/llm_config:/django_api/llm_config

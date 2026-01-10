@@ -12,7 +12,7 @@ class MorningGreetingConfig(models.Model):
     # singleton_key は常に 1 で、ユニーク制約により1レコードのみ許可
     singleton_key = models.PositiveSmallIntegerField(default=1, unique=True)
 
-    # 天気・路線設定
+    # 天気設定
     area_code = models.CharField(
         max_length=10,
         validators=[
@@ -23,17 +23,6 @@ class MorningGreetingConfig(models.Model):
         ],
         verbose_name="予報区コード",
         help_text="6桁の数字（例: 130010）",
-    )
-    rail_ids = models.CharField(
-        max_length=100,
-        validators=[
-            RegexValidator(
-                regex=r"^\d+(,\d+)*$",
-                message="路線IDは数字をカンマ区切りで入力してください（例: 131,22,35）",
-            ),
-        ],
-        verbose_name="路線ID（カンマ区切り）",
-        help_text="数字をカンマ区切り（例: 131,22,35）",
     )
 
     # TTS設定
@@ -91,7 +80,3 @@ class MorningGreetingConfig(models.Model):
             "noise_scale": self.tts_noise_scale,
             "noise_scale_w": self.tts_noise_scale_w,
         }
-
-    def get_rail_ids_list(self) -> list[str]:
-        """路線IDをリストで取得."""
-        return [rid.strip() for rid in self.rail_ids.split(",") if rid.strip()]
