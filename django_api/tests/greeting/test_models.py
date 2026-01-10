@@ -1,10 +1,10 @@
-"""MorningGreetingConfig モデルのテスト"""
+"""Greeting Config モデルのテスト"""
 
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
-from greeting.models import MorningGreetingConfig
+from greeting.models import EveningGreetingConfig, MorningGreetingConfig
 
 
 @pytest.mark.django_db
@@ -223,3 +223,152 @@ class TestMorningGreetingConfig:
         with pytest.raises(ValidationError) as exc_info:
             config.save()
         assert "area_code" in exc_info.value.message_dict
+
+
+@pytest.mark.django_db
+class TestEveningGreetingConfig:
+    """EveningGreetingConfig モデルのテスト"""
+
+    def test_create_config_with_required_fields(self):
+        """必須フィールドで設定を作成できる"""
+        config = EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert config.id is not None
+        assert config.system_prompt == "システムプロンプト"
+        assert config.user_prompt == "ユーザープロンプト"
+
+    def test_only_one_config_allowed(self):
+        """設定は1つしか作成できない（シングルトン）"""
+        EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト1",
+            user_prompt="ユーザープロンプト1",
+        )
+
+        # save()でfull_clean()が呼ばれるため、ValidationErrorになる
+        with pytest.raises((IntegrityError, ValidationError)):
+            EveningGreetingConfig.objects.create(
+                system_prompt="システムプロンプト2",
+                user_prompt="ユーザープロンプト2",
+            )
+
+    def test_tts_enabled_default_is_false(self):
+        """tts_enabled のデフォルト値は False"""
+        config = EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert config.tts_enabled is False
+
+    def test_tts_options_default_values(self):
+        """TTS オプションのデフォルト値が正しく設定される"""
+        config = EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert config.tts_model == ""
+        assert config.tts_style == "Neutral"
+        assert config.tts_style_weight == 1.0
+        assert config.tts_speed == 1.0
+        assert config.tts_sdp_ratio == 0.2
+        assert config.tts_noise_scale == 0.6
+        assert config.tts_noise_scale_w == 0.8
+
+    def test_create_config_with_tts_enabled(self):
+        """音声合成を有効にした設定を作成できる"""
+        config = EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+            tts_enabled=True,
+            tts_model="test_model",
+            tts_style="Happy",
+            tts_style_weight=1.5,
+            tts_speed=1.2,
+        )
+
+        assert config.tts_enabled is True
+        assert config.tts_model == "test_model"
+        assert config.tts_style == "Happy"
+        assert config.tts_style_weight == 1.5
+        assert config.tts_speed == 1.2
+
+    def test_str_returns_verbose_name(self):
+        """__str__ は「夜のあいさつ設定」を返す"""
+        config = EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert str(config) == "夜のあいさつ設定"
+
+    def test_verbose_name(self):
+        """verbose_name が正しく設定されている"""
+        assert EveningGreetingConfig._meta.verbose_name == "夜のあいさつ設定"
+        assert EveningGreetingConfig._meta.verbose_name_plural == "夜のあいさつ設定"
+
+    def test_get_solo_creates_if_not_exists(self):
+        """get_solo() は設定がなければ None を返す"""
+        config = EveningGreetingConfig.get_solo()
+        assert config is None
+
+    def test_get_solo_returns_existing(self):
+        """get_solo() は既存の設定を返す"""
+        created = EveningGreetingConfig.objects.create(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        config = EveningGreetingConfig.get_solo()
+        assert config.id == created.id
+
+    # get_tts_options() メソッド
+
+    def test_get_tts_options_when_disabled(self):
+        """get_tts_options(): TTS無効時は None を返す"""
+        config = EveningGreetingConfig(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+            tts_enabled=False,
+        )
+        assert config.get_tts_options() is None
+
+    def test_get_tts_options_when_enabled(self):
+        """get_tts_options(): TTS有効時は設定を辞書で返す"""
+        config = EveningGreetingConfig(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+            tts_enabled=True,
+            tts_model="test_model",
+            tts_style="Happy",
+            tts_style_weight=1.5,
+            tts_speed=1.2,
+            tts_sdp_ratio=0.3,
+            tts_noise_scale=0.5,
+            tts_noise_scale_w=0.7,
+        )
+        options = config.get_tts_options()
+
+        assert options is not None
+        assert options["model"] == "test_model"
+        assert options["style"] == "Happy"
+        assert options["style_weight"] == 1.5
+        assert options["speed"] == 1.2
+        assert options["sdp_ratio"] == 0.3
+        assert options["noise_scale"] == 0.5
+        assert options["noise_scale_w"] == 0.7
+
+    def test_get_tts_options_model_empty_returns_none(self):
+        """get_tts_options(): tts_model が空文字の場合は model が None"""
+        config = EveningGreetingConfig(
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+            tts_enabled=True,
+            tts_model="",
+        )
+        options = config.get_tts_options()
+
+        assert options["model"] is None

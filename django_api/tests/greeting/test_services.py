@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from greeting.services import MorningGreetingService
+from greeting.services import EveningGreetingService, MorningGreetingService
 
 
 class TestMorningGreetingService:
@@ -485,6 +485,216 @@ class TestMorningGreetingService:
         service = MorningGreetingService()
         result = service.generate_greeting(
             area_code="130010",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+
+        assert result is not None
+        assert "greeting_text" in result
+
+        # OpenAI APIに渡されたプロンプトを確認
+        call_args = mock_openai.generate_text.call_args
+        prompt_sent = call_args.kwargs["prompt"]
+
+        # 日時情報が含まれていることを確認
+        assert "date" in prompt_sent
+        assert "day_of_week" in prompt_sent
+
+
+class TestEveningGreetingService:
+    """EveningGreetingServiceのテスト"""
+
+    @pytest.fixture
+    def mock_openai_response(self):
+        """OpenAI APIのモックレスポンス"""
+        return "おつかれさまでした、先輩。\n今日も一日お疲れ様でした。\nゆっくり休んでくださいね。"
+
+    @pytest.fixture
+    def system_prompt(self):
+        """テスト用システムプロンプト"""
+        return "テスト用システムプロンプト"
+
+    @pytest.fixture
+    def user_prompt_template(self):
+        """テスト用ユーザープロンプトテンプレート"""
+        return "夜の挨拶: {{datetime}}"
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.OpenAIClient")
+    def test_generate_greeting_success(
+        self,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_openai_response,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """正常系: 挨拶が生成される"""
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        # サービス実行
+        service = EveningGreetingService()
+        result = service.generate_greeting(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template,
+        )
+
+        # 検証
+        assert result is not None
+        assert "greeting_text" in result
+        assert result["greeting_text"] == mock_openai_response
+
+        # OpenAIが呼ばれたことを確認
+        mock_openai.generate_text.assert_called_once()
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.OpenAIClient")
+    @patch("greeting.services.TTSClient")
+    def test_generate_greeting_with_tts(
+        self,
+        mock_tts_class,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_openai_response,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """TTS付きで挨拶が生成される"""
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        mock_tts = MagicMock()
+        mock_tts.synthesize.return_value = b"RIFF....WAVEfmt "
+        mock_tts_class.return_value = mock_tts
+
+        tts_options = {
+            "model": "test_model",
+            "style": "Happy",
+            "style_weight": 1.0,
+            "speed": 1.2,
+            "sdp_ratio": 0.2,
+            "noise_scale": 0.6,
+            "noise_scale_w": 0.8,
+        }
+
+        service = EveningGreetingService()
+        result = service.generate_greeting(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template,
+            tts_options=tts_options,
+        )
+
+        # 検証
+        assert result is not None
+        assert "greeting_text" in result
+        assert "audio_data" in result
+        assert result["audio_data"] == b"RIFF....WAVEfmt "
+
+        # TTSが呼ばれたことを確認
+        mock_tts.synthesize.assert_called_once()
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.OpenAIClient")
+    def test_generate_greeting_without_tts(
+        self,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_openai_response,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """TTS無しの場合は音声データがない"""
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        service = EveningGreetingService()
+        result = service.generate_greeting(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template,
+            tts_options=None,
+        )
+
+        # 検証
+        assert result is not None
+        assert "greeting_text" in result
+        assert "audio_data" not in result
+
+    def test_build_user_prompt(self):
+        """ユーザープロンプトが正しく構築される"""
+        service = EveningGreetingService()
+
+        template = "夜の挨拶: {{datetime}}"
+        datetime_data = {
+            "date": "2025-01-11",
+            "time": "21:30:00",
+            "day_of_week": "Saturday",
+            "day_of_week_ja": "土曜日",
+            "holiday_name": None,
+        }
+
+        prompt = service._build_user_prompt(template, datetime_data)
+
+        assert "夜の挨拶" in prompt
+        assert "2025-01-11" in prompt
+        assert "土曜日" in prompt
+
+    def test_build_user_prompt_with_holiday(self):
+        """祝日の場合もプレースホルダーが正しく置換される"""
+        service = EveningGreetingService()
+
+        template = "{{datetime}}"
+        datetime_data = {
+            "date": "2025-01-01",
+            "time": "21:00:00",
+            "day_of_week": "Wednesday",
+            "day_of_week_ja": "水曜日",
+            "holiday_name": "元日",
+        }
+
+        prompt = service._build_user_prompt(template, datetime_data)
+
+        assert "元日" in prompt
+        assert "2025-01-01" in prompt
+        assert "水曜日" in prompt
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.OpenAIClient")
+    def test_generate_greeting_includes_datetime(
+        self,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_openai_response,
+        system_prompt,
+    ):
+        """generate_greetingが日時情報を含む"""
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        user_prompt = "日時: {{datetime}}"
+
+        service = EveningGreetingService()
+        result = service.generate_greeting(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
