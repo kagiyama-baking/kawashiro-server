@@ -8,5 +8,6 @@ app_name = "greeting"
 
 urlpatterns = [
     path("morning/", views.MorningGreetingView.as_view(), name="morning"),
+    path("evening/", views.EveningGreetingView.as_view(), name="evening"),
     path("today/", views.TodayInfoView.as_view(), name="today"),
 ]

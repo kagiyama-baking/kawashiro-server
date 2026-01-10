@@ -7,7 +7,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from greeting.models import MorningGreetingConfig
+from greeting.models import EveningGreetingConfig, MorningGreetingConfig
 
 
 @pytest.mark.django_db
@@ -368,3 +368,232 @@ class TestMorningGreetingView:
         assert response.status_code == status.HTTP_404_NOT_FOUND
         # 内部情報が露出せず、汎用メッセージであること
         assert "予報区コード" in response.data["error"]
+
+
+@pytest.mark.django_db
+class TestEveningGreetingView:
+    """EveningGreetingViewのテスト"""
+
+    @pytest.fixture
+    def url(self):
+        """エンドポイントURL"""
+        return reverse("greeting:evening")
+
+    @pytest.fixture
+    def greeting_config(self):
+        """夜のあいさつ設定"""
+        return EveningGreetingConfig.objects.create(
+            system_prompt="テスト用システムプロンプト",
+            user_prompt="テスト用ユーザープロンプト",
+            tts_enabled=False,
+        )
+
+    @pytest.fixture
+    def greeting_config_with_tts(self):
+        """TTS有効の夜のあいさつ設定"""
+        return EveningGreetingConfig.objects.create(
+            system_prompt="テスト用システムプロンプト",
+            user_prompt="テスト用ユーザープロンプト",
+            tts_enabled=True,
+            tts_model="test_model",
+            tts_style="Happy",
+            tts_speed=1.2,
+        )
+
+    @pytest.fixture
+    def mock_greeting_response(self):
+        """サービスのモックレスポンス（テキストのみ）"""
+        return {
+            "greeting_text": "お疲れ様でした、先輩。今日も一日頑張りましたね。",
+        }
+
+    @pytest.fixture
+    def mock_greeting_response_with_audio(self):
+        """サービスのモックレスポンス（音声あり）"""
+        return {
+            "greeting_text": "お疲れ様でした、先輩。今日も一日頑張りましたね。",
+            "audio_data": b"RIFF....WAVEfmt ",
+        }
+
+    def test_evening_greeting_unauthorized(self, api_client, url, greeting_config):
+        """未認証の場合は401エラー"""
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_evening_greeting_config_not_found(self, authenticated_client, url):
+        """設定が存在しない場合は404エラー"""
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "error" in response.data
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_success(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        mock_greeting_response,
+    ):
+        """正常系: 挨拶がJSONで取得できる（TTS無効時）"""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = mock_greeting_response
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "greeting_text" in response.data
+        assert response.data["greeting_text"] == mock_greeting_response["greeting_text"]
+
+        # サービスが正しい引数で呼ばれたことを確認
+        mock_service.generate_greeting.assert_called_once()
+        call_kwargs = mock_service.generate_greeting.call_args.kwargs
+        assert call_kwargs["system_prompt"] == "テスト用システムプロンプト"
+        assert call_kwargs["user_prompt"] == "テスト用ユーザープロンプト"
+        assert call_kwargs["tts_options"] is None
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_with_tts_enabled(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config_with_tts,
+        mock_greeting_response_with_audio,
+    ):
+        """TTS有効時: 音声データがWAVで返される"""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "audio/wav"
+        assert "X-Greeting-Text" in response
+
+        # TTSオプションが正しく渡されることを確認
+        mock_service.generate_greeting.assert_called_once()
+        call_kwargs = mock_service.generate_greeting.call_args.kwargs
+        assert call_kwargs["tts_options"] is not None
+        assert call_kwargs["tts_options"]["model"] == "test_model"
+        assert call_kwargs["tts_options"]["style"] == "Happy"
+        assert call_kwargs["tts_options"]["speed"] == 1.2
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_openai_timeout(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """OpenAI APIタイムアウト時に504エラー"""
+        from llm_client.exceptions import OpenAITimeoutError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = OpenAITimeoutError("Timeout")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_openai_api_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """OpenAI APIエラー時に502エラー"""
+        from llm_client.exceptions import OpenAIAPIError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = OpenAIAPIError("API Error")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_header_sanitizes_control_chars(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config_with_tts,
+    ):
+        """X-Greeting-Textヘッダーから制御文字が除去される"""
+        from email.header import decode_header
+
+        mock_service = MagicMock()
+        # 制御文字を含むテキスト
+        mock_service.generate_greeting.return_value = {
+            "greeting_text": "お疲れ\r\n様でした\x00先輩",
+            "audio_data": b"RIFF....WAVEfmt ",
+        }
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        raw_header = response["X-Greeting-Text"]
+
+        # MIMEエンコードされている場合はデコード
+        decoded_parts = decode_header(raw_header)
+        header_text = "".join(
+            part.decode(encoding or "utf-8") if isinstance(part, bytes) else part
+            for part, encoding in decoded_parts
+        )
+
+        # 制御文字が除去されていること
+        assert "\r" not in header_text
+        assert "\n" not in header_text
+        assert "\x00" not in header_text
+        # 元のテキストの意味は保持
+        assert "お疲れ" in header_text
+        assert "先輩" in header_text
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_holiday_api_network_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """祝日APIネットワークエラー時は502エラー"""
+        from greeting.exceptions import HolidayNetworkError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = HolidayNetworkError(
+            "Network error"
+        )
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+    @patch("greeting.views.EveningGreetingService")
+    def test_evening_greeting_holiday_api_timeout(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """祝日APIタイムアウト時は504エラー"""
+        from greeting.exceptions import HolidayTimeoutError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = HolidayTimeoutError("Timeout")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT

@@ -29,9 +29,13 @@ from weather.exceptions import (
 
 from .exceptions import HolidayNetworkError, HolidayTimeoutError
 from .holiday_client import HolidayClient
-from .models import MorningGreetingConfig
-from .serializers import MorningGreetingResponseSerializer, TodayInfoResponseSerializer
-from .services import MorningGreetingService
+from .models import EveningGreetingConfig, MorningGreetingConfig
+from .serializers import (
+    EveningGreetingResponseSerializer,
+    MorningGreetingResponseSerializer,
+    TodayInfoResponseSerializer,
+)
+from .services import EveningGreetingService, MorningGreetingService
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +236,134 @@ TTS無効の場合はJSONでテキストのみ返します。
             logger.error("外部サービス認証エラー: %s", str(e))
             return Response(
                 {"error": "外部サービスへの認証に失敗しました"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        except Exception as e:
+            logger.exception("予期しないエラー: %s", str(e))
+            return Response(
+                {"error": "あいさつの生成中に問題が発生しました"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class EveningGreetingView(APIView):
+    """夜のあいさつAPI."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    renderer_classes = [JSONRenderer]
+
+    @extend_schema(
+        tags=["greeting"],
+        summary="夜のあいさつを生成",
+        description="""夜のあいさつを生成します。
+
+設定はDjango管理画面で事前に登録しておく必要があります。
+
+## 処理フロー
+
+1. 日時情報（日付、曜日、祝日）を取得
+2. OpenAI APIであいさつテキストを生成
+
+## プレースホルダー
+
+ユーザープロンプトで以下のプレースホルダーが使用可能です：
+
+| プレースホルダー | 内容 |
+|----------------|------|
+| `{{datetime}}` | 日時情報（日付、曜日、祝日） |
+
+### {{datetime}} の例
+
+```json
+{
+  "date": "2025-01-11",
+  "time": "21:30:00",
+  "day_of_week": "Saturday",
+  "day_of_week_ja": "土曜日",
+  "holiday_name": null
+}
+```
+
+## 音声合成
+
+管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
+TTS無効の場合はJSONでテキストのみ返します。
+""",
+        responses={
+            200: OpenApiResponse(
+                response=EveningGreetingResponseSerializer,
+                description="あいさつ生成成功（JSON）",
+            ),
+            (200, "audio/wav"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ（WAV形式）- TTS有効時",
+            ),
+            401: OpenApiResponse(description="認証エラー"),
+            404: OpenApiResponse(description="設定が見つからない"),
+            502: OpenApiResponse(description="外部APIへの接続エラー"),
+            504: OpenApiResponse(description="外部APIタイムアウト"),
+        },
+    )
+    def get(self, request):
+        """夜のあいさつを生成."""
+        # 設定を取得
+        config = EveningGreetingConfig.get_solo()
+        if config is None:
+            return Response(
+                {"error": "夜のあいさつの設定が見つかりません"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            service = EveningGreetingService()
+            result = service.generate_greeting(
+                system_prompt=config.system_prompt,
+                user_prompt=config.user_prompt,
+                tts_options=config.get_tts_options(),
+            )
+
+            # 音声データがある場合はWAVを返す（HttpResponseを使用）
+            if "audio_data" in result:
+                audio_data = result["audio_data"]
+                greeting_text = result["greeting_text"]
+                response = HttpResponse(audio_data, content_type="audio/wav")
+                response["Content-Disposition"] = 'attachment; filename="greeting.wav"'
+                response["X-Greeting-Text"] = sanitize_for_header(greeting_text)
+                return response
+
+            # 音声なしの場合はJSONを返す
+            response_serializer = EveningGreetingResponseSerializer(data=result)
+            response_serializer.is_valid(raise_exception=True)
+
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+        except HolidayTimeoutError as e:
+            logger.error("祝日APIタイムアウト: %s", str(e))
+            return Response(
+                {"error": "祝日APIへのリクエストがタイムアウトしました"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
+
+        except HolidayNetworkError as e:
+            logger.error("祝日API接続エラー: %s", str(e))
+            return Response(
+                {"error": "祝日APIへの接続に失敗しました"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        except (OpenAITimeoutError, TTSTimeoutError) as e:
+            logger.error("AI/TTSサービスタイムアウト: %s", str(e))
+            return Response(
+                {"error": "AI生成サービスへのリクエストがタイムアウトしました"},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
+
+        except (OpenAIAPIError, TTSNetworkError) as e:
+            logger.error("AI/TTSサービスエラー: %s", str(e))
+            return Response(
+                {"error": "AI生成サービスへの接続に失敗しました"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 

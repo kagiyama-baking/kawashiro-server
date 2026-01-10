@@ -30,30 +30,14 @@ DAY_OF_WEEK_JA = {
 logger = logging.getLogger(__name__)
 
 
-class MorningGreetingService:
-    """朝の挨拶生成サービス."""
+class BaseGreetingService:
+    """挨拶生成サービスの基底クラス."""
 
     def __init__(self):
         """サービスを初期化."""
-        self._jma_client = None
-        self._outlook_client = None
         self._openai_client = None
         self._tts_client = None
         self._holiday_client = None
-
-    @property
-    def jma_client(self) -> JMAWeatherClient:
-        """JMAクライアントを取得（遅延初期化）."""
-        if self._jma_client is None:
-            self._jma_client = JMAWeatherClient()
-        return self._jma_client
-
-    @property
-    def outlook_client(self) -> OutlookMSGraphClient:
-        """Outlookクライアントを取得（遅延初期化）."""
-        if self._outlook_client is None:
-            self._outlook_client = OutlookMSGraphClient()
-        return self._outlook_client
 
     @property
     def openai_client(self) -> OpenAIClient:
@@ -75,6 +59,80 @@ class MorningGreetingService:
         if self._holiday_client is None:
             self._holiday_client = HolidayClient()
         return self._holiday_client
+
+    def _synthesize_audio(
+        self,
+        text: str,
+        tts_options: dict[str, Any],
+    ) -> bytes:
+        """テキストから音声を合成.
+
+        Args:
+            text: 合成するテキスト
+            tts_options: TTSオプション（モデルから取得した値を使用）
+
+        Returns:
+            WAV形式の音声データ
+        """
+        logger.info("TTS音声合成開始")
+        audio_data = self.tts_client.synthesize(
+            text=text,
+            model=tts_options["model"],
+            style=tts_options["style"],
+            style_weight=tts_options["style_weight"],
+            speed=tts_options["speed"],
+            sdp_ratio=tts_options["sdp_ratio"],
+            noise_scale=tts_options["noise_scale"],
+            noise_scale_w=tts_options["noise_scale_w"],
+        )
+        logger.info("TTS音声合成完了: %d bytes", len(audio_data))
+        return audio_data
+
+    def _get_datetime_info(self) -> dict[str, Any]:
+        """日時情報を取得.
+
+        Returns:
+            日時情報を含むdict
+        """
+        now = datetime.now(timezone.get_current_timezone())
+        date_str = now.strftime("%Y-%m-%d")
+        time_str = now.strftime("%H:%M:%S")
+        day_of_week = now.strftime("%A")
+        day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
+
+        holiday_name = self.holiday_client.get_holiday_name(date_str)
+
+        return {
+            "date": date_str,
+            "time": time_str,
+            "day_of_week": day_of_week,
+            "day_of_week_ja": day_of_week_ja,
+            "holiday_name": holiday_name,
+        }
+
+
+class MorningGreetingService(BaseGreetingService):
+    """朝の挨拶生成サービス."""
+
+    def __init__(self):
+        """サービスを初期化."""
+        super().__init__()
+        self._jma_client = None
+        self._outlook_client = None
+
+    @property
+    def jma_client(self) -> JMAWeatherClient:
+        """JMAクライアントを取得（遅延初期化）."""
+        if self._jma_client is None:
+            self._jma_client = JMAWeatherClient()
+        return self._jma_client
+
+    @property
+    def outlook_client(self) -> OutlookMSGraphClient:
+        """Outlookクライアントを取得（遅延初期化）."""
+        if self._outlook_client is None:
+            self._outlook_client = OutlookMSGraphClient()
+        return self._outlook_client
 
     def generate_greeting(
         self,
@@ -154,56 +212,6 @@ class MorningGreetingService:
 
         return result
 
-    def _synthesize_audio(
-        self,
-        text: str,
-        tts_options: dict[str, Any],
-    ) -> bytes:
-        """テキストから音声を合成.
-
-        Args:
-            text: 合成するテキスト
-            tts_options: TTSオプション（モデルから取得した値を使用）
-
-        Returns:
-            WAV形式の音声データ
-        """
-        logger.info("TTS音声合成開始")
-        audio_data = self.tts_client.synthesize(
-            text=text,
-            model=tts_options["model"],
-            style=tts_options["style"],
-            style_weight=tts_options["style_weight"],
-            speed=tts_options["speed"],
-            sdp_ratio=tts_options["sdp_ratio"],
-            noise_scale=tts_options["noise_scale"],
-            noise_scale_w=tts_options["noise_scale_w"],
-        )
-        logger.info("TTS音声合成完了: %d bytes", len(audio_data))
-        return audio_data
-
-    def _get_datetime_info(self) -> dict[str, Any]:
-        """日時情報を取得.
-
-        Returns:
-            日時情報を含むdict
-        """
-        now = datetime.now(timezone.get_current_timezone())
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%H:%M:%S")
-        day_of_week = now.strftime("%A")
-        day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
-
-        holiday_name = self.holiday_client.get_holiday_name(date_str)
-
-        return {
-            "date": date_str,
-            "time": time_str,
-            "day_of_week": day_of_week,
-            "day_of_week_ja": day_of_week_ja,
-            "holiday_name": holiday_name,
-        }
-
     def _build_user_prompt(
         self,
         template: str,
@@ -233,6 +241,85 @@ class MorningGreetingService:
         replacements = {
             "{{weather}}": weather_json,
             "{{events}}": events_json,
+            "{{datetime}}": datetime_json,
+        }
+
+        # 一括置換（データ内のマーカーは置換対象外）
+        pattern = re.compile("|".join(re.escape(k) for k in replacements))
+        return pattern.sub(lambda m: replacements[m.group(0)], template)
+
+
+class EveningGreetingService(BaseGreetingService):
+    """夜の挨拶生成サービス."""
+
+    def generate_greeting(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        tts_options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """夜の挨拶を生成.
+
+        Args:
+            system_prompt: システムプロンプト
+            user_prompt: ユーザープロンプトテンプレート
+            tts_options: TTS音声合成オプション
+
+        Returns:
+            生成結果を含むdict
+
+        Raises:
+            OpenAITimeoutError: OpenAI APIタイムアウト
+            OpenAIAPIError: OpenAI API接続エラー
+        """
+        logger.info("夜の挨拶を生成")
+
+        # 日時情報を取得
+        datetime_data = self._get_datetime_info()
+        logger.debug("日時情報取得完了: %s", datetime_data)
+
+        # プロンプトを構築
+        built_user_prompt = self._build_user_prompt(user_prompt, datetime_data)
+
+        # OpenAI APIで挨拶を生成
+        greeting_text = self.openai_client.generate_text(
+            prompt=built_user_prompt,
+            system_prompt=system_prompt,
+        )
+        logger.info("挨拶生成完了: %d文字", len(greeting_text))
+
+        result: dict[str, Any] = {
+            "greeting_text": greeting_text,
+        }
+
+        # TTS音声合成（オプション指定時）
+        if tts_options is not None:
+            audio_data = self._synthesize_audio(greeting_text, tts_options)
+            result["audio_data"] = audio_data
+
+        return result
+
+    def _build_user_prompt(
+        self,
+        template: str,
+        datetime_data: dict[str, Any],
+    ) -> str:
+        """ユーザープロンプトを構築.
+
+        Args:
+            template: プロンプトテンプレート
+            datetime_data: 日時情報データ
+
+        Returns:
+            ユーザープロンプト文字列
+
+        Note:
+            テンプレートマーカー（{{datetime}}）は
+            一括置換されるため、データ内にマーカーが含まれていても安全。
+        """
+        datetime_json = json.dumps(datetime_data, ensure_ascii=False, indent=2)
+
+        replacements = {
             "{{datetime}}": datetime_json,
         }
 
