@@ -1,5 +1,6 @@
 """Tests for greeting views."""
 
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,6 +8,130 @@ from django.urls import reverse
 from rest_framework import status
 
 from greeting.models import MorningGreetingConfig
+
+
+@pytest.mark.django_db
+class TestTodayInfoView:
+    """TodayInfoViewのテスト"""
+
+    @pytest.fixture
+    def url(self):
+        """エンドポイントURL"""
+        return reverse("greeting:today")
+
+    def test_today_info_unauthorized(self, api_client, url):
+        """未認証の場合は401エラー"""
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @patch("greeting.views.HolidayClient")
+    @patch("greeting.views.datetime")
+    def test_today_info_success_weekday(
+        self, mock_datetime, mock_holiday_client_class, authenticated_client, url
+    ):
+        """正常系: 平日の場合"""
+        # 2025年1月14日 火曜日 09:30:00
+        mock_now = datetime(2025, 1, 14, 9, 30, 0)
+        mock_datetime.now.return_value = mock_now
+
+        mock_client = MagicMock()
+        mock_client.get_holiday_name.return_value = None
+        mock_holiday_client_class.return_value = mock_client
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["date"] == "2025-01-14"
+        assert response.data["time"] == "09:30:00"
+        assert response.data["day_of_week"] == "Tuesday"
+        assert response.data["day_of_week_ja"] == "火曜日"
+        assert response.data["holiday_name"] is None
+
+    @patch("greeting.views.HolidayClient")
+    @patch("greeting.views.datetime")
+    def test_today_info_success_holiday(
+        self, mock_datetime, mock_holiday_client_class, authenticated_client, url
+    ):
+        """正常系: 祝日の場合"""
+        # 2025年1月1日 水曜日 08:00:00 元日
+        mock_now = datetime(2025, 1, 1, 8, 0, 0)
+        mock_datetime.now.return_value = mock_now
+
+        mock_client = MagicMock()
+        mock_client.get_holiday_name.return_value = "元日"
+        mock_holiday_client_class.return_value = mock_client
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["date"] == "2025-01-01"
+        assert response.data["time"] == "08:00:00"
+        assert response.data["day_of_week"] == "Wednesday"
+        assert response.data["day_of_week_ja"] == "水曜日"
+        assert response.data["holiday_name"] == "元日"
+
+    @patch("greeting.views.HolidayClient")
+    @patch("greeting.views.datetime")
+    def test_today_info_success_saturday(
+        self, mock_datetime, mock_holiday_client_class, authenticated_client, url
+    ):
+        """正常系: 土曜日の場合"""
+        # 2025年1月11日 土曜日 10:00:00
+        mock_now = datetime(2025, 1, 11, 10, 0, 0)
+        mock_datetime.now.return_value = mock_now
+
+        mock_client = MagicMock()
+        mock_client.get_holiday_name.return_value = None
+        mock_holiday_client_class.return_value = mock_client
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["date"] == "2025-01-11"
+        assert response.data["time"] == "10:00:00"
+        assert response.data["day_of_week"] == "Saturday"
+        assert response.data["day_of_week_ja"] == "土曜日"
+        assert response.data["holiday_name"] is None
+
+    @patch("greeting.views.HolidayClient")
+    @patch("greeting.views.datetime")
+    def test_today_info_holiday_api_network_error(
+        self, mock_datetime, mock_holiday_client_class, authenticated_client, url
+    ):
+        """祝日APIネットワークエラー時は502エラー"""
+        from greeting.exceptions import HolidayNetworkError
+
+        mock_now = datetime(2025, 1, 14, 9, 30, 0)
+        mock_datetime.now.return_value = mock_now
+
+        mock_client = MagicMock()
+        mock_client.get_holiday_name.side_effect = HolidayNetworkError("Network error")
+        mock_holiday_client_class.return_value = mock_client
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "error" in response.data
+
+    @patch("greeting.views.HolidayClient")
+    @patch("greeting.views.datetime")
+    def test_today_info_holiday_api_timeout(
+        self, mock_datetime, mock_holiday_client_class, authenticated_client, url
+    ):
+        """祝日APIタイムアウト時は504エラー"""
+        from greeting.exceptions import HolidayTimeoutError
+
+        mock_now = datetime(2025, 1, 14, 9, 30, 0)
+        mock_datetime.now.return_value = mock_now
+
+        mock_client = MagicMock()
+        mock_client.get_holiday_name.side_effect = HolidayTimeoutError("Timeout")
+        mock_holiday_client_class.return_value = mock_client
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+        assert "error" in response.data
 
 
 @pytest.mark.django_db
@@ -23,7 +148,6 @@ class TestMorningGreetingView:
         """朝のあいさつ設定"""
         return MorningGreetingConfig.objects.create(
             area_code="130010",
-            rail_ids="131,22",
             system_prompt="テスト用システムプロンプト",
             user_prompt="テスト用ユーザープロンプト",
             tts_enabled=False,
@@ -34,7 +158,6 @@ class TestMorningGreetingView:
         """TTS有効の朝のあいさつ設定"""
         return MorningGreetingConfig.objects.create(
             area_code="130010",
-            rail_ids="131,22",
             system_prompt="テスト用システムプロンプト",
             user_prompt="テスト用ユーザープロンプト",
             tts_enabled=True,
@@ -93,7 +216,6 @@ class TestMorningGreetingView:
         mock_service.generate_greeting.assert_called_once()
         call_kwargs = mock_service.generate_greeting.call_args.kwargs
         assert call_kwargs["area_code"] == "130010"
-        assert call_kwargs["rail_ids"] == ["131", "22"]
         assert call_kwargs["system_prompt"] == "テスト用システムプロンプト"
         assert call_kwargs["user_prompt"] == "テスト用ユーザープロンプト"
         assert call_kwargs["tts_options"] is None
@@ -178,27 +300,6 @@ class TestMorningGreetingView:
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = JMAAreaNotFoundError(
             "Area not found"
-        )
-        mock_service_class.return_value = mock_service
-
-        response = authenticated_client.get(url)
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-
-    @patch("greeting.views.MorningGreetingService")
-    def test_morning_greeting_rail_not_found(
-        self,
-        mock_service_class,
-        authenticated_client,
-        url,
-        greeting_config,
-    ):
-        """路線IDが見つからない場合は404エラー"""
-        from train.exceptions import YahooRailNotFoundError
-
-        mock_service = MagicMock()
-        mock_service.generate_greeting.side_effect = YahooRailNotFoundError(
-            "Rail not found"
         )
         mock_service_class.return_value = mock_service
 

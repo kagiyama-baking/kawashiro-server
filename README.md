@@ -20,7 +20,6 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
     -   📁 **Media**: メディアファイル管理機能
     -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
     -   🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
-    -   🚃 **Train**: 路線運行情報 API（Yahoo! 路線情報から遅延・運休情報を取得）
     -   🎙️ **Greeting**: 朝のあいさつ API（天気・予定・運行情報を統合して AI が挨拶を生成、TTS 音声合成対応）
     -   🤖 **LLM Client**: OpenAI API クライアント（テキスト生成）
     -   🔧 **LLM Config**: LLM 設定管理
@@ -86,7 +85,6 @@ kawashiro-server/
 │   ├── core/                   # 共通コアアプリ（暗号化ユーティリティ等）
 │   ├── tts/                    # TTS読み上げアプリ（sbv2-apiプロキシ）
 │   ├── weather/                # 気象庁天気予報アプリ
-│   ├── train/                  # 路線運行情報アプリ（Yahoo!路線情報）
 │   ├── greeting/               # 朝のあいさつアプリ（AI生成・TTS対応）
 │   ├── llm_client/             # OpenAI APIクライアント
 │   ├── llm_config/             # LLM設定管理
@@ -967,7 +965,6 @@ docker compose exec [サービス名] ps aux
 -   **Microsoft Graph API**: OneDrive/Outlook 連携
 -   **OpenAI API**: テキスト生成（朝のあいさつ機能）
 -   **気象庁天気予報 API**: 天気予報データ取得
--   **Yahoo! 路線情報**: 路線運行情報（遅延・運休情報）
 -   **Valkey (Redis)**: キャッシュ・セッション管理
 -   **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
 

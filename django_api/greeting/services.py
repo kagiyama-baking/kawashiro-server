@@ -2,15 +2,30 @@
 
 import json
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime
 from typing import Any
+
+from django.utils import timezone
 
 from llm_client.openai_client import OpenAIClient
 from msgraph_client import OutlookMSGraphClient
-from train.yahoo_client import YahooTransitClient
 from tts.client import TTSClient
 from weather.jma_client import JMAWeatherClient
+
+from .holiday_client import HolidayClient
+
+# 曜日の日本語マッピング
+DAY_OF_WEEK_JA = {
+    "Monday": "月曜日",
+    "Tuesday": "火曜日",
+    "Wednesday": "水曜日",
+    "Thursday": "木曜日",
+    "Friday": "金曜日",
+    "Saturday": "土曜日",
+    "Sunday": "日曜日",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +37,9 @@ class MorningGreetingService:
         """サービスを初期化."""
         self._jma_client = None
         self._outlook_client = None
-        self._yahoo_client = None
         self._openai_client = None
         self._tts_client = None
+        self._holiday_client = None
 
     @property
     def jma_client(self) -> JMAWeatherClient:
@@ -41,13 +56,6 @@ class MorningGreetingService:
         return self._outlook_client
 
     @property
-    def yahoo_client(self) -> YahooTransitClient:
-        """Yahoo!クライアントを取得（遅延初期化）."""
-        if self._yahoo_client is None:
-            self._yahoo_client = YahooTransitClient()
-        return self._yahoo_client
-
-    @property
     def openai_client(self) -> OpenAIClient:
         """OpenAIクライアントを取得（遅延初期化）."""
         if self._openai_client is None:
@@ -61,10 +69,16 @@ class MorningGreetingService:
             self._tts_client = TTSClient()
         return self._tts_client
 
+    @property
+    def holiday_client(self) -> HolidayClient:
+        """祝日クライアントを取得（遅延初期化）."""
+        if self._holiday_client is None:
+            self._holiday_client = HolidayClient()
+        return self._holiday_client
+
     def generate_greeting(
         self,
         area_code: str,
-        rail_ids: list[str],
         system_prompt: str,
         user_prompt: str,
         tts_options: dict[str, Any] | None = None,
@@ -73,7 +87,6 @@ class MorningGreetingService:
 
         Args:
             area_code: 予報区コード
-            rail_ids: 路線IDのリスト
             system_prompt: システムプロンプト
             user_prompt: ユーザープロンプトテンプレート
             tts_options: TTS音声合成オプション
@@ -87,11 +100,7 @@ class MorningGreetingService:
             OpenAITimeoutError: OpenAI APIタイムアウト
             OpenAIAPIError: OpenAI API接続エラー
         """
-        logger.info(
-            "朝の挨拶を生成: area_code=%s, rail_ids=%s",
-            area_code,
-            rail_ids,
-        )
+        logger.info("朝の挨拶を生成: area_code=%s", area_code)
 
         # 外部API呼び出しを並列実行
         today = date.today()
@@ -105,26 +114,26 @@ class MorningGreetingService:
                 end_date=today,
             )
 
-        def fetch_diainfo():
-            return self.yahoo_client.fetch_multiple_diainfo(rail_ids)
+        def fetch_datetime():
+            return self._get_datetime_info()
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             weather_future = executor.submit(fetch_weather)
             events_future = executor.submit(fetch_events)
-            diainfo_future = executor.submit(fetch_diainfo)
+            datetime_future = executor.submit(fetch_datetime)
 
             # 結果を取得（例外があればここで再送出される）
             weather_data = weather_future.result()
             events_data = events_future.result()
-            diainfo_data = diainfo_future.result()
+            datetime_data = datetime_future.result()
 
         logger.debug("天気予報データ取得完了: %s", weather_data)
         logger.debug("予定データ取得完了: %d件", len(events_data))
-        logger.debug("路線運行情報取得完了: %d件", len(diainfo_data))
+        logger.debug("日時情報取得完了: %s", datetime_data)
 
         # 4. プロンプトを構築
         built_user_prompt = self._build_user_prompt(
-            user_prompt, weather_data, events_data, diainfo_data
+            user_prompt, weather_data, events_data, datetime_data
         )
 
         # 5. OpenAI APIで挨拶を生成
@@ -173,12 +182,34 @@ class MorningGreetingService:
         logger.info("TTS音声合成完了: %d bytes", len(audio_data))
         return audio_data
 
+    def _get_datetime_info(self) -> dict[str, Any]:
+        """日時情報を取得.
+
+        Returns:
+            日時情報を含むdict
+        """
+        now = datetime.now(timezone.get_current_timezone())
+        date_str = now.strftime("%Y-%m-%d")
+        time_str = now.strftime("%H:%M:%S")
+        day_of_week = now.strftime("%A")
+        day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
+
+        holiday_name = self.holiday_client.get_holiday_name(date_str)
+
+        return {
+            "date": date_str,
+            "time": time_str,
+            "day_of_week": day_of_week,
+            "day_of_week_ja": day_of_week_ja,
+            "holiday_name": holiday_name,
+        }
+
     def _build_user_prompt(
         self,
         template: str,
         weather_data: dict[str, Any],
         events_data: list[dict[str, Any]],
-        diainfo_data: list[dict[str, Any]],
+        datetime_data: dict[str, Any] | None = None,
     ) -> str:
         """ユーザープロンプトを構築.
 
@@ -186,25 +217,23 @@ class MorningGreetingService:
             template: プロンプトテンプレート
             weather_data: 天気予報データ
             events_data: 予定データ
-            diainfo_data: 路線運行情報データ
+            datetime_data: 日時情報データ
 
         Returns:
             ユーザープロンプト文字列
 
         Note:
-            テンプレートマーカー（{{weather}}, {{events}}, {{diainfo}}）は
+            テンプレートマーカー（{{weather}}, {{events}}, {{datetime}}）は
             一括置換されるため、データ内にマーカーが含まれていても安全。
         """
-        import re
-
         weather_json = json.dumps(weather_data, ensure_ascii=False, indent=2)
         events_json = json.dumps(events_data, ensure_ascii=False, indent=2)
-        diainfo_json = json.dumps(diainfo_data, ensure_ascii=False, indent=2)
+        datetime_json = json.dumps(datetime_data or {}, ensure_ascii=False, indent=2)
 
         replacements = {
             "{{weather}}": weather_json,
             "{{events}}": events_json,
-            "{{diainfo}}": diainfo_json,
+            "{{datetime}}": datetime_json,
         }
 
         # 一括置換（データ内のマーカーは置換対象外）

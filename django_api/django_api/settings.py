@@ -86,7 +86,6 @@ INSTALLED_APPS = [
     "media",  # 画像処理などのメディア関連機能
     "tts",  # Text-to-Speech機能
     "weather",  # 気象庁天気予報機能
-    "train",  # 路線運行情報機能
     "greeting",  # 挨拶機能
 ]
 
@@ -293,7 +292,6 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
-        {"name": "train", "description": "路線運行情報API"},
         {"name": "greeting", "description": "挨拶API"},
     ],
 }

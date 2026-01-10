@@ -9,13 +9,13 @@ from .models import MorningGreetingConfig
 class MorningGreetingConfigAdmin(admin.ModelAdmin):
     """朝のあいさつ設定 Admin"""
 
-    list_display = ("__str__", "area_code", "rail_ids", "tts_enabled")
+    list_display = ("__str__", "area_code", "tts_enabled")
 
     fieldsets = (
         (
             None,
             {
-                "fields": ("area_code", "rail_ids"),
+                "fields": ("area_code",),
             },
         ),
         (
