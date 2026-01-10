@@ -6,14 +6,18 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+from msgraph_config.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NetworkError,
+)
 from outlook.exceptions import CalendarError
 
 
 @pytest.fixture
 def mock_outlook_graph_settings():
     """OutlookGraphSettings用のモックフィクスチャ"""
-    from ms_graph.config import MSGraphSettings
+    from msgraph_config.config import MSGraphSettings
 
     settings = MSGraphSettings(
         tenant_id="test-tenant",
@@ -23,28 +27,28 @@ def mock_outlook_graph_settings():
         target_user="test@example.com",
     )
 
-    with patch("outlook.ms_graph_client.get_ms_graph_settings", return_value=settings):
+    with patch("msgraph_client.base.get_ms_graph_settings", return_value=settings):
         yield settings
 
 
 @pytest.fixture
 def outlook_client(mock_outlook_graph_settings):
-    """モック設定を使用したOutlookGraphClientのフィクスチャ"""
-    from outlook.ms_graph_client import OutlookGraphClient
+    """モック設定を使用したOutlookMSGraphClientのフィクスチャ"""
+    from msgraph_client import OutlookMSGraphClient
 
-    client = OutlookGraphClient()
+    client = OutlookMSGraphClient()
     client._access_token = "test-token"
     return client
 
 
-class TestOutlookGraphClientInit:
-    """OutlookGraphClientの初期化テスト"""
+class TestOutlookMSGraphClientInit:
+    """OutlookMSGraphClientの初期化テスト"""
 
     def test_init_success(self, mock_outlook_graph_settings):
         """正常に初期化できること"""
-        from outlook.ms_graph_client import OutlookGraphClient
+        from msgraph_client import OutlookMSGraphClient
 
-        client = OutlookGraphClient()
+        client = OutlookMSGraphClient()
 
         assert client.tenant_id == "test-tenant"
         assert client.client_id == "test-client"
@@ -52,16 +56,16 @@ class TestOutlookGraphClientInit:
 
     def test_init_with_configuration_error(self):
         """設定エラー時に例外が発生すること"""
-        from outlook.ms_graph_client import OutlookGraphClient
+        from msgraph_client import OutlookMSGraphClient
 
         with (
             patch(
-                "outlook.ms_graph_client.get_ms_graph_settings",
+                "msgraph_client.base.get_ms_graph_settings",
                 side_effect=ConfigurationError("Missing config"),
             ),
             pytest.raises(ConfigurationError),
         ):
-            OutlookGraphClient()
+            OutlookMSGraphClient()
 
 
 class TestGetCalendarEvents:
@@ -187,7 +191,7 @@ class TestAcquireToken:
         }
 
         with patch(
-            "outlook.ms_graph_client.ConfidentialClientApplication",
+            "msgraph_client.base.ConfidentialClientApplication",
             return_value=mock_app,
         ):
             token = outlook_client.acquire_token()
@@ -204,7 +208,7 @@ class TestAcquireToken:
         }
 
         with patch(
-            "outlook.ms_graph_client.ConfidentialClientApplication",
+            "msgraph_client.base.ConfidentialClientApplication",
             return_value=mock_app,
         ):
             with pytest.raises(AuthenticationError) as exc_info:

@@ -5,26 +5,30 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+from msgraph_client import OneDriveMSGraphClient
+from msgraph_client.onedrive import (
+    CHUNK_SIZE,
+    SIMPLE_UPLOAD_THRESHOLD,
+)
+from msgraph_config.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NetworkError,
+)
 from onedrive.exceptions import (
     FolderOperationError,
     ListOperationError,
     UploadError,
 )
-from onedrive.ms_graph_client import (
-    CHUNK_SIZE,
-    SIMPLE_UPLOAD_THRESHOLD,
-    MSGraphClient,
-)
 
 
 @pytest.mark.unit
-class TestMSGraphClientInitialization:
-    """MSGraphClientの初期化テスト"""
+class TestOneDriveMSGraphClientInitialization:
+    """OneDriveMSGraphClientの初期化テスト"""
 
     def test_successful_initialization(self, mock_ms_graph_settings):
         """正常に初期化できること"""
-        client = MSGraphClient()
+        client = OneDriveMSGraphClient()
 
         assert client.tenant_id == "test-tenant"
         assert client.client_id == "test-client"
@@ -40,58 +44,58 @@ class TestMSGraphClientInitialization:
 
     def test_missing_tenant_id(self):
         """テナントIDが未設定の場合エラーになること"""
-        with patch("onedrive.ms_graph_client.get_ms_graph_settings") as mock_get:
+        with patch("msgraph_client.base.get_ms_graph_settings") as mock_get:
             mock_get.side_effect = ConfigurationError("テナントID")
             with pytest.raises(ConfigurationError) as excinfo:
-                MSGraphClient()
+                OneDriveMSGraphClient()
             assert "テナントID" in str(excinfo.value)
 
     def test_missing_client_id(self):
         """クライアントIDが未設定の場合エラーになること"""
-        with patch("onedrive.ms_graph_client.get_ms_graph_settings") as mock_get:
+        with patch("msgraph_client.base.get_ms_graph_settings") as mock_get:
             mock_get.side_effect = ConfigurationError("クライアントID")
             with pytest.raises(ConfigurationError) as excinfo:
-                MSGraphClient()
+                OneDriveMSGraphClient()
             assert "クライアントID" in str(excinfo.value)
 
     def test_missing_thumbprint(self):
         """サムプリントが未設定の場合エラーになること"""
-        with patch("onedrive.ms_graph_client.get_ms_graph_settings") as mock_get:
+        with patch("msgraph_client.base.get_ms_graph_settings") as mock_get:
             mock_get.side_effect = ConfigurationError("証明書サムプリント")
             with pytest.raises(ConfigurationError) as excinfo:
-                MSGraphClient()
+                OneDriveMSGraphClient()
             assert "証明書サムプリント" in str(excinfo.value)
 
     def test_missing_key_file(self):
         """秘密鍵が未設定の場合エラーになること"""
-        with patch("onedrive.ms_graph_client.get_ms_graph_settings") as mock_get:
+        with patch("msgraph_client.base.get_ms_graph_settings") as mock_get:
             mock_get.side_effect = ConfigurationError("秘密鍵")
             with pytest.raises(ConfigurationError) as excinfo:
-                MSGraphClient()
+                OneDriveMSGraphClient()
             assert "秘密鍵" in str(excinfo.value)
 
     def test_missing_target_user(self):
         """TARGET_USERが未設定の場合エラーになること"""
-        with patch("onedrive.ms_graph_client.get_ms_graph_settings") as mock_get:
+        with patch("msgraph_client.base.get_ms_graph_settings") as mock_get:
             mock_get.side_effect = ConfigurationError("対象ユーザー")
             with pytest.raises(ConfigurationError) as excinfo:
-                MSGraphClient()
+                OneDriveMSGraphClient()
             assert "対象ユーザー" in str(excinfo.value)
 
     def test_key_file_not_exists(self):
         """設定がDBにない場合エラーになること"""
-        with patch("onedrive.ms_graph_client.get_ms_graph_settings") as mock_get:
+        with patch("msgraph_client.base.get_ms_graph_settings") as mock_get:
             mock_get.side_effect = ConfigurationError("データベースに存在しません")
             with pytest.raises(ConfigurationError) as excinfo:
-                MSGraphClient()
+                OneDriveMSGraphClient()
             assert "データベースに存在しません" in str(excinfo.value)
 
 
 @pytest.mark.unit
-class TestMSGraphClientToken:
+class TestOneDriveMSGraphClientToken:
     """トークン取得関連のテスト"""
 
-    @patch("onedrive.ms_graph_client.ConfidentialClientApplication")
+    @patch("msgraph_client.base.ConfidentialClientApplication")
     def test_acquire_token_success(self, mock_msal, ms_graph_client):
         """トークン取得が成功すること"""
         mock_app = Mock()
@@ -121,7 +125,7 @@ class TestMSGraphClientToken:
             ["https://graph.microsoft.com/.default"]
         )
 
-    @patch("onedrive.ms_graph_client.ConfidentialClientApplication")
+    @patch("msgraph_client.base.ConfidentialClientApplication")
     def test_acquire_token_failure(self, mock_msal, ms_graph_client):
         """トークン取得が失敗した場合エラーになること"""
         mock_app = Mock()
@@ -146,7 +150,7 @@ class TestMSGraphClientToken:
         assert headers["Content-Type"] == "application/octet-stream"
         assert headers["Accept"] == "application/json"
 
-    @patch("onedrive.ms_graph_client.ConfidentialClientApplication")
+    @patch("msgraph_client.base.ConfidentialClientApplication")
     def test_get_headers_without_token(self, mock_msal, ms_graph_client):
         """トークンがない場合は取得してからヘッダーを返すこと"""
         mock_app = Mock()
@@ -166,7 +170,7 @@ class TestMSGraphClientToken:
 
 
 @pytest.mark.unit
-class TestMSGraphClientUpload:
+class TestOneDriveMSGraphClientUpload:
     """ファイルアップロード関連のテスト"""
 
     def test_upload_file_success(self, ms_graph_client):
@@ -213,7 +217,7 @@ class TestMSGraphClientUpload:
         expected_url = "https://graph.microsoft.com/v1.0/users/test@example.com/drive/root:/test.txt:/content"
         assert ms_graph_client._session.put.call_args[0][0] == expected_url
 
-    @patch("onedrive.ms_graph_client.ConfidentialClientApplication")
+    @patch("msgraph_client.base.ConfidentialClientApplication")
     def test_upload_file_token_expired_retry(self, mock_msal, ms_graph_client):
         """トークン切れ時に再取得してリトライすること"""
         # 最初の呼び出しは401、再試行で成功
@@ -326,7 +330,7 @@ class TestMSGraphClientUpload:
 
 
 @pytest.mark.unit
-class TestMSGraphClientLargeFileUpload:
+class TestOneDriveMSGraphClientLargeFileUpload:
     """大きなファイルのアップロードテスト"""
 
     def test_small_file_uses_simple_upload(self, ms_graph_client):
@@ -527,7 +531,7 @@ class TestMSGraphClientLargeFileUpload:
 
 
 @pytest.mark.unit
-class TestMSGraphClientFolder:
+class TestOneDriveMSGraphClientFolder:
     """フォルダ操作関連のテスト"""
 
     def test_create_folder_success(self, ms_graph_client):
@@ -605,7 +609,7 @@ class TestMSGraphClientFolder:
 
 
 @pytest.mark.unit
-class TestMSGraphClientList:
+class TestOneDriveMSGraphClientList:
     """ファイル一覧取得関連のテスト"""
 
     def test_list_files_success(self, ms_graph_client):
@@ -684,7 +688,7 @@ class TestMSGraphClientList:
 
 
 @pytest.mark.unit
-class TestMSGraphClientPerformanceOptimization:
+class TestOneDriveMSGraphClientPerformanceOptimization:
     """パフォーマンス最適化関連のテスト"""
 
     def test_chunk_size_is_60mb(self):
