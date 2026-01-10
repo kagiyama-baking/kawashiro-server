@@ -43,6 +43,3 @@ Thumbs.db
 
 # uv関連
 .python-version
-
-# プロンプト（機密情報を含む可能性があるため）
-prompts/
