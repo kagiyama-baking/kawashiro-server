@@ -7,10 +7,14 @@ from rest_framework import authentication, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ms_graph.exceptions import AuthenticationError, ConfigurationError, NetworkError
+from msgraph_client import OutlookMSGraphClient
+from msgraph_config.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NetworkError,
+)
 
 from .exceptions import CalendarError
-from .ms_graph_client import OutlookGraphClient
 from .serializers import EventInfoSerializer, EventsQuerySerializer
 
 # ロガーを設定
@@ -104,7 +108,7 @@ class OutlookEventsView(APIView):
 
         try:
             # Outlook Graph クライアントを作成
-            client = OutlookGraphClient()
+            client = OutlookMSGraphClient()
 
             # カレンダーイベントを取得
             events = client.get_calendar_events(
