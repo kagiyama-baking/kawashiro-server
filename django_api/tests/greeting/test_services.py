@@ -709,3 +709,227 @@ class TestEveningGreetingService:
         # 日時情報が含まれていることを確認
         assert "date" in prompt_sent
         assert "day_of_week" in prompt_sent
+
+
+class TestWelcomeHomeGreetingService:
+    """WelcomeHomeGreetingServiceのテスト"""
+
+    @pytest.fixture
+    def mock_weather_response(self):
+        """天気予報APIのモックレスポンス"""
+        return {
+            "area_name": "東京都 東京地方",
+            "area_code": "130010",
+            "date": "2025-12-24",
+            "weather": "晴れ　夜　くもり",
+            "weather_code": "111",
+            "temp_min": 4,
+            "temp_max": 10,
+            "pop_00_06": 10,
+            "pop_06_12": 20,
+            "pop_12_18": 30,
+            "pop_18_24": 40,
+        }
+
+    @pytest.fixture
+    def mock_openai_response(self):
+        """OpenAI APIのモックレスポンス"""
+        return "おかえりなさい、先輩。\n今日はお疲れ様でした。\n外は晴れていて気持ちいいですね。"
+
+    @pytest.fixture
+    def system_prompt(self):
+        """テスト用システムプロンプト"""
+        return "テスト用システムプロンプト"
+
+    @pytest.fixture
+    def user_prompt_template(self):
+        """テスト用ユーザープロンプトテンプレート"""
+        return "おかえりの挨拶: {{datetime}} {{weather}}"
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.JMAWeatherClient")
+    @patch("greeting.services.OpenAIClient")
+    def test_generate_greeting_success(
+        self,
+        mock_openai_class,
+        mock_jma_class,
+        mock_holiday_class,
+        mock_weather_response,
+        mock_openai_response,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """正常系: 挨拶が生成される"""
+        from greeting.services import WelcomeHomeGreetingService
+
+        mock_jma = MagicMock()
+        mock_jma.get_weather.return_value = mock_weather_response
+        mock_jma_class.return_value = mock_jma
+
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        service = WelcomeHomeGreetingService()
+        result = service.generate_greeting(
+            area_code="130010",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template,
+        )
+
+        assert result is not None
+        assert "greeting_text" in result
+        assert result["greeting_text"] == mock_openai_response
+
+        mock_jma.get_weather.assert_called_once_with("130010", 0)
+        mock_openai.generate_text.assert_called_once()
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.JMAWeatherClient")
+    @patch("greeting.services.OpenAIClient")
+    @patch("greeting.services.TTSClient")
+    def test_generate_greeting_with_tts(
+        self,
+        mock_tts_class,
+        mock_openai_class,
+        mock_jma_class,
+        mock_holiday_class,
+        mock_weather_response,
+        mock_openai_response,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """TTS付きで挨拶が生成される"""
+        from greeting.services import WelcomeHomeGreetingService
+
+        mock_jma = MagicMock()
+        mock_jma.get_weather.return_value = mock_weather_response
+        mock_jma_class.return_value = mock_jma
+
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        mock_tts = MagicMock()
+        mock_tts.synthesize.return_value = b"RIFF....WAVEfmt "
+        mock_tts_class.return_value = mock_tts
+
+        tts_options = {
+            "model": "test_model",
+            "style": "Happy",
+            "style_weight": 1.0,
+            "speed": 1.2,
+            "sdp_ratio": 0.2,
+            "noise_scale": 0.6,
+            "noise_scale_w": 0.8,
+        }
+
+        service = WelcomeHomeGreetingService()
+        result = service.generate_greeting(
+            area_code="130010",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template,
+            tts_options=tts_options,
+        )
+
+        assert result is not None
+        assert "greeting_text" in result
+        assert "audio_data" in result
+        assert result["audio_data"] == b"RIFF....WAVEfmt "
+
+        mock_tts.synthesize.assert_called_once()
+
+    @patch("greeting.services.HolidayClient")
+    @patch("greeting.services.JMAWeatherClient")
+    @patch("greeting.services.OpenAIClient")
+    def test_generate_greeting_without_tts(
+        self,
+        mock_openai_class,
+        mock_jma_class,
+        mock_holiday_class,
+        mock_weather_response,
+        mock_openai_response,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """TTS無しの場合は音声データがない"""
+        from greeting.services import WelcomeHomeGreetingService
+
+        mock_jma = MagicMock()
+        mock_jma.get_weather.return_value = mock_weather_response
+        mock_jma_class.return_value = mock_jma
+
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        service = WelcomeHomeGreetingService()
+        result = service.generate_greeting(
+            area_code="130010",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template,
+            tts_options=None,
+        )
+
+        assert result is not None
+        assert "greeting_text" in result
+        assert "audio_data" not in result
+
+    def test_build_user_prompt(self):
+        """ユーザープロンプトが正しく構築される"""
+        from greeting.services import WelcomeHomeGreetingService
+
+        service = WelcomeHomeGreetingService()
+
+        template = "おかえりの挨拶: {{datetime}} {{weather}}"
+        weather_data = {"area_name": "東京地方", "weather": "晴れ"}
+        datetime_data = {
+            "date": "2025-01-11",
+            "time": "18:30:00",
+            "day_of_week": "Saturday",
+            "day_of_week_ja": "土曜日",
+            "holiday_name": None,
+        }
+
+        prompt = service._build_user_prompt(template, weather_data, datetime_data)
+
+        assert "おかえりの挨拶" in prompt
+        assert "東京地方" in prompt
+        assert "2025-01-11" in prompt
+        assert "土曜日" in prompt
+
+    @patch("greeting.services.JMAWeatherClient")
+    def test_generate_greeting_weather_error(
+        self,
+        mock_jma_class,
+        system_prompt,
+        user_prompt_template,
+    ):
+        """天気予報API失敗時にエラーが発生する"""
+        from greeting.services import WelcomeHomeGreetingService
+        from weather.exceptions import JMANetworkError
+
+        mock_jma = MagicMock()
+        mock_jma.get_weather.side_effect = JMANetworkError("Network error")
+        mock_jma_class.return_value = mock_jma
+
+        service = WelcomeHomeGreetingService()
+
+        with pytest.raises(JMANetworkError):
+            service.generate_greeting(
+                area_code="130010",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt_template,
+            )

@@ -34,7 +34,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["django_api", "core", "user", "onedrive", "media", "tts"]
+packages = ["django_api", "core", "user", "onedrive", "outlook", "media", "tts", "msgraph_config", "msgraph_client", "weather", "greeting", "llm_config", "llm_client"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "django_api.settings"
@@ -82,7 +82,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["django_api", "core", "user", "onedrive", "media", "tts"]
+known-first-party = ["django_api", "core", "user", "onedrive", "outlook", "media", "tts", "msgraph_config", "msgraph_client", "weather", "greeting", "llm_config", "llm_client"]
 
 [tool.ruff.format]
 quote-style = "double"
