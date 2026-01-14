@@ -14,6 +14,7 @@ class GreetingResponseSerializer(serializers.Serializer):
 # 後方互換性のためのエイリアス
 MorningGreetingResponseSerializer = GreetingResponseSerializer
 EveningGreetingResponseSerializer = GreetingResponseSerializer
+WelcomeHomeGreetingResponseSerializer = GreetingResponseSerializer
 
 
 class TodayInfoResponseSerializer(serializers.Serializer):

@@ -372,3 +372,177 @@ class TestEveningGreetingConfig:
         options = config.get_tts_options()
 
         assert options["model"] is None
+
+
+@pytest.mark.django_db
+class TestWelcomeHomeGreetingConfig:
+    """WelcomeHomeGreetingConfig モデルのテスト"""
+
+    def test_create_config_with_required_fields(self):
+        """必須フィールドで設定を作成できる"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert config.id is not None
+        assert config.area_code == "130010"
+        assert config.system_prompt == "システムプロンプト"
+        assert config.user_prompt == "ユーザープロンプト"
+
+    def test_only_one_config_allowed(self):
+        """設定は1つしか作成できない（シングルトン）"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="システムプロンプト1",
+            user_prompt="ユーザープロンプト1",
+        )
+
+        # save()でfull_clean()が呼ばれるため、ValidationErrorになる
+        with pytest.raises((IntegrityError, ValidationError)):
+            WelcomeHomeGreetingConfig.objects.create(
+                area_code="270000",
+                system_prompt="システムプロンプト2",
+                user_prompt="ユーザープロンプト2",
+            )
+
+    def test_tts_enabled_default_is_false(self):
+        """tts_enabled のデフォルト値は False"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert config.tts_enabled is False
+
+    def test_tts_options_default_values(self):
+        """TTS オプションのデフォルト値が正しく設定される"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert config.tts_model == ""
+        assert config.tts_style == "Neutral"
+        assert config.tts_style_weight == 1.0
+        assert config.tts_speed == 1.0
+        assert config.tts_sdp_ratio == 0.2
+        assert config.tts_noise_scale == 0.6
+        assert config.tts_noise_scale_w == 0.8
+
+    def test_str_returns_verbose_name(self):
+        """__str__ は「おかえりのあいさつ設定」を返す"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        assert str(config) == "おかえりのあいさつ設定"
+
+    def test_verbose_name(self):
+        """verbose_name が正しく設定されている"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        assert WelcomeHomeGreetingConfig._meta.verbose_name == "おかえりのあいさつ設定"
+        assert (
+            WelcomeHomeGreetingConfig._meta.verbose_name_plural
+            == "おかえりのあいさつ設定"
+        )
+
+    def test_get_solo_returns_none_if_not_exists(self):
+        """get_solo() は設定がなければ None を返す"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig.get_solo()
+        assert config is None
+
+    def test_get_solo_returns_existing(self):
+        """get_solo() は既存の設定を返す"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        created = WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+
+        config = WelcomeHomeGreetingConfig.get_solo()
+        assert config.id == created.id
+
+    def test_area_code_valid_6_digits(self):
+        """area_code: 6桁の数字は有効"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+        config.full_clean()  # ValidationError が発生しなければ成功
+
+    def test_area_code_invalid_non_numeric(self):
+        """area_code: 数字以外を含む場合はエラー"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig(
+            area_code="13001a",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            config.full_clean()
+        assert "area_code" in exc_info.value.message_dict
+
+    def test_get_tts_options_when_disabled(self):
+        """get_tts_options(): TTS無効時は None を返す"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+            tts_enabled=False,
+        )
+        assert config.get_tts_options() is None
+
+    def test_get_tts_options_when_enabled(self):
+        """get_tts_options(): TTS有効時は設定を辞書で返す"""
+        from greeting.models import WelcomeHomeGreetingConfig
+
+        config = WelcomeHomeGreetingConfig(
+            area_code="130010",
+            system_prompt="システムプロンプト",
+            user_prompt="ユーザープロンプト",
+            tts_enabled=True,
+            tts_model="test_model",
+            tts_style="Happy",
+            tts_style_weight=1.5,
+            tts_speed=1.2,
+            tts_sdp_ratio=0.3,
+            tts_noise_scale=0.5,
+            tts_noise_scale_w=0.7,
+        )
+        options = config.get_tts_options()
+
+        assert options is not None
+        assert options["model"] == "test_model"
+        assert options["style"] == "Happy"
+        assert options["style_weight"] == 1.5
+        assert options["speed"] == 1.2
+        assert options["sdp_ratio"] == 0.3
+        assert options["noise_scale"] == 0.5
+        assert options["noise_scale_w"] == 0.7

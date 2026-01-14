@@ -7,7 +7,11 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from greeting.models import EveningGreetingConfig, MorningGreetingConfig
+from greeting.models import (
+    EveningGreetingConfig,
+    MorningGreetingConfig,
+    WelcomeHomeGreetingConfig,
+)
 
 
 @pytest.mark.django_db
@@ -597,3 +601,177 @@ class TestEveningGreetingView:
         response = authenticated_client.get(url)
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+
+
+@pytest.mark.django_db
+class TestWelcomeHomeGreetingView:
+    """WelcomeHomeGreetingViewのテスト"""
+
+    @pytest.fixture
+    def url(self):
+        """エンドポイントURL"""
+        return reverse("greeting:welcome-home")
+
+    @pytest.fixture
+    def greeting_config(self):
+        """おかえりのあいさつ設定"""
+        return WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="テスト用システムプロンプト",
+            user_prompt="テスト用ユーザープロンプト",
+            tts_enabled=False,
+        )
+
+    @pytest.fixture
+    def greeting_config_with_tts(self):
+        """TTS有効のおかえりのあいさつ設定"""
+        return WelcomeHomeGreetingConfig.objects.create(
+            area_code="130010",
+            system_prompt="テスト用システムプロンプト",
+            user_prompt="テスト用ユーザープロンプト",
+            tts_enabled=True,
+            tts_model="test_model",
+            tts_style="Happy",
+            tts_speed=1.2,
+        )
+
+    @pytest.fixture
+    def mock_greeting_response(self):
+        """サービスのモックレスポンス（テキストのみ）"""
+        return {
+            "greeting_text": "おかえりなさい、先輩。今日もお疲れ様でした。",
+        }
+
+    @pytest.fixture
+    def mock_greeting_response_with_audio(self):
+        """サービスのモックレスポンス（音声あり）"""
+        return {
+            "greeting_text": "おかえりなさい、先輩。今日もお疲れ様でした。",
+            "audio_data": b"RIFF....WAVEfmt ",
+        }
+
+    def test_welcome_home_greeting_unauthorized(self, api_client, url, greeting_config):
+        """未認証の場合は401エラー"""
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_welcome_home_greeting_config_not_found(self, authenticated_client, url):
+        """設定が存在しない場合は404エラー"""
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert "error" in response.data
+
+    @patch("greeting.views.WelcomeHomeGreetingService")
+    def test_welcome_home_greeting_success(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        mock_greeting_response,
+    ):
+        """正常系: 挨拶がJSONで取得できる（TTS無効時）"""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = mock_greeting_response
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "greeting_text" in response.data
+        assert response.data["greeting_text"] == mock_greeting_response["greeting_text"]
+
+        # サービスが正しい引数で呼ばれたことを確認
+        mock_service.generate_greeting.assert_called_once()
+        call_kwargs = mock_service.generate_greeting.call_args.kwargs
+        assert call_kwargs["area_code"] == "130010"
+        assert call_kwargs["system_prompt"] == "テスト用システムプロンプト"
+        assert call_kwargs["user_prompt"] == "テスト用ユーザープロンプト"
+        assert call_kwargs["tts_options"] is None
+
+    @patch("greeting.views.WelcomeHomeGreetingService")
+    def test_welcome_home_greeting_with_tts_enabled(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config_with_tts,
+        mock_greeting_response_with_audio,
+    ):
+        """TTS有効時: 音声データがWAVで返される"""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "audio/wav"
+        assert "X-Greeting-Text" in response
+
+        # TTSオプションが正しく渡されることを確認
+        mock_service.generate_greeting.assert_called_once()
+        call_kwargs = mock_service.generate_greeting.call_args.kwargs
+        assert call_kwargs["tts_options"] is not None
+        assert call_kwargs["tts_options"]["model"] == "test_model"
+        assert call_kwargs["tts_options"]["style"] == "Happy"
+        assert call_kwargs["tts_options"]["speed"] == 1.2
+
+    @patch("greeting.views.WelcomeHomeGreetingService")
+    def test_welcome_home_greeting_weather_api_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """天気予報API失敗時に502エラー"""
+        from weather.exceptions import JMANetworkError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = JMANetworkError("Network error")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+    @patch("greeting.views.WelcomeHomeGreetingService")
+    def test_welcome_home_greeting_openai_timeout(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """OpenAI APIタイムアウト時に504エラー"""
+        from llm_client.exceptions import OpenAITimeoutError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = OpenAITimeoutError("Timeout")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+
+    @patch("greeting.views.WelcomeHomeGreetingService")
+    def test_welcome_home_greeting_area_not_found(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+    ):
+        """予報区コードが見つからない場合は404エラー"""
+        from weather.exceptions import JMAAreaNotFoundError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = JMAAreaNotFoundError(
+            "Area not found"
+        )
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
