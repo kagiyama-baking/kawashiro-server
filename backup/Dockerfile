@@ -17,8 +17,18 @@ RUN apk update && \
 WORKDIR /app
 
 # pipを最新版にアップグレードしてからuvをインストール
+# setuptools内のjaraco.contextの脆弱性(GHSA-58pv-8j8x-9vj2)を修正するため、
+# ベンダー化されたjaraco.contextを6.1.0以上に更新
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir uv
+    pip install --no-cache-dir uv && \
+    SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") && \
+    pip download --no-deps --dest /tmp jaraco.context>=6.1.0 && \
+    cd "$SITE_PACKAGES/setuptools/_vendor" && \
+    rm -rf jaraco.context-*.dist-info jaraco/context.py jaraco/context && \
+    python -m zipfile -e /tmp/jaraco*.whl /tmp/jaraco_extract && \
+    cp -r /tmp/jaraco_extract/jaraco/context jaraco/ && \
+    cp -r /tmp/jaraco_extract/jaraco_context-*.dist-info . && \
+    rm -rf /tmp/jaraco*
 
 # Python依存関係をインストール（pyproject.tomlから）
 # uv pip installでシステムPythonに直接インストール
