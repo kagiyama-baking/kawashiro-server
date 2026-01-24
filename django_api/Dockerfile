@@ -34,13 +34,11 @@ RUN pip install --no-cache-dir --upgrade pip setuptools 'wheel>=0.46.2' && \
     python -m zipfile -e /tmp/jaraco*.whl /tmp/jaraco_extract && \
     cp -r /tmp/jaraco_extract/jaraco/context jaraco/ && \
     cp -r /tmp/jaraco_extract/jaraco_context-*.dist-info . && \
-    rm -rf /tmp/jaraco* && \
     rm -rf wheel-*.dist-info wheel && \
-    pip download --no-deps --dest /tmp 'wheel>=0.46.2' && \
     python -m zipfile -e /tmp/wheel*.whl /tmp/wheel_extract && \
     cp -r /tmp/wheel_extract/wheel . && \
     cp -r /tmp/wheel_extract/wheel-*.dist-info . && \
-    rm -rf /tmp/wheel*
+    rm -rf /tmp/jaraco* /tmp/wheel*
 
 # Python依存関係をインストール（pyproject.tomlから）
 # uv pip installでシステムPythonに直接インストール
