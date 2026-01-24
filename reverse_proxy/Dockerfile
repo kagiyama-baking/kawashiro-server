@@ -6,7 +6,8 @@ RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
         ca-certificates \
-        tzdata && \
+        tzdata \
+        libpng && \
     rm -rf /var/cache/apk/*
 
 # デフォルトの設定ファイルを削除（ポート80を使用している）
