@@ -16,20 +16,17 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.id is not None
         assert config.area_code == "130010"
         assert config.system_prompt == "システムプロンプト"
-        assert config.user_prompt == "ユーザープロンプト"
 
     def test_only_one_config_allowed(self):
         """設定は1つしか作成できない（シングルトン）"""
         MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト1",
-            user_prompt="ユーザープロンプト1",
         )
 
         # save()でfull_clean()が呼ばれるため、ValidationErrorになる
@@ -37,7 +34,6 @@ class TestMorningGreetingConfig:
             MorningGreetingConfig.objects.create(
                 area_code="270000",
                 system_prompt="システムプロンプト2",
-                user_prompt="ユーザープロンプト2",
             )
 
     def test_tts_enabled_default_is_false(self):
@@ -45,7 +41,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.tts_enabled is False
@@ -55,7 +50,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.tts_model == ""
@@ -71,7 +65,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
@@ -90,7 +83,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert str(config) == "朝のあいさつ設定"
@@ -110,7 +102,6 @@ class TestMorningGreetingConfig:
         created = MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         config = MorningGreetingConfig.get_solo()
@@ -123,7 +114,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         config.full_clean()  # ValidationError が発生しなければ成功
 
@@ -132,7 +122,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="13001a",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         with pytest.raises(ValidationError) as exc_info:
             config.full_clean()
@@ -143,7 +132,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="12345",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         with pytest.raises(ValidationError) as exc_info:
             config.full_clean()
@@ -154,7 +142,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="1234567",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         with pytest.raises(ValidationError) as exc_info:
             config.full_clean()
@@ -167,7 +154,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=False,
         )
         assert config.get_tts_options() is None
@@ -177,7 +163,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
@@ -203,7 +188,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="",
         )
@@ -218,7 +202,6 @@ class TestMorningGreetingConfig:
         config = MorningGreetingConfig(
             area_code="invalid",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         with pytest.raises(ValidationError) as exc_info:
             config.save()
@@ -233,32 +216,27 @@ class TestEveningGreetingConfig:
         """必須フィールドで設定を作成できる"""
         config = EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.id is not None
         assert config.system_prompt == "システムプロンプト"
-        assert config.user_prompt == "ユーザープロンプト"
 
     def test_only_one_config_allowed(self):
         """設定は1つしか作成できない（シングルトン）"""
         EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト1",
-            user_prompt="ユーザープロンプト1",
         )
 
         # save()でfull_clean()が呼ばれるため、ValidationErrorになる
         with pytest.raises((IntegrityError, ValidationError)):
             EveningGreetingConfig.objects.create(
                 system_prompt="システムプロンプト2",
-                user_prompt="ユーザープロンプト2",
             )
 
     def test_tts_enabled_default_is_false(self):
         """tts_enabled のデフォルト値は False"""
         config = EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.tts_enabled is False
@@ -267,7 +245,6 @@ class TestEveningGreetingConfig:
         """TTS オプションのデフォルト値が正しく設定される"""
         config = EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.tts_model == ""
@@ -282,7 +259,6 @@ class TestEveningGreetingConfig:
         """音声合成を有効にした設定を作成できる"""
         config = EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
@@ -300,7 +276,6 @@ class TestEveningGreetingConfig:
         """__str__ は「夜のあいさつ設定」を返す"""
         config = EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert str(config) == "夜のあいさつ設定"
@@ -319,7 +294,6 @@ class TestEveningGreetingConfig:
         """get_solo() は既存の設定を返す"""
         created = EveningGreetingConfig.objects.create(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         config = EveningGreetingConfig.get_solo()
@@ -331,7 +305,6 @@ class TestEveningGreetingConfig:
         """get_tts_options(): TTS無効時は None を返す"""
         config = EveningGreetingConfig(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=False,
         )
         assert config.get_tts_options() is None
@@ -340,7 +313,6 @@ class TestEveningGreetingConfig:
         """get_tts_options(): TTS有効時は設定を辞書で返す"""
         config = EveningGreetingConfig(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
@@ -365,7 +337,6 @@ class TestEveningGreetingConfig:
         """get_tts_options(): tts_model が空文字の場合は model が None"""
         config = EveningGreetingConfig(
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="",
         )
@@ -385,13 +356,11 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.id is not None
         assert config.area_code == "130010"
         assert config.system_prompt == "システムプロンプト"
-        assert config.user_prompt == "ユーザープロンプト"
 
     def test_only_one_config_allowed(self):
         """設定は1つしか作成できない（シングルトン）"""
@@ -400,7 +369,6 @@ class TestWelcomeHomeGreetingConfig:
         WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト1",
-            user_prompt="ユーザープロンプト1",
         )
 
         # save()でfull_clean()が呼ばれるため、ValidationErrorになる
@@ -408,7 +376,6 @@ class TestWelcomeHomeGreetingConfig:
             WelcomeHomeGreetingConfig.objects.create(
                 area_code="270000",
                 system_prompt="システムプロンプト2",
-                user_prompt="ユーザープロンプト2",
             )
 
     def test_tts_enabled_default_is_false(self):
@@ -418,7 +385,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.tts_enabled is False
@@ -430,7 +396,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert config.tts_model == ""
@@ -448,7 +413,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         assert str(config) == "おかえりのあいさつ設定"
@@ -477,7 +441,6 @@ class TestWelcomeHomeGreetingConfig:
         created = WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
 
         config = WelcomeHomeGreetingConfig.get_solo()
@@ -490,7 +453,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         config.full_clean()  # ValidationError が発生しなければ成功
 
@@ -501,7 +463,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig(
             area_code="13001a",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
         )
         with pytest.raises(ValidationError) as exc_info:
             config.full_clean()
@@ -514,7 +475,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=False,
         )
         assert config.get_tts_options() is None
@@ -526,7 +486,6 @@ class TestWelcomeHomeGreetingConfig:
         config = WelcomeHomeGreetingConfig(
             area_code="130010",
             system_prompt="システムプロンプト",
-            user_prompt="ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",

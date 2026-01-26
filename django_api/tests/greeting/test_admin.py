@@ -52,7 +52,6 @@ class TestMorningGreetingConfigAdmin:
         MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="テスト",
-            user_prompt="テスト",
         )
 
         admin_instance = MorningGreetingConfigAdmin(MorningGreetingConfig, AdminSite())
