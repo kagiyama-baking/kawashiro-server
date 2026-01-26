@@ -43,7 +43,6 @@ class MorningGreetingConfig(models.Model):
 
     # プロンプト設定
     system_prompt = models.TextField(verbose_name="システムプロンプト")
-    user_prompt = models.TextField(verbose_name="ユーザープロンプト")
 
     class Meta:
         verbose_name = "朝のあいさつ設定"
@@ -106,7 +105,6 @@ class EveningGreetingConfig(models.Model):
 
     # プロンプト設定
     system_prompt = models.TextField(verbose_name="システムプロンプト")
-    user_prompt = models.TextField(verbose_name="ユーザープロンプト")
 
     class Meta:
         verbose_name = "夜のあいさつ設定"
@@ -182,7 +180,6 @@ class WelcomeHomeGreetingConfig(models.Model):
 
     # プロンプト設定
     system_prompt = models.TextField(verbose_name="システムプロンプト")
-    user_prompt = models.TextField(verbose_name="ユーザープロンプト")
 
     class Meta:
         verbose_name = "おかえりのあいさつ設定"

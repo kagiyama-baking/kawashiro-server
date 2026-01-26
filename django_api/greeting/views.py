@@ -36,6 +36,7 @@ from .models import (
 )
 from .serializers import (
     EveningGreetingResponseSerializer,
+    GreetingRequestSerializer,
     MorningGreetingResponseSerializer,
     TodayInfoResponseSerializer,
     WelcomeHomeGreetingResponseSerializer,
@@ -79,6 +80,14 @@ class MorningGreetingView(APIView):
 2. 予定取得API（/outlook/events/）から本日の予定を取得
 3. 日時情報（日付、曜日、祝日）を取得
 4. OpenAI APIであいさつテキストを生成
+
+## リクエストボディ
+
+```json
+{
+  "user_prompt": "{{weather}}の情報と{{events}}の予定を踏まえて、朝のあいさつをしてください。今日は{{datetime}}です。"
+}
+```
 
 ## プレースホルダー
 
@@ -143,6 +152,7 @@ class MorningGreetingView(APIView):
 管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
 TTS無効の場合はJSONでテキストのみ返します。
 """,
+        request=GreetingRequestSerializer,
         responses={
             200: OpenApiResponse(
                 response=MorningGreetingResponseSerializer,
@@ -152,6 +162,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response=OpenApiTypes.BINARY,
                 description="音声データ（WAV形式）- TTS有効時",
             ),
+            400: OpenApiResponse(description="リクエストパラメータ不正"),
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(
                 description="設定が見つからない / 予報区コードが見つからない"
@@ -161,8 +172,18 @@ TTS無効の場合はJSONでテキストのみ返します。
             504: OpenApiResponse(description="外部APIタイムアウト"),
         },
     )
-    def get(self, request):
+    def post(self, request):
         """朝のあいさつを生成."""
+        # リクエストをバリデーション
+        request_serializer = GreetingRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                request_serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_prompt = request_serializer.validated_data["user_prompt"]
+
         # 設定を取得
         config = MorningGreetingConfig.get_solo()
         if config is None:
@@ -176,7 +197,7 @@ TTS無効の場合はJSONでテキストのみ返します。
             result = service.generate_greeting(
                 area_code=config.area_code,
                 system_prompt=config.system_prompt,
-                user_prompt=config.user_prompt,
+                user_prompt=user_prompt,
                 tts_options=config.get_tts_options(),
             )
 
@@ -275,6 +296,14 @@ class EveningGreetingView(APIView):
 1. 日時情報（日付、曜日、祝日）を取得
 2. OpenAI APIであいさつテキストを生成
 
+## リクエストボディ
+
+```json
+{
+  "user_prompt": "今日は{{datetime}}です。夜のあいさつをしてください。"
+}
+```
+
 ## プレースホルダー
 
 ユーザープロンプトで以下のプレースホルダーが使用可能です：
@@ -300,6 +329,7 @@ class EveningGreetingView(APIView):
 管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
 TTS無効の場合はJSONでテキストのみ返します。
 """,
+        request=GreetingRequestSerializer,
         responses={
             200: OpenApiResponse(
                 response=EveningGreetingResponseSerializer,
@@ -309,14 +339,25 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response=OpenApiTypes.BINARY,
                 description="音声データ（WAV形式）- TTS有効時",
             ),
+            400: OpenApiResponse(description="リクエストパラメータ不正"),
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(description="設定が見つからない"),
             502: OpenApiResponse(description="外部APIへの接続エラー"),
             504: OpenApiResponse(description="外部APIタイムアウト"),
         },
     )
-    def get(self, request):
+    def post(self, request):
         """夜のあいさつを生成."""
+        # リクエストをバリデーション
+        request_serializer = GreetingRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                request_serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_prompt = request_serializer.validated_data["user_prompt"]
+
         # 設定を取得
         config = EveningGreetingConfig.get_solo()
         if config is None:
@@ -329,7 +370,7 @@ TTS無効の場合はJSONでテキストのみ返します。
             service = EveningGreetingService()
             result = service.generate_greeting(
                 system_prompt=config.system_prompt,
-                user_prompt=config.user_prompt,
+                user_prompt=user_prompt,
                 tts_options=config.get_tts_options(),
             )
 
@@ -512,6 +553,14 @@ class WelcomeHomeGreetingView(APIView):
 2. 日時情報（日付、曜日、祝日）を取得
 3. OpenAI APIであいさつテキストを生成
 
+## リクエストボディ
+
+```json
+{
+  "user_prompt": "{{weather}}の天気を踏まえて、おかえりのあいさつをしてください。今日は{{datetime}}です。"
+}
+```
+
 ## プレースホルダー
 
 ユーザープロンプトで以下のプレースホルダーが使用可能です：
@@ -556,6 +605,7 @@ class WelcomeHomeGreetingView(APIView):
 管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
 TTS無効の場合はJSONでテキストのみ返します。
 """,
+        request=GreetingRequestSerializer,
         responses={
             200: OpenApiResponse(
                 response=WelcomeHomeGreetingResponseSerializer,
@@ -565,6 +615,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response=OpenApiTypes.BINARY,
                 description="音声データ（WAV形式）- TTS有効時",
             ),
+            400: OpenApiResponse(description="リクエストパラメータ不正"),
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(
                 description="設定が見つからない / 予報区コードが見つからない"
@@ -573,8 +624,18 @@ TTS無効の場合はJSONでテキストのみ返します。
             504: OpenApiResponse(description="外部APIタイムアウト"),
         },
     )
-    def get(self, request):
+    def post(self, request):
         """おかえりのあいさつを生成."""
+        # リクエストをバリデーション
+        request_serializer = GreetingRequestSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(
+                request_serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_prompt = request_serializer.validated_data["user_prompt"]
+
         # 設定を取得
         config = WelcomeHomeGreetingConfig.get_solo()
         if config is None:
@@ -588,7 +649,7 @@ TTS無効の場合はJSONでテキストのみ返します。
             result = service.generate_greeting(
                 area_code=config.area_code,
                 system_prompt=config.system_prompt,
-                user_prompt=config.user_prompt,
+                user_prompt=user_prompt,
                 tts_options=config.get_tts_options(),
             )
 

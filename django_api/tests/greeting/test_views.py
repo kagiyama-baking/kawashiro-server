@@ -153,7 +153,6 @@ class TestMorningGreetingView:
         return MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="テスト用システムプロンプト",
-            user_prompt="テスト用ユーザープロンプト",
             tts_enabled=False,
         )
 
@@ -163,12 +162,16 @@ class TestMorningGreetingView:
         return MorningGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="テスト用システムプロンプト",
-            user_prompt="テスト用ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
             tts_speed=1.2,
         )
+
+    @pytest.fixture
+    def request_data(self):
+        """リクエストデータ"""
+        return {"user_prompt": "テスト用ユーザープロンプト"}
 
     @pytest.fixture
     def mock_greeting_response(self):
@@ -185,16 +188,27 @@ class TestMorningGreetingView:
             "audio_data": b"RIFF....WAVEfmt ",
         }
 
-    def test_morning_greeting_unauthorized(self, api_client, url, greeting_config):
+    def test_morning_greeting_unauthorized(
+        self, api_client, url, greeting_config, request_data
+    ):
         """未認証の場合は401エラー"""
-        response = api_client.get(url)
+        response = api_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_morning_greeting_config_not_found(self, authenticated_client, url):
+    def test_morning_greeting_config_not_found(
+        self, authenticated_client, url, request_data
+    ):
         """設定が存在しない場合は404エラー"""
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "error" in response.data
+
+    def test_morning_greeting_missing_user_prompt(
+        self, authenticated_client, url, greeting_config
+    ):
+        """user_promptが欠落している場合は400エラー"""
+        response = authenticated_client.post(url, {}, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     @patch("greeting.views.MorningGreetingService")
     def test_morning_greeting_success(
@@ -203,6 +217,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
         mock_greeting_response,
     ):
         """正常系: 挨拶がJSONで取得できる（TTS無効時）"""
@@ -210,7 +225,7 @@ class TestMorningGreetingView:
         mock_service.generate_greeting.return_value = mock_greeting_response
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         assert "greeting_text" in response.data
@@ -231,6 +246,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config_with_tts,
+        request_data,
         mock_greeting_response_with_audio,
     ):
         """TTS有効時: 音声データがWAVで返される"""
@@ -238,7 +254,7 @@ class TestMorningGreetingView:
         mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         assert response["Content-Type"] == "audio/wav"
@@ -259,6 +275,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """天気予報API失敗時に502エラー"""
         from weather.exceptions import JMANetworkError
@@ -267,7 +284,7 @@ class TestMorningGreetingView:
         mock_service.generate_greeting.side_effect = JMANetworkError("Network error")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
@@ -278,6 +295,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """OpenAI APIタイムアウト時に504エラー"""
         from llm_client.exceptions import OpenAITimeoutError
@@ -286,7 +304,7 @@ class TestMorningGreetingView:
         mock_service.generate_greeting.side_effect = OpenAITimeoutError("Timeout")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
@@ -297,6 +315,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """予報区コードが見つからない場合は404エラー"""
         from weather.exceptions import JMAAreaNotFoundError
@@ -307,7 +326,7 @@ class TestMorningGreetingView:
         )
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -318,6 +337,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config_with_tts,
+        request_data,
     ):
         """X-Greeting-Textヘッダーから制御文字が除去される"""
         from email.header import decode_header
@@ -330,7 +350,7 @@ class TestMorningGreetingView:
         }
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         raw_header = response["X-Greeting-Text"]
@@ -357,6 +377,7 @@ class TestMorningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """予報区コードエラー時は汎用メッセージを返す"""
         from weather.exceptions import JMAAreaNotFoundError
@@ -367,7 +388,7 @@ class TestMorningGreetingView:
         )
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         # 内部情報が露出せず、汎用メッセージであること
@@ -388,7 +409,6 @@ class TestEveningGreetingView:
         """夜のあいさつ設定"""
         return EveningGreetingConfig.objects.create(
             system_prompt="テスト用システムプロンプト",
-            user_prompt="テスト用ユーザープロンプト",
             tts_enabled=False,
         )
 
@@ -397,12 +417,16 @@ class TestEveningGreetingView:
         """TTS有効の夜のあいさつ設定"""
         return EveningGreetingConfig.objects.create(
             system_prompt="テスト用システムプロンプト",
-            user_prompt="テスト用ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
             tts_speed=1.2,
         )
+
+    @pytest.fixture
+    def request_data(self):
+        """リクエストデータ"""
+        return {"user_prompt": "テスト用ユーザープロンプト"}
 
     @pytest.fixture
     def mock_greeting_response(self):
@@ -419,16 +443,27 @@ class TestEveningGreetingView:
             "audio_data": b"RIFF....WAVEfmt ",
         }
 
-    def test_evening_greeting_unauthorized(self, api_client, url, greeting_config):
+    def test_evening_greeting_unauthorized(
+        self, api_client, url, greeting_config, request_data
+    ):
         """未認証の場合は401エラー"""
-        response = api_client.get(url)
+        response = api_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_evening_greeting_config_not_found(self, authenticated_client, url):
+    def test_evening_greeting_config_not_found(
+        self, authenticated_client, url, request_data
+    ):
         """設定が存在しない場合は404エラー"""
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "error" in response.data
+
+    def test_evening_greeting_missing_user_prompt(
+        self, authenticated_client, url, greeting_config
+    ):
+        """user_promptが欠落している場合は400エラー"""
+        response = authenticated_client.post(url, {}, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     @patch("greeting.views.EveningGreetingService")
     def test_evening_greeting_success(
@@ -437,6 +472,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
         mock_greeting_response,
     ):
         """正常系: 挨拶がJSONで取得できる（TTS無効時）"""
@@ -444,7 +480,7 @@ class TestEveningGreetingView:
         mock_service.generate_greeting.return_value = mock_greeting_response
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         assert "greeting_text" in response.data
@@ -464,6 +500,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config_with_tts,
+        request_data,
         mock_greeting_response_with_audio,
     ):
         """TTS有効時: 音声データがWAVで返される"""
@@ -471,7 +508,7 @@ class TestEveningGreetingView:
         mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         assert response["Content-Type"] == "audio/wav"
@@ -492,6 +529,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """OpenAI APIタイムアウト時に504エラー"""
         from llm_client.exceptions import OpenAITimeoutError
@@ -500,7 +538,7 @@ class TestEveningGreetingView:
         mock_service.generate_greeting.side_effect = OpenAITimeoutError("Timeout")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
@@ -511,6 +549,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """OpenAI APIエラー時に502エラー"""
         from llm_client.exceptions import OpenAIAPIError
@@ -519,7 +558,7 @@ class TestEveningGreetingView:
         mock_service.generate_greeting.side_effect = OpenAIAPIError("API Error")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
@@ -530,6 +569,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config_with_tts,
+        request_data,
     ):
         """X-Greeting-Textヘッダーから制御文字が除去される"""
         from email.header import decode_header
@@ -542,7 +582,7 @@ class TestEveningGreetingView:
         }
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         raw_header = response["X-Greeting-Text"]
@@ -569,6 +609,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """祝日APIネットワークエラー時は502エラー"""
         from greeting.exceptions import HolidayNetworkError
@@ -579,7 +620,7 @@ class TestEveningGreetingView:
         )
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
@@ -590,6 +631,7 @@ class TestEveningGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """祝日APIタイムアウト時は504エラー"""
         from greeting.exceptions import HolidayTimeoutError
@@ -598,7 +640,7 @@ class TestEveningGreetingView:
         mock_service.generate_greeting.side_effect = HolidayTimeoutError("Timeout")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
@@ -618,7 +660,6 @@ class TestWelcomeHomeGreetingView:
         return WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="テスト用システムプロンプト",
-            user_prompt="テスト用ユーザープロンプト",
             tts_enabled=False,
         )
 
@@ -628,12 +669,16 @@ class TestWelcomeHomeGreetingView:
         return WelcomeHomeGreetingConfig.objects.create(
             area_code="130010",
             system_prompt="テスト用システムプロンプト",
-            user_prompt="テスト用ユーザープロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
             tts_speed=1.2,
         )
+
+    @pytest.fixture
+    def request_data(self):
+        """リクエストデータ"""
+        return {"user_prompt": "テスト用ユーザープロンプト"}
 
     @pytest.fixture
     def mock_greeting_response(self):
@@ -650,16 +695,27 @@ class TestWelcomeHomeGreetingView:
             "audio_data": b"RIFF....WAVEfmt ",
         }
 
-    def test_welcome_home_greeting_unauthorized(self, api_client, url, greeting_config):
+    def test_welcome_home_greeting_unauthorized(
+        self, api_client, url, greeting_config, request_data
+    ):
         """未認証の場合は401エラー"""
-        response = api_client.get(url)
+        response = api_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_welcome_home_greeting_config_not_found(self, authenticated_client, url):
+    def test_welcome_home_greeting_config_not_found(
+        self, authenticated_client, url, request_data
+    ):
         """設定が存在しない場合は404エラー"""
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "error" in response.data
+
+    def test_welcome_home_greeting_missing_user_prompt(
+        self, authenticated_client, url, greeting_config
+    ):
+        """user_promptが欠落している場合は400エラー"""
+        response = authenticated_client.post(url, {}, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     @patch("greeting.views.WelcomeHomeGreetingService")
     def test_welcome_home_greeting_success(
@@ -668,6 +724,7 @@ class TestWelcomeHomeGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
         mock_greeting_response,
     ):
         """正常系: 挨拶がJSONで取得できる（TTS無効時）"""
@@ -675,7 +732,7 @@ class TestWelcomeHomeGreetingView:
         mock_service.generate_greeting.return_value = mock_greeting_response
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         assert "greeting_text" in response.data
@@ -696,6 +753,7 @@ class TestWelcomeHomeGreetingView:
         authenticated_client,
         url,
         greeting_config_with_tts,
+        request_data,
         mock_greeting_response_with_audio,
     ):
         """TTS有効時: 音声データがWAVで返される"""
@@ -703,7 +761,7 @@ class TestWelcomeHomeGreetingView:
         mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
         assert response["Content-Type"] == "audio/wav"
@@ -724,6 +782,7 @@ class TestWelcomeHomeGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """天気予報API失敗時に502エラー"""
         from weather.exceptions import JMANetworkError
@@ -732,7 +791,7 @@ class TestWelcomeHomeGreetingView:
         mock_service.generate_greeting.side_effect = JMANetworkError("Network error")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
@@ -743,6 +802,7 @@ class TestWelcomeHomeGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """OpenAI APIタイムアウト時に504エラー"""
         from llm_client.exceptions import OpenAITimeoutError
@@ -751,7 +811,7 @@ class TestWelcomeHomeGreetingView:
         mock_service.generate_greeting.side_effect = OpenAITimeoutError("Timeout")
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
@@ -762,6 +822,7 @@ class TestWelcomeHomeGreetingView:
         authenticated_client,
         url,
         greeting_config,
+        request_data,
     ):
         """予報区コードが見つからない場合は404エラー"""
         from weather.exceptions import JMAAreaNotFoundError
@@ -772,6 +833,6 @@ class TestWelcomeHomeGreetingView:
         )
         mock_service_class.return_value = mock_service
 
-        response = authenticated_client.get(url)
+        response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
