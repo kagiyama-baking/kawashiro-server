@@ -29,23 +29,13 @@ from weather.exceptions import (
 
 from .exceptions import HolidayNetworkError, HolidayTimeoutError
 from .holiday_client import HolidayClient
-from .models import (
-    EveningGreetingConfig,
-    MorningGreetingConfig,
-    WelcomeHomeGreetingConfig,
-)
+from .models import GreetingConfig
 from .serializers import (
-    EveningGreetingResponseSerializer,
     GreetingRequestSerializer,
-    MorningGreetingResponseSerializer,
+    GreetingResponseSerializer,
     TodayInfoResponseSerializer,
-    WelcomeHomeGreetingResponseSerializer,
 )
-from .services import (
-    EveningGreetingService,
-    MorningGreetingService,
-    WelcomeHomeGreetingService,
-)
+from .services import GreetingService
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +50,20 @@ def sanitize_for_header(text: str, max_length: int = 200) -> str:
     return sanitized[:max_length]
 
 
-class MorningGreetingView(APIView):
-    """朝のあいさつAPI."""
+# 曜日の日本語マッピング
+DAY_OF_WEEK_JA = {
+    "Monday": "月曜日",
+    "Tuesday": "火曜日",
+    "Wednesday": "水曜日",
+    "Thursday": "木曜日",
+    "Friday": "金曜日",
+    "Saturday": "土曜日",
+    "Sunday": "日曜日",
+}
+
+
+class GreetingView(APIView):
+    """挨拶生成API."""
 
     authentication_classes = (authentication.TokenAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
@@ -69,83 +71,29 @@ class MorningGreetingView(APIView):
 
     @extend_schema(
         tags=["greeting"],
-        summary="朝のあいさつを生成",
-        description="""朝のあいさつを生成します。
+        summary="挨拶を生成",
+        description="""指定した設定名に基づいて挨拶を生成します。
 
 設定はDjango管理画面で事前に登録しておく必要があります。
-
-## 処理フロー
-
-1. 天気予報API（/weather/forecast/）から本日の天気を取得
-2. 予定取得API（/outlook/events/）から本日の予定を取得
-3. 日時情報（日付、曜日、祝日）を取得
-4. OpenAI APIであいさつテキストを生成
 
 ## リクエストボディ
 
 ```json
 {
+  "config_name": "morning",
   "user_prompt": "{{weather}}の情報と{{events}}の予定を踏まえて、朝のあいさつをしてください。今日は{{datetime}}です。"
 }
 ```
 
 ## プレースホルダー
 
-ユーザープロンプトで以下のプレースホルダーが使用可能です：
+ユーザープロンプトで以下のプレースホルダーが使用可能です（設定で有効化されている場合）：
 
 | プレースホルダー | 内容 |
 |----------------|------|
 | `{{datetime}}` | 日時情報（日付、曜日、祝日） |
 | `{{weather}}` | 天気予報データ |
 | `{{events}}` | 本日の予定データ |
-
-### {{datetime}} の例
-
-```json
-{
-  "date": "2025-01-11",
-  "time": "09:30:00",
-  "day_of_week": "Saturday",
-  "day_of_week_ja": "土曜日",
-  "holiday_name": null
-}
-```
-
-### {{weather}} の例
-
-```json
-{
-  "area_name": "東京都 東京地方",
-  "area_code": "130010",
-  "date": "2025-01-11",
-  "weather": "晴れ　夜　くもり",
-  "weather_code": "111",
-  "temp_min": 4,
-  "temp_max": 10,
-  "pop_00_06": 10,
-  "pop_06_12": 20,
-  "pop_12_18": 30,
-  "pop_18_24": 40
-}
-```
-
-### {{events}} の例
-
-```json
-[
-  {
-    "subject": "チーム定例",
-    "start": {"dateTime": "2025-01-11T10:00:00", "timeZone": "Tokyo Standard Time"},
-    "end": {"dateTime": "2025-01-11T11:00:00", "timeZone": "Tokyo Standard Time"},
-    "location": "会議室A",
-    "is_all_day": false
-  }
-]
-```
-
-## 注意事項
-
-- 予定がない場合、予定に関する言及はありません
 
 ## 音声合成
 
@@ -155,7 +103,7 @@ TTS無効の場合はJSONでテキストのみ返します。
         request=GreetingRequestSerializer,
         responses={
             200: OpenApiResponse(
-                response=MorningGreetingResponseSerializer,
+                response=GreetingResponseSerializer,
                 description="あいさつ生成成功（JSON）",
             ),
             (200, "audio/wav"): OpenApiResponse(
@@ -173,7 +121,7 @@ TTS無効の場合はJSONでテキストのみ返します。
         },
     )
     def post(self, request):
-        """朝のあいさつを生成."""
+        """挨拶を生成."""
         # リクエストをバリデーション
         request_serializer = GreetingRequestSerializer(data=request.data)
         if not request_serializer.is_valid():
@@ -182,23 +130,23 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        config_name = request_serializer.validated_data["config_name"]
         user_prompt = request_serializer.validated_data["user_prompt"]
 
         # 設定を取得
-        config = MorningGreetingConfig.get_solo()
-        if config is None:
+        try:
+            config = GreetingConfig.objects.get(name=config_name)
+        except GreetingConfig.DoesNotExist:
             return Response(
-                {"error": "朝のあいさつの設定が見つかりません"},
+                {"error": f"設定 '{config_name}' が見つかりません"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         try:
-            service = MorningGreetingService()
+            service = GreetingService()
             result = service.generate_greeting(
-                area_code=config.area_code,
-                system_prompt=config.system_prompt,
+                config=config,
                 user_prompt=user_prompt,
-                tts_options=config.get_tts_options(),
             )
 
             # 音声データがある場合はWAVを返す（HttpResponseを使用）
@@ -211,7 +159,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 return response
 
             # 音声なしの場合はJSONを返す
-            response_serializer = MorningGreetingResponseSerializer(data=result)
+            response_serializer = GreetingResponseSerializer(data=result)
             response_serializer.is_valid(raise_exception=True)
 
             return Response(response_serializer.data, status=status.HTTP_200_OK)
@@ -230,10 +178,10 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
 
-        except (OpenAITimeoutError, TTSTimeoutError) as e:
-            logger.error("AI/TTSサービスタイムアウト: %s", str(e))
+        except (OpenAITimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
+            logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(e))
             return Response(
-                {"error": "AI生成サービスへのリクエストがタイムアウトしました"},
+                {"error": "サービスへのリクエストがタイムアウトしました"},
                 status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
 
@@ -241,6 +189,7 @@ TTS無効の場合はJSONでテキストのみ返します。
             JMANetworkError,
             JMAParseError,
             NetworkError,
+            HolidayNetworkError,
         ) as e:
             logger.error("外部API接続エラー: %s", str(e))
             return Response(
@@ -275,166 +224,6 @@ TTS無効の場合はJSONでテキストのみ返します。
                 {"error": "あいさつの生成中に問題が発生しました"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-
-class EveningGreetingView(APIView):
-    """夜のあいさつAPI."""
-
-    authentication_classes = (authentication.TokenAuthentication,)
-    permission_classes = (permissions.IsAuthenticated,)
-    renderer_classes = [JSONRenderer]
-
-    @extend_schema(
-        tags=["greeting"],
-        summary="夜のあいさつを生成",
-        description="""夜のあいさつを生成します。
-
-設定はDjango管理画面で事前に登録しておく必要があります。
-
-## 処理フロー
-
-1. 日時情報（日付、曜日、祝日）を取得
-2. OpenAI APIであいさつテキストを生成
-
-## リクエストボディ
-
-```json
-{
-  "user_prompt": "今日は{{datetime}}です。夜のあいさつをしてください。"
-}
-```
-
-## プレースホルダー
-
-ユーザープロンプトで以下のプレースホルダーが使用可能です：
-
-| プレースホルダー | 内容 |
-|----------------|------|
-| `{{datetime}}` | 日時情報（日付、曜日、祝日） |
-
-### {{datetime}} の例
-
-```json
-{
-  "date": "2025-01-11",
-  "time": "21:30:00",
-  "day_of_week": "Saturday",
-  "day_of_week_ja": "土曜日",
-  "holiday_name": null
-}
-```
-
-## 音声合成
-
-管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
-TTS無効の場合はJSONでテキストのみ返します。
-""",
-        request=GreetingRequestSerializer,
-        responses={
-            200: OpenApiResponse(
-                response=EveningGreetingResponseSerializer,
-                description="あいさつ生成成功（JSON）",
-            ),
-            (200, "audio/wav"): OpenApiResponse(
-                response=OpenApiTypes.BINARY,
-                description="音声データ（WAV形式）- TTS有効時",
-            ),
-            400: OpenApiResponse(description="リクエストパラメータ不正"),
-            401: OpenApiResponse(description="認証エラー"),
-            404: OpenApiResponse(description="設定が見つからない"),
-            502: OpenApiResponse(description="外部APIへの接続エラー"),
-            504: OpenApiResponse(description="外部APIタイムアウト"),
-        },
-    )
-    def post(self, request):
-        """夜のあいさつを生成."""
-        # リクエストをバリデーション
-        request_serializer = GreetingRequestSerializer(data=request.data)
-        if not request_serializer.is_valid():
-            return Response(
-                request_serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        user_prompt = request_serializer.validated_data["user_prompt"]
-
-        # 設定を取得
-        config = EveningGreetingConfig.get_solo()
-        if config is None:
-            return Response(
-                {"error": "夜のあいさつの設定が見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        try:
-            service = EveningGreetingService()
-            result = service.generate_greeting(
-                system_prompt=config.system_prompt,
-                user_prompt=user_prompt,
-                tts_options=config.get_tts_options(),
-            )
-
-            # 音声データがある場合はWAVを返す（HttpResponseを使用）
-            if "audio_data" in result:
-                audio_data = result["audio_data"]
-                greeting_text = result["greeting_text"]
-                response = HttpResponse(audio_data, content_type="audio/wav")
-                response["Content-Disposition"] = 'attachment; filename="greeting.wav"'
-                response["X-Greeting-Text"] = sanitize_for_header(greeting_text)
-                return response
-
-            # 音声なしの場合はJSONを返す
-            response_serializer = EveningGreetingResponseSerializer(data=result)
-            response_serializer.is_valid(raise_exception=True)
-
-            return Response(response_serializer.data, status=status.HTTP_200_OK)
-
-        except HolidayTimeoutError as e:
-            logger.error("祝日APIタイムアウト: %s", str(e))
-            return Response(
-                {"error": "祝日APIへのリクエストがタイムアウトしました"},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-
-        except HolidayNetworkError as e:
-            logger.error("祝日API接続エラー: %s", str(e))
-            return Response(
-                {"error": "祝日APIへの接続に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        except (OpenAITimeoutError, TTSTimeoutError) as e:
-            logger.error("AI/TTSサービスタイムアウト: %s", str(e))
-            return Response(
-                {"error": "AI生成サービスへのリクエストがタイムアウトしました"},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-
-        except (OpenAIAPIError, TTSNetworkError) as e:
-            logger.error("AI/TTSサービスエラー: %s", str(e))
-            return Response(
-                {"error": "AI生成サービスへの接続に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        except Exception as e:
-            logger.exception("予期しないエラー: %s", str(e))
-            return Response(
-                {"error": "あいさつの生成中に問題が発生しました"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-# 曜日の日本語マッピング
-DAY_OF_WEEK_JA = {
-    "Monday": "月曜日",
-    "Tuesday": "火曜日",
-    "Wednesday": "水曜日",
-    "Thursday": "木曜日",
-    "Friday": "金曜日",
-    "Saturday": "土曜日",
-    "Sunday": "日曜日",
-}
 
 
 class TodayInfoView(APIView):
@@ -529,187 +318,5 @@ class TodayInfoView(APIView):
             logger.exception("予期しないエラー: %s", str(e))
             return Response(
                 {"error": "日時情報の取得中に問題が発生しました"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-class WelcomeHomeGreetingView(APIView):
-    """おかえりのあいさつAPI."""
-
-    authentication_classes = (authentication.TokenAuthentication,)
-    permission_classes = (permissions.IsAuthenticated,)
-    renderer_classes = [JSONRenderer]
-
-    @extend_schema(
-        tags=["greeting"],
-        summary="おかえりのあいさつを生成",
-        description="""おかえりのあいさつを生成します。
-
-設定はDjango管理画面で事前に登録しておく必要があります。
-
-## 処理フロー
-
-1. 天気予報（気象庁API）を取得
-2. 日時情報（日付、曜日、祝日）を取得
-3. OpenAI APIであいさつテキストを生成
-
-## リクエストボディ
-
-```json
-{
-  "user_prompt": "{{weather}}の天気を踏まえて、おかえりのあいさつをしてください。今日は{{datetime}}です。"
-}
-```
-
-## プレースホルダー
-
-ユーザープロンプトで以下のプレースホルダーが使用可能です：
-
-| プレースホルダー | 内容 |
-|----------------|------|
-| `{{datetime}}` | 日時情報（日付、曜日、祝日） |
-| `{{weather}}` | 今日の天気予報（天気、気温、降水確率） |
-
-### {{datetime}} の例
-
-```json
-{
-  "date": "2025-01-11",
-  "time": "18:30:00",
-  "day_of_week": "Saturday",
-  "day_of_week_ja": "土曜日",
-  "holiday_name": null
-}
-```
-
-### {{weather}} の例
-
-```json
-{
-  "area_name": "東京都 東京地方",
-  "area_code": "130010",
-  "date": "2025-01-11",
-  "weather": "晴れ　夜　くもり",
-  "weather_code": "111",
-  "temp_min": 4,
-  "temp_max": 10,
-  "pop_00_06": 10,
-  "pop_06_12": 20,
-  "pop_12_18": 30,
-  "pop_18_24": 40
-}
-```
-
-## 音声合成
-
-管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
-TTS無効の場合はJSONでテキストのみ返します。
-""",
-        request=GreetingRequestSerializer,
-        responses={
-            200: OpenApiResponse(
-                response=WelcomeHomeGreetingResponseSerializer,
-                description="あいさつ生成成功（JSON）",
-            ),
-            (200, "audio/wav"): OpenApiResponse(
-                response=OpenApiTypes.BINARY,
-                description="音声データ（WAV形式）- TTS有効時",
-            ),
-            400: OpenApiResponse(description="リクエストパラメータ不正"),
-            401: OpenApiResponse(description="認証エラー"),
-            404: OpenApiResponse(
-                description="設定が見つからない / 予報区コードが見つからない"
-            ),
-            502: OpenApiResponse(description="外部APIへの接続エラー"),
-            504: OpenApiResponse(description="外部APIタイムアウト"),
-        },
-    )
-    def post(self, request):
-        """おかえりのあいさつを生成."""
-        # リクエストをバリデーション
-        request_serializer = GreetingRequestSerializer(data=request.data)
-        if not request_serializer.is_valid():
-            return Response(
-                request_serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        user_prompt = request_serializer.validated_data["user_prompt"]
-
-        # 設定を取得
-        config = WelcomeHomeGreetingConfig.get_solo()
-        if config is None:
-            return Response(
-                {"error": "おかえりのあいさつの設定が見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        try:
-            service = WelcomeHomeGreetingService()
-            result = service.generate_greeting(
-                area_code=config.area_code,
-                system_prompt=config.system_prompt,
-                user_prompt=user_prompt,
-                tts_options=config.get_tts_options(),
-            )
-
-            # 音声データがある場合はWAVを返す（HttpResponseを使用）
-            if "audio_data" in result:
-                audio_data = result["audio_data"]
-                greeting_text = result["greeting_text"]
-                response = HttpResponse(audio_data, content_type="audio/wav")
-                response["Content-Disposition"] = 'attachment; filename="greeting.wav"'
-                response["X-Greeting-Text"] = sanitize_for_header(greeting_text)
-                return response
-
-            # 音声なしの場合はJSONを返す
-            response_serializer = WelcomeHomeGreetingResponseSerializer(data=result)
-            response_serializer.is_valid(raise_exception=True)
-
-            return Response(response_serializer.data, status=status.HTTP_200_OK)
-
-        except JMAAreaNotFoundError as e:
-            logger.warning("予報区コードが見つからない: %s", str(e))
-            return Response(
-                {"error": "指定された予報区コードが見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        except JMATimeoutError as e:
-            logger.error("外部APIタイムアウト: %s", str(e))
-            return Response(
-                {"error": "外部サービスへのリクエストがタイムアウトしました"},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-
-        except (OpenAITimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
-            logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(e))
-            return Response(
-                {"error": "サービスへのリクエストがタイムアウトしました"},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-
-        except (
-            JMANetworkError,
-            JMAParseError,
-            HolidayNetworkError,
-        ) as e:
-            logger.error("外部API接続エラー: %s", str(e))
-            return Response(
-                {"error": "外部サービスへの接続に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        except (OpenAIAPIError, TTSNetworkError) as e:
-            logger.error("AI/TTSサービスエラー: %s", str(e))
-            return Response(
-                {"error": "AI生成サービスへの接続に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        except Exception as e:
-            logger.exception("予期しないエラー: %s", str(e))
-            return Response(
-                {"error": "あいさつの生成中に問題が発生しました"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

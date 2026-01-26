@@ -6,6 +6,10 @@ from rest_framework import serializers
 class GreetingRequestSerializer(serializers.Serializer):
     """挨拶リクエストのシリアライザー."""
 
+    config_name = serializers.CharField(
+        required=True,
+        help_text="設定名（管理画面で登録した name）",
+    )
     user_prompt = serializers.CharField(
         required=True,
         help_text="ユーザープロンプトテンプレート",
@@ -18,12 +22,6 @@ class GreetingResponseSerializer(serializers.Serializer):
     greeting_text = serializers.CharField(
         help_text="生成された挨拶テキスト",
     )
-
-
-# 後方互換性のためのエイリアス
-MorningGreetingResponseSerializer = GreetingResponseSerializer
-EveningGreetingResponseSerializer = GreetingResponseSerializer
-WelcomeHomeGreetingResponseSerializer = GreetingResponseSerializer
 
 
 class TodayInfoResponseSerializer(serializers.Serializer):
