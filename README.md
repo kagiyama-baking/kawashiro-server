@@ -20,7 +20,7 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
     -   📁 **Media**: メディアファイル管理機能
     -   🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
     -   🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
-    -   🎙️ **Greeting**: 朝のあいさつ API（天気・予定・運行情報を統合して AI が挨拶を生成、TTS 音声合成対応）
+    -   🎙️ **Greeting**: 挨拶 API（設定ベースの柔軟な挨拶生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
     -   🤖 **LLM Client**: OpenAI API クライアント（テキスト生成）
     -   🔧 **LLM Config**: LLM 設定管理
     -   🔗 **MS Graph Config**: Microsoft Graph API 共通設定・認証モジュール
@@ -85,7 +85,7 @@ kawashiro-server/
 │   ├── core/                   # 共通コアアプリ（暗号化ユーティリティ等）
 │   ├── tts/                    # TTS読み上げアプリ（sbv2-apiプロキシ）
 │   ├── weather/                # 気象庁天気予報アプリ
-│   ├── greeting/               # 朝のあいさつアプリ（AI生成・TTS対応）
+│   ├── greeting/               # 挨拶アプリ（設定ベースのAI挨拶生成・TTS対応）
 │   ├── llm_client/             # OpenAI APIクライアント
 │   ├── llm_config/             # LLM設定管理
 │   ├── msgraph_client/         # Microsoft Graph統一クライアント
@@ -234,7 +234,7 @@ AZURE_TENANT_ID=your-tenant-id
 AZURE_CLIENT_ID=your-client-id
 AZURE_CLIENT_SECRET=your-client-secret
 
-# OpenAI API（朝のあいさつ機能などのAI生成に使用）
+# OpenAI API（挨拶機能などのAI生成に使用）
 OPENAI_API_KEY=your-openai-api-key
 
 # Style-BERT-VITS2 API（音声合成機能）
@@ -963,7 +963,7 @@ docker compose exec [サービス名] ps aux
 ### 外部サービス連携
 
 -   **Microsoft Graph API**: OneDrive/Outlook 連携
--   **OpenAI API**: テキスト生成（朝のあいさつ機能）
+-   **OpenAI API**: テキスト生成（挨拶機能）
 -   **気象庁天気予報 API**: 天気予報データ取得
 -   **Valkey (Redis)**: キャッシュ・セッション管理
 -   **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
