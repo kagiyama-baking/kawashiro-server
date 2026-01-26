@@ -41,7 +41,7 @@ class MorningGreetingConfigAdmin(admin.ModelAdmin):
         (
             "プロンプト設定",
             {
-                "fields": ("system_prompt", "user_prompt"),
+                "fields": ("system_prompt",),
             },
         ),
     )
@@ -83,7 +83,7 @@ class EveningGreetingConfigAdmin(admin.ModelAdmin):
         (
             "プロンプト設定",
             {
-                "fields": ("system_prompt", "user_prompt"),
+                "fields": ("system_prompt",),
             },
         ),
     )
@@ -131,7 +131,7 @@ class WelcomeHomeGreetingConfigAdmin(admin.ModelAdmin):
         (
             "プロンプト設定",
             {
-                "fields": ("system_prompt", "user_prompt"),
+                "fields": ("system_prompt",),
             },
         ),
     )

@@ -3,6 +3,15 @@
 from rest_framework import serializers
 
 
+class GreetingRequestSerializer(serializers.Serializer):
+    """挨拶リクエストのシリアライザー."""
+
+    user_prompt = serializers.CharField(
+        required=True,
+        help_text="ユーザープロンプトテンプレート",
+    )
+
+
 class GreetingResponseSerializer(serializers.Serializer):
     """挨拶レスポンスのシリアライザー."""
 
