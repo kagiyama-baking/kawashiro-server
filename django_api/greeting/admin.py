@@ -1,115 +1,45 @@
-"""あいさつ設定 admin"""
+"""挨拶設定 admin"""
 
 from django.contrib import admin
 
-from .models import (
-    EveningGreetingConfig,
-    MorningGreetingConfig,
-    WelcomeHomeGreetingConfig,
-)
+from .models import GreetingConfig
 
 
-@admin.register(MorningGreetingConfig)
-class MorningGreetingConfigAdmin(admin.ModelAdmin):
-    """朝のあいさつ設定 Admin"""
+@admin.register(GreetingConfig)
+class GreetingConfigAdmin(admin.ModelAdmin):
+    """挨拶設定 Admin"""
 
-    list_display = ("__str__", "area_code", "tts_enabled")
+    list_display = (
+        "name",
+        "display_name",
+        "use_weather",
+        "use_events",
+        "use_datetime",
+        "tts_enabled",
+    )
+    list_filter = ("use_weather", "use_events", "use_datetime", "tts_enabled")
+    search_fields = ("name", "display_name")
 
     fieldsets = (
         (
             None,
             {
-                "fields": ("area_code",),
+                "fields": ("name", "display_name"),
             },
         ),
         (
-            "TTS設定",
+            "プレースホルダー設定",
             {
-                "classes": ("collapse",),
-                "fields": (
-                    "tts_enabled",
-                    "tts_model",
-                    "tts_style",
-                    "tts_style_weight",
-                    "tts_speed",
-                    "tts_sdp_ratio",
-                    "tts_noise_scale",
-                    "tts_noise_scale_w",
-                ),
+                "fields": ("use_weather", "use_events", "use_datetime"),
+                "description": "有効にしたプレースホルダーが user_prompt で使用可能になります",
             },
         ),
         (
-            "プロンプト設定",
-            {
-                "fields": ("system_prompt",),
-            },
-        ),
-    )
-
-    def has_add_permission(self, request):
-        """既に設定が存在する場合は追加不可."""
-        if MorningGreetingConfig.objects.exists():
-            return False
-        return super().has_add_permission(request)
-
-    def has_delete_permission(self, request, obj=None):
-        """削除不可."""
-        return False
-
-
-@admin.register(EveningGreetingConfig)
-class EveningGreetingConfigAdmin(admin.ModelAdmin):
-    """夜のあいさつ設定 Admin"""
-
-    list_display = ("__str__", "tts_enabled")
-
-    fieldsets = (
-        (
-            "TTS設定",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "tts_enabled",
-                    "tts_model",
-                    "tts_style",
-                    "tts_style_weight",
-                    "tts_speed",
-                    "tts_sdp_ratio",
-                    "tts_noise_scale",
-                    "tts_noise_scale_w",
-                ),
-            },
-        ),
-        (
-            "プロンプト設定",
-            {
-                "fields": ("system_prompt",),
-            },
-        ),
-    )
-
-    def has_add_permission(self, request):
-        """既に設定が存在する場合は追加不可."""
-        if EveningGreetingConfig.objects.exists():
-            return False
-        return super().has_add_permission(request)
-
-    def has_delete_permission(self, request, obj=None):
-        """削除不可."""
-        return False
-
-
-@admin.register(WelcomeHomeGreetingConfig)
-class WelcomeHomeGreetingConfigAdmin(admin.ModelAdmin):
-    """おかえりのあいさつ設定 Admin"""
-
-    list_display = ("__str__", "area_code", "tts_enabled")
-
-    fieldsets = (
-        (
-            None,
+            "天気設定",
             {
                 "fields": ("area_code",),
+                "classes": ("collapse",),
+                "description": "「天気情報を使用」が有効な場合に必須",
             },
         ),
         (
@@ -135,13 +65,3 @@ class WelcomeHomeGreetingConfigAdmin(admin.ModelAdmin):
             },
         ),
     )
-
-    def has_add_permission(self, request):
-        """既に設定が存在する場合は追加不可."""
-        if WelcomeHomeGreetingConfig.objects.exists():
-            return False
-        return super().has_add_permission(request)
-
-    def has_delete_permission(self, request, obj=None):
-        """削除不可."""
-        return False
