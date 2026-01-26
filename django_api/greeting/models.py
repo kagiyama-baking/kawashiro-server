@@ -104,6 +104,11 @@ class GreetingConfig(models.Model):
     def __str__(self):
         return self.display_name
 
+    def save(self, *args, **kwargs):
+        """保存時にバリデーションを実行."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def clean(self):
         """バリデーション."""
         super().clean()
@@ -113,11 +118,6 @@ class GreetingConfig(models.Model):
             raise ValidationError(
                 {"area_code": "天気情報を使用する場合は予報区コードが必須です"}
             )
-
-    def save(self, *args, **kwargs):
-        """保存時にバリデーションを実行."""
-        self.full_clean()
-        super().save(*args, **kwargs)
 
     def get_tts_options(self) -> dict[str, Any] | None:
         """TTS設定を辞書で取得（無効時は None）."""
