@@ -1,13 +1,16 @@
 FROM nginx:alpine AS base
 
 # セキュリティのため、OSパッケージを最新版にアップデート
+# OpenSSLパッケージを明示的にアップグレード（CVE-2025-15467, CVE-2025-69419対応）
 # ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
         ca-certificates \
         tzdata \
-        libpng && \
+        libpng \
+        libcrypto3 \
+        libssl3 && \
     rm -rf /var/cache/apk/*
 
 # デフォルトの設定ファイルを削除（ポート80を使用している）
