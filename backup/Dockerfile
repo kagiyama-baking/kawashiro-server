@@ -4,13 +4,16 @@ FROM python:3.13-alpine AS base
 ENV PYTHONUNBUFFERED=1
 
 # セキュリティのため、OSパッケージを最新版にアップデート
+# OpenSSLパッケージを明示的にアップグレード（CVE-2025-15467, CVE-2025-69419対応）
 # ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
         ca-certificates \
         tzdata \
-        postgresql16-client && \
+        postgresql16-client \
+        libcrypto3 \
+        libssl3 && \
     rm -rf /var/cache/apk/*
 
 # 作業ディレクトリを設定
