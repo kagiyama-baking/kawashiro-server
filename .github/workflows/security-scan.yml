@@ -45,6 +45,9 @@ jobs:
                   severity: 'CRITICAL,HIGH'
                   ignore-unfixed: false
 
+            # SARIF生成ステップ: MEDIUM以上の脆弱性をSecurityタブに報告
+            # exit-code: '0' を明示的に設定し、前ステップのTRIVY_EXIT_CODE環境変数を
+            # 継承しないようにする（SARIF報告用であり、ワークフローの成否判定には影響させない）
             - name: Generate SARIF for Security tab
               if: always()
               uses: aquasecurity/trivy-action@0.28.0
@@ -54,6 +57,7 @@ jobs:
                   output: 'trivy-${{ matrix.image }}.sarif'
                   severity: 'CRITICAL,HIGH,MEDIUM'
                   ignore-unfixed: false
+                  exit-code: '0'
 
             - name: Upload to Security tab
               if: always()
