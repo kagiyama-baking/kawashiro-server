@@ -24,11 +24,11 @@ RUN uv venv /app/venv --python 3.10
 ENV PATH="/app/venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/venv"
 
-# PyTorch (CPU版)
-RUN uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# PyTorch (CPU版) - style-bert-vits2はtorch<2.4が必要
+RUN uv pip install "torch==2.3.1+cpu" "torchaudio==2.3.1+cpu" --index-url https://download.pytorch.org/whl/cpu
 
 # Style-Bert-VITS2 ライブラリ（推論のみ）
-RUN uv pip install style-bert-vits2
+RUN uv pip install "style-bert-vits2==2.5.0"
 
 # FastAPI関連
 RUN uv pip install \

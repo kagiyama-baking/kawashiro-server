@@ -12,7 +12,7 @@ REST API で複数の機能を提供するバックエンドサーバです。
 | media | `/media/` | メディアファイル管理 |
 | tts | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） |
 | weather | `/weather/` | 気象庁天気予報 |
-| greeting | `/greeting/` | 朝のあいさつ（AI 生成・TTS 対応） |
+| greeting | `/greeting/` | 挨拶生成（設定ベースの AI 挨拶生成・TTS 対応） |
 
 ## セットアップ
 
@@ -34,7 +34,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 # 本番環境では十分にランダムな文字列を設定してください
 ENCRYPTION_KEY=your-encryption-key
 
-# OpenAI API（朝のあいさつ機能などのAI生成に使用）
+# OpenAI API（挨拶機能などのAI生成に使用）
 OPENAI_API_KEY=your-openai-api-key
 
 # Style-BERT-VITS2 API（音声合成機能）
@@ -79,17 +79,41 @@ Django 管理画面（`http://localhost:8000/admin/`）で以下の設定を行�
 | 秘密鍵 | PEM 形式の秘密鍵（暗号化されて DB に保存） |
 | 対象ユーザー | アクセス対象のユーザーメールアドレス |
 
-### 朝のあいさつ設定（Greeting 機能）
+### 挨拶設定（Greeting 機能）
 
-「GREETING」から以下を設定：
+「GREETING」→「挨拶設定」から複数の挨拶設定を登録できます：
 
 | 項目 | 説明 |
 |------|------|
-| 予報区コード | 6 桁の数字（例: `130010` = 東京地方） |
+| 設定名 | API 呼び出し時の識別子（例: `morning`, `evening`） |
+| 表示名 | 管理画面での表示名 |
+| 天気情報を使用 | `{{weather}}` プレースホルダーを有効化 |
+| 予定情報を使用 | `{{events}}` プレースホルダーを有効化 |
+| 日時情報を使用 | `{{datetime}}` プレースホルダーを有効化 |
+| 予報区コード | 6 桁の数字（天気使用時のみ必須、例: `130010`） |
 | システムプロンプト | AI のキャラクター設定 |
-| ユーザープロンプト | `{{datetime}}`, `{{weather}}`, `{{events}}` をプレースホルダーとして使用 |
 | TTS 有効 | 音声合成を有効にするか |
 | TTS 設定 | モデル名、スタイル、速度など |
+
+#### API 呼び出し例
+
+```bash
+curl -X POST http://localhost:8000/api/greeting/generate/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_name": "morning",
+    "user_prompt": "{{datetime}}を踏まえて挨拶してください"
+  }'
+```
+
+#### プレースホルダー
+
+| プレースホルダー | 内容 | 設定で有効化が必要 |
+|-----------------|------|-------------------|
+| `{{datetime}}` | 日時・曜日・祝日情報 | 日時情報を使用 |
+| `{{weather}}` | 天気予報データ | 天気情報を使用 |
+| `{{events}}` | 本日の予定データ | 予定情報を使用 |
 
 ### LLM 設定（AI テキスト生成）
 
