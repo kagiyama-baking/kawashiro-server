@@ -54,8 +54,12 @@ app = FastAPI(
 async def startup_event():
     """起動時にBERTモデルをロード"""
     logger.info("Loading BERT models...")
-    bert_models.load_model(Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH))
+    bert_model = bert_models.load_model(Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH))
     bert_models.load_tokenizer(Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH))
+    # BERTモデルをfloat32に変換（CPU環境対応）
+    if bert_model is not None:
+        bert_model.float()
+        logger.info("Converted BERT model to float32")
     logger.info("BERT models loaded")
 
     models = list_available_models()
@@ -98,12 +102,25 @@ def get_model(model_name: str) -> TTSModel:
         model_file = max(safetensors_files, key=lambda p: p.stat().st_mtime)
         logger.info(f"Loading model: {model_name}")
 
-        _models[model_name] = TTSModel(
+        tts_model = TTSModel(
             model_path=model_file,
             config_path=config_file,
             style_vec_path=style_vec_file,
             device="cpu",
         )
+        # 明示的にモデルをロード（遅延ロードのため）
+        tts_model.load()
+        # float16モデルをfloat32に変換（CPU環境対応）
+        # プライベート属性__net_gは_TTSModel__net_gでアクセス
+        net_g = getattr(tts_model, "_TTSModel__net_g", None)
+        if net_g is not None:
+            # 全パラメータとバッファを明示的にfloat32に変換
+            for param in net_g.parameters():
+                param.data = param.data.float()
+            for buf in net_g.buffers():
+                buf.data = buf.data.float()
+            logger.info(f"Converted model {model_name} to float32")
+        _models[model_name] = tts_model
 
     return _models[model_name]
 
