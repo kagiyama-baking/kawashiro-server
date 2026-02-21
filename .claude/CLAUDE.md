@@ -106,20 +106,20 @@ kawashiro-server/
 cd django_api
 
 # 全テスト実行（e2eテストを除く、カバレッジ付き）
-python -m pytest tests/ -v --tb=short \
+uv run pytest tests/ -v --tb=short \
   --cov=user --cov=onedrive --cov=outlook --cov=core \
   --cov-report=term-missing -m "not e2e"
 
 # 特定アプリのテストのみ実行
-python -m pytest tests/greeting/ -v
-python -m pytest tests/weather/ -v
-python -m pytest tests/user/ -v
+uv run pytest tests/greeting/ -v
+uv run pytest tests/weather/ -v
+uv run pytest tests/user/ -v
 
 # 特定テスト関数を実行
-python -m pytest tests/greeting/test_services.py::test_関数名 -v
+uv run pytest tests/greeting/test_services.py::test_関数名 -v
 
 # カバレッジレポート付き（CI相当）
-python -m pytest tests/ -v --tb=short \
+uv run pytest tests/ -v --tb=short \
   --cov=user --cov=onedrive --cov=outlook --cov=core \
   --cov-report=term-missing --cov-report=html \
   --cov-fail-under=80 -m "not e2e"
@@ -130,7 +130,7 @@ python -m pytest tests/ -v --tb=short \
 ```bash
 # backup/ ディレクトリで実行
 cd backup
-python -m pytest tests/ -v --tb=short \
+uv run pytest tests/ -v --tb=short \
   --cov=scripts --cov-report=term-missing
 ```
 
