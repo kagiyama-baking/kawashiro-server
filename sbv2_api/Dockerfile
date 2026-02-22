@@ -28,7 +28,8 @@ ENV VIRTUAL_ENV="/app/venv"
 RUN uv pip install "torch==2.3.1+cpu" "torchaudio==2.3.1+cpu" --index-url https://download.pytorch.org/whl/cpu
 
 # Style-Bert-VITS2 ライブラリ（推論のみ）
-RUN uv pip install "style-bert-vits2==2.5.0"
+# transformers<5: v5はPyTorch>=2.4を要求するため、torch==2.3.1と非互換
+RUN uv pip install "style-bert-vits2==2.5.0" "transformers<5"
 
 # FastAPI関連
 RUN uv pip install \
@@ -37,7 +38,7 @@ RUN uv pip install \
     python-multipart \
     pyyaml \
     scipy \
-    setuptools \
+    "setuptools<82" \
     "numpy<2"
 
 # BERTモデルの事前ダウンロード（起動時間短縮）
