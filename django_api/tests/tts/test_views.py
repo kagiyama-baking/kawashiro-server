@@ -9,6 +9,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import User
+from tts.client import TTSResult
+from tts.exceptions import TTSNetworkError, TTSTimeoutError
 
 
 @pytest.fixture
@@ -139,6 +141,23 @@ class TestTTSModelStylesView:
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
+    def test_model_styles_rejects_path_traversal(self, authenticated_client):
+        """パストラバーサルを含むモデル名は400を返す"""
+        # URLパターンが[^/]+なので、..を含むがスラッシュなしのケースをテスト
+        response = authenticated_client.get(
+            reverse("tts:model-styles", args=["..etc..passwd"])
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in response.data
+
+    def test_model_styles_rejects_special_characters(self, authenticated_client):
+        """特殊文字を含むモデル名は400を返す"""
+        response = authenticated_client.get(
+            reverse("tts:model-styles", args=["model;drop"])
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in response.data
+
     def test_model_styles_without_auth_returns_401(self, api_client):
         """認証なしの場合、401を返す"""
         response = api_client.get(reverse("tts:model-styles", args=["test_model"]))
@@ -150,35 +169,50 @@ class TestTTSModelStylesView:
 class TestTTSSynthesizeView:
     """音声合成プロキシのテスト"""
 
-    @patch("tts.views.requests.post")
-    def test_synthesize_get_with_valid_text_returns_audio_inline(
-        self, mock_post, authenticated_client
-    ):
-        """GETリクエストで音声合成が成功し、inlineで返す"""
-        mock_post.return_value = Mock(
-            status_code=200,
-            content=b"fake audio data",
-            headers={"X-Model": "test", "X-Style": "Neutral"},
+    @pytest.fixture
+    def mock_tts_result_mp3(self):
+        """MP3フォーマットのTTSResult"""
+        return TTSResult(
+            audio_data=b"fake mp3 data",
+            content_type="audio/mpeg",
+            format="mp3",
         )
+
+    @pytest.fixture
+    def mock_tts_result_wav(self):
+        """WAVフォーマットのTTSResult"""
+        return TTSResult(
+            audio_data=b"RIFF....WAVEfmt ",
+            content_type="audio/wav",
+            format="wav",
+        )
+
+    @patch("tts.views.TTSClient")
+    def test_synthesize_get_default_returns_mp3(
+        self, mock_client_class, authenticated_client, mock_tts_result_mp3
+    ):
+        """GETリクエストのデフォルトでMP3が返される"""
+        mock_client = Mock()
+        mock_client.synthesize.return_value = mock_tts_result_mp3
+        mock_client_class.return_value = mock_client
 
         response = authenticated_client.get(
             f"{reverse('tts:synthesize')}?text=こんにちは"
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/wav"
+        assert response["Content-Type"] == "audio/mpeg"
         assert "inline" in response["Content-Disposition"]
+        assert ".mp3" in response["Content-Disposition"]
 
-    @patch("tts.views.requests.post")
-    def test_synthesize_post_with_body_returns_audio_attachment(
-        self, mock_post, authenticated_client
+    @patch("tts.views.TTSClient")
+    def test_synthesize_post_returns_mp3_attachment(
+        self, mock_client_class, authenticated_client, mock_tts_result_mp3
     ):
-        """POSTリクエスト(リクエストボディ)で音声合成が成功し、attachmentで返す"""
-        mock_post.return_value = Mock(
-            status_code=200,
-            content=b"fake audio data",
-            headers={"X-Model": "test", "X-Style": "Neutral"},
-        )
+        """POSTリクエストでMP3がattachmentで返される"""
+        mock_client = Mock()
+        mock_client.synthesize.return_value = mock_tts_result_mp3
+        mock_client_class.return_value = mock_client
 
         response = authenticated_client.post(
             reverse("tts:synthesize"),
@@ -187,8 +221,25 @@ class TestTTSSynthesizeView:
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/wav"
+        assert response["Content-Type"] == "audio/mpeg"
         assert "attachment" in response["Content-Disposition"]
+
+    @patch("tts.views.TTSClient")
+    def test_synthesize_with_wav_format_returns_audio_wav(
+        self, mock_client_class, authenticated_client, mock_tts_result_wav
+    ):
+        """WAVフォーマット指定時にaudio/wavが返される"""
+        mock_client = Mock()
+        mock_client.synthesize.return_value = mock_tts_result_wav
+        mock_client_class.return_value = mock_client
+
+        response = authenticated_client.get(
+            f"{reverse('tts:synthesize')}?text=こんにちは&format=wav"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "audio/wav"
+        assert ".wav" in response["Content-Disposition"]
 
     def test_synthesize_post_without_text_returns_400(self, authenticated_client):
         """POSTリクエストでtextパラメータがない場合、400を返す"""
@@ -210,17 +261,32 @@ class TestTTSSynthesizeView:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+    def test_synthesize_post_with_invalid_format_returns_400(
+        self, authenticated_client
+    ):
+        """不正なフォーマット指定時に400を返す"""
+        response = authenticated_client.post(
+            reverse("tts:synthesize"),
+            data={"text": "テスト", "format": "aac"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
     def test_synthesize_without_text_returns_400(self, authenticated_client):
         """textパラメータがない場合、400を返す"""
         response = authenticated_client.get(reverse("tts:synthesize"))
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "text" in response.data["error"]
 
-    @patch("tts.views.requests.post")
-    def test_synthesize_with_timeout_returns_504(self, mock_post, authenticated_client):
+    @patch("tts.views.TTSClient")
+    def test_synthesize_with_timeout_returns_504(
+        self, mock_client_class, authenticated_client
+    ):
         """タイムアウト時は504を返す"""
-        mock_post.side_effect = requests_lib.exceptions.Timeout()
+        mock_client = Mock()
+        mock_client.synthesize.side_effect = TTSTimeoutError("Timeout")
+        mock_client_class.return_value = mock_client
 
         response = authenticated_client.get(
             f"{reverse('tts:synthesize')}?text=こんにちは"
@@ -228,12 +294,14 @@ class TestTTSSynthesizeView:
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
-    @patch("tts.views.requests.post")
+    @patch("tts.views.TTSClient")
     def test_synthesize_with_connection_error_returns_503(
-        self, mock_post, authenticated_client
+        self, mock_client_class, authenticated_client
     ):
         """接続エラー時は503を返す"""
-        mock_post.side_effect = requests_lib.exceptions.ConnectionError()
+        mock_client = Mock()
+        mock_client.synthesize.side_effect = TTSNetworkError("Connection refused")
+        mock_client_class.return_value = mock_client
 
         response = authenticated_client.get(
             f"{reverse('tts:synthesize')}?text=こんにちは"
@@ -241,14 +309,14 @@ class TestTTSSynthesizeView:
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
-    @patch("tts.views.requests.post")
-    def test_synthesize_get_with_all_parameters(self, mock_post, authenticated_client):
+    @patch("tts.views.TTSClient")
+    def test_synthesize_get_with_all_parameters(
+        self, mock_client_class, authenticated_client, mock_tts_result_mp3
+    ):
         """全パラメータを指定してGETリクエストで音声合成が成功する"""
-        mock_post.return_value = Mock(
-            status_code=200,
-            content=b"fake audio data",
-            headers={"X-Model": "custom_model", "X-Style": "Happy"},
-        )
+        mock_client = Mock()
+        mock_client.synthesize.return_value = mock_tts_result_mp3
+        mock_client_class.return_value = mock_client
 
         url = (
             f"{reverse('tts:synthesize')}?"
@@ -259,25 +327,12 @@ class TestTTSSynthesizeView:
             "speed=1.2&"
             "sdp_ratio=0.3&"
             "noise_scale=0.7&"
-            "noise_scale_w=0.9"
+            "noise_scale_w=0.9&"
+            "format=mp3"
         )
         response = authenticated_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
-
-    @patch("tts.views.requests.post")
-    def test_synthesize_forwards_error_response(self, mock_post, authenticated_client):
-        """TTSサービスからのエラーレスポンスを転送する"""
-        mock_post.return_value = Mock(
-            status_code=400,
-            json=lambda: {"detail": "Invalid style"},
-        )
-
-        response = authenticated_client.get(
-            f"{reverse('tts:synthesize')}?text=こんにちは"
-        )
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_synthesize_without_auth_returns_401(self, api_client):
         """認証なしの場合、401を返す"""

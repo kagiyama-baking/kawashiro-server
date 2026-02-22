@@ -8,10 +8,12 @@ class GreetingRequestSerializer(serializers.Serializer):
 
     config_name = serializers.CharField(
         required=True,
+        max_length=50,
         help_text="設定名（管理画面で登録した name）",
     )
     user_prompt = serializers.CharField(
         required=True,
+        max_length=10000,
         help_text="ユーザープロンプトテンプレート",
     )
 

@@ -7,6 +7,7 @@ import pytest
 
 from greeting.models import GreetingConfig
 from greeting.services import GreetingService
+from tts.client import TTSResult
 
 
 @pytest.mark.django_db
@@ -276,7 +277,11 @@ class TestGreetingService:
         mock_openai_class.return_value = mock_openai
 
         mock_tts = MagicMock()
-        mock_tts.synthesize.return_value = b"RIFF....WAVEfmt "
+        mock_tts.synthesize.return_value = TTSResult(
+            audio_data=b"fake_mp3_data",
+            content_type="audio/mpeg",
+            format="mp3",
+        )
         mock_tts_class.return_value = mock_tts
 
         service = GreetingService()
@@ -288,7 +293,9 @@ class TestGreetingService:
         assert result is not None
         assert "greeting_text" in result
         assert "audio_data" in result
-        assert result["audio_data"] == b"RIFF....WAVEfmt "
+        assert result["audio_data"] == b"fake_mp3_data"
+        assert result["audio_content_type"] == "audio/mpeg"
+        assert result["audio_format"] == "mp3"
 
         mock_tts.synthesize.assert_called_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -296,6 +303,7 @@ class TestGreetingService:
         assert call_kwargs["model"] == "test_model"
         assert call_kwargs["style"] == "Happy"
         assert call_kwargs["speed"] == 1.2
+        assert call_kwargs["format"] == "mp3"
 
     @patch("greeting.services.HolidayClient")
     @patch("greeting.services.OpenAIClient")

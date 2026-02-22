@@ -5,6 +5,8 @@ Kawashiro Server 内部サービス用
 
 import io
 import logging
+import re
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +44,13 @@ config = load_config()
 # 設定値を取得
 MAX_TEXT_LENGTH = config.get("max_length", 500)
 
+# 出力フォーマット設定
+FORMAT_MEDIA_TYPES = {
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "ogg": "audio/ogg",
+}
+
 # FastAPIアプリ（内部サービスのためCORS不要）
 app = FastAPI(
     title="Style-BERT-VITS2 TTS API",
@@ -62,8 +71,19 @@ async def startup_event():
         logger.info("Converted BERT model to float32")
     logger.info("BERT models loaded")
 
+    # TTSモデルのプリロード（初回リクエストのレイテンシを排除）
     models = list_available_models()
-    logger.info(f"Available TTS models: {models}")
+    logger.info("Available TTS models: %s", models)
+    for model_name in models:
+        logger.info("Preloading TTS model: %s", model_name)
+        try:
+            get_model(model_name)
+        except Exception as e:
+            logger.warning("Failed to preload model %s: %s", model_name, e)
+    logger.info(
+        "TTS model preloading complete: %d/%d models loaded",
+        len(_models), len(models),
+    )
 
 
 # モデルキャッシュ
@@ -82,6 +102,10 @@ def list_available_models() -> list[str]:
 
 def get_model(model_name: str) -> TTSModel:
     """TTSモデルを取得（キャッシュあり）"""
+    # パストラバーサル防止: 英数字・ハイフン・アンダースコアのみ許可
+    if not re.match(r"^[a-zA-Z0-9_\-]+$", model_name):
+        raise HTTPException(status_code=400, detail="Invalid model name")
+
     if model_name not in _models:
         model_path = MODEL_ASSETS_PATH / model_name
 
@@ -100,7 +124,7 @@ def get_model(model_name: str) -> TTSModel:
             raise HTTPException(status_code=404, detail="style_vectors.npy not found")
 
         model_file = max(safetensors_files, key=lambda p: p.stat().st_mtime)
-        logger.info(f"Loading model: {model_name}")
+        logger.info("Loading model: %s", model_name)
 
         tts_model = TTSModel(
             model_path=model_file,
@@ -119,7 +143,7 @@ def get_model(model_name: str) -> TTSModel:
                 param.data = param.data.float()
             for buf in net_g.buffers():
                 buf.data = buf.data.float()
-            logger.info(f"Converted model {model_name} to float32")
+            logger.info("Converted model %s to float32", model_name)
         _models[model_name] = tts_model
 
     return _models[model_name]
@@ -146,6 +170,50 @@ class SynthesizeRequest(BaseModel):
     sdp_ratio: float = Field(0.2, ge=0.0, le=1.0)
     noise_scale: float = Field(0.6, ge=0.0, le=1.0)
     noise_scale_w: float = Field(0.8, ge=0.0, le=1.0)
+    format: str = Field("mp3", pattern=r"^(wav|mp3|ogg)$")
+
+
+_FORMATS_REQUIRING_CONVERSION = {"mp3", "ogg"}
+
+
+def _convert_audio(wav_data: bytes, output_format: str) -> bytes:
+    """WAVデータを指定フォーマットに変換（ffmpeg使用）."""
+    # ホワイトリスト検証（深層防御）
+    if output_format not in _FORMATS_REQUIRING_CONVERSION:
+        raise ValueError(f"サポートされていない出力フォーマット: {output_format}")
+
+    ffmpeg_args = [
+        "ffmpeg", "-loglevel", "error",
+        "-i", "pipe:0",
+        "-f", output_format,
+    ]
+    # MP3の場合はビットレートを指定
+    if output_format == "mp3":
+        ffmpeg_args.extend(["-ab", "128k"])
+    ffmpeg_args.extend(["-ac", "1", "pipe:1"])
+
+    try:
+        process = subprocess.run(
+            ffmpeg_args,
+            input=wav_data,
+            capture_output=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as e:
+        logger.error(
+            "ffmpeg変換タイムアウト: format=%s, input_size=%d",
+            output_format, len(wav_data),
+        )
+        raise RuntimeError("音声フォーマット変換がタイムアウトしました") from e
+
+    if process.returncode != 0:
+        logger.error(
+            "ffmpeg変換エラー (returncode=%d): %s",
+            process.returncode,
+            process.stderr.decode(errors="replace"),
+        )
+        raise RuntimeError("音声フォーマット変換に失敗しました")
+    return process.stdout
 
 
 # エンドポイント
@@ -175,9 +243,11 @@ async def synthesize_get(
     sdp_ratio: float = Query(0.2, ge=0.0, le=1.0),
     noise_scale: float = Query(0.6, ge=0.0, le=1.0),
     noise_scale_w: float = Query(0.8, ge=0.0, le=1.0),
+    format: str = Query("mp3", pattern=r"^(wav|mp3|ogg)$"),
 ):
     return await _synthesize(
-        text, model, style, style_weight, speed, sdp_ratio, noise_scale, noise_scale_w
+        text, model, style, style_weight, speed, sdp_ratio, noise_scale, noise_scale_w,
+        format,
     )
 
 
@@ -192,6 +262,7 @@ async def synthesize_post(request: SynthesizeRequest):
         request.sdp_ratio,
         request.noise_scale,
         request.noise_scale_w,
+        request.format,
     )
 
 
@@ -204,6 +275,7 @@ async def _synthesize(
     sdp_ratio: float,
     noise_scale: float,
     noise_scale_w: float,
+    format: str = "mp3",
 ) -> Response:
     # テキスト長のバリデーション（config.ymlから読み込み）
     if len(text) > MAX_TEXT_LENGTH:
@@ -223,7 +295,11 @@ async def _synthesize(
                 detail=f"Style '{style}' not found. Available: {list(tts_model.style2id.keys())}",
             )
 
-        logger.info(f"Synthesizing: model={model_name}, text={text}")
+        text_preview = text[:50] + "..." if len(text) > 50 else text
+        logger.info(
+            "Synthesizing: model=%s, text_length=%d, format=%s, preview=%s",
+            model_name, len(text), format, text_preview,
+        )
 
         sr, audio = tts_model.infer(
             text=text,
@@ -235,20 +311,27 @@ async def _synthesize(
             length=1.0 / speed,
         )
 
-        buffer = io.BytesIO()
-        wavfile.write(buffer, sr, audio)
-        buffer.seek(0)
+        wav_buffer = io.BytesIO()
+        wavfile.write(wav_buffer, sr, audio)
+        wav_data = wav_buffer.getvalue()
 
+        # フォーマット変換
+        if format == "wav":
+            content = wav_data
+        else:
+            content = _convert_audio(wav_data, format)
+
+        media_type = FORMAT_MEDIA_TYPES[format]
         return Response(
-            content=buffer.read(),
-            media_type="audio/wav",
+            content=content,
+            media_type=media_type,
             headers={"X-Model": model_name, "X-Style": style},
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Synthesis error: {e}", exc_info=True)
+        logger.error("Synthesis error: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500, detail="Internal server error occurred during synthesis."
         )
