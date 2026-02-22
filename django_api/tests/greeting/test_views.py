@@ -110,6 +110,24 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
         assert "error" in response.data
 
+    @patch("greeting.views.HolidayClient")
+    @patch("greeting.views.datetime")
+    def test_today_info_unexpected_error(
+        self, mock_datetime, mock_holiday_client_class, authenticated_client, url
+    ):
+        """予期しないエラー時は500エラー"""
+        mock_now = datetime(2025, 1, 14, 9, 30, 0)
+        mock_datetime.now.return_value = mock_now
+
+        mock_client = MagicMock()
+        mock_client.get_holiday_name.side_effect = RuntimeError("Unexpected")
+        mock_holiday_client_class.return_value = mock_client
+
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert "error" in response.data
+
 
 @pytest.mark.django_db
 class TestGreetingView:
@@ -183,7 +201,9 @@ class TestGreetingView:
         """サービスのモックレスポンス（音声あり）"""
         return {
             "greeting_text": "おはようございます、先輩。今日も頑張りましょう。",
-            "audio_data": b"RIFF....WAVEfmt ",
+            "audio_data": b"fake_mp3_data",
+            "audio_content_type": "audio/mpeg",
+            "audio_format": "mp3",
         }
 
     def test_greeting_unauthorized(self, api_client, url, greeting_config):
@@ -263,7 +283,7 @@ class TestGreetingView:
         greeting_config_with_tts,
         mock_greeting_response_with_audio,
     ):
-        """TTS有効時: 音声データがWAVで返される"""
+        """TTS有効時: 音声データがMP3で返される"""
         mock_service = MagicMock()
         mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
         mock_service_class.return_value = mock_service
@@ -276,8 +296,9 @@ class TestGreetingView:
         response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/wav"
+        assert response["Content-Type"] == "audio/mpeg"
         assert "X-Greeting-Text" in response
+        assert "greeting.mp3" in response["Content-Disposition"]
 
     @patch("greeting.views.GreetingService")
     def test_greeting_weather_api_error(
@@ -302,6 +323,7 @@ class TestGreetingView:
         response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "error" in response.data
 
     @patch("greeting.views.GreetingService")
     def test_greeting_openai_timeout(
@@ -322,6 +344,7 @@ class TestGreetingView:
         response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+        assert "error" in response.data
 
     @patch("greeting.views.GreetingService")
     def test_greeting_area_not_found(
@@ -364,7 +387,9 @@ class TestGreetingView:
         # 制御文字を含むテキスト
         mock_service.generate_greeting.return_value = {
             "greeting_text": "おはよう\r\nございます\x00先輩",
-            "audio_data": b"RIFF....WAVEfmt ",
+            "audio_data": b"fake_mp3_data",
+            "audio_content_type": "audio/mpeg",
+            "audio_format": "mp3",
         }
         mock_service_class.return_value = mock_service
 
@@ -392,3 +417,135 @@ class TestGreetingView:
         # 元のテキストの意味は保持
         assert "おはよう" in header_text
         assert "先輩" in header_text
+
+    @patch("greeting.views.GreetingService")
+    def test_greeting_jma_timeout(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config_with_weather,
+    ):
+        """天気APIタイムアウト時に504エラー"""
+        from weather.exceptions import JMATimeoutError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = JMATimeoutError("Timeout")
+        mock_service_class.return_value = mock_service
+
+        request_data = {
+            "config_name": greeting_config_with_weather.name,
+            "user_prompt": "test",
+        }
+
+        response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+        assert "error" in response.data
+
+    @patch("greeting.views.GreetingService")
+    def test_greeting_openai_api_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        request_data,
+    ):
+        """OpenAI APIエラー時に502エラー"""
+        from llm_client.exceptions import OpenAIAPIError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = OpenAIAPIError("API error")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "error" in response.data
+
+    @patch("greeting.views.GreetingService")
+    def test_greeting_tts_network_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        request_data,
+    ):
+        """TTSネットワークエラー時に502エラー"""
+        from tts.exceptions import TTSNetworkError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = TTSNetworkError(
+            "Connection failed"
+        )
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "error" in response.data
+
+    @patch("greeting.views.GreetingService")
+    def test_greeting_configuration_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        request_data,
+    ):
+        """サービス設定エラー時に503エラー"""
+        from msgraph_config.exceptions import ConfigurationError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = ConfigurationError(
+            "Config missing"
+        )
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "error" in response.data
+
+    @patch("greeting.views.GreetingService")
+    def test_greeting_authentication_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        request_data,
+    ):
+        """外部サービス認証エラー時に502エラー"""
+        from msgraph_config.exceptions import AuthenticationError
+
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = AuthenticationError("Auth failed")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_502_BAD_GATEWAY
+        assert "error" in response.data
+
+    @patch("greeting.views.GreetingService")
+    def test_greeting_unexpected_error(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        request_data,
+    ):
+        """予期しないエラー時に500エラー"""
+        mock_service = MagicMock()
+        mock_service.generate_greeting.side_effect = RuntimeError("Unexpected")
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert "error" in response.data

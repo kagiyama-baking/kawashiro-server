@@ -300,4 +300,4 @@ SPECTACULAR_SETTINGS = {
 # TTS設定
 # ============================================================
 TTS_SERVICE_URL = os.getenv("TTS_SERVICE_URL", "http://sbv2-api:5000")
-TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "60"))
+TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT", "120"))

@@ -16,3 +16,27 @@ class AudioWavRenderer(BaseRenderer):
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
         return data
+
+
+class AudioMp3Renderer(BaseRenderer):
+    """MP3音声データ用レンダラー"""
+
+    media_type = "audio/mpeg"
+    format = "mp3"
+    charset = None
+    render_style = "binary"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
+class AudioOggRenderer(BaseRenderer):
+    """OGG音声データ用レンダラー"""
+
+    media_type = "audio/ogg"
+    format = "ogg"
+    charset = None
+    render_style = "binary"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data

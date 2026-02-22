@@ -27,6 +27,7 @@ from weather.exceptions import (
     JMATimeoutError,
 )
 
+from .constants import DAY_OF_WEEK_JA
 from .exceptions import HolidayNetworkError, HolidayTimeoutError
 from .holiday_client import HolidayClient
 from .models import GreetingConfig
@@ -39,6 +40,9 @@ from .services import GreetingService
 
 logger = logging.getLogger(__name__)
 
+# 音声フォーマットのホワイトリスト
+ALLOWED_AUDIO_FORMATS = {"wav", "mp3", "ogg"}
+
 
 def sanitize_for_header(text: str, max_length: int = 200) -> str:
     """HTTPヘッダー用にテキストをサニタイズ.
@@ -48,18 +52,6 @@ def sanitize_for_header(text: str, max_length: int = 200) -> str:
     # 制御文字（0x00-0x1F, 0x7F）を除去
     sanitized = re.sub(r"[\x00-\x1f\x7f]", " ", text)
     return sanitized[:max_length]
-
-
-# 曜日の日本語マッピング
-DAY_OF_WEEK_JA = {
-    "Monday": "月曜日",
-    "Tuesday": "火曜日",
-    "Wednesday": "水曜日",
-    "Thursday": "木曜日",
-    "Friday": "金曜日",
-    "Saturday": "土曜日",
-    "Sunday": "日曜日",
-}
 
 
 class GreetingView(APIView):
@@ -97,7 +89,7 @@ class GreetingView(APIView):
 
 ## 音声合成
 
-管理画面でTTSが有効になっている場合、音声データ（WAV形式）を直接返します。
+管理画面でTTSが有効になっている場合、音声データを直接返します（デフォルト: MP3形式）。
 TTS無効の場合はJSONでテキストのみ返します。
 """,
         request=GreetingRequestSerializer,
@@ -106,9 +98,9 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response=GreetingResponseSerializer,
                 description="あいさつ生成成功（JSON）",
             ),
-            (200, "audio/wav"): OpenApiResponse(
+            (200, "audio/mpeg"): OpenApiResponse(
                 response=OpenApiTypes.BINARY,
-                description="音声データ（WAV形式）- TTS有効時",
+                description="音声データ（MP3形式）- TTS有効時（デフォルト）",
             ),
             400: OpenApiResponse(description="リクエストパラメータ不正"),
             401: OpenApiResponse(description="認証エラー"),
@@ -149,12 +141,24 @@ TTS無効の場合はJSONでテキストのみ返します。
                 user_prompt=user_prompt,
             )
 
-            # 音声データがある場合はWAVを返す（HttpResponseを使用）
+            # 音声データがある場合は音声を返す（HttpResponseを使用）
             if "audio_data" in result:
                 audio_data = result["audio_data"]
                 greeting_text = result["greeting_text"]
-                response = HttpResponse(audio_data, content_type="audio/wav")
-                response["Content-Disposition"] = 'attachment; filename="greeting.wav"'
+                audio_format = result.get("audio_format", "mp3")
+                # ホワイトリスト検証: 不正な値はデフォルトにフォールバック
+                if audio_format not in ALLOWED_AUDIO_FORMATS:
+                    audio_format = "mp3"
+                content_type_map = {
+                    "wav": "audio/wav",
+                    "mp3": "audio/mpeg",
+                    "ogg": "audio/ogg",
+                }
+                content_type = content_type_map[audio_format]
+                response = HttpResponse(audio_data, content_type=content_type)
+                response["Content-Disposition"] = (
+                    f'attachment; filename="greeting.{audio_format}"'
+                )
                 response["X-Greeting-Text"] = sanitize_for_header(greeting_text)
                 return response
 
