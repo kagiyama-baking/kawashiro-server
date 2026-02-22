@@ -1,6 +1,7 @@
 """TTSサービスクライアント."""
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import requests
@@ -12,7 +13,23 @@ logger = logging.getLogger(__name__)
 
 # 内部TTSサービスのURL（Docker内部ネットワーク）
 TTS_SERVICE_URL = getattr(settings, "TTS_SERVICE_URL", "http://sbv2-api:5000")
-TTS_TIMEOUT = getattr(settings, "TTS_TIMEOUT", 60)
+TTS_TIMEOUT = getattr(settings, "TTS_TIMEOUT", 120)
+
+# フォーマットとContent-Typeのマッピング
+FORMAT_CONTENT_TYPES = {
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "ogg": "audio/ogg",
+}
+
+
+@dataclass(frozen=True)
+class TTSResult:
+    """音声合成結果."""
+
+    audio_data: bytes
+    content_type: str
+    format: str
 
 
 class TTSClient:
@@ -33,7 +50,8 @@ class TTSClient:
         sdp_ratio: float = 0.2,
         noise_scale: float = 0.6,
         noise_scale_w: float = 0.8,
-    ) -> bytes:
+        format: str = "mp3",
+    ) -> TTSResult:
         """テキストから音声を合成.
 
         Args:
@@ -45,9 +63,10 @@ class TTSClient:
             sdp_ratio: SDP比率
             noise_scale: ノイズスケール
             noise_scale_w: ノイズスケールW
+            format: 出力フォーマット（wav, mp3, ogg）
 
         Returns:
-            WAV形式の音声データ（bytes）
+            TTSResult: 音声データ、Content-Type、フォーマットを含む結果
 
         Raises:
             TTSTimeoutError: タイムアウト時
@@ -61,6 +80,7 @@ class TTSClient:
             "sdp_ratio": sdp_ratio,
             "noise_scale": noise_scale,
             "noise_scale_w": noise_scale_w,
+            "format": format,
         }
 
         if model is not None:
@@ -78,11 +98,25 @@ class TTSClient:
             )
 
             if response.status_code != 200:
-                error_msg = response.json().get("error", "Unknown error")
+                try:
+                    error_msg = response.json().get("error", "Unknown error")
+                except (ValueError, KeyError):
+                    error_msg = f"HTTP {response.status_code}"
                 raise TTSNetworkError(f"TTSサービスエラー: {error_msg}")
 
-            logger.info("TTS合成完了: %d bytes", len(response.content))
-            return response.content
+            content_type = response.headers.get(
+                "Content-Type",
+                FORMAT_CONTENT_TYPES.get(format, "audio/mpeg"),
+            )
+
+            logger.info(
+                "TTS合成完了: %d bytes, format=%s", len(response.content), format
+            )
+            return TTSResult(
+                audio_data=response.content,
+                content_type=content_type,
+                format=format,
+            )
 
         except requests.exceptions.Timeout as e:
             logger.error("TTSサービスタイムアウト: %s", str(e))

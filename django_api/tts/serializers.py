@@ -59,3 +59,9 @@ class TTSSynthesizeSerializer(serializers.Serializer):
         max_value=1.0,
         help_text="ノイズスケールW（0.0-1.0）",
     )
+    format = serializers.ChoiceField(
+        choices=["wav", "mp3", "ogg"],
+        default="mp3",
+        required=False,
+        help_text="出力音声フォーマット（wav, mp3, ogg）",
+    )
