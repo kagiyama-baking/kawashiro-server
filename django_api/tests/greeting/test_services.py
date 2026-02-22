@@ -278,9 +278,9 @@ class TestGreetingService:
 
         mock_tts = MagicMock()
         mock_tts.synthesize.return_value = TTSResult(
-            audio_data=b"fake_mp3_data",
-            content_type="audio/mpeg",
-            format="mp3",
+            audio_data=b"fake_wav_data",
+            content_type="audio/wav",
+            format="wav",
         )
         mock_tts_class.return_value = mock_tts
 
@@ -293,9 +293,9 @@ class TestGreetingService:
         assert result is not None
         assert "greeting_text" in result
         assert "audio_data" in result
-        assert result["audio_data"] == b"fake_mp3_data"
-        assert result["audio_content_type"] == "audio/mpeg"
-        assert result["audio_format"] == "mp3"
+        assert result["audio_data"] == b"fake_wav_data"
+        assert result["audio_content_type"] == "audio/wav"
+        assert result["audio_format"] == "wav"
 
         mock_tts.synthesize.assert_called_once()
         call_kwargs = mock_tts.synthesize.call_args.kwargs
@@ -303,7 +303,7 @@ class TestGreetingService:
         assert call_kwargs["model"] == "test_model"
         assert call_kwargs["style"] == "Happy"
         assert call_kwargs["speed"] == 1.2
-        assert call_kwargs["format"] == "mp3"
+        assert call_kwargs["format"] == "wav"
 
     @patch("greeting.services.HolidayClient")
     @patch("greeting.services.OpenAIClient")

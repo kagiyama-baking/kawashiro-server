@@ -93,10 +93,10 @@ class GreetingConfig(models.Model):
     )
     tts_format = models.CharField(
         max_length=10,
-        default="mp3",
+        default="wav",
         choices=[("wav", "WAV"), ("mp3", "MP3"), ("ogg", "OGG")],
         verbose_name="音声フォーマット",
-        help_text="出力音声のフォーマット（デフォルト: MP3）",
+        help_text="出力音声のフォーマット（デフォルト: WAV）",
     )
 
     # プロンプト設定

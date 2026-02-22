@@ -170,7 +170,7 @@ class SynthesizeRequest(BaseModel):
     sdp_ratio: float = Field(0.2, ge=0.0, le=1.0)
     noise_scale: float = Field(0.6, ge=0.0, le=1.0)
     noise_scale_w: float = Field(0.8, ge=0.0, le=1.0)
-    format: str = Field("mp3", pattern=r"^(wav|mp3|ogg)$")
+    format: str = Field("wav", pattern=r"^(wav|mp3|ogg)$")
 
 
 _FORMATS_REQUIRING_CONVERSION = {"mp3", "ogg"}
@@ -243,7 +243,7 @@ async def synthesize_get(
     sdp_ratio: float = Query(0.2, ge=0.0, le=1.0),
     noise_scale: float = Query(0.6, ge=0.0, le=1.0),
     noise_scale_w: float = Query(0.8, ge=0.0, le=1.0),
-    format: str = Query("mp3", pattern=r"^(wav|mp3|ogg)$"),
+    format: str = Query("wav", pattern=r"^(wav|mp3|ogg)$"),
 ):
     return await _synthesize(
         text, model, style, style_weight, speed, sdp_ratio, noise_scale, noise_scale_w,
@@ -275,7 +275,7 @@ async def _synthesize(
     sdp_ratio: float,
     noise_scale: float,
     noise_scale_w: float,
-    format: str = "mp3",
+    format: str = "wav",
 ) -> Response:
     # テキスト長のバリデーション（config.ymlから読み込み）
     if len(text) > MAX_TEXT_LENGTH:
