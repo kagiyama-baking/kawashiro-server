@@ -201,9 +201,9 @@ class TestGreetingView:
         """サービスのモックレスポンス（音声あり）"""
         return {
             "greeting_text": "おはようございます、先輩。今日も頑張りましょう。",
-            "audio_data": b"fake_mp3_data",
-            "audio_content_type": "audio/mpeg",
-            "audio_format": "mp3",
+            "audio_data": b"fake_wav_data",
+            "audio_content_type": "audio/wav",
+            "audio_format": "wav",
         }
 
     def test_greeting_unauthorized(self, api_client, url, greeting_config):
@@ -283,7 +283,7 @@ class TestGreetingView:
         greeting_config_with_tts,
         mock_greeting_response_with_audio,
     ):
-        """TTS有効時: 音声データがMP3で返される"""
+        """TTS有効時: 音声データがWAVで返される"""
         mock_service = MagicMock()
         mock_service.generate_greeting.return_value = mock_greeting_response_with_audio
         mock_service_class.return_value = mock_service
@@ -296,9 +296,9 @@ class TestGreetingView:
         response = authenticated_client.post(url, request_data, format="json")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/mpeg"
+        assert response["Content-Type"] == "audio/wav"
         assert "X-Greeting-Text" in response
-        assert "greeting.mp3" in response["Content-Disposition"]
+        assert "greeting.wav" in response["Content-Disposition"]
 
     @patch("greeting.views.GreetingService")
     def test_greeting_weather_api_error(
@@ -387,9 +387,9 @@ class TestGreetingView:
         # 制御文字を含むテキスト
         mock_service.generate_greeting.return_value = {
             "greeting_text": "おはよう\r\nございます\x00先輩",
-            "audio_data": b"fake_mp3_data",
-            "audio_content_type": "audio/mpeg",
-            "audio_format": "mp3",
+            "audio_data": b"fake_wav_data",
+            "audio_content_type": "audio/wav",
+            "audio_format": "wav",
         }
         mock_service_class.return_value = mock_service
 

@@ -121,13 +121,17 @@ class TTSSynthesizeView(APIView):
     @extend_schema(
         parameters=[TTSSynthesizeSerializer],
         responses={
-            (200, "audio/mpeg"): OpenApiResponse(
-                response=OpenApiTypes.BINARY,
-                description="音声データ(MP3形式、デフォルト)",
-            ),
             (200, "audio/wav"): OpenApiResponse(
                 response=OpenApiTypes.BINARY,
-                description="音声データ(WAV形式)",
+                description="音声データ(WAV形式、デフォルト)",
+            ),
+            (200, "audio/mpeg"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ(MP3形式)",
+            ),
+            (200, "audio/ogg"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ(OGG形式)",
             ),
             400: OpenApiResponse(description="パラメータエラー"),
             503: OpenApiResponse(description="TTSサービス接続エラー"),
@@ -144,13 +148,17 @@ class TTSSynthesizeView(APIView):
     @extend_schema(
         request=TTSSynthesizeSerializer,
         responses={
-            (200, "audio/mpeg"): OpenApiResponse(
-                response=OpenApiTypes.BINARY,
-                description="音声データ(MP3形式、デフォルト)",
-            ),
             (200, "audio/wav"): OpenApiResponse(
                 response=OpenApiTypes.BINARY,
-                description="音声データ(WAV形式)",
+                description="音声データ(WAV形式、デフォルト)",
+            ),
+            (200, "audio/mpeg"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ(MP3形式)",
+            ),
+            (200, "audio/ogg"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ(OGG形式)",
             ),
             400: OpenApiResponse(description="パラメータエラー"),
             503: OpenApiResponse(description="TTSサービス接続エラー"),
@@ -174,7 +182,7 @@ class TTSSynthesizeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        audio_format = params.get("format", "mp3")
+        audio_format = params.get("format", "wav")
 
         try:
             client = TTSClient()
@@ -190,7 +198,7 @@ class TTSSynthesizeView(APIView):
                 format=audio_format,
             )
 
-            ext = FORMAT_EXTENSIONS.get(audio_format, "mp3")
+            ext = FORMAT_EXTENSIONS.get(audio_format, "wav")
             disposition = "inline" if inline else "attachment"
             resp = Response(
                 result.audio_data,

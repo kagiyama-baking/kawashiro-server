@@ -89,7 +89,7 @@ class GreetingView(APIView):
 
 ## 音声合成
 
-管理画面でTTSが有効になっている場合、音声データを直接返します（デフォルト: MP3形式）。
+管理画面でTTSが有効になっている場合、音声データを直接返します（デフォルト: WAV形式）。
 TTS無効の場合はJSONでテキストのみ返します。
 """,
         request=GreetingRequestSerializer,
@@ -98,9 +98,17 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response=GreetingResponseSerializer,
                 description="あいさつ生成成功（JSON）",
             ),
+            (200, "audio/wav"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ（WAV形式）- TTS有効時（デフォルト）",
+            ),
             (200, "audio/mpeg"): OpenApiResponse(
                 response=OpenApiTypes.BINARY,
-                description="音声データ（MP3形式）- TTS有効時（デフォルト）",
+                description="音声データ（MP3形式）- TTS有効時",
+            ),
+            (200, "audio/ogg"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="音声データ（OGG形式）- TTS有効時",
             ),
             400: OpenApiResponse(description="リクエストパラメータ不正"),
             401: OpenApiResponse(description="認証エラー"),
@@ -145,10 +153,10 @@ TTS無効の場合はJSONでテキストのみ返します。
             if "audio_data" in result:
                 audio_data = result["audio_data"]
                 greeting_text = result["greeting_text"]
-                audio_format = result.get("audio_format", "mp3")
+                audio_format = result.get("audio_format", "wav")
                 # ホワイトリスト検証: 不正な値はデフォルトにフォールバック
                 if audio_format not in ALLOWED_AUDIO_FORMATS:
-                    audio_format = "mp3"
+                    audio_format = "wav"
                 content_type_map = {
                     "wav": "audio/wav",
                     "mp3": "audio/mpeg",

@@ -50,7 +50,7 @@ class TTSClient:
         sdp_ratio: float = 0.2,
         noise_scale: float = 0.6,
         noise_scale_w: float = 0.8,
-        format: str = "mp3",
+        format: str = "wav",
     ) -> TTSResult:
         """テキストから音声を合成.
 
