@@ -11,24 +11,14 @@ from django.utils import timezone
 
 from llm_client.openai_client import OpenAIClient
 from msgraph_client import OutlookMSGraphClient
-from tts.client import TTSClient
+from tts.client import TTSClient, TTSResult
 from weather.jma_client import JMAWeatherClient
 
+from .constants import DAY_OF_WEEK_JA
 from .holiday_client import HolidayClient
 
 if TYPE_CHECKING:
     from .models import GreetingConfig
-
-# 曜日の日本語マッピング
-DAY_OF_WEEK_JA = {
-    "Monday": "月曜日",
-    "Tuesday": "火曜日",
-    "Wednesday": "水曜日",
-    "Thursday": "木曜日",
-    "Friday": "金曜日",
-    "Saturday": "土曜日",
-    "Sunday": "日曜日",
-}
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +105,10 @@ class GreetingService:
         # TTS音声合成（オプション）
         tts_options = config.get_tts_options()
         if tts_options is not None:
-            audio_data = self._synthesize_audio(greeting_text, tts_options)
-            result["audio_data"] = audio_data
+            tts_result = self._synthesize_audio(greeting_text, tts_options)
+            result["audio_data"] = tts_result.audio_data
+            result["audio_content_type"] = tts_result.content_type
+            result["audio_format"] = tts_result.format
 
         return result
 
@@ -215,10 +207,10 @@ class GreetingService:
         self,
         text: str,
         tts_options: dict[str, Any],
-    ) -> bytes:
+    ) -> TTSResult:
         """テキストから音声を合成."""
         logger.info("TTS音声合成開始")
-        audio_data = self.tts_client.synthesize(
+        tts_result = self.tts_client.synthesize(
             text=text,
             model=tts_options["model"],
             style=tts_options["style"],
@@ -227,6 +219,11 @@ class GreetingService:
             sdp_ratio=tts_options["sdp_ratio"],
             noise_scale=tts_options["noise_scale"],
             noise_scale_w=tts_options["noise_scale_w"],
+            format=tts_options.get("format", "mp3"),
         )
-        logger.info("TTS音声合成完了: %d bytes", len(audio_data))
-        return audio_data
+        logger.info(
+            "TTS音声合成完了: %d bytes, format=%s",
+            len(tts_result.audio_data),
+            tts_result.format,
+        )
+        return tts_result

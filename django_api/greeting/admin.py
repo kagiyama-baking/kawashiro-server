@@ -49,6 +49,7 @@ class GreetingConfigAdmin(admin.ModelAdmin):
                 "fields": (
                     "tts_enabled",
                     "tts_model",
+                    "tts_format",
                     "tts_style",
                     "tts_style_weight",
                     "tts_speed",

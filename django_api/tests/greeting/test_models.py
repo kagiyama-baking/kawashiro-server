@@ -234,6 +234,30 @@ class TestGreetingConfig:
         assert options["sdp_ratio"] == 0.3
         assert options["noise_scale"] == 0.5
         assert options["noise_scale_w"] == 0.7
+        assert options["format"] == "mp3"
+
+    def test_get_tts_options_includes_format(self):
+        """get_tts_options(): formatフィールドが含まれる"""
+        config = GreetingConfig(
+            name="test",
+            display_name="テスト",
+            system_prompt="システムプロンプト",
+            tts_enabled=True,
+            tts_format="ogg",
+        )
+        options = config.get_tts_options()
+
+        assert options["format"] == "ogg"
+
+    def test_tts_format_default_is_mp3(self):
+        """tts_format のデフォルト値は mp3"""
+        config = GreetingConfig.objects.create(
+            name="test_format",
+            display_name="テスト",
+            system_prompt="システムプロンプト",
+        )
+
+        assert config.tts_format == "mp3"
 
     def test_get_tts_options_model_empty_returns_none(self):
         """get_tts_options(): tts_model が空文字の場合は model が None"""

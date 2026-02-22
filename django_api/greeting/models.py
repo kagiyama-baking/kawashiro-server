@@ -91,6 +91,13 @@ class GreetingConfig(models.Model):
         default=0.8,
         verbose_name="ノイズスケールW",
     )
+    tts_format = models.CharField(
+        max_length=10,
+        default="mp3",
+        choices=[("wav", "WAV"), ("mp3", "MP3"), ("ogg", "OGG")],
+        verbose_name="音声フォーマット",
+        help_text="出力音声のフォーマット（デフォルト: MP3）",
+    )
 
     # プロンプト設定
     system_prompt = models.TextField(
@@ -132,6 +139,7 @@ class GreetingConfig(models.Model):
             "sdp_ratio": self.tts_sdp_ratio,
             "noise_scale": self.tts_noise_scale,
             "noise_scale_w": self.tts_noise_scale_w,
+            "format": self.tts_format,
         }
 
     def get_enabled_placeholders(self) -> list[str]:
