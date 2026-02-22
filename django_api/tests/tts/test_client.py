@@ -46,8 +46,8 @@ class TestTTSClient:
         """正常系: TTSResultが返される."""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.content = b"fake_mp3_data"
-        mock_response.headers = {"Content-Type": "audio/mpeg"}
+        mock_response.content = b"fake_wav_data"
+        mock_response.headers = {"Content-Type": "audio/wav"}
 
         with patch("tts.client.requests.post", return_value=mock_response):
             result = tts_client.synthesize(
@@ -57,22 +57,22 @@ class TestTTSClient:
             )
 
             assert isinstance(result, TTSResult)
-            assert result.audio_data == b"fake_mp3_data"
-            assert result.content_type == "audio/mpeg"
-            assert result.format == "mp3"
+            assert result.audio_data == b"fake_wav_data"
+            assert result.content_type == "audio/wav"
+            assert result.format == "wav"
 
-    def test_synthesize_default_format_is_mp3(self, tts_client):
-        """デフォルトフォーマットがmp3."""
+    def test_synthesize_default_format_is_wav(self, tts_client):
+        """デフォルトフォーマットがwav."""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.content = b"mp3_data"
-        mock_response.headers = {"Content-Type": "audio/mpeg"}
+        mock_response.content = b"wav_data"
+        mock_response.headers = {"Content-Type": "audio/wav"}
 
         with patch("tts.client.requests.post", return_value=mock_response) as mock_post:
             tts_client.synthesize(text="テスト")
 
             call_args = mock_post.call_args
-            assert call_args[1]["json"]["format"] == "mp3"
+            assert call_args[1]["json"]["format"] == "wav"
 
     def test_synthesize_sends_format_parameter(self, tts_client):
         """formatパラメータがSBV2に送信される."""
@@ -154,8 +154,8 @@ class TestTTSClient:
         """デフォルトパラメータが正しく設定される."""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.content = b"MP3_DATA"
-        mock_response.headers = {"Content-Type": "audio/mpeg"}
+        mock_response.content = b"WAV_DATA"
+        mock_response.headers = {"Content-Type": "audio/wav"}
 
         with patch("tts.client.requests.post", return_value=mock_response) as mock_post:
             tts_client.synthesize(text="テスト")
@@ -168,7 +168,7 @@ class TestTTSClient:
             assert params["sdp_ratio"] == 0.2
             assert params["noise_scale"] == 0.6
             assert params["noise_scale_w"] == 0.8
-            assert params["format"] == "mp3"
+            assert params["format"] == "wav"
 
     def test_synthesize_content_type_from_response_header(self, tts_client):
         """Content-Typeがレスポンスヘッダーから取得される."""

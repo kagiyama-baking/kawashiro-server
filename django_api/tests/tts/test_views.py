@@ -188,12 +188,12 @@ class TestTTSSynthesizeView:
         )
 
     @patch("tts.views.TTSClient")
-    def test_synthesize_get_default_returns_mp3(
-        self, mock_client_class, authenticated_client, mock_tts_result_mp3
+    def test_synthesize_get_default_returns_wav(
+        self, mock_client_class, authenticated_client, mock_tts_result_wav
     ):
-        """GETリクエストのデフォルトでMP3が返される"""
+        """GETリクエストのデフォルトでWAVが返される"""
         mock_client = Mock()
-        mock_client.synthesize.return_value = mock_tts_result_mp3
+        mock_client.synthesize.return_value = mock_tts_result_wav
         mock_client_class.return_value = mock_client
 
         response = authenticated_client.get(
@@ -201,17 +201,17 @@ class TestTTSSynthesizeView:
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/mpeg"
+        assert response["Content-Type"] == "audio/wav"
         assert "inline" in response["Content-Disposition"]
-        assert ".mp3" in response["Content-Disposition"]
+        assert ".wav" in response["Content-Disposition"]
 
     @patch("tts.views.TTSClient")
-    def test_synthesize_post_returns_mp3_attachment(
-        self, mock_client_class, authenticated_client, mock_tts_result_mp3
+    def test_synthesize_post_returns_wav_attachment(
+        self, mock_client_class, authenticated_client, mock_tts_result_wav
     ):
-        """POSTリクエストでMP3がattachmentで返される"""
+        """POSTリクエストでWAVがattachmentで返される"""
         mock_client = Mock()
-        mock_client.synthesize.return_value = mock_tts_result_mp3
+        mock_client.synthesize.return_value = mock_tts_result_wav
         mock_client_class.return_value = mock_client
 
         response = authenticated_client.post(
@@ -221,7 +221,7 @@ class TestTTSSynthesizeView:
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response["Content-Type"] == "audio/mpeg"
+        assert response["Content-Type"] == "audio/wav"
         assert "attachment" in response["Content-Disposition"]
 
     @patch("tts.views.TTSClient")

@@ -219,7 +219,7 @@ class GreetingService:
             sdp_ratio=tts_options["sdp_ratio"],
             noise_scale=tts_options["noise_scale"],
             noise_scale_w=tts_options["noise_scale_w"],
-            format=tts_options.get("format", "mp3"),
+            format=tts_options.get("format", "wav"),
         )
         logger.info(
             "TTS音声合成完了: %d bytes, format=%s",

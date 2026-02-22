@@ -61,7 +61,7 @@ class TTSSynthesizeSerializer(serializers.Serializer):
     )
     format = serializers.ChoiceField(
         choices=["wav", "mp3", "ogg"],
-        default="mp3",
+        default="wav",
         required=False,
         help_text="出力音声フォーマット（wav, mp3, ogg）",
     )
