@@ -1,0 +1,55 @@
+# Promtail設定ファイル
+# Nginx ログおよび Docker コンテナログを収集して Loki に送信する設定
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  # 読み取り位置を永続化（再起動後も続きから読む）
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Nginxアクセスログの収集
+  - job_name: nginx_access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          log_type: access
+          __path__: /var/log/nginx/access.log
+
+  # Nginxエラーログの収集
+  - job_name: nginx_error
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx
+          log_type: error
+          __path__: /var/log/nginx/error.log
+
+  # Dockerコンテナログの収集（Docker API経由で自動検出）
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Promtail自身のログは除外
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/promtail'
+        action: drop
+      # コンテナ名を抽出（先頭の "/" を除去）
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      # ログストリーム種別（stdout/stderr）
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: logstream
+      # Docker Compose サービス名
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: compose_service

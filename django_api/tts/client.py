@@ -7,6 +7,8 @@ from typing import Any
 import requests
 from django.conf import settings
 
+from core.metrics import EXTERNAL_API_DURATION
+
 from .exceptions import TTSNetworkError, TTSTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -91,11 +93,14 @@ class TTSClient:
                 "TTS合成リクエスト: text=%s...", text[:50] if len(text) > 50 else text
             )
 
-            response = requests.post(
-                f"{self.service_url}/synthesize",
-                json=params,
-                timeout=self.timeout,
-            )
+            with EXTERNAL_API_DURATION.labels(
+                service="tts", method="synthesize"
+            ).time():
+                response = requests.post(
+                    f"{self.service_url}/synthesize",
+                    json=params,
+                    timeout=self.timeout,
+                )
 
             if response.status_code != 200:
                 try:

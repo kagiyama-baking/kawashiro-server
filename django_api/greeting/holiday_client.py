@@ -2,6 +2,8 @@
 
 import requests
 
+from core.metrics import EXTERNAL_API_DURATION
+
 from .exceptions import HolidayNetworkError, HolidayTimeoutError
 
 
@@ -29,9 +31,12 @@ class HolidayClient:
             HolidayTimeoutError: リクエストタイムアウト
         """
         try:
-            response = requests.get(self.API_URL, timeout=self.TIMEOUT)
-            response.raise_for_status()
-            return response.json()
+            with EXTERNAL_API_DURATION.labels(
+                service="holiday", method="fetch_holidays"
+            ).time():
+                response = requests.get(self.API_URL, timeout=self.TIMEOUT)
+                response.raise_for_status()
+                return response.json()
         except requests.Timeout as e:
             raise HolidayTimeoutError(
                 f"祝日APIへのリクエストがタイムアウトしました: {e}"

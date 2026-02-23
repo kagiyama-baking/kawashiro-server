@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 
 import requests
 
+from core.metrics import EXTERNAL_API_DURATION
 from msgraph_config.exceptions import AuthenticationError, NetworkError
 from outlook.exceptions import CalendarError
 
@@ -52,21 +53,24 @@ class OutlookMSGraphClient(BaseMSGraphClient):
         headers = self.get_headers()
 
         try:
-            response = self._session.get(url, headers=headers, timeout=30)
+            with EXTERNAL_API_DURATION.labels(
+                service="outlook", method="get_calendar_events"
+            ).time():
+                response = self._session.get(url, headers=headers, timeout=30)
 
-            # 401エラーの場合、トークンを再取得してリトライ
-            if response.status_code == 401:
-                try:
-                    self.acquire_token()
-                    headers = self.get_headers()
-                    response = self._session.get(url, headers=headers, timeout=30)
-                    response.raise_for_status()
-                    return response.json().get("value", [])
-                except Exception as e:
-                    raise AuthenticationError("認証の更新に失敗しました") from e
+                # 401エラーの場合、トークンを再取得してリトライ
+                if response.status_code == 401:
+                    try:
+                        self.acquire_token()
+                        headers = self.get_headers()
+                        response = self._session.get(url, headers=headers, timeout=30)
+                        response.raise_for_status()
+                        return response.json().get("value", [])
+                    except Exception as e:
+                        raise AuthenticationError("認証の更新に失敗しました") from e
 
-            response.raise_for_status()
-            return response.json().get("value", [])
+                response.raise_for_status()
+                return response.json().get("value", [])
 
         except requests.exceptions.Timeout as e:
             raise NetworkError("カレンダー取得がタイムアウトしました") from e

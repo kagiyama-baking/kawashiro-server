@@ -17,6 +17,7 @@ jobs:
                 image:
                     - reverse-proxy
                     - django-api
+                    - backup
         steps:
             - name: Delete old images (${{ matrix.image }})
               uses: snok/container-retention-policy@v3.0.0
