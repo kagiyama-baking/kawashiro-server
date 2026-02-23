@@ -189,31 +189,33 @@ services:
     # ============================================================
 
     # Prometheus - メトリクス収集サーバー
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     prometheus:
-        build:
-            context: ./prometheus
-            dockerfile: Dockerfile
-        image: prometheus
+        image: prom/prometheus:latest
         container_name: prometheus
         hostname: prometheus
         ports:
             # 開発環境用：直接アクセス
             - '9090:9090'
         volumes:
-            # 設定ファイルのマウント（開発環境用）
+            # 設定ファイルのマウント
             - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
             # データの永続化
             - prometheus-data:/prometheus
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=30d'
+            - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+            - '--web.console.templates=/usr/share/prometheus/consoles'
         restart: unless-stopped
         networks:
             - proxy-network
 
     # Grafana - 監視ダッシュボード
+    # ※ 公式イメージをそのまま使用（プロビジョニング設定はボリュームマウント）
     grafana:
-        build:
-            context: ./grafana
-            dockerfile: Dockerfile
-        image: grafana
+        image: grafana/grafana:latest
         container_name: grafana
         hostname: grafana
         env_file:
@@ -222,7 +224,7 @@ services:
             # 開発環境用：直接アクセス
             - '3001:3000'
         volumes:
-            # プロビジョニング設定のマウント（開発環境用）
+            # プロビジョニング設定のマウント
             - ./grafana/provisioning:/etc/grafana/provisioning:ro
             # データの永続化
             - grafana-data:/var/lib/grafana
@@ -234,40 +236,40 @@ services:
             - proxy-network
 
     # Loki - ログ集約サーバー
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     loki:
-        build:
-            context: ./loki
-            dockerfile: Dockerfile
-        image: loki
+        image: grafana/loki:latest
         container_name: loki
         hostname: loki
         ports:
             # 開発環境用：直接アクセス
             - '3100:3100'
         volumes:
-            # 設定ファイルのマウント（開発環境用）
+            # 設定ファイルのマウント
             - ./loki/loki.yml:/etc/loki/loki.yml:ro
             # データの永続化
             - loki-data:/loki
+        command:
+            - '-config.file=/etc/loki/loki.yml'
         restart: unless-stopped
         networks:
             - proxy-network
 
     # Promtail - ログ収集エージェント
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     promtail:
-        build:
-            context: ./promtail
-            dockerfile: Dockerfile
-        image: promtail
+        image: grafana/promtail:latest
         container_name: promtail
         hostname: promtail
         volumes:
-            # 設定ファイルのマウント（開発環境用）
+            # 設定ファイルのマウント
             - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
             # Nginxログへのアクセス（読み取り専用）
             - ./volumes/reverse-proxy/log/nginx:/var/log/nginx:ro
             # Dockerソケット（コンテナログ自動収集用）
             - /var/run/docker.sock:/var/run/docker.sock
+        command:
+            - '-config.file=/etc/promtail/promtail.yml'
         restart: unless-stopped
         depends_on:
             - loki

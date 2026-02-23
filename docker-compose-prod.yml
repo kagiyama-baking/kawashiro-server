@@ -154,25 +154,37 @@ services:
     # ============================================================
 
     # Prometheus - メトリクス収集サーバー
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     prometheus:
-        image: ghcr.io/kagiyama-baking/kawashiro-server/prometheus:release
+        image: prom/prometheus:latest
         container_name: prometheus
         hostname: prometheus
         volumes:
+            # 設定ファイルのマウント
+            - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
             # データの永続化
             - prometheus-data:/prometheus
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=30d'
+            - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+            - '--web.console.templates=/usr/share/prometheus/consoles'
         restart: unless-stopped
         networks:
             - proxy-network
 
     # Grafana - 監視ダッシュボード
+    # ※ 公式イメージをそのまま使用（プロビジョニング設定はボリュームマウント）
     grafana:
-        image: ghcr.io/kagiyama-baking/kawashiro-server/grafana:release
+        image: grafana/grafana:latest
         container_name: grafana
         hostname: grafana
         env_file:
             - .env
         volumes:
+            # プロビジョニング設定のマウント
+            - ./grafana/provisioning:/etc/grafana/provisioning:ro
             # データの永続化
             - grafana-data:/var/lib/grafana
         restart: unless-stopped
@@ -183,27 +195,37 @@ services:
             - proxy-network
 
     # Loki - ログ集約サーバー
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     loki:
-        image: ghcr.io/kagiyama-baking/kawashiro-server/loki:release
+        image: grafana/loki:latest
         container_name: loki
         hostname: loki
         volumes:
+            # 設定ファイルのマウント
+            - ./loki/loki.yml:/etc/loki/loki.yml:ro
             # データの永続化
             - loki-data:/loki
+        command:
+            - '-config.file=/etc/loki/loki.yml'
         restart: unless-stopped
         networks:
             - proxy-network
 
     # Promtail - ログ収集エージェント
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     promtail:
-        image: ghcr.io/kagiyama-baking/kawashiro-server/promtail:release
+        image: grafana/promtail:latest
         container_name: promtail
         hostname: promtail
         volumes:
+            # 設定ファイルのマウント
+            - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
             # Nginxログへのアクセス（読み取り専用）
             - ./volumes/reverse-proxy/log/nginx:/var/log/nginx:ro
             # Dockerソケット（コンテナログ自動収集用）
             - /var/run/docker.sock:/var/run/docker.sock
+        command:
+            - '-config.file=/etc/promtail/promtail.yml'
         restart: unless-stopped
         depends_on:
             - loki

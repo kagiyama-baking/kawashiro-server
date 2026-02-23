@@ -18,10 +18,6 @@ jobs:
                     - reverse-proxy
                     - django-api
                     - backup
-                    - prometheus
-                    - grafana
-                    - loki
-                    - promtail
         steps:
             - name: Delete old images (${{ matrix.image }})
               uses: snok/container-retention-policy@v3.0.0

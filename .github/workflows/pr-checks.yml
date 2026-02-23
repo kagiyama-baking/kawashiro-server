@@ -24,10 +24,6 @@ jobs:
             reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
             backup: ${{ steps.filter.outputs.backup }}
             sbv2-api: ${{ steps.filter.outputs.sbv2-api }}
-            prometheus: ${{ steps.filter.outputs.prometheus }}
-            grafana: ${{ steps.filter.outputs.grafana }}
-            loki: ${{ steps.filter.outputs.loki }}
-            promtail: ${{ steps.filter.outputs.promtail }}
             docker-compose: ${{ steps.filter.outputs.docker-compose }}
         steps:
             - name: Checkout
@@ -46,17 +42,13 @@ jobs:
                         - 'backup/**'
                       sbv2-api:
                         - 'sbv2_api/**'
-                      prometheus:
-                        - 'prometheus/**'
-                      grafana:
-                        - 'grafana/**'
-                      loki:
-                        - 'loki/**'
-                      promtail:
-                        - 'promtail/**'
                       docker-compose:
                         - 'docker-compose.yml'
                         - '.env.sample'
+                        - 'prometheus/**'
+                        - 'grafana/**'
+                        - 'loki/**'
+                        - 'promtail/**'
 
     # Dockerfile静的解析ジョブ（セキュリティスキャン）
     dockerfile-security-scan:
@@ -66,10 +58,6 @@ jobs:
             needs.detect-changes.outputs.reverse-proxy == 'true' ||
             needs.detect-changes.outputs.backup == 'true' ||
             needs.detect-changes.outputs.sbv2-api == 'true' ||
-            needs.detect-changes.outputs.prometheus == 'true' ||
-            needs.detect-changes.outputs.grafana == 'true' ||
-            needs.detect-changes.outputs.loki == 'true' ||
-            needs.detect-changes.outputs.promtail == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 5
@@ -89,18 +77,6 @@ jobs:
                     - name: sbv2-api
                       path: ./sbv2_api
                       changed: sbv2-api
-                    - name: prometheus
-                      path: ./prometheus
-                      changed: prometheus
-                    - name: grafana
-                      path: ./grafana
-                      changed: grafana
-                    - name: loki
-                      path: ./loki
-                      changed: loki
-                    - name: promtail
-                      path: ./promtail
-                      changed: promtail
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -251,10 +227,6 @@ jobs:
         if: |
             needs.detect-changes.outputs.django-api == 'true' ||
             needs.detect-changes.outputs.reverse-proxy == 'true' ||
-            needs.detect-changes.outputs.prometheus == 'true' ||
-            needs.detect-changes.outputs.grafana == 'true' ||
-            needs.detect-changes.outputs.loki == 'true' ||
-            needs.detect-changes.outputs.promtail == 'true' ||
             needs.detect-changes.outputs.docker-compose == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
