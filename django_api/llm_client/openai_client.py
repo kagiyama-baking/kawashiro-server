@@ -5,6 +5,7 @@ from typing import Any
 from openai import APIConnectionError, APITimeoutError, OpenAI
 from openai.types.chat import ChatCompletionMessage
 
+from core.metrics import EXTERNAL_API_DURATION
 from llm_config.config import get_openai_settings
 
 from .exceptions import OpenAIAPIError, OpenAITimeoutError
@@ -63,10 +64,13 @@ class OpenAIClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,  # type: ignore[arg-type]
-            )
+            with EXTERNAL_API_DURATION.labels(
+                service="openai", method="generate_text"
+            ).time():
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,  # type: ignore[arg-type]
+                )
             return response.choices[0].message.content or ""
         except APITimeoutError as e:
             raise OpenAITimeoutError(
@@ -104,7 +108,10 @@ class OpenAIClient:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
 
-            response = self._client.chat.completions.create(**kwargs)
+            with EXTERNAL_API_DURATION.labels(
+                service="openai", method="chat_completion"
+            ).time():
+                response = self._client.chat.completions.create(**kwargs)
             return response.choices[0].message
         except APITimeoutError as e:
             raise OpenAITimeoutError(
