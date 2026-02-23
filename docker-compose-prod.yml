@@ -316,7 +316,8 @@ services:
             - '--path.sysfs=/host/sys'
             - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
         healthcheck:
-            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+            # --spider は broken pipe を引き起こすため -O /dev/null で出力を破棄
+            test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:9100/metrics || exit 1"]
             interval: 30s
             timeout: 10s
             retries: 3
