@@ -49,6 +49,7 @@ jobs:
                         - 'grafana/**'
                         - 'loki/**'
                         - 'promtail/**'
+                        - 'tempo/**'
 
     # Dockerfile静的解析ジョブ（セキュリティスキャン）
     dockerfile-security-scan:
@@ -443,6 +444,8 @@ jobs:
                   docker compose logs loki | tail -n 20
                   echo "\n📋 promtail ログ:"
                   docker compose logs promtail | tail -n 20
+                  echo "\n📋 tempo ログ:"
+                  docker compose logs tempo | tail -n 20
 
             # 環境のクリーンアップ（常に実行）
             - name: Cleanup
