@@ -1,5 +1,9 @@
 FROM prom/prometheus:latest
 
+# ※ Prometheus公式イメージはbusyboxベース（パッケージマネージャなし）のため
+#    apk upgrade によるOSパッケージ更新は不可。
+#    脆弱性対応はベースイメージの更新（:latest タグの再pull）で行う。
+
 # カスタム設定ファイルをコピー
 COPY prometheus.yml /etc/prometheus/prometheus.yml
 
