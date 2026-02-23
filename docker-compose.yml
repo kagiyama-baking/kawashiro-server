@@ -212,6 +212,12 @@ services:
             - '--storage.tsdb.retention.time=30d'
             - '--web.console.libraries=/usr/share/prometheus/console_libraries'
             - '--web.console.templates=/usr/share/prometheus/consoles'
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
         restart: unless-stopped
         networks:
             - proxy-network
@@ -232,6 +238,12 @@ services:
             - ./grafana/provisioning:/etc/grafana/provisioning:ro
             # データの永続化
             - grafana-data:/var/lib/grafana
+        healthcheck:
+            test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
         restart: unless-stopped
         depends_on:
             - prometheus
@@ -256,6 +268,7 @@ services:
             - loki-data:/loki
         command:
             - '-config.file=/etc/loki/loki.yml'
+        # NOTE: Loki は distroless イメージのため healthcheck 設定不可
         restart: unless-stopped
         networks:
             - proxy-network
@@ -301,6 +314,7 @@ services:
             - /var/run/docker.sock:/var/run/docker.sock:ro
         command:
             - '-config.file=/etc/promtail/promtail.yml'
+        # NOTE: Promtail は distroless イメージのため healthcheck 設定不可
         restart: unless-stopped
         depends_on:
             - loki
@@ -325,6 +339,12 @@ services:
             - '--path.rootfs=/rootfs'
             - '--path.sysfs=/host/sys'
             - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
         restart: unless-stopped
         networks:
             - proxy-network
@@ -339,6 +359,7 @@ services:
             - '9113:9113'
         command:
             - '--nginx.scrape-uri=http://reverse-proxy:8080/stub_status'
+        # NOTE: nginx-exporter は distroless イメージのため healthcheck 設定不可
         restart: unless-stopped
         depends_on:
             - reverse-proxy
