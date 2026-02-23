@@ -96,7 +96,7 @@ jobs:
                     - name: nginx-exporter
                       image: nginx/nginx-prometheus-exporter:1.5.0
                     - name: tempo
-                      image: grafana/tempo:2.10.1
+                      image: grafana/tempo:2.7.2
                     - name: cadvisor
                       image: gcr.io/cadvisor/cadvisor:v0.55.1
         steps:

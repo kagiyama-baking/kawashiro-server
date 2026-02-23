@@ -276,7 +276,7 @@ services:
     # Tempo - 分散トレーシングバックエンド
     # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     tempo:
-        image: grafana/tempo:2.10.1
+        image: grafana/tempo:2.7.2
         container_name: tempo
         hostname: tempo
         ports:
