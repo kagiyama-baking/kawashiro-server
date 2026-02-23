@@ -266,8 +266,8 @@ services:
             - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
             # Nginxログへのアクセス（読み取り専用）
             - ./volumes/reverse-proxy/log/nginx:/var/log/nginx:ro
-            # Dockerソケット（コンテナログ自動収集用）
-            - /var/run/docker.sock:/var/run/docker.sock
+            # Dockerソケット（コンテナログ自動収集用、読み取り専用）
+            - /var/run/docker.sock:/var/run/docker.sock:ro
         command:
             - '-config.file=/etc/promtail/promtail.yml'
         restart: unless-stopped

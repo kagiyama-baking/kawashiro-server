@@ -76,13 +76,13 @@ jobs:
             matrix:
                 include:
                     - name: prometheus
-                      image: prom/prometheus:latest
+                      image: prom/prometheus:v3.2.1
                     - name: grafana
-                      image: grafana/grafana:latest
+                      image: grafana/grafana:11.5.2
                     - name: loki
-                      image: grafana/loki:latest
+                      image: grafana/loki:3.4.2
                     - name: promtail
-                      image: grafana/promtail:latest
+                      image: grafana/promtail:3.4.2
                     - name: immich-server
                       image: ghcr.io/immich-app/immich-server:release
                     - name: immich-machine-learning
@@ -92,11 +92,11 @@ jobs:
                     - name: valkey
                       image: docker.io/valkey/valkey:8-bookworm
                     - name: node-exporter
-                      image: prom/node-exporter:latest
+                      image: prom/node-exporter:v1.9.0
                     - name: nginx-exporter
-                      image: nginx/nginx-prometheus-exporter:latest
+                      image: nginx/nginx-prometheus-exporter:1.4.1
                     - name: cadvisor
-                      image: gcr.io/cadvisor/cadvisor:latest
+                      image: gcr.io/cadvisor/cadvisor:v0.51.0
         steps:
             - name: Checkout
               uses: actions/checkout@v4

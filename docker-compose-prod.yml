@@ -156,7 +156,7 @@ services:
     # Prometheus - メトリクス収集サーバー
     # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     prometheus:
-        image: prom/prometheus:latest
+        image: prom/prometheus:v3.2.1
         container_name: prometheus
         hostname: prometheus
         volumes:
@@ -177,7 +177,7 @@ services:
     # Grafana - 監視ダッシュボード
     # ※ 公式イメージをそのまま使用（プロビジョニング設定はボリュームマウント）
     grafana:
-        image: grafana/grafana:latest
+        image: grafana/grafana:11.5.2
         container_name: grafana
         hostname: grafana
         env_file:
@@ -197,7 +197,7 @@ services:
     # Loki - ログ集約サーバー
     # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     loki:
-        image: grafana/loki:latest
+        image: grafana/loki:3.4.2
         container_name: loki
         hostname: loki
         volumes:
@@ -214,7 +214,7 @@ services:
     # Promtail - ログ収集エージェント
     # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
     promtail:
-        image: grafana/promtail:latest
+        image: grafana/promtail:3.4.2
         container_name: promtail
         hostname: promtail
         volumes:
@@ -222,8 +222,8 @@ services:
             - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
             # Nginxログへのアクセス（読み取り専用）
             - ./volumes/reverse-proxy/log/nginx:/var/log/nginx:ro
-            # Dockerソケット（コンテナログ自動収集用）
-            - /var/run/docker.sock:/var/run/docker.sock
+            # Dockerソケット（コンテナログ自動収集用、読み取り専用）
+            - /var/run/docker.sock:/var/run/docker.sock:ro
         command:
             - '-config.file=/etc/promtail/promtail.yml'
         restart: unless-stopped
@@ -235,7 +235,7 @@ services:
 
     # cAdvisor - Dockerコンテナメトリクス収集（本番環境のみ）
     cadvisor:
-        image: gcr.io/cadvisor/cadvisor:latest
+        image: gcr.io/cadvisor/cadvisor:v0.51.0
         container_name: cadvisor
         hostname: cadvisor
         volumes:
@@ -244,7 +244,9 @@ services:
             - /sys:/sys:ro
             - /var/lib/docker/:/var/lib/docker:ro
             - /dev/disk/:/dev/disk:ro
-        privileged: true
+        # privileged: true の代わりに必要最小限の権限を付与
+        security_opt:
+            - no-new-privileges:true
         devices:
             - /dev/kmsg
         restart: unless-stopped
@@ -253,7 +255,7 @@ services:
 
     # Node Exporter - ホストマシンメトリクス収集
     node-exporter:
-        image: prom/node-exporter:latest
+        image: prom/node-exporter:v1.9.0
         container_name: node-exporter
         hostname: node-exporter
         volumes:
@@ -271,7 +273,7 @@ services:
 
     # Nginx Exporter - Nginxメトリクス収集
     nginx-exporter:
-        image: nginx/nginx-prometheus-exporter:latest
+        image: nginx/nginx-prometheus-exporter:1.4.1
         container_name: nginx-exporter
         hostname: nginx-exporter
         command:
