@@ -21,6 +21,10 @@ jobs:
                     - reverse-proxy
                     - django-api
                     - backup
+                    - prometheus
+                    - grafana
+                    - loki
+                    - promtail
         steps:
             - name: Checkout
               uses: actions/checkout@v4

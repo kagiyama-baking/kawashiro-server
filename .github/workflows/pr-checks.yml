@@ -24,6 +24,10 @@ jobs:
             reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
             backup: ${{ steps.filter.outputs.backup }}
             sbv2-api: ${{ steps.filter.outputs.sbv2-api }}
+            prometheus: ${{ steps.filter.outputs.prometheus }}
+            grafana: ${{ steps.filter.outputs.grafana }}
+            loki: ${{ steps.filter.outputs.loki }}
+            promtail: ${{ steps.filter.outputs.promtail }}
             docker-compose: ${{ steps.filter.outputs.docker-compose }}
         steps:
             - name: Checkout
@@ -42,6 +46,14 @@ jobs:
                         - 'backup/**'
                       sbv2-api:
                         - 'sbv2_api/**'
+                      prometheus:
+                        - 'prometheus/**'
+                      grafana:
+                        - 'grafana/**'
+                      loki:
+                        - 'loki/**'
+                      promtail:
+                        - 'promtail/**'
                       docker-compose:
                         - 'docker-compose.yml'
                         - '.env.sample'
@@ -54,6 +66,10 @@ jobs:
             needs.detect-changes.outputs.reverse-proxy == 'true' ||
             needs.detect-changes.outputs.backup == 'true' ||
             needs.detect-changes.outputs.sbv2-api == 'true' ||
+            needs.detect-changes.outputs.prometheus == 'true' ||
+            needs.detect-changes.outputs.grafana == 'true' ||
+            needs.detect-changes.outputs.loki == 'true' ||
+            needs.detect-changes.outputs.promtail == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
         timeout-minutes: 5
@@ -73,6 +89,18 @@ jobs:
                     - name: sbv2-api
                       path: ./sbv2_api
                       changed: sbv2-api
+                    - name: prometheus
+                      path: ./prometheus
+                      changed: prometheus
+                    - name: grafana
+                      path: ./grafana
+                      changed: grafana
+                    - name: loki
+                      path: ./loki
+                      changed: loki
+                    - name: promtail
+                      path: ./promtail
+                      changed: promtail
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -223,10 +251,14 @@ jobs:
         if: |
             needs.detect-changes.outputs.django-api == 'true' ||
             needs.detect-changes.outputs.reverse-proxy == 'true' ||
+            needs.detect-changes.outputs.prometheus == 'true' ||
+            needs.detect-changes.outputs.grafana == 'true' ||
+            needs.detect-changes.outputs.loki == 'true' ||
+            needs.detect-changes.outputs.promtail == 'true' ||
             needs.detect-changes.outputs.docker-compose == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
-        timeout-minutes: 10 # 全体のタイムアウトを設定
+        timeout-minutes: 15 # 全体のタイムアウトを設定（監視サービス追加に伴い拡張）
 
         steps:
             # ソースコードの取得
@@ -243,6 +275,10 @@ jobs:
                   echo "PUBLIC_SERVER_URL=http://album.localhost" >> .env
                   echo "IMMICH_LOG_LEVEL=verbose" >> .env
                   echo "TZ=Asia/Tokyo" >> .env
+                  echo "GF_SECURITY_ADMIN_USER=admin" >> .env
+                  echo "GF_SECURITY_ADMIN_PASSWORD=ci_grafana_password" >> .env
+                  echo "GF_SERVER_ROOT_URL=http://grafana.localhost" >> .env
+                  echo "GF_SERVER_SERVE_FROM_SUB_PATH=false" >> .env
 
                   # Django API用の環境変数（.env.sampleに準拠）
                   cp django_api/.env.sample django_api/.env
@@ -257,6 +293,8 @@ jobs:
                   mkdir -p volumes/reverse-proxy/log/nginx
                   mkdir -p volumes/django-api/log
                   mkdir -p volumes/django-api/staticfiles
+                  mkdir -p volumes/prometheus/data
+                  mkdir -p volumes/grafana/data
                   # SQLiteデータベースファイルを事前に作成
                   touch volumes/django-api/db.sqlite3
                   # GitHub Actions環境での権限問題を解決
@@ -379,6 +417,16 @@ jobs:
                     exit 1
                   fi
 
+                  # サブドメインルーティング確認（grafana）
+                  echo "  🔀 ルーティング... (grafana.localhost -> grafana:3000)"
+                  status=$(curl --resolve grafana.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://grafana.localhost/login)
+                  if [ "$status" = "200" ]; then
+                    echo "  ✅ ルーティング(grafana): OK"
+                  else
+                    echo "  ❌ ルーティング(grafana): NG (HTTP $status)"
+                    exit 1
+                  fi
+
             # Django API機能テスト
             - name: Django API functionality tests
               run: |
@@ -415,6 +463,14 @@ jobs:
                   docker compose logs reverse-proxy | tail -n 50
                   echo "\n📋 django-api ログ:"
                   docker compose logs django-api | tail -n 50
+                  echo "\n📋 prometheus ログ:"
+                  docker compose logs prometheus | tail -n 20
+                  echo "\n📋 grafana ログ:"
+                  docker compose logs grafana | tail -n 20
+                  echo "\n📋 loki ログ:"
+                  docker compose logs loki | tail -n 20
+                  echo "\n📋 promtail ログ:"
+                  docker compose logs promtail | tail -n 20
 
             # 環境のクリーンアップ（常に実行）
             - name: Cleanup

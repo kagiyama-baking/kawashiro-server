@@ -1,0 +1,14 @@
+# Lokiデータソースの自動プロビジョニング設定
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    uid: loki-datasource
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      timeout: 60

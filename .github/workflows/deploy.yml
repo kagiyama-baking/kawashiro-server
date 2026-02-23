@@ -45,6 +45,10 @@ jobs:
             reverse-proxy-digest: ${{ steps.verify-reverse-proxy.outputs.digest }}
             django-api-digest: ${{ steps.verify-django-api.outputs.digest }}
             backup-digest: ${{ steps.verify-backup.outputs.digest }}
+            prometheus-digest: ${{ steps.verify-prometheus.outputs.digest }}
+            grafana-digest: ${{ steps.verify-grafana.outputs.digest }}
+            loki-digest: ${{ steps.verify-loki.outputs.digest }}
+            promtail-digest: ${{ steps.verify-promtail.outputs.digest }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -113,6 +117,82 @@ jobs:
                     exit 1
                   fi
 
+            - name: Verify prometheus image
+              id: verify-prometheus
+              run: |
+                  TAG="${{ inputs.tag || 'staging' }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/prometheus:${TAG}"
+
+                  echo "🔍 prometheusイメージの検証: ${IMAGE}"
+
+                  # イメージの存在確認とダイジェスト取得
+                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
+                    echo "✅ イメージが見つかりました"
+                    echo "📦 ダイジェスト: ${DIGEST}"
+                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+                  else
+                    echo "❌ イメージが見つかりません: ${IMAGE}"
+                    exit 1
+                  fi
+
+            - name: Verify grafana image
+              id: verify-grafana
+              run: |
+                  TAG="${{ inputs.tag || 'staging' }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/grafana:${TAG}"
+
+                  echo "🔍 grafanaイメージの検証: ${IMAGE}"
+
+                  # イメージの存在確認とダイジェスト取得
+                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
+                    echo "✅ イメージが見つかりました"
+                    echo "📦 ダイジェスト: ${DIGEST}"
+                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+                  else
+                    echo "❌ イメージが見つかりません: ${IMAGE}"
+                    exit 1
+                  fi
+
+            - name: Verify loki image
+              id: verify-loki
+              run: |
+                  TAG="${{ inputs.tag || 'staging' }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/loki:${TAG}"
+
+                  echo "🔍 lokiイメージの検証: ${IMAGE}"
+
+                  # イメージの存在確認とダイジェスト取得
+                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
+                    echo "✅ イメージが見つかりました"
+                    echo "📦 ダイジェスト: ${DIGEST}"
+                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+                  else
+                    echo "❌ イメージが見つかりません: ${IMAGE}"
+                    exit 1
+                  fi
+
+            - name: Verify promtail image
+              id: verify-promtail
+              run: |
+                  TAG="${{ inputs.tag || 'staging' }}"
+                  IMAGE="ghcr.io/${{ github.repository }}/promtail:${TAG}"
+
+                  echo "🔍 promtailイメージの検証: ${IMAGE}"
+
+                  # イメージの存在確認とダイジェスト取得
+                  if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+                    DIGEST=$(docker manifest inspect ${IMAGE} | jq -r '.digest')
+                    echo "✅ イメージが見つかりました"
+                    echo "📦 ダイジェスト: ${DIGEST}"
+                    echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+                  else
+                    echo "❌ イメージが見つかりません: ${IMAGE}"
+                    exit 1
+                  fi
+
     # リリースタグの作成
     tag-release:
         runs-on: ubuntu-latest
@@ -157,6 +237,42 @@ jobs:
                              ghcr.io/${{ github.repository }}/backup:latest
                   docker push ghcr.io/${{ github.repository }}/backup:release
                   docker push ghcr.io/${{ github.repository }}/backup:latest
+
+                  # prometheus
+                  docker pull ghcr.io/${{ github.repository }}/prometheus:staging
+                  docker tag ghcr.io/${{ github.repository }}/prometheus:staging \
+                             ghcr.io/${{ github.repository }}/prometheus:release
+                  docker tag ghcr.io/${{ github.repository }}/prometheus:staging \
+                             ghcr.io/${{ github.repository }}/prometheus:latest
+                  docker push ghcr.io/${{ github.repository }}/prometheus:release
+                  docker push ghcr.io/${{ github.repository }}/prometheus:latest
+
+                  # grafana
+                  docker pull ghcr.io/${{ github.repository }}/grafana:staging
+                  docker tag ghcr.io/${{ github.repository }}/grafana:staging \
+                             ghcr.io/${{ github.repository }}/grafana:release
+                  docker tag ghcr.io/${{ github.repository }}/grafana:staging \
+                             ghcr.io/${{ github.repository }}/grafana:latest
+                  docker push ghcr.io/${{ github.repository }}/grafana:release
+                  docker push ghcr.io/${{ github.repository }}/grafana:latest
+
+                  # loki
+                  docker pull ghcr.io/${{ github.repository }}/loki:staging
+                  docker tag ghcr.io/${{ github.repository }}/loki:staging \
+                             ghcr.io/${{ github.repository }}/loki:release
+                  docker tag ghcr.io/${{ github.repository }}/loki:staging \
+                             ghcr.io/${{ github.repository }}/loki:latest
+                  docker push ghcr.io/${{ github.repository }}/loki:release
+                  docker push ghcr.io/${{ github.repository }}/loki:latest
+
+                  # promtail
+                  docker pull ghcr.io/${{ github.repository }}/promtail:staging
+                  docker tag ghcr.io/${{ github.repository }}/promtail:staging \
+                             ghcr.io/${{ github.repository }}/promtail:release
+                  docker tag ghcr.io/${{ github.repository }}/promtail:staging \
+                             ghcr.io/${{ github.repository }}/promtail:latest
+                  docker push ghcr.io/${{ github.repository }}/promtail:release
+                  docker push ghcr.io/${{ github.repository }}/promtail:latest
 
                   echo "✅ リリースタグを作成しました"
 
@@ -206,7 +322,7 @@ jobs:
 
                   echo "🐳 イメージを更新..."
                   # sbv2-apiはローカルビルドのため除外
-                  docker compose -f docker-compose-prod.yml pull reverse-proxy django-api immich immich-machine-learning immich-redis immich-postgres
+                  docker compose -f docker-compose-prod.yml pull reverse-proxy django-api immich immich-machine-learning immich-redis immich-postgres prometheus grafana loki promtail
 
                   # sbv2_apiに変更がある場合のみビルド
                   if [ "$PREV_SBV2_HASH" != "$CURR_SBV2_HASH" ] || [ -z "$(docker images -q sbv2-api:local 2>/dev/null)" ]; then
@@ -269,6 +385,10 @@ jobs:
                     echo "| reverse-proxy | ✅ |" >> $GITHUB_STEP_SUMMARY
                     echo "| django-api | ✅ |" >> $GITHUB_STEP_SUMMARY
                     echo "| backup | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| prometheus | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| grafana | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| loki | ✅ |" >> $GITHUB_STEP_SUMMARY
+                    echo "| promtail | ✅ |" >> $GITHUB_STEP_SUMMARY
                   else
                     echo "| - | ❌ 検証失敗 |" >> $GITHUB_STEP_SUMMARY
                   fi

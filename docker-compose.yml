@@ -1,4 +1,8 @@
 services:
+    # ============================================================
+    # アプリケーションサービス
+    # ============================================================
+
     # リバースプロキシサーバー
     reverse-proxy:
         build:
@@ -180,6 +184,134 @@ services:
         # Intel Mac対応
         platform: linux/amd64
 
+    # ============================================================
+    # 監視・オブザーバビリティ
+    # ============================================================
+
+    # Prometheus - メトリクス収集サーバー
+    prometheus:
+        build:
+            context: ./prometheus
+            dockerfile: Dockerfile
+        image: prometheus
+        container_name: prometheus
+        hostname: prometheus
+        ports:
+            # 開発環境用：直接アクセス
+            - '9090:9090'
+        volumes:
+            # 設定ファイルのマウント（開発環境用）
+            - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            # データの永続化
+            - prometheus-data:/prometheus
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # Grafana - 監視ダッシュボード
+    grafana:
+        build:
+            context: ./grafana
+            dockerfile: Dockerfile
+        image: grafana
+        container_name: grafana
+        hostname: grafana
+        env_file:
+            - .env
+        ports:
+            # 開発環境用：直接アクセス
+            - '3001:3000'
+        volumes:
+            # プロビジョニング設定のマウント（開発環境用）
+            - ./grafana/provisioning:/etc/grafana/provisioning:ro
+            # データの永続化
+            - grafana-data:/var/lib/grafana
+        restart: unless-stopped
+        depends_on:
+            - prometheus
+            - loki
+        networks:
+            - proxy-network
+
+    # Loki - ログ集約サーバー
+    loki:
+        build:
+            context: ./loki
+            dockerfile: Dockerfile
+        image: loki
+        container_name: loki
+        hostname: loki
+        ports:
+            # 開発環境用：直接アクセス
+            - '3100:3100'
+        volumes:
+            # 設定ファイルのマウント（開発環境用）
+            - ./loki/loki.yml:/etc/loki/loki.yml:ro
+            # データの永続化
+            - loki-data:/loki
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # Promtail - ログ収集エージェント
+    promtail:
+        build:
+            context: ./promtail
+            dockerfile: Dockerfile
+        image: promtail
+        container_name: promtail
+        hostname: promtail
+        volumes:
+            # 設定ファイルのマウント（開発環境用）
+            - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+            # Nginxログへのアクセス（読み取り専用）
+            - ./volumes/reverse-proxy/log/nginx:/var/log/nginx:ro
+            # Dockerソケット（コンテナログ自動収集用）
+            - /var/run/docker.sock:/var/run/docker.sock
+        restart: unless-stopped
+        depends_on:
+            - loki
+            - reverse-proxy
+        networks:
+            - proxy-network
+
+    # Node Exporter - ホストマシンメトリクス収集
+    node-exporter:
+        image: prom/node-exporter:latest
+        container_name: node-exporter
+        hostname: node-exporter
+        ports:
+            # 開発環境用：直接アクセス
+            - '9100:9100'
+        volumes:
+            - /proc:/host/proc:ro
+            - /sys:/host/sys:ro
+            - /:/rootfs:ro
+        command:
+            - '--path.procfs=/host/proc'
+            - '--path.rootfs=/rootfs'
+            - '--path.sysfs=/host/sys'
+            - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # Nginx Exporter - Nginxメトリクス収集
+    nginx-exporter:
+        image: nginx/nginx-prometheus-exporter:latest
+        container_name: nginx-exporter
+        hostname: nginx-exporter
+        ports:
+            # 開発環境用：直接アクセス
+            - '9113:9113'
+        command:
+            - '--nginx.scrape-uri=http://reverse-proxy:8080/stub_status'
+        restart: unless-stopped
+        depends_on:
+            - reverse-proxy
+        networks:
+            - proxy-network
+
 networks:
     proxy-network:
         driver: bridge
@@ -192,3 +324,9 @@ volumes:
         name: immich-redis-data
     immich-ml-cache:
         name: immich-ml-cache
+    prometheus-data:
+        name: prometheus-data
+    grafana-data:
+        name: grafana-data
+    loki-data:
+        name: loki-data

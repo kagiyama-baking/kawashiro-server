@@ -48,6 +48,14 @@ jobs:
                         - 'django_api/**'
                       backup:
                         - 'backup/**'
+                      prometheus:
+                        - 'prometheus/**'
+                      grafana:
+                        - 'grafana/**'
+                      loki:
+                        - 'loki/**'
+                      promtail:
+                        - 'promtail/**'
 
             - name: Build service matrix
               id: build-matrix
@@ -61,6 +69,18 @@ jobs:
                   fi
                   if [ "${{ steps.filter.outputs.backup }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
                     services=$(echo "$services" | jq -c '. + [{"name": "backup", "context": "backup", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/backup"}]')
+                  fi
+                  if [ "${{ steps.filter.outputs.prometheus }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    services=$(echo "$services" | jq -c '. + [{"name": "prometheus", "context": "prometheus", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/prometheus"}]')
+                  fi
+                  if [ "${{ steps.filter.outputs.grafana }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    services=$(echo "$services" | jq -c '. + [{"name": "grafana", "context": "grafana", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/grafana"}]')
+                  fi
+                  if [ "${{ steps.filter.outputs.loki }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    services=$(echo "$services" | jq -c '. + [{"name": "loki", "context": "loki", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/loki"}]')
+                  fi
+                  if [ "${{ steps.filter.outputs.promtail }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    services=$(echo "$services" | jq -c '. + [{"name": "promtail", "context": "promtail", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/promtail"}]')
                   fi
                   echo "services=$services" >> "$GITHUB_OUTPUT"
                   echo "📋 ビルド対象サービス: $services"

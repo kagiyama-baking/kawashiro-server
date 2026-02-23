@@ -1,0 +1,14 @@
+# ダッシュボードプロバイダー設定
+# JSONファイルからダッシュボードを自動読み込み
+apiVersion: 1
+
+providers:
+  - name: "default"
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false
