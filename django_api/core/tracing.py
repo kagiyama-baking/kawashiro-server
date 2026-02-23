@@ -43,6 +43,7 @@ def setup_tracing() -> None:
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)
 
+    # Docker 内部ネットワーク通信のため TLS 不要（insecure=True）
     exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
