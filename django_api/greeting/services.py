@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +22,16 @@ if TYPE_CHECKING:
     from .models import GreetingConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _get_tracer():
+    """OpenTelemetry トレーサーを取得（未インストール時は None）."""
+    try:
+        from opentelemetry import trace
+
+        return trace.get_tracer(__name__)
+    except ImportError:
+        return None
 
 
 class GreetingService:
@@ -83,19 +94,45 @@ class GreetingService:
         Returns:
             生成結果を含むdict（greeting_text, audio_data（オプション））
         """
+        tracer = _get_tracer()
+        if tracer is None:
+            return self._generate_greeting_inner(config, user_prompt)
+
+        with tracer.start_as_current_span("greeting.generate") as span:
+            span.set_attribute("greeting.config_name", config.name)
+            return self._generate_greeting_inner(config, user_prompt)
+
+    def _generate_greeting_inner(
+        self,
+        config: "GreetingConfig",
+        user_prompt: str,
+    ) -> dict[str, Any]:
+        """挨拶生成の内部実装."""
+        tracer = _get_tracer()
         logger.info("挨拶を生成: config=%s", config.name)
 
         # 有効なプレースホルダーに応じてデータを取得
-        data = self._fetch_placeholder_data(config)
+        if tracer:
+            with tracer.start_as_current_span("greeting.fetch_placeholder_data"):
+                data = self._fetch_placeholder_data(config)
+        else:
+            data = self._fetch_placeholder_data(config)
 
         # プロンプトを構築
         built_user_prompt = self._build_user_prompt(user_prompt, data)
 
         # OpenAI APIで挨拶を生成
-        greeting_text = self.openai_client.generate_text(
-            prompt=built_user_prompt,
-            system_prompt=config.system_prompt,
-        )
+        if tracer:
+            with tracer.start_as_current_span("greeting.llm.generate_text"):
+                greeting_text = self.openai_client.generate_text(
+                    prompt=built_user_prompt,
+                    system_prompt=config.system_prompt,
+                )
+        else:
+            greeting_text = self.openai_client.generate_text(
+                prompt=built_user_prompt,
+                system_prompt=config.system_prompt,
+            )
         logger.info("挨拶生成完了: %d文字", len(greeting_text))
 
         result: dict[str, Any] = {
@@ -105,7 +142,11 @@ class GreetingService:
         # TTS音声合成（オプション）
         tts_options = config.get_tts_options()
         if tts_options is not None:
-            tts_result = self._synthesize_audio(greeting_text, tts_options)
+            if tracer:
+                with tracer.start_as_current_span("greeting.tts.synthesize"):
+                    tts_result = self._synthesize_audio(greeting_text, tts_options)
+            else:
+                tts_result = self._synthesize_audio(greeting_text, tts_options)
             result["audio_data"] = tts_result.audio_data
             result["audio_content_type"] = tts_result.content_type
             result["audio_format"] = tts_result.format
@@ -116,7 +157,9 @@ class GreetingService:
         """プレースホルダーに必要なデータを取得.
 
         有効なプレースホルダーに応じて並列でデータを取得する。
+        contextvars.copy_context() で OTel コンテキストを子スレッドに伝播する。
         """
+        tracer = _get_tracer()
         data: dict[str, Any] = {}
         futures: dict[str, Any] = {}
 
@@ -128,19 +171,43 @@ class GreetingService:
 
         today = date.today()
 
+        def _run_in_span(span_name, func, *args, **kwargs):
+            """OTel スパン内で関数を実行するヘルパー."""
+            if tracer:
+                with tracer.start_as_current_span(span_name):
+                    return func(*args, **kwargs)
+            return func(*args, **kwargs)
+
         with ThreadPoolExecutor(max_workers=min(task_count, 3)) as executor:
             if config.use_weather:
+                # 各タスクに独立したコンテキストコピーを伝播
+                ctx = copy_context()
                 futures["weather"] = executor.submit(
-                    self.jma_client.get_weather, config.area_code, 0
+                    ctx.run,
+                    _run_in_span,
+                    "greeting.fetch.weather",
+                    self.jma_client.get_weather,
+                    config.area_code,
+                    0,
                 )
             if config.use_events:
+                ctx = copy_context()
                 futures["events"] = executor.submit(
+                    ctx.run,
+                    _run_in_span,
+                    "greeting.fetch.events",
                     self.outlook_client.get_calendar_events,
                     start_date=today,
                     end_date=today,
                 )
             if config.use_datetime:
-                futures["datetime"] = executor.submit(self._get_datetime_info)
+                ctx = copy_context()
+                futures["datetime"] = executor.submit(
+                    ctx.run,
+                    _run_in_span,
+                    "greeting.fetch.datetime",
+                    self._get_datetime_info,
+                )
 
             # 結果を取得（例外があればここで再送出される）
             for key, future in futures.items():

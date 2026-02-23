@@ -66,6 +66,10 @@ services:
             - ./volumes/django-api/staticfiles:/django_api/staticfiles
             # SQLiteデータベースの永続化
             - ./volumes/django-api/db.sqlite3:/django_api/db.sqlite3
+        environment:
+            # OpenTelemetry トレーシング設定
+            OTEL_SERVICE_NAME: django-api
+            OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
         restart: unless-stopped
         networks:
             - proxy-network
@@ -232,6 +236,7 @@ services:
         depends_on:
             - prometheus
             - loki
+            - tempo
         networks:
             - proxy-network
 
@@ -251,6 +256,26 @@ services:
             - loki-data:/loki
         command:
             - '-config.file=/etc/loki/loki.yml'
+        restart: unless-stopped
+        networks:
+            - proxy-network
+
+    # Tempo - 分散トレーシングバックエンド
+    # ※ 公式イメージをそのまま使用（設定ファイルはボリュームマウント）
+    tempo:
+        image: grafana/tempo:2.7.2
+        container_name: tempo
+        hostname: tempo
+        ports:
+            # 開発環境用：直接アクセス
+            - '3200:3200'
+        volumes:
+            # 設定ファイルのマウント
+            - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+            # データの永続化
+            - tempo-data:/var/tempo
+        command:
+            - '-config.file=/etc/tempo/tempo.yml'
         restart: unless-stopped
         networks:
             - proxy-network
@@ -332,3 +357,5 @@ volumes:
         name: grafana-data
     loki-data:
         name: loki-data
+    tempo-data:
+        name: tempo-data
