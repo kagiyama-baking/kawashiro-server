@@ -11,7 +11,8 @@ permissions:
     security-events: write
 
 jobs:
-    scan:
+    # GHCRにプッシュしているカスタムイメージのスキャン
+    scan-custom:
         runs-on: ubuntu-latest
         timeout-minutes: 15
         strategy:
@@ -65,3 +66,70 @@ jobs:
               with:
                   sarif_file: 'trivy-${{ matrix.image }}.sarif'
                   category: '${{ matrix.image }}'
+
+    # 公式イメージをそのまま使用しているサービスのスキャン
+    scan-official:
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: prometheus
+                      image: prom/prometheus:v3.2.1
+                    - name: grafana
+                      image: grafana/grafana:11.5.2
+                    - name: loki
+                      image: grafana/loki:3.4.2
+                    - name: promtail
+                      image: grafana/promtail:3.4.2
+                    - name: immich-server
+                      image: ghcr.io/immich-app/immich-server:release
+                    - name: immich-machine-learning
+                      image: ghcr.io/immich-app/immich-machine-learning:release
+                    - name: immich-postgres
+                      image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+                    - name: valkey
+                      image: docker.io/valkey/valkey:8-bookworm
+                    - name: node-exporter
+                      image: prom/node-exporter:v1.9.0
+                    - name: nginx-exporter
+                      image: nginx/nginx-prometheus-exporter:1.4.1
+                    - name: tempo
+                      image: grafana/tempo:2.7.2
+                    - name: cadvisor
+                      image: gcr.io/cadvisor/cadvisor:v0.51.0
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Pull image
+              run: |
+                  docker pull ${{ matrix.image }}
+
+            - name: Scan image
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                  image-ref: '${{ matrix.image }}'
+                  format: 'table'
+                  exit-code: '1'
+                  severity: 'CRITICAL,HIGH'
+                  ignore-unfixed: false
+
+            - name: Generate SARIF for Security tab
+              if: always()
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                  image-ref: '${{ matrix.image }}'
+                  format: 'sarif'
+                  output: 'trivy-${{ matrix.name }}.sarif'
+                  severity: 'CRITICAL,HIGH,MEDIUM'
+                  ignore-unfixed: false
+                  exit-code: '0'
+
+            - name: Upload to Security tab
+              if: always()
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                  sarif_file: 'trivy-${{ matrix.name }}.sarif'
+                  category: '${{ matrix.name }}'
