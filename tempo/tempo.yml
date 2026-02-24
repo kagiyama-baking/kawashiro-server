@@ -3,44 +3,44 @@
 # シングルノード構成（Docker Compose 用）
 
 server:
-  http_listen_port: 3200
-  log_level: warn
+    http_listen_port: 3200
+    log_level: warn
 
 distributor:
-  receivers:
-    otlp:
-      protocols:
-        grpc:
-          endpoint: "0.0.0.0:4317"
-        http:
-          endpoint: "0.0.0.0:4318"
+    receivers:
+        otlp:
+            protocols:
+                grpc:
+                    endpoint: '0.0.0.0:4317'
+                http:
+                    endpoint: '0.0.0.0:4318'
 
 ingester:
-  max_block_duration: 5m
-  trace_idle_period: 10s           # アイドルトレースのフラッシュ待ち時間
-  max_block_bytes: 52428800        # 50MB（デフォルト268MBから削減）
-  flush_check_period: 10s          # フラッシュチェック間隔
+    max_block_duration: 5m
+    trace_idle_period: 10s # アイドルトレースのフラッシュ待ち時間
+    max_block_bytes: 52428800 # 50MB（デフォルト268MBから削減）
+    flush_check_period: 10s # フラッシュチェック間隔
 
 compactor:
-  compaction:
-    block_retention: 72h           # 3日間保持（ホームサーバー向け）
+    compaction:
+        block_retention: 168h # ブロック保持期間（7日）
 
 metrics_generator:
-  storage:
-    path: /var/tempo/generator/wal
-    remote_write: []
+    storage:
+        path: /var/tempo/generator/wal
+        remote_write: []
 
 storage:
-  trace:
-    backend: local
-    block:
-      bloom_filter_false_positive: 0.05
-    local:
-      path: /var/tempo/blocks
-    wal:
-      path: /var/tempo/wal
+    trace:
+        backend: local
+        block:
+            bloom_filter_false_positive: 0.05
+        local:
+            path: /var/tempo/blocks
+        wal:
+            path: /var/tempo/wal
 
 overrides:
-  defaults:
-    metrics_generator:
-      processors: []               # メモリリーク防止のため全プロセッサ無効化
+    defaults:
+        metrics_generator:
+            processors: [] # メモリリーク防止のため全プロセッサ無効化
