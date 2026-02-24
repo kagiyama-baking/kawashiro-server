@@ -32,6 +32,7 @@ def setup_tracing() -> None:
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
     except ImportError:
         logger.warning(
             "OpenTelemetry パッケージが未インストールのためトレーシングを無効化"
@@ -39,9 +40,11 @@ def setup_tracing() -> None:
         return
 
     service_name = os.environ.get("OTEL_SERVICE_NAME", "django-api")
+    sample_rate = float(os.environ.get("OTEL_TRACES_SAMPLER_ARG", "0.25"))
 
     resource = Resource.create({"service.name": service_name})
-    provider = TracerProvider(resource=resource)
+    sampler = TraceIdRatioBased(sample_rate)
+    provider = TracerProvider(resource=resource, sampler=sampler)
 
     # Docker 内部ネットワーク通信のため TLS 不要（insecure=True）
     exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
@@ -55,7 +58,8 @@ def setup_tracing() -> None:
     RequestsInstrumentor().instrument()
 
     logger.info(
-        "OpenTelemetry トレーシングを有効化: endpoint=%s, service=%s",
+        "OpenTelemetry トレーシングを有効化: endpoint=%s, service=%s, sample_rate=%s",
         endpoint,
         service_name,
+        sample_rate,
     )

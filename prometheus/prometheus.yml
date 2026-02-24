@@ -44,6 +44,13 @@ scrape_configs:
           service: "django-api"
     metrics_path: "/metrics"
 
+  # Tempo（トレーシングバックエンドの自己メトリクス）
+  - job_name: "tempo"
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          service: "tempo"
+
   # Grafana（Grafanaメトリクス）
   - job_name: "grafana"
     static_configs:
