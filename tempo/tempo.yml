@@ -4,6 +4,7 @@
 
 server:
   http_listen_port: 3200
+  log_level: warn
 
 distributor:
   receivers:
@@ -16,15 +17,15 @@ distributor:
 
 ingester:
   max_block_duration: 5m
+  trace_idle_period: 10s           # アイドルトレースのフラッシュ待ち時間
+  max_block_bytes: 52428800        # 50MB（デフォルト268MBから削減）
+  flush_check_period: 10s          # フラッシュチェック間隔
 
 compactor:
   compaction:
-    block_retention: 168h  # 7日間保持
+    block_retention: 72h           # 3日間保持（ホームサーバー向け）
 
 metrics_generator:
-  registry:
-    external_labels:
-      source: tempo
   storage:
     path: /var/tempo/generator/wal
     remote_write: []
@@ -42,7 +43,4 @@ storage:
 overrides:
   defaults:
     metrics_generator:
-      processors:
-        - service-graphs
-        - span-metrics
-        - local-blocks
+      processors: []               # メモリリーク防止のため全プロセッサ無効化

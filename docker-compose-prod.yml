@@ -247,6 +247,12 @@ services:
         image: grafana/tempo:2.10.1
         container_name: tempo
         hostname: tempo
+        mem_limit: 512m
+        memswap_limit: 512m
+        environment:
+            # Go ランタイムのソフトメモリ上限（mem_limitの約80%）
+            # OOM Kill 前に GC が積極的にメモリを回収する
+            GOMEMLIMIT: 400MiB
         volumes:
             # 設定ファイルのマウント
             - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro

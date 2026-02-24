@@ -14,9 +14,5 @@ datasources:
         datasourceUid: loki-datasource
         filterByTraceID: true
         filterBySpanID: false
-      tracesToMetrics:
-        datasourceUid: PBFA97CFB590B2093
-      serviceMap:
-        datasourceUid: PBFA97CFB590B2093
       nodeGraph:
         enabled: true
