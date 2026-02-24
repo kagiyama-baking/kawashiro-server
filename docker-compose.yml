@@ -332,14 +332,13 @@ services:
             # 開発環境用：直接アクセス
             - '9100:9100'
         volumes:
-            - /proc:/host/proc:ro
             - /sys:/host/sys:ro
             - /:/rootfs:ro
         command:
-            - '--path.procfs=/host/proc'
             - '--path.rootfs=/rootfs'
             - '--path.sysfs=/host/sys'
-            - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+            - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|run|mnt)($$|/)'
+            - '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|erofs|sysfs|tracefs|9p)$$'
         healthcheck:
             # --spider は broken pipe を引き起こすため -O /dev/null で出力を破棄
             test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:9100/metrics || exit 1"]
