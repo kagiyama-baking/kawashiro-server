@@ -85,7 +85,7 @@
             ]
         },
         {
-            "title": "ディスク使用率（/）",
+            "title": "ディスク使用率",
             "type": "gauge",
             "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
             "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
@@ -116,7 +116,7 @@
             },
             "targets": [
                 {
-                    "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!=\"rootfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"rootfs\"})) * 100",
+                    "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=~\"/|/host_mnt/Users\",fstype!=\"rootfs\"} / node_filesystem_size_bytes{mountpoint=~\"/|/host_mnt/Users\",fstype!=\"rootfs\"})) * 100",
                     "legendFormat": "ディスク使用率",
                     "refId": "A"
                 }
@@ -319,5 +319,5 @@
     "timezone": "Asia/Tokyo",
     "title": "3.Node Exporter",
     "uid": "node-exporter",
-    "version": 1
+    "version": 2
 }
