@@ -7,6 +7,7 @@ ENV PYTHONUNBUFFERED=1
 # curlも追加（ヘルスチェック用）
 # libheifも追加（HEIF/HEIC画像形式サポート用）
 # OpenSSLパッケージを明示的にアップグレード（CVE-2025-15467, CVE-2025-69419対応）
+# zlibを明示的にアップグレード（CVE-2026-22184対応）
 # ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
@@ -16,7 +17,8 @@ RUN apk update && \
         curl \
         libheif \
         libcrypto3 \
-        libssl3 && \
+        libssl3 \
+        zlib && \
     rm -rf /var/cache/apk/*
 
 # Djangoプロジェクトを置くディレクトリをコンテナ上に作成
