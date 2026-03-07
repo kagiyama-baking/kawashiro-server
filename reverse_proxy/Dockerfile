@@ -3,6 +3,7 @@ FROM nginx:alpine AS base
 # セキュリティのため、OSパッケージを最新版にアップデート
 # OpenSSLパッケージを明示的にアップグレード（CVE-2025-15467, CVE-2025-69419対応）
 # libpng を明示的にアップグレード（CVE-2026-25646対応: libpng 1.6.55-r0以降で修正済み）
+# zlibを明示的にアップグレード（CVE-2026-22184対応）
 # ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
@@ -11,7 +12,8 @@ RUN apk update && \
         tzdata \
         libpng \
         libcrypto3 \
-        libssl3 && \
+        libssl3 \
+        zlib && \
     rm -rf /var/cache/apk/*
 
 # デフォルトの設定ファイルを削除（ポート80を使用している）
