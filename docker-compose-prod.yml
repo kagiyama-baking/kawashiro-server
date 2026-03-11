@@ -18,7 +18,6 @@ services:
         restart: unless-stopped
         depends_on:
             - django-api
-            - immich
         networks:
             - proxy-network
 
@@ -77,81 +76,6 @@ services:
             - proxy-network
         # Intel Mac対応
         platform: linux/amd64
-
-    # Immich - 写真管理サービス
-    immich:
-        image: ghcr.io/immich-app/immich-server:release
-        container_name: immich
-        hostname: immich
-        environment:
-            # Docker Composeサービス名を使用
-            DB_HOSTNAME: immich-postgres
-            REDIS_HOSTNAME: immich-redis
-        env_file:
-            - .env
-        volumes:
-            # アップロードファイルの永続化
-            - ./volumes/immich/data:/data
-            # ログディレクトリの作成（アプリケーションログ用）
-            - ./volumes/immich/log:/logs
-            # タイムゾーン設定
-            - /etc/localtime:/etc/localtime:ro
-        depends_on:
-            - immich-redis
-            - immich-postgres
-        restart: unless-stopped
-        networks:
-            - proxy-network
-
-    # Immich Machine Learning
-    immich-machine-learning:
-        image: ghcr.io/immich-app/immich-machine-learning:release
-        container_name: immich-ml
-        hostname: immich-ml
-        environment:
-            # Docker Composeサービス名を使用
-            DB_HOSTNAME: immich-postgres
-            REDIS_HOSTNAME: immich-redis
-        env_file:
-            - .env
-        volumes:
-            # モデルキャッシュの永続化
-            - immich-ml-cache:/cache
-        restart: unless-stopped
-        networks:
-            - proxy-network
-
-    # Redis for Immich
-    immich-redis:
-        image: docker.io/valkey/valkey:8-bookworm
-        container_name: immich-redis
-        hostname: immich-redis
-        healthcheck:
-            test: redis-cli ping || exit 1
-        volumes:
-            # Redisデータの永続化
-            - immich-redis-data:/data
-        restart: unless-stopped
-        networks:
-            - proxy-network
-
-    # PostgreSQL for Immich
-    immich-postgres:
-        image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
-        container_name: immich-postgres
-        hostname: immich-postgres
-        environment:
-            POSTGRES_PASSWORD: ${DB_PASSWORD}
-            POSTGRES_USER: ${DB_USERNAME}
-            POSTGRES_DB: ${DB_DATABASE_NAME}
-            POSTGRES_INITDB_ARGS: '--data-checksums'
-        volumes:
-            # PostgreSQLデータの永続化
-            - immich-pgdata:/var/lib/postgresql/data
-        shm_size: 128mb
-        restart: unless-stopped
-        networks:
-            - proxy-network
 
     # ============================================================
     # 監視・オブザーバビリティ
@@ -371,12 +295,6 @@ networks:
         name: proxy-network
 
 volumes:
-    immich-pgdata:
-        name: immich-pgdata
-    immich-redis-data:
-        name: immich-redis-data
-    immich-ml-cache:
-        name: immich-ml-cache
     prometheus-data:
         name: prometheus-data
     grafana-data:
