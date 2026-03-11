@@ -14,7 +14,6 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 ## サービス
 
 -   🔀 **リバースプロキシ**: Nginx ベースの高性能リバースプロキシ
--   📷 **[Immich](https://github.com/immich-app/immich)**: セルフホスト型の OSS 写真管理・共有プラットフォーム（Google Photos の代替）
 -   🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     -   🔐 **User**: ユーザー認証・管理機能
     -   ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
@@ -29,7 +28,7 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
     -   🔗 **MS Graph Client**: OneDrive/Outlook 統一クライアント
     -   🛠️ **Core**: 共通機能・ユーティリティ
 -   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
--   💾 **バックアップシステム**: Immich と Django のデータを自動バックアップ・リストア
+-   💾 **バックアップシステム**: Django のデータを自動バックアップ・リストア
 -   📊 **監視・オブザーバビリティ**: Prometheus + Grafana + Loki + Tempo による統合監視基盤
     -   📈 **Prometheus**: メトリクス収集（cAdvisor, Node Exporter, Nginx Exporter 連携）
     -   📊 **Grafana**: 監視ダッシュボード（Django APM, Docker Containers, Nginx, Node Exporter）
@@ -112,9 +111,7 @@ kawashiro-server/
 │   ├── README.md               # バックアップ詳細ドキュメント
 │   ├── scripts/                # バックアップスクリプト（Python）
 │   │   ├── backup_all.py       # 統合バックアップスクリプト
-│   │   ├── backup_immich.py    # Immichバックアップ
-│   │   ├── backup_django.py    # Django APIバックアップ
-│   │   └── restore_immich.py   # Immichリストア
+│   │   └── backup_django.py    # Django APIバックアップ
 │   └── tests/                  # テストコード
 │
 ├── prometheus/                  # Prometheus設定
@@ -141,9 +138,6 @@ kawashiro-server/
 └── volumes/                    # 永続化データ
     ├── reverse-proxy/
     │   └── log/nginx/          # リバースプロキシのログ
-    ├── immich/
-    │   ├── data/               # アップロード写真データ
-    │   └── log/                # アプリケーションログ
     └── backup/                 # バックアップ出力先
 ```
 
@@ -163,10 +157,6 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
 │ Reverse Proxy │ :80（ホスト）
 │ (Nginx)       │
 └───────────────┘
-      │                         ┌───────────────┐
-      ├── album.example.com ─►  │ Immich        │ :2283 (コンテナ)
-      │                         │ (Server)      │
-      │                         └───────────────┘
       │                         ┌───────────────┐     ┌────────────────────┐
       ├── api.example.com ───►  │ Django API    │ ──► │ Style-BERT-VITS2   │ :5000 (内部)
       │                         │ (Gunicorn)    │     │ (TTS Engine)       │
@@ -247,9 +237,6 @@ docker compose logs -f
 ```bash
 # ヘルスチェック
 curl http://localhost/health
-
-# Immich（サブドメイン経由）
-curl -H "Host: album.localhost" http://localhost/
 ```
 
 ## 環境変数設定
@@ -259,15 +246,6 @@ curl -H "Host: album.localhost" http://localhost/
 `.env`ファイルに以下の環境変数を設定してください：
 
 ```bash
-# PostgreSQL設定（Immich用）
-DB_USERNAME=immich          # PostgreSQLユーザー名
-DB_PASSWORD=strongpassword  # PostgreSQLパスワード（必ず変更してください）
-DB_DATABASE_NAME=immich      # データベース名
-
-# Immichサーバー設定
-PUBLIC_SERVER_URL=http://album.example.com  # 本番環境では実際のドメインに変更
-IMMICH_LOG_LEVEL=log         # ログレベル (verbose/log/warn/error)
-
 # タイムゾーン
 TZ=Asia/Tokyo               # システムタイムゾーン
 ```
@@ -313,12 +291,6 @@ TTS_API_URL=http://sbv2-api:5000
 バックアップを使用する場合は、`.env.backup`ファイルを作成して以下の環境変数を設定してください：
 
 ```bash
-# PostgreSQL設定（Immich用）
-DB_HOSTNAME=immich-postgres
-DB_USERNAME=immich
-DB_PASSWORD=strongpassword
-DB_DATABASE_NAME=immich
-
 # Django API設定
 DJANGO_API_URL=http://django-api:8000
 DJANGO_API_TOKEN=your-api-token
@@ -359,17 +331,8 @@ docker compose restart reverse-proxy
 ### バックアップの実行
 
 ```bash
-# 全てをバックアップ（ImmichとDjango API）
+# Django APIをバックアップ
 docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py
-
-# Immichのみバックアップ
-docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py --immich-only
-
-# Django APIのみバックアップ
-docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py --django-only
-
-# Immichのリストア
-docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/restore_immich.py /backup/immich_backup_20241210_120000.tar.gz
 ```
 
 ### ログの確認
@@ -381,10 +344,6 @@ docker compose logs -f
 # 特定のサービスのログ
 docker compose logs -f reverse-proxy
 docker compose logs -f django-api
-docker compose logs -f immich
-docker compose logs -f immich-machine-learning
-docker compose logs -f immich-redis
-docker compose logs -f immich-postgres
 
 # バックアップログ
 docker compose -f docker-compose.backup.yml logs backup
@@ -671,7 +630,7 @@ docker compose -f docker-compose-prod.yml up -d
     git clone https://github.com/kagiyama-baking/kawashiro-server.git
     cd kawashiro-server
 
-    # .envファイルの作成（Immich用の環境変数）
+    # .envファイルの作成
     cp .env.example .env
     # 必要に応じて.envファイルを編集
     ```
@@ -711,99 +670,6 @@ docker compose -f docker-compose-prod.yml ps
 -   `ghcr.io/kagiyama-baking/kawashiro-server/reverse-proxy:release`
 -   `ghcr.io/kagiyama-baking/kawashiro-server/django-api:release`
 
-## データのバックアップ・リストア
-
-### Immich ボリュームデータのコピー（開発 → 本番）
-
-開発環境から本番環境へ Immich のデータをコピーする際は、以下のコマンドを使用します。
-
-#### 1. ホストマシン上のボリュームディレクトリから直接コピー
-
-```bash
-# Immichのデータボリューム（写真データ）をコピー
-rsync -avz --progress ./volumes/immich/data/ <本番サーバーユーザー>@<本番サーバーIP>:~/Repository/kawashiro-server/volumes/immich/data/
-
-# 例：
-# rsync -avz --progress ./volumes/immich/data/ user@192.168.1.100:~/Repository/kawashiro-server/volumes/immich/data/
-```
-
-#### 2. Docker ボリュームから本番環境へコピー
-
-名前付きボリューム（PostgreSQL、Redis、ML キャッシュ）の場合：
-
-```bash
-# PostgreSQLデータのバックアップとコピー
-docker run --rm -v immich-pgdata:/source -v $(pwd)/backup:/backup alpine tar czf /backup/immich-pgdata.tar.gz -C /source .
-scp ./backup/immich-pgdata.tar.gz <本番サーバーユーザー>@<本番サーバーIP>:~/backup/
-
-# 本番サーバー側でリストア
-ssh <本番サーバーユーザー>@<本番サーバーIP>
-cd ~/Repository/kawashiro-server
-docker compose -f docker-compose-prod.yml down
-docker run --rm -v immich-pgdata:/target -v ~/backup:/backup alpine tar xzf /backup/immich-pgdata.tar.gz -C /target
-docker compose -f docker-compose-prod.yml up -d
-
-# Redisデータのバックアップとコピー
-docker run --rm -v immich-redis-data:/source -v $(pwd)/backup:/backup alpine tar czf /backup/immich-redis-data.tar.gz -C /source .
-scp ./backup/immich-redis-data.tar.gz <本番サーバーユーザー>@<本番サーバーIP>:~/backup/
-
-# MLキャッシュのバックアップとコピー（オプション）
-docker run --rm -v immich-ml-cache:/source -v $(pwd)/backup:/backup alpine tar czf /backup/immich-ml-cache.tar.gz -C /source .
-scp ./backup/immich-ml-cache.tar.gz <本番サーバーユーザー>@<本番サーバーIP>:~/backup/
-```
-
-#### 3. 一括コピースクリプト
-
-すべての Immich 関連データを一括でコピーする場合：
-
-```bash
-#!/bin/bash
-# sync-immich-to-prod.sh
-
-PROD_SERVER="<本番サーバーユーザー>@<本番サーバーIP>"
-PROD_PATH="~/Repository/kawashiro-server"
-
-# ホストボリュームのコピー
-echo "📁 Syncing host volumes..."
-rsync -avz --progress ./volumes/immich/data/ ${PROD_SERVER}:${PROD_PATH}/volumes/immich/data/
-
-# Dockerボリュームのバックアップとコピー
-echo "🗄️ Backing up Docker volumes..."
-mkdir -p ./backup
-
-# PostgreSQL
-docker run --rm -v immich-pgdata:/source -v $(pwd)/backup:/backup alpine \
-  tar czf /backup/immich-pgdata.tar.gz -C /source .
-
-# Redis
-docker run --rm -v immich-redis-data:/source -v $(pwd)/backup:/backup alpine \
-  tar czf /backup/immich-redis-data.tar.gz -C /source .
-
-# ML Cache
-docker run --rm -v immich-ml-cache:/source -v $(pwd)/backup:/backup alpine \
-  tar czf /backup/immich-ml-cache.tar.gz -C /source .
-
-# バックアップファイルを本番サーバーへ転送
-echo "📤 Transferring backups to production..."
-scp ./backup/*.tar.gz ${PROD_SERVER}:~/backup/
-
-# 本番サーバーでのリストア手順を表示
-echo "✅ Backup complete! Run the following commands on production server:"
-echo "cd ${PROD_PATH}"
-echo "docker compose -f docker-compose-prod.yml down"
-echo "docker run --rm -v immich-pgdata:/target -v ~/backup:/backup alpine tar xzf /backup/immich-pgdata.tar.gz -C /target"
-echo "docker run --rm -v immich-redis-data:/target -v ~/backup:/backup alpine tar xzf /backup/immich-redis-data.tar.gz -C /target"
-echo "docker run --rm -v immich-ml-cache:/target -v ~/backup:/backup alpine tar xzf /backup/immich-ml-cache.tar.gz -C /target"
-echo "docker compose -f docker-compose-prod.yml up -d"
-```
-
-### 注意事項
-
--   コピー前に本番環境の Immich サービスを停止することを推奨します
--   データベースの整合性を保つため、PostgreSQL と Redis のデータは同時にバックアップしてください
--   大量のデータがある場合、`rsync`の`--bwlimit`オプションで帯域制限をかけることを検討してください
--   本番環境へのコピー前に必ず現在のデータをバックアップしてください
-
 ## トラブルシューティング
 
 ### よくある問題と解決方法
@@ -837,20 +703,7 @@ docker compose exec reverse-proxy nginx -s reload
 nslookup test.example.com
 ```
 
-#### 3. Immich にアクセスできない
-
-```bash
-# Immich関連コンテナの状態確認
-docker compose ps | grep immich
-
-# データベース接続の確認
-docker compose exec immich-postgres psql -U immich -d immich -c "SELECT version();"
-
-# Redis接続の確認
-docker compose exec immich-redis redis-cli ping
-```
-
-#### 4. ディスク容量不足
+#### 3. ディスク容量不足
 
 ```bash
 # Dockerが使用している容量を確認
@@ -863,7 +716,7 @@ docker system prune -a --volumes
 du -sh ./volumes/*/log/
 ```
 
-#### 5. パーミッションエラー
+#### 4. パーミッションエラー
 
 ```bash
 # ボリュームディレクトリの所有者を修正
@@ -1030,7 +883,6 @@ docker compose exec [サービス名] ps aux
 -   **Django**: Python Web フレームワーク
 -   **Django REST Framework**: REST API 構築
 -   **Gunicorn**: WSGI HTTP サーバー（本番環境）
--   **PostgreSQL**: リレーショナルデータベース（Immich 用）
 -   **SQLite**: 軽量データベース（Django API 用）
 
 ### インフラ・DevOps
@@ -1071,12 +923,9 @@ docker compose exec [サービス名] ps aux
 
 このプロジェクトは以下のオープンソースプロジェクト・サービスを使用しています：
 
--   [Immich](https://github.com/immich-app/immich) - セルフホスト型写真管理プラットフォーム
 -   [Django](https://www.djangoproject.com/) - Python Web フレームワーク
 -   [Nginx](https://nginx.org/) - 高性能 Web サーバー
 -   [Docker](https://www.docker.com/) - コンテナ化プラットフォーム
--   [PostgreSQL](https://www.postgresql.org/) - オープンソースデータベース
--   [Valkey](https://valkey.io/) - Redis 互換インメモリデータストア
 -   [uv](https://github.com/astral-sh/uv) - 高速 Python パッケージマネージャー
 -   [Style-BERT-VITS2](https://github.com/litagin02/Style-Bert-VITS2) - 高品質日本語音声合成エンジン
 -   [OpenAI](https://openai.com/) - AI テキスト生成 API
