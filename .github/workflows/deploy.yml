@@ -206,7 +206,7 @@ jobs:
 
                   echo "🐳 イメージを更新..."
                   # sbv2-apiはローカルビルドのため除外
-                  docker compose -f docker-compose-prod.yml pull reverse-proxy django-api immich immich-machine-learning immich-redis immich-postgres prometheus grafana loki promtail tempo cadvisor node-exporter nginx-exporter
+                  docker compose -f docker-compose-prod.yml pull reverse-proxy django-api prometheus grafana loki promtail tempo cadvisor node-exporter nginx-exporter
 
                   # sbv2_apiに変更がある場合のみビルド
                   if [ "$PREV_SBV2_HASH" != "$CURR_SBV2_HASH" ] || [ -z "$(docker images -q sbv2-api:local 2>/dev/null)" ]; then
