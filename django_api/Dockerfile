@@ -53,6 +53,7 @@ RUN mkdir -p django_api core user onedrive outlook media tts msgraph_config msgr
     touch django_api/__init__.py core/__init__.py user/__init__.py onedrive/__init__.py outlook/__init__.py media/__init__.py tts/__init__.py msgraph_config/__init__.py msgraph_client/__init__.py weather/__init__.py greeting/__init__.py llm_config/__init__.py llm_client/__init__.py && \
     uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock && \
+    pip uninstall -y uv && \
     rm -rf django_api core user onedrive outlook media tts msgraph_config msgraph_client weather greeting llm_config llm_client
 
 # アプリケーションを実行するためのユーザを作成する（先に作成）
