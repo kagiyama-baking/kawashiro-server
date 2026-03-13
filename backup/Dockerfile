@@ -47,6 +47,7 @@ COPY pyproject.toml ./
 RUN mkdir -p scripts && \
     touch scripts/__init__.py && \
     uv pip install --system --no-cache . && \
+    pip uninstall -y uv && \
     rm -rf scripts
 
 # アプリケーションを実行するためのユーザを作成する
