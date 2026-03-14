@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from core.metrics import EXTERNAL_API_DURATION
 from weather.exceptions import (
     JMAAreaNotFoundError,
     JMANetworkError,
@@ -138,12 +137,9 @@ class JMAWeatherClient:
         url = f"{JMA_API_BASE_URL}/{prefecture_code}.json"
 
         try:
-            with EXTERNAL_API_DURATION.labels(
-                service="jma_weather", method="fetch_forecast"
-            ).time():
-                response = requests.get(url, timeout=self.timeout)
-                response.raise_for_status()
-                return response.json()
+            response = requests.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
         except requests.HTTPError as e:
             # HTTP 404 は存在しない都道府県コードを示す
             if e.response is not None and e.response.status_code == 404:

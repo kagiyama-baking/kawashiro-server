@@ -74,7 +74,6 @@ INSTALLED_APPS = [
     "rest_framework",  # Django REST framework
     "rest_framework.authtoken",  # トークン認証
     "drf_spectacular",  # OpenAPI/Swagger documentation
-    "django_prometheus",  # Prometheusメトリクスエクスポーター
     # カスタムアプリケーション
     "core",  # ユーザー認証などのコア機能
     "user",  # ユーザーモデルのApp
@@ -93,7 +92,6 @@ INSTALLED_APPS = [
 # ミドルウェアの設定
 # リクエスト/レスポンス処理のフックポイント
 MIDDLEWARE = [
-    "django_prometheus.middleware.PrometheusBeforeMiddleware",  # Prometheusメトリクス収集（先頭）
     "django.middleware.security.SecurityMiddleware",  # セキュリティヘッダー追加
     "whitenoise.middleware.WhiteNoiseMiddleware",  # 静的ファイル配信（SecurityMiddlewareの直後に配置）
     "django.contrib.sessions.middleware.SessionMiddleware",  # セッション管理
@@ -102,7 +100,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",  # ユーザー認証
     "django.contrib.messages.middleware.MessageMiddleware",  # メッセージフレームワーク
     "django.middleware.clickjacking.XFrameOptionsMiddleware",  # クリックジャッキング防止
-    "django_prometheus.middleware.PrometheusAfterMiddleware",  # Prometheusメトリクス収集（末尾）
 ]
 
 # URLルーティングの設定
@@ -136,7 +133,7 @@ WSGI_APPLICATION = "django_api.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django_prometheus.db.backends.sqlite3",  # Prometheusメトリクス付きSQLiteエンジン
+        "ENGINE": "django.db.backends.sqlite3",  # SQLiteエンジン
         "NAME": BASE_DIR / "db.sqlite3",  # データベースファイルのパス
         # 本番環境ではPostgreSQLやMySQLの使用を推奨
         # 例:
