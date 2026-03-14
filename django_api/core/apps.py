@@ -8,9 +8,3 @@ class CoreConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     # アプリケーション名
     name = "core"
-
-    def ready(self):
-        """アプリケーション起動時にトレーシングを初期化."""
-        from core.tracing import setup_tracing
-
-        setup_tracing()

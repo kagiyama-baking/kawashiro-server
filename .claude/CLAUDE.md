@@ -28,14 +28,6 @@ kawashiro-server/
 ├── reverse_proxy/       # Nginx リバースプロキシ
 ├── sbv2_api/            # Style-BERT-VITS2 音声合成サーバー（FastAPI）
 ├── backup/              # バックアップスクリプト（Django + Immich）
-├── prometheus/           # Prometheus 設定（prometheus.yml）
-├── grafana/              # Grafana プロビジョニング設定
-│   └── provisioning/
-│       ├── datasources/  # Prometheus / Loki / Tempo データソース
-│       └── dashboards/   # ダッシュボード定義（JSON）
-├── loki/                 # Loki ログ集約設定（loki.yml）
-├── promtail/             # Promtail ログ収集設定（promtail.yml）
-├── tempo/                # Tempo 分散トレーシング設定（tempo.yml）
 ├── volumes/             # 永続化データ（.gitkeepのみ管理）
 ├── docker-compose.yml       # 開発環境用
 ├── docker-compose-prod.yml  # 本番環境用
@@ -57,11 +49,6 @@ kawashiro-server/
 | パッケージ管理 | uv（pip互換、高速） |
 | コンテナ | Docker Compose |
 | CI/CD | GitHub Actions |
-| メトリクス収集 | Prometheus + django-prometheus |
-| ログ集約 | Loki + Promtail |
-| 分散トレーシング | Grafana Tempo + OpenTelemetry SDK |
-| 監視ダッシュボード | Grafana（プロビジョニング自動設定） |
-| コンテナメトリクス | cAdvisor + Node Exporter + Nginx Exporter |
 | セキュリティスキャン | Trivy |
 | コンテナレジストリ | GitHub Container Registry（GHCR） |
 
@@ -317,20 +304,6 @@ Django API に必要な環境変数（`django_api/.env`）：
 | `OPENAI_API_KEY` | 任意 | OpenAI API キー |
 | `TTS_SERVICE_URL` | 任意 | TTSサービスURL（デフォルト: http://sbv2-api:5000） |
 
-Docker Compose で設定される環境変数（`django-api` サービス）：
-
-| 変数名 | 値 | 説明 |
-|--------|-----|------|
-| `OTEL_SERVICE_NAME` | `django-api` | OpenTelemetry サービス名 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://tempo:4317` | Tempo gRPC エンドポイント |
-
-Grafana 設定（`.env`）：
-
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `GF_SECURITY_ADMIN_USER` | 必須 | Grafana 管理者ユーザー名 |
-| `GF_SECURITY_ADMIN_PASSWORD` | 必須 | Grafana 管理者パスワード |
-
 ## API エンドポイント
 
 | パス | アプリ | 説明 |
@@ -346,7 +319,6 @@ Grafana 設定（`.env`）：
 | `/tts/` | tts | 音声合成 |
 | `/weather/` | weather | 気象庁天気予報 |
 | `/greeting/` | greeting | 挨拶生成（LLM + 天気 + 予定 + TTS統合） |
-| `/metrics/` | django_prometheus | Prometheus メトリクスエンドポイント |
 
 ## Docker サービス構成
 
@@ -359,45 +331,6 @@ Grafana 設定（`.env`）：
 | `immich-redis` | 6379 | Redis（Immich用） |
 | `immich-postgres` | 5432 | PostgreSQL（Immich用） |
 | `sbv2-api` | 5000（内部） | Style-BERT-VITS2 音声合成 |
-
-### 監視・オブザーバビリティ
-
-| サービス | ポート（dev） | 説明 |
-|---------|--------------|------|
-| `prometheus` | 9090 | メトリクス収集サーバー（30日保持） |
-| `grafana` | 3001→3000 | 監視ダッシュボード |
-| `loki` | 3100 | ログ集約サーバー |
-| `tempo` | 3200 | 分散トレーシングバックエンド（OTLP gRPC:4317） |
-| `promtail` | -（内部） | ログ収集エージェント（Nginx + Docker ログ） |
-| `cadvisor` | -（本番のみ） | Docker コンテナメトリクス収集 |
-| `node-exporter` | 9100 | ホストマシンメトリクス収集 |
-| `nginx-exporter` | 9113 | Nginx メトリクス収集 |
-
-### Grafana ダッシュボード
-
-| ダッシュボード | 説明 |
-|--------------|------|
-| Django APM | API レスポンスタイム、外部API呼び出し時間、エラー率 |
-| Docker Containers | コンテナ CPU/メモリ/ネットワーク使用率 |
-| Nginx | リクエスト数、接続数、レスポンスステータス |
-| Node Exporter | ホスト CPU/メモリ/ディスク/ネットワーク |
-
-### 分散トレーシング（OpenTelemetry）
-
-Django API に OpenTelemetry SDK を導入し、Grafana Tempo で可視化：
-
-- **自動計装**: Django HTTP リクエスト、requests ライブラリ（外部API呼び出し）
-- **カスタムスパン**: greeting API のオーケストレーション（並列データ取得、LLM、TTS）
-- **コンテキスト伝播**: `contextvars.copy_context()` で ThreadPoolExecutor の子スレッドにトレースを伝播
-- **安全な設計**: `OTEL_EXPORTER_OTLP_ENDPOINT` 未設定時はノーオペレーション（テスト環境への影響なし）
-
-関連ファイル：
-
-| ファイル | 説明 |
-|---------|------|
-| `django_api/core/tracing.py` | OTel 初期化（TracerProvider, BatchSpanProcessor, 自動計装） |
-| `django_api/core/metrics.py` | Prometheus メトリクスエンドポイント設定 |
-| `django_api/core/apps.py` | `ready()` で `setup_tracing()` を呼び出し |
 
 ## CI/CD ワークフロー
 
@@ -433,7 +366,7 @@ Django API に OpenTelemetry SDK を導入し、Grafana Tempo で可視化：
 毎日 JST 0:00 に実行。以下のイメージを Trivy でスキャン：
 
 - **GHCR イメージ**: reverse-proxy, django-api, backup（release タグ）
-- **公式イメージ**: Immich, PostgreSQL, Valkey, Prometheus, Grafana, Loki, Promtail, Tempo, cAdvisor, Node Exporter, Nginx Exporter
+- **公式イメージ**: Immich, PostgreSQL, Valkey
 
 ### Cleanup Images（`cleanup-images.yml`）
 

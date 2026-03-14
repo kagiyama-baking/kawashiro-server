@@ -4,8 +4,6 @@
 [![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)](https://nginx.org/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
-[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io/)
-[![Grafana](https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com/)
 
 ## 概要
 
@@ -29,11 +27,6 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
     -   🛠️ **Core**: 共通機能・ユーティリティ
 -   🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
 -   💾 **バックアップシステム**: Django のデータを自動バックアップ・リストア
--   📊 **監視・オブザーバビリティ**: Prometheus + Grafana + Loki + Tempo による統合監視基盤
-    -   📈 **Prometheus**: メトリクス収集（cAdvisor, Node Exporter, Nginx Exporter 連携）
-    -   📊 **Grafana**: 監視ダッシュボード（Django APM, Docker Containers, Nginx, Node Exporter）
-    -   📝 **Loki + Promtail**: ログ集約（Nginx ログ + Docker コンテナログ）
-    -   🔍 **Tempo**: 分散トレーシング（OpenTelemetry SDK による自動・手動計装）
 
 ## 特徴
 
@@ -46,7 +39,6 @@ Docker コンテナベースの Web サービス群です。複数の Web サー
 -   🔒 **暗号化**: 機密情報の暗号化保存（OneDrive 設定など）
 -   🐍 **最新 Python 環境**: uv を使用した高速なパッケージ管理
 -   ✅ **テストカバレッジ**: pytest によるテスト自動化とカバレッジ計測
--   📊 **オブザーバビリティ**: メトリクス・ログ・トレースの三本柱による統合監視
 
 ## プロジェクト構成
 
@@ -114,24 +106,6 @@ kawashiro-server/
 │   │   └── backup_django.py    # Django APIバックアップ
 │   └── tests/                  # テストコード
 │
-├── prometheus/                  # Prometheus設定
-│   └── prometheus.yml          # スクレイプターゲット・保持期間設定
-│
-├── grafana/                    # Grafana設定
-│   └── provisioning/           # 自動プロビジョニング
-│       ├── datasources/        # データソース（Prometheus/Loki/Tempo）
-│       └── dashboards/         # ダッシュボード定義
-│           └── json/           # Django APM/Docker/Nginx/Node Exporter
-│
-├── loki/                       # Lokiログ集約設定
-│   └── loki.yml                # ストレージ・保持期間設定
-│
-├── promtail/                   # Promtailログ収集設定
-│   └── promtail.yml            # ログソース・ラベル設定
-│
-├── tempo/                      # Tempo分散トレーシング設定
-│   └── tempo.yml               # OTLP受信・ストレージ設定
-│
 ├── docs/                       # ドキュメント
 │   └── archtecture.drawio      # アーキテクチャ図
 │
@@ -165,37 +139,6 @@ Reverse Proxy は、ホスト側のポート TCP/80 でアクセスを受け付�
       └── example.com ────────► │ Reverse Proxy │ :8080 (コンテナ)
                                 │ (Nginx)       │
                                 └───────────────┘
-```
-
-### 監視・オブザーバビリティ
-
-```
-┌──────────────┐   メトリクス   ┌────────────────┐
-│  Prometheus  │◄──────────────│  Node Exporter │  ホストメトリクス
-│  :9090       │               └────────────────┘
-│              │◄──────────────┌────────────────┐
-│              │               │  cAdvisor      │  コンテナメトリクス
-│              │               └────────────────┘
-│              │◄──────────────┌────────────────┐
-│              │               │  Nginx Exporter│  Nginxメトリクス
-│              │               └────────────────┘
-│              │◄──────────────┌────────────────┐
-│              │               │  Django API    │  /metrics エンドポイント
-└──────┬───────┘               └───────┬────────┘
-       │                               │ OTel gRPC
-       ▼                               ▼
-┌──────────────┐               ┌────────────────┐
-│   Grafana    │◄──────────────│    Tempo       │  分散トレーシング
-│   :3000      │               │    :4317       │
-│              │               └────────────────┘
-│              │◄──────────────┌────────────────┐
-│              │               │     Loki       │  ログ集約
-│              │               │    :3100       │
-└──────────────┘               └───────┬────────┘
-                                       ▲
-                               ┌───────┴────────┐
-                               │   Promtail     │  Nginx + Docker ログ収集
-                               └────────────────┘
 ```
 
 ## 必要な環境
@@ -248,16 +191,6 @@ curl http://localhost/health
 ```bash
 # タイムゾーン
 TZ=Asia/Tokyo               # システムタイムゾーン
-```
-
-### Grafana 設定
-
-`.env`ファイルに以下の環境変数を追加してください：
-
-```bash
-# Grafana管理者設定
-GF_SECURITY_ADMIN_USER=admin           # 管理者ユーザー名
-GF_SECURITY_ADMIN_PASSWORD=changeme    # 管理者パスワード（必ず変更してください）
 ```
 
 ### Django API 設定
@@ -347,26 +280,6 @@ docker compose logs -f django-api
 
 # バックアップログ
 docker compose -f docker-compose.backup.yml logs backup
-
-# 監視系サービスのログ
-docker compose logs -f prometheus
-docker compose logs -f grafana
-docker compose logs -f loki
-docker compose logs -f tempo
-docker compose logs -f promtail
-```
-
-### 監視ダッシュボードへのアクセス
-
-```bash
-# Grafana（開発環境）
-# http://localhost:3001 でアクセス（初期認証情報は.envで設定）
-
-# Prometheus（開発環境）
-# http://localhost:9090 でアクセス
-
-# Grafana > Explore > Tempo でトレース検索
-# service.name="django-api" でフィルタリング
 ```
 
 ### 設定の更新
@@ -892,18 +805,6 @@ docker compose exec [サービス名] ps aux
 -   **GitHub Actions**: CI/CD パイプライン
 -   **GitHub Container Registry**: コンテナイメージレジストリ
 
-### 監視・オブザーバビリティ
-
--   **Prometheus**: メトリクス収集・時系列データベース
--   **Grafana**: 監視ダッシュボード・可視化
--   **Loki**: ログ集約システム
--   **Promtail**: ログ収集エージェント
--   **Grafana Tempo**: 分散トレーシングバックエンド
--   **OpenTelemetry SDK**: 分散トレーシング計装（Django, requests 自動計装）
--   **cAdvisor**: Docker コンテナメトリクス収集
--   **Node Exporter**: ホストマシンメトリクス収集
--   **Nginx Exporter**: Nginx メトリクス収集
-
 ### ツール・ユーティリティ
 
 -   **uv**: 高速 Python パッケージマネージャー
@@ -929,9 +830,3 @@ docker compose exec [サービス名] ps aux
 -   [uv](https://github.com/astral-sh/uv) - 高速 Python パッケージマネージャー
 -   [Style-BERT-VITS2](https://github.com/litagin02/Style-Bert-VITS2) - 高品質日本語音声合成エンジン
 -   [OpenAI](https://openai.com/) - AI テキスト生成 API
--   [Prometheus](https://prometheus.io/) - メトリクス収集・時系列データベース
--   [Grafana](https://grafana.com/) - 監視ダッシュボード・可視化プラットフォーム
--   [Loki](https://grafana.com/oss/loki/) - ログ集約システム
--   [Tempo](https://grafana.com/oss/tempo/) - 分散トレーシングバックエンド
--   [OpenTelemetry](https://opentelemetry.io/) - オブザーバビリティフレームワーク
--   [cAdvisor](https://github.com/google/cadvisor) - コンテナメトリクス収集
