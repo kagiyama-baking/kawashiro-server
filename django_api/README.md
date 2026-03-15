@@ -4,15 +4,15 @@ REST API で複数の機能を提供するバックエンドサーバです。
 
 ## 機能一覧
 
-| アプリ | エンドポイント | 説明 |
-|--------|----------------|------|
-| user | `/user/` | ユーザー認証・管理 |
-| onedrive | `/onedrive/` | OneDrive ファイルアップロード・管理 |
-| outlook | `/outlook/` | Outlook Calendar 予定取得 |
-| media | `/media/` | メディアファイル管理 |
-| tts | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） |
-| weather | `/weather/` | 気象庁天気予報 |
-| greeting | `/greeting/` | 挨拶生成（設定ベースの AI 挨拶生成・TTS 対応） |
+| アプリ   | エンドポイント | 説明                                           |
+| -------- | -------------- | ---------------------------------------------- |
+| user     | `/user/`       | ユーザー認証・管理                             |
+| onedrive | `/onedrive/`   | OneDrive ファイルアップロード・管理            |
+| outlook  | `/outlook/`    | Outlook Calendar 予定取得                      |
+| media    | `/media/`      | メディアファイル管理                           |
+| tts      | `/tts/`        | テキスト読み上げ（Style-BERT-VITS2 プロキシ）  |
+| weather  | `/weather/`    | 気象庁天気予報                                 |
+| greeting | `/greeting/`   | 挨拶生成（設定ベースの AI 挨拶生成・TTS 対応） |
 
 ## セットアップ
 
@@ -38,7 +38,7 @@ ENCRYPTION_KEY=your-encryption-key
 OPENAI_API_KEY=your-openai-api-key
 
 # Style-BERT-VITS2 API（音声合成機能）
-TTS_API_URL=http://sbv2-api:5000
+TTS_SERVICE_URL=http://sbv2-api:5000
 ```
 
 ### 2. マイグレーションの実行
@@ -71,29 +71,29 @@ Django 管理画面（`http://localhost:8000/admin/`）で以下の設定を行�
 
 「MSGRAPH CONFIG」から以下を設定：
 
-| 項目 | 説明 |
-|------|------|
-| テナントID | Azure AD テナント ID |
-| クライアントID | Azure AD アプリケーション ID |
-| 証明書サムプリント | 証明書のサムプリント |
-| 秘密鍵 | PEM 形式の秘密鍵（暗号化されて DB に保存） |
-| 対象ユーザー | アクセス対象のユーザーメールアドレス |
+| 項目               | 説明                                       |
+| ------------------ | ------------------------------------------ |
+| テナントID         | Azure AD テナント ID                       |
+| クライアントID     | Azure AD アプリケーション ID               |
+| 証明書サムプリント | 証明書のサムプリント                       |
+| 秘密鍵             | PEM 形式の秘密鍵（暗号化されて DB に保存） |
+| 対象ユーザー       | アクセス対象のユーザーメールアドレス       |
 
 ### 挨拶設定（Greeting 機能）
 
 「GREETING」→「挨拶設定」から複数の挨拶設定を登録できます：
 
-| 項目 | 説明 |
-|------|------|
-| 設定名 | API 呼び出し時の識別子（例: `morning`, `evening`） |
-| 表示名 | 管理画面での表示名 |
-| 天気情報を使用 | `{{weather}}` プレースホルダーを有効化 |
-| 予定情報を使用 | `{{events}}` プレースホルダーを有効化 |
-| 日時情報を使用 | `{{datetime}}` プレースホルダーを有効化 |
-| 予報区コード | 6 桁の数字（天気使用時のみ必須、例: `130010`） |
-| システムプロンプト | AI のキャラクター設定 |
-| TTS 有効 | 音声合成を有効にするか |
-| TTS 設定 | モデル名、スタイル、速度など |
+| 項目               | 説明                                               |
+| ------------------ | -------------------------------------------------- |
+| 設定名             | API 呼び出し時の識別子（例: `morning`, `evening`） |
+| 表示名             | 管理画面での表示名                                 |
+| 天気情報を使用     | `{{weather}}` プレースホルダーを有効化             |
+| 予定情報を使用     | `{{events}}` プレースホルダーを有効化              |
+| 日時情報を使用     | `{{datetime}}` プレースホルダーを有効化            |
+| 予報区コード       | 6 桁の数字（天気使用時のみ必須、例: `130010`）     |
+| システムプロンプト | AI のキャラクター設定                              |
+| TTS 有効           | 音声合成を有効にするか                             |
+| TTS 設定           | モデル名、スタイル、速度など                       |
 
 #### API 呼び出し例
 
@@ -109,21 +109,21 @@ curl -X POST http://localhost:8000/api/greeting/generate/ \
 
 #### プレースホルダー
 
-| プレースホルダー | 内容 | 設定で有効化が必要 |
-|-----------------|------|-------------------|
-| `{{datetime}}` | 日時・曜日・祝日情報 | 日時情報を使用 |
-| `{{weather}}` | 天気予報データ | 天気情報を使用 |
-| `{{events}}` | 本日の予定データ | 予定情報を使用 |
+| プレースホルダー | 内容                 | 設定で有効化が必要 |
+| ---------------- | -------------------- | ------------------ |
+| `{{datetime}}`   | 日時・曜日・祝日情報 | 日時情報を使用     |
+| `{{weather}}`    | 天気予報データ       | 天気情報を使用     |
+| `{{events}}`     | 本日の予定データ     | 予定情報を使用     |
 
 ### LLM 設定（AI テキスト生成）
 
 「LLM CONFIG」から以下を設定：
 
-| 項目 | 説明 |
-|------|------|
-| モデル名 | OpenAI モデル名（例: `gpt-4o-mini`） |
-| 最大トークン数 | 生成する最大トークン数 |
-| 温度 | 生成のランダム性（0.0〜2.0） |
+| 項目           | 説明                                 |
+| -------------- | ------------------------------------ |
+| モデル名       | OpenAI モデル名（例: `gpt-4o-mini`） |
+| 最大トークン数 | 生成する最大トークン数               |
+| 温度           | 生成のランダム性（0.0〜2.0）         |
 
 ## Azure AD 設定
 
@@ -155,11 +155,11 @@ openssl x509 -in cert.cer -fingerprint -noout | sed 's/://g' | cut -d'=' -f2
 
 Azure AD アプリケーションに以下のアプリケーション権限を付与し、管理者の同意を与えてください：
 
-| 権限 | 用途 |
-|------|------|
-| Files.ReadWrite.All | OneDrive ファイル操作 |
-| Calendars.Read | Outlook カレンダー読み取り |
-| User.Read.All | ユーザー情報取得 |
+| 権限                | 用途                       |
+| ------------------- | -------------------------- |
+| Files.ReadWrite.All | OneDrive ファイル操作      |
+| Calendars.Read      | Outlook カレンダー読み取り |
+| User.Read.All       | ユーザー情報取得           |
 
 ## テストの実行
 
@@ -207,12 +207,12 @@ Django 管理画面から朝のあいさつ設定を作成してください。
 
 本プロジェクトは以下の外部サービス・API を使用しています。利用時は各サービスの規約を遵守してください。
 
-| サービス | 用途 | ライセンス・規約 |
-|----------|------|------------------|
-| [気象庁天気予報](https://www.jma.go.jp/bosai/forecast/) | 天気予報データ取得 | [政府標準利用規約（第2.0版）](https://www.jma.go.jp/jma/kishou/info/coment.html) - 出典記載必須 |
-| [holidays-jp API](https://github.com/holidays-jp/api) | 日本の祝日判定 | MIT License |
-| [OpenAI API](https://platform.openai.com/docs/) | AI テキスト生成 | 商用 API - 要 API キー |
-| [Microsoft Graph API](https://learn.microsoft.com/ja-jp/graph/overview) | OneDrive/Outlook 連携 | 商用 API - 要 Azure AD 設定 |
+| サービス                                                                | 用途                  | ライセンス・規約                                                                                |
+| ----------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- |
+| [気象庁天気予報](https://www.jma.go.jp/bosai/forecast/)                 | 天気予報データ取得    | [政府標準利用規約（第2.0版）](https://www.jma.go.jp/jma/kishou/info/coment.html) - 出典記載必須 |
+| [holidays-jp API](https://github.com/holidays-jp/api)                   | 日本の祝日判定        | MIT License                                                                                     |
+| [OpenAI API](https://platform.openai.com/docs/)                         | AI テキスト生成       | 商用 API - 要 API キー                                                                          |
+| [Microsoft Graph API](https://learn.microsoft.com/ja-jp/graph/overview) | OneDrive/Outlook 連携 | 商用 API - 要 Azure AD 設定                                                                     |
 
 ### 注意事項
 

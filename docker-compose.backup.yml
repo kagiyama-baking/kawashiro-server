@@ -11,8 +11,6 @@ services:
         env_file:
             - .env.backup
         environment:
-            # PostgreSQL接続情報（デフォルト値、.env.backupで上書き可能）
-            DB_HOSTNAME: immich-postgres
             # Django API設定（デフォルト値、.env.backupで上書き可能）
             DJANGO_API_URL: http://django-api:8000
             # Django SQLite バックアップ設定
@@ -21,12 +19,8 @@ services:
             # ソースコードのマウント（開発環境用）
             - ./backup/scripts:/app/scripts
             - ./backup/pyproject.toml:/app/pyproject.toml:ro
-            # Immichの写真データ（読み取り専用 - バックアップ用）
-            - ./volumes/immich/data:/source/data:ro
-            # Immichの写真データ（読み書き可能 - リストア用）
-            - ./volumes/immich:/restore
             # Django SQLite（読み取り専用 - バックアップ用）
-            - ./volumes/django-api/db.sqlite3:/source/django/db.sqlite3:ro
+            - /opt/app/django-api/db.sqlite3:/source/django/db.sqlite3:ro
             # バックアップ出力先
             - ./volumes/backup:/backup
         networks:

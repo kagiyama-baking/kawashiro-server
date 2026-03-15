@@ -21,7 +21,6 @@ jobs:
         timeout-minutes: 5
         outputs:
             django-api: ${{ steps.filter.outputs.django-api }}
-            reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
             backup: ${{ steps.filter.outputs.backup }}
             sbv2-api: ${{ steps.filter.outputs.sbv2-api }}
             docker-compose: ${{ steps.filter.outputs.docker-compose }}
@@ -36,8 +35,6 @@ jobs:
                   filters: |
                       django-api:
                         - 'django_api/**'
-                      reverse-proxy:
-                        - 'reverse_proxy/**'
                       backup:
                         - 'backup/**'
                       sbv2-api:
@@ -51,7 +48,6 @@ jobs:
         needs: detect-changes
         if: |
             needs.detect-changes.outputs.django-api == 'true' ||
-            needs.detect-changes.outputs.reverse-proxy == 'true' ||
             needs.detect-changes.outputs.backup == 'true' ||
             needs.detect-changes.outputs.sbv2-api == 'true' ||
             github.event_name == 'workflow_dispatch'
@@ -64,9 +60,6 @@ jobs:
                     - name: django-api
                       path: ./django_api
                       changed: django-api
-                    - name: reverse-proxy
-                      path: ./reverse_proxy
-                      changed: reverse-proxy
                     - name: backup
                       path: ./backup
                       changed: backup
@@ -222,7 +215,6 @@ jobs:
         needs: detect-changes
         if: |
             needs.detect-changes.outputs.django-api == 'true' ||
-            needs.detect-changes.outputs.reverse-proxy == 'true' ||
             needs.detect-changes.outputs.docker-compose == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
@@ -233,46 +225,25 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            # CI環境用の.envファイル作成
-            - name: Create .env file for CI
+            # CI環境用のDjango API環境変数ファイル作成
+            - name: Create Django API .env file for CI
               run: |
-                  echo "# CI環境用のダミー環境変数" > .env
-                  echo "DB_USERNAME=ci_user" >> .env
-                  echo "DB_PASSWORD=ci_password" >> .env
-                  echo "DB_DATABASE_NAME=ci_database" >> .env
-                  echo "PUBLIC_SERVER_URL=http://album.localhost" >> .env
-                  echo "IMMICH_LOG_LEVEL=verbose" >> .env
-                  echo "TZ=Asia/Tokyo" >> .env
-
-                  # Django API用の環境変数（.env.sampleに準拠）
                   cp django_api/.env.sample django_api/.env
                   echo "SECRET_KEY=test-secret-key-for-ci-environment" >> django_api/.env
                   echo "DEBUG=False" >> django_api/.env
-                  echo "ALLOWED_HOSTS=api.localhost,localhost" >> django_api/.env
+                  echo "ALLOWED_HOSTS=localhost" >> django_api/.env
                   echo "ENCRYPTION_KEY=test-encryption-key-for-ci-environment" >> django_api/.env
 
-            # ログディレクトリと永続化ディレクトリの準備（コンテナマウント用）
+            # 永続化ディレクトリの準備（コンテナマウント用）
             - name: Prepare volume directories
               run: |
-                  mkdir -p volumes/reverse-proxy/log/nginx
-                  mkdir -p volumes/django-api/log
-                  mkdir -p volumes/django-api/staticfiles
-                  # SQLiteデータベースファイルを事前に作成
-                  touch volumes/django-api/db.sqlite3
-                  # GitHub Actions環境での権限問題を解決
-                  chmod -R 777 volumes/
+                  sudo mkdir -p /opt/app/django-api/staticfiles
+                  sudo touch /opt/app/django-api/db.sqlite3
+                  sudo chmod -R 777 /opt/app/
 
             # Dockerイメージのビルド
             - name: Build Docker images
-              run: docker compose build --pull
-
-            # 構文チェック（reverse-proxy）
-            - name: Test configuration syntax (Nginx) :reverse-proxy
-              run: |
-                  echo "🔧 Nginx設定構文チェック..."
-                  # 一時的にコンテナを起動して構文チェック
-                  docker compose run --rm --no-deps reverse-proxy nginx -t
-                  echo "✅ 構文チェック: OK"
+              run: docker compose build --pull django-api
 
             # Django API: マイグレーション確認
             - name: Test Django migrations
@@ -305,20 +276,6 @@ jobs:
                   # コンテナ状態確認
                   echo "📋 コンテナ状態:"
                   docker compose ps
-
-            # 準備完了待機（reverse-proxy）
-            - name: Wait for readiness :reverse-proxy
-              run: |
-                  # プロセス確認
-                  echo "🔍 reverse-proxy確認中..."
-                  for i in {1..20}; do
-                    if docker exec reverse-proxy sh -c 'ps aux | grep nginx' | grep -v grep >/dev/null 2>&1; then
-                      echo "✅ reverse-proxy準備完了"
-                      break
-                    fi
-                    echo "  [$i/20] 待機中..."
-                    sleep 2
-                  done
 
             # 準備完了待機（django-api）
             - name: Wait for readiness :django-api
@@ -354,39 +311,14 @@ jobs:
                     echo "⚠️ Django API準備確認タイムアウト（後続テストで動作確認）"
                   fi
 
-            # リバースプロキシ機能テスト
-            - name: Reverse proxy functionality tests
-              run: |
-                  echo "🧪 機能テスト実行中..."
-
-                  # ヘルスエンドポイント確認
-                  echo "  🏥 ヘルスチェック... (localhost/health)"
-                  status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)
-                  if [ "$status" = "200" ]; then
-                    echo "  ✅ ヘルス: OK"
-                  else
-                    echo "  ❌ ヘルス: NG (HTTP $status)"
-                    exit 1
-                  fi
-
-                  # サブドメインルーティング確認（api）
-                  echo "  🔀 ルーティング... (api.localhost -> django-api:8000)"
-                  status=$(curl --resolve api.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://api.localhost/schema/)
-                  if [ "$status" = "200" ]; then
-                    echo "  ✅ ルーティング(api): OK"
-                  else
-                    echo "  ❌ ルーティング(api): NG (HTTP $status)"
-                    exit 1
-                  fi
-
             # Django API機能テスト
             - name: Django API functionality tests
               run: |
                   echo "🧪 Django API機能テスト実行中..."
 
                   # OpenAPIスキーマ確認
-                  echo "  📄 OpenAPIスキーマ... (/schema/)"
-                  content=$(curl --resolve api.localhost:80:127.0.0.1 -s http://api.localhost/schema/ | head -n1)
+                  echo "  📄 OpenAPIスキーマ... (localhost:8000/schema/)"
+                  content=$(curl -s http://localhost:8000/schema/ | head -n1)
                   if echo "$content" | grep -q "openapi"; then
                     echo "  ✅ スキーマ: OK"
                   else
@@ -395,8 +327,8 @@ jobs:
                   fi
 
                   # Swagger UI確認
-                  echo "  🎨 Swagger UI... (/swagger/)"
-                  status=$(curl --resolve api.localhost:80:127.0.0.1 -s -o /dev/null -w "%{http_code}" http://api.localhost/swagger/)
+                  echo "  🎨 Swagger UI... (localhost:8000/swagger/)"
+                  status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/swagger/)
                   if [ "$status" = "200" ]; then
                     echo "  ✅ Swagger UI: OK"
                   else
@@ -411,9 +343,8 @@ jobs:
                   echo "🚨 === デバッグ情報 ==="
                   echo "📋 コンテナ状態:"
                   docker compose ps
-                  echo "\n📋 reverse-proxy ログ:"
-                  docker compose logs reverse-proxy | tail -n 50
-                  echo "\n📋 django-api ログ:"
+                  echo ""
+                  echo "📋 django-api ログ:"
                   docker compose logs django-api | tail -n 50
 
             # 環境のクリーンアップ（常に実行）
