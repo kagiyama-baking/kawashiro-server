@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 
-**kawashiro-server** は、Docker Compose で構成されたホームサーバーシステムです。Django REST Framework ベースの API サーバーを中心に、写真管理（Immich）、音声合成（Style-BERT-VITS2）、リバースプロキシ（Nginx）などの複数サービスを統合しています。
+**kawashiro-server** は、Docker Compose で構成されたアプリケーションサーバーシステムです。Django REST Framework ベースの API サーバーを中心に、音声合成（Style-BERT-VITS2）などのサービスを統合しています。本番環境のデプロイとリバースプロキシ（Traefik）は internal.kagiyama.net リポジトリ（Ansible）が管理します。
 
 ## リポジトリ構造
 
@@ -25,12 +25,10 @@ kawashiro-server/
 │   ├── tests/           # テストディレクトリ（pytestベース）
 │   ├── pyproject.toml   # Python依存関係・ツール設定
 │   └── Dockerfile       # Python 3.13-alpine ベース
-├── reverse_proxy/       # Nginx リバースプロキシ
 ├── sbv2_api/            # Style-BERT-VITS2 音声合成サーバー（FastAPI）
-├── backup/              # バックアップスクリプト（Django + Immich）
+├── backup/              # バックアップスクリプト（Django）
 ├── volumes/             # 永続化データ（.gitkeepのみ管理）
 ├── docker-compose.yml       # 開発環境用
-├── docker-compose-prod.yml  # 本番環境用
 └── .github/workflows/       # CI/CDワークフロー
 ```
 
@@ -158,9 +156,6 @@ uv run ruff check --fix .
 ```bash
 # 開発環境の起動
 docker compose up -d
-
-# 本番環境の起動
-docker compose -f docker-compose-prod.yml up -d
 
 # Django APIのみ再ビルド
 docker compose build django-api
@@ -324,12 +319,7 @@ Django API に必要な環境変数（`django_api/.env`）：
 
 | サービス | ポート | 説明 |
 |---------|--------|------|
-| `reverse-proxy` | 80 | Nginx リバースプロキシ |
 | `django-api` | 8000 | Django REST API |
-| `immich` | 2283 | Immich 写真管理 |
-| `immich-machine-learning` | - | Immich ML |
-| `immich-redis` | 6379 | Redis（Immich用） |
-| `immich-postgres` | 5432 | PostgreSQL（Immich用） |
 | `sbv2-api` | 5000（内部） | Style-BERT-VITS2 音声合成 |
 
 ## CI/CD ワークフロー
@@ -342,31 +332,26 @@ Django API に必要な環境変数（`django_api/.env`）：
 2. **Dockerfile セキュリティスキャン**: Trivy による設定スキャン（CRITICAL/HIGH）
 3. **Django API テスト**: Ruff リンター/フォーマッター → pytest（カバレッジ 80%以上必須）
 4. **Backup テスト**: Ruff → pytest（カバレッジ 80%以上必須）
-5. **コンテナ統合テスト**: Docker Compose ビルド → Nginx構文チェック → マイグレーション → 起動 → 機能テスト
+5. **コンテナ統合テスト**: Docker Compose ビルド → マイグレーション → 起動 → Django API 機能テスト
 
 ### Build & Push（`build.yml`）
 
 `develop` ブランチへの push 時に実行：
 
-1. 変更検出 → 対象サービスのマトリクスビルド
+1. 変更検出 → 対象サービスのマトリクスビルド（django-api, backup）
 2. amd64 でビルド → Trivy 脆弱性スキャン
 3. マルチプラットフォーム（amd64/arm64）でビルド＆GHCR へプッシュ
 4. SBOM 生成 + ビルド証明（provenance）の付与
 
-### Deploy（`deploy.yml`）
+### Release（`release.yml`）
 
 `main` ブランチへの push 時に実行：
 
-1. GHCR 上のイメージ検証
-2. staging → release/latest タグ付け
-3. Tailscale VPN 経由で本番サーバーに SSH デプロイ
+1. GHCR 上の staging イメージ検証
+2. staging → release/latest リタグ
+3. リリースサマリー出力
 
-### Security Scan（`security-scan.yml`）
-
-毎日 JST 0:00 に実行。以下のイメージを Trivy でスキャン：
-
-- **GHCR イメージ**: reverse-proxy, django-api, backup（release タグ）
-- **公式イメージ**: Immich, PostgreSQL, Valkey
+本番デプロイは internal.kagiyama.net（Ansible）が担当。
 
 ### Cleanup Images（`cleanup-images.yml`）
 
@@ -381,7 +366,7 @@ main（本番）← develop（開発）← feature/xxx, hotfix/xxx
 - `feature/*`: 機能開発ブランチ（develop へ PR）
 - `hotfix/*`: 緊急修正ブランチ（develop へ PR）
 - `develop`: 開発統合ブランチ（main へ PR でリリース）
-- `main`: 本番ブランチ（push でデプロイ）
+- `main`: 本番ブランチ（push でリリースタグ付け、デプロイは Ansible が担当）
 
 ## レビュー規約
 

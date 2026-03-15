@@ -30,7 +30,6 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 5
         outputs:
-            reverse-proxy: ${{ steps.filter.outputs.reverse-proxy }}
             django-api: ${{ steps.filter.outputs.django-api }}
             services: ${{ steps.build-matrix.outputs.services }}
         steps:
@@ -42,8 +41,6 @@ jobs:
               id: filter
               with:
                   filters: |
-                      reverse-proxy:
-                        - 'reverse_proxy/**'
                       django-api:
                         - 'django_api/**'
                       backup:
@@ -53,9 +50,6 @@ jobs:
               id: build-matrix
               run: |
                   services='[]'
-                  if [ "${{ steps.filter.outputs.reverse-proxy }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                    services=$(echo "$services" | jq -c '. + [{"name": "reverse-proxy", "context": "reverse_proxy", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/reverse-proxy"}]')
-                  fi
                   if [ "${{ steps.filter.outputs.django-api }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
                     services=$(echo "$services" | jq -c '. + [{"name": "django-api", "context": "django_api", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/django-api"}]')
                   fi
