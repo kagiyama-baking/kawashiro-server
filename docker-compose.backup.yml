@@ -20,7 +20,7 @@ services:
             - ./backup/scripts:/app/scripts
             - ./backup/pyproject.toml:/app/pyproject.toml:ro
             # Django SQLite（読み取り専用 - バックアップ用）
-            - ./volumes/django-api/db.sqlite3:/source/django/db.sqlite3:ro
+            - /opt/app/django-api/db.sqlite3:/source/django/db.sqlite3:ro
             # バックアップ出力先
             - ./volumes/backup:/backup
         networks:

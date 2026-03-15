@@ -24,8 +24,8 @@ RUN uv venv /app/venv --python 3.10
 ENV PATH="/app/venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/venv"
 
-# PyTorch (CPU版) - style-bert-vits2はtorch<2.4が必要
-RUN uv pip install "torch==2.3.1+cpu" "torchaudio==2.3.1+cpu" --index-url https://download.pytorch.org/whl/cpu
+# PyTorch (CUDA 11.8版) - style-bert-vits2はtorch<2.4が必要
+RUN uv pip install "torch==2.3.1+cu118" "torchaudio==2.3.1+cu118" --index-url https://download.pytorch.org/whl/cu118
 
 # Style-Bert-VITS2 ライブラリ（推論のみ）
 # transformers>=4.42,<4.47: v4.47+はPyTorch>=2.4を要求するため、torch==2.3.1と非互換

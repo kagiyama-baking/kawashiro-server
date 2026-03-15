@@ -7,6 +7,7 @@
 ## 概要
 
 Docker コンテナベースの Web サービス群です。アプリケーションの開発・ビルド・テストに専念するリポジトリです。
+本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。
 
 ## サービス
 
@@ -23,7 +24,8 @@ Docker コンテナベースの Web サービス群です。アプリケーシ�
     - 🔗 **MS Graph Config**: Microsoft Graph API 共通設定・認証モジュール
     - 🔗 **MS Graph Client**: OneDrive/Outlook 統一クライアント
     - 🛠️ **Core**: 共通機能・ユーティリティ
-- 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス
+- 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
+- 💾 **バックアップシステム**: Django のデータをバックアップ・リストア
 
 ## 特徴
 
@@ -32,7 +34,7 @@ Docker コンテナベースの Web サービス群です。アプリケーシ�
 - 🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
 - 📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
 - 🛡️ **脆弱性スキャン**: Trivy によるイメージ検査
-- 💾 **自動バックアップ**: OneDrive への定期バックアップ機能
+- 💾 **バックアップ**: OneDrive へのバックアップ機能
 - 🔒 **暗号化**: 機密情報の暗号化保存（OneDrive 設定など）
 - 🐍 **最新 Python 環境**: uv を使用した高速なパッケージ管理
 - ✅ **テストカバレッジ**: pytest によるテスト自動化とカバレッジ計測
@@ -75,11 +77,10 @@ kawashiro-server/
 │   ├── llm_config/             # LLM設定管理
 │   ├── msgraph_client/         # Microsoft Graph統一クライアント
 │   ├── msgraph_config/         # Microsoft Graph設定・認証管理
-│   ├── tests/                  # 統合テストコード
-│   └── htmlcov/                # カバレッジレポート
+│   └── tests/                  # テストコード
 │
-├── sbv2_api/                   # Style-BERT-VITS2 APIサーバー
-│   ├── Dockerfile              # コンテナ定義
+├── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU）
+│   ├── Dockerfile              # コンテナ定義（CUDA 11.8）
 │   ├── server.py               # FastAPIサーバー
 │   └── config.yml              # モデル設定
 │
@@ -92,17 +93,15 @@ kawashiro-server/
 │   │   └── backup_django.py    # Django APIバックアップ
 │   └── tests/                  # テストコード
 │
-├── docs/                       # ドキュメント
-│   └── archtecture.drawio      # アーキテクチャ図
-│
-└── volumes/                    # 永続化データ
-    └── backup/                 # バックアップ出力先
+└── docs/                       # ドキュメント
+    └── archtecture.drawio      # アーキテクチャ図
 ```
 
 ## 必要な環境
 
 - Docker Engine 20.10.0+
 - Docker Compose 2.0.0+
+- NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)（sbv2-api 用）
 
 ## インストール・セットアップ
 
@@ -116,14 +115,23 @@ cd kawashiro-server
 ### 2. 環境変数の設定
 
 ```bash
-# 環境変数ファイルの作成
-cp .env.example .env
+# Django API用の環境変数ファイルを作成
+cp django_api/.env.sample django_api/.env
 
 # .envファイルを編集して必要な値を設定
-nano .env
+nano django_api/.env
 ```
 
-### 3. サーバーの起動
+### 3. 永続化ディレクトリの準備
+
+```bash
+# Django APIの永続化データ用ディレクトリを作成
+sudo mkdir -p /opt/app/django-api/staticfiles
+sudo touch /opt/app/django-api/db.sqlite3
+sudo chown -R $USER:$USER /opt/app/
+```
+
+### 4. サーバーの起動
 
 ```bash
 # すべてのサービスを起動
@@ -133,7 +141,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-### 4. 動作確認
+### 5. 動作確認
 
 ```bash
 # Django API ヘルスチェック
@@ -142,40 +150,31 @@ curl http://localhost:8000/schema/
 
 ## 環境変数設定
 
-### 必須の環境変数
-
-`.env`ファイルに以下の環境変数を設定してください：
-
-```bash
-# タイムゾーン
-TZ=Asia/Tokyo               # システムタイムゾーン
-```
-
 ### Django API 設定
 
-Django API を使用する場合は、`django_api/.env`ファイルに以下の環境変数を設定してください：
+`django_api/.env` ファイルに以下の環境変数を設定してください（`.env.sample` を参照）：
 
 ```bash
-# Django設定
+# Django設定（必須）
 SECRET_KEY=YOUR_SECRET_KEY
+
+# デバッグモード（デフォルト: False）
 DEBUG=False
+
+# 許可ホスト（カンマ区切り、デフォルト: localhost）
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 # データベースに保存する機密情報の暗号化に使用
-# 本番環境では十分にランダムな文字列を設定してください
 ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY
 
-# Microsoft Graph API（OneDrive/Outlook統合機能）
-AZURE_TENANT_ID=your-tenant-id
-AZURE_CLIENT_ID=your-client-id
-AZURE_CLIENT_SECRET=your-client-secret
-
-# OpenAI API（挨拶機能などのAI生成に使用）
-OPENAI_API_KEY=your-openai-api-key
-
-# Style-BERT-VITS2 API（音声合成機能）
+# Style-BERT-VITS2 API（デフォルト: http://sbv2-api:5000）
 TTS_SERVICE_URL=http://sbv2-api:5000
+
+# リバースプロキシ経由時のCSRF信頼済みオリジン（本番環境用）
+CSRF_TRUSTED_ORIGINS=https://api.example.com
 ```
+
+その他の設定（Microsoft Graph API、OpenAI API キーなど）は Django 管理画面（`/admin/`）から設定します。
 
 ### バックアップシステム設定
 
@@ -199,7 +198,7 @@ TZ=Asia/Tokyo                          # タイムゾーン
 ### サービスの管理
 
 ```bash
-# 開発環境: サービスの起動
+# サービスの起動
 docker compose up -d
 
 # バックアップコンテナの実行
@@ -249,7 +248,7 @@ flowchart LR
     direction TB
     A[feature/* ブランチ<br/>push & PR]
     B[PR to develop]
-    C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Docker compose build<br/>・Django migrate<br/>・ヘルスチェック]
+    C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Dockerfile セキュリティスキャン<br/>・Ruff lint/format<br/>・pytest（カバレッジ80%以上）<br/>・Docker compose build<br/>・Django migrate<br/>・Django API 機能テスト]
     D[develop へマージ]
 
     A --> B
@@ -293,10 +292,12 @@ flowchart LR
 
 ```yaml
 # 主要なチェック項目
+- Dockerfileセキュリティスキャン（Trivy config scan）
+- Ruff リンター・フォーマッターチェック
+- pytest（カバレッジ80%以上必須）
 - Docker Composeビルド検証
-- Django APIのマイグレーションテスト
-- 静的ファイル収集テスト
-- ヘルスチェックエンドポイント確認
+- Django APIのマイグレーション・collectstaticテスト
+- Django API 機能テスト（OpenAPIスキーマ・Swagger UI）
 ```
 
 **タイムアウト:** 15 分
@@ -424,19 +425,13 @@ docker system df
 
 # 不要なイメージ・コンテナを削除
 docker system prune -a --volumes
-
-# ログファイルのサイズを確認
-du -sh ./volumes/*/log/
 ```
 
 #### 3. パーミッションエラー
 
 ```bash
-# ボリュームディレクトリの所有者を修正
-sudo chown -R $USER:$USER ./volumes/
-
-# 実行権限を付与（スクリプトの場合）
-chmod +x ./scripts/*.sh
+# 永続化ディレクトリの所有者を修正
+sudo chown -R $USER:$USER /opt/app/
 ```
 
 ### ログの確認方法
@@ -461,7 +456,7 @@ docker compose logs > logs_$(date +%Y%m%d_%H%M%S).txt
 
 ```bash
 # .envファイルの権限を制限
-chmod 600 .env
+chmod 600 django_api/.env
 
 # Gitに.envファイルが含まれていないことを確認
 git status --ignored
@@ -539,7 +534,7 @@ uv run pytest tests/ -v --tb=short \
 - **Microsoft Graph API**: OneDrive/Outlook 連携
 - **OpenAI API**: テキスト生成（挨拶機能）
 - **気象庁天気予報 API**: 天気予報データ取得
-- **Style-BERT-VITS2**: 高品質日本語音声合成エンジン
+- **Style-BERT-VITS2**: 高品質日本語音声合成エンジン（CUDA 11.8）
 
 ## 謝辞
 

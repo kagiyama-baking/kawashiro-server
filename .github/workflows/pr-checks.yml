@@ -225,32 +225,25 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            # CI環境用の.envファイル作成
-            - name: Create .env file for CI
+            # CI環境用のDjango API環境変数ファイル作成
+            - name: Create Django API .env file for CI
               run: |
-                  echo "# CI環境用のダミー環境変数" > .env
-                  echo "TZ=Asia/Tokyo" >> .env
-
-                  # Django API用の環境変数（.env.sampleに準拠）
                   cp django_api/.env.sample django_api/.env
                   echo "SECRET_KEY=test-secret-key-for-ci-environment" >> django_api/.env
                   echo "DEBUG=False" >> django_api/.env
                   echo "ALLOWED_HOSTS=localhost" >> django_api/.env
                   echo "ENCRYPTION_KEY=test-encryption-key-for-ci-environment" >> django_api/.env
 
-            # ログディレクトリと永続化ディレクトリの準備（コンテナマウント用）
+            # 永続化ディレクトリの準備（コンテナマウント用）
             - name: Prepare volume directories
               run: |
-                  mkdir -p volumes/django-api/log
-                  mkdir -p volumes/django-api/staticfiles
-                  # SQLiteデータベースファイルを事前に作成
-                  touch volumes/django-api/db.sqlite3
-                  # GitHub Actions環境での権限問題を解決
-                  chmod -R 777 volumes/
+                  sudo mkdir -p /opt/app/django-api/staticfiles
+                  sudo touch /opt/app/django-api/db.sqlite3
+                  sudo chmod -R 777 /opt/app/
 
             # Dockerイメージのビルド
             - name: Build Docker images
-              run: docker compose build --pull
+              run: docker compose build --pull django-api
 
             # Django API: マイグレーション確認
             - name: Test Django migrations
