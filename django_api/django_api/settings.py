@@ -57,6 +57,16 @@ ALLOWED_HOSTS = [
     if host.strip()  # 空文字列を除外
 ]
 
+# リバースプロキシ（Traefik）経由のHTTPS判定
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# CSRF信頼済みオリジン（Traefik経由のドメイン）
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 # ============================================================
 # アプリケーション設定
 # ============================================================
