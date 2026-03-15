@@ -225,13 +225,9 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v4
 
-            # CI環境用の.envファイル作成
-            - name: Create .env file for CI
+            # CI環境用のDjango API環境変数ファイル作成
+            - name: Create Django API .env file for CI
               run: |
-                  echo "# CI環境用のダミー環境変数" > .env
-                  echo "TZ=Asia/Tokyo" >> .env
-
-                  # Django API用の環境変数（.env.sampleに準拠）
                   cp django_api/.env.sample django_api/.env
                   echo "SECRET_KEY=test-secret-key-for-ci-environment" >> django_api/.env
                   echo "DEBUG=False" >> django_api/.env

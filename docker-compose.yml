@@ -11,8 +11,6 @@ services:
         image: django-api
         container_name: django-api
         hostname: django-api
-        env_file:
-            - .env
         ports:
             # 開発環境用：直接アクセス
             - '8000:8000'
