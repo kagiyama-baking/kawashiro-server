@@ -47,7 +47,7 @@ services:
             sh -c "python manage.py migrate &&
                    python manage.py runserver 0.0.0.0:8000"
 
-    # Style-BERT-VITS2 読み上げAPI
+    # Style-BERT-VITS2 読み上げAPI（GPU版）
     sbv2-api:
         build:
             context: ./sbv2_api
@@ -55,6 +55,8 @@ services:
         image: sbv2-api
         container_name: sbv2-api
         hostname: sbv2-api
+        ports:
+            - '5000:5000'
         volumes:
             # ソースコードのマウント（開発環境用）
             - ./sbv2_api/server.py:/app/server.py
@@ -66,13 +68,17 @@ services:
             - ./volumes/sbv2-api/log:/app/logs
         environment:
             - TZ=Asia/Tokyo
-            - OMP_NUM_THREADS=4
-            - MKL_NUM_THREADS=4
+            - NVIDIA_VISIBLE_DEVICES=all
         restart: unless-stopped
         networks:
             - proxy-network
-        # Intel Mac対応
-        platform: linux/amd64
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
 
 networks:
     proxy-network:
