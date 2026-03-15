@@ -250,7 +250,7 @@ jobs:
 
             # Dockerイメージのビルド
             - name: Build Docker images
-              run: docker compose build --pull
+              run: docker compose build --pull django-api
 
             # Django API: マイグレーション確認
             - name: Test Django migrations
