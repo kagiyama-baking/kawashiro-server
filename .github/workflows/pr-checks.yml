@@ -26,10 +26,10 @@ jobs:
             docker-compose: ${{ steps.filter.outputs.docker-compose }}
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Detect changes
-              uses: dorny/paths-filter@v3
+              uses: dorny/paths-filter@v4
               id: filter
               with:
                   filters: |
@@ -68,11 +68,11 @@ jobs:
                       changed: sbv2-api
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Run Trivy config scan (${{ matrix.name }})
               if: needs.detect-changes.outputs[matrix.changed] == 'true' || github.event_name == 'workflow_dispatch'
-              uses: aquasecurity/trivy-action@0.28.0
+              uses: aquasecurity/trivy-action@0.35.0
               with:
                   scan-type: 'config'
                   scan-ref: ${{ matrix.path }}
@@ -89,10 +89,10 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: '3.13'
 
@@ -146,7 +146,7 @@ jobs:
 
             - name: Upload coverage report
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: django-coverage-report
                   path: django_api/htmlcov/
@@ -160,10 +160,10 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Set up Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: '3.13'
 
@@ -205,7 +205,7 @@ jobs:
 
             - name: Upload coverage report
               if: always()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: backup-coverage-report
                   path: backup/htmlcov/
@@ -223,7 +223,7 @@ jobs:
         steps:
             # ソースコードの取得
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             # CI環境用のDjango API環境変数ファイル作成
             - name: Create Django API .env file for CI
