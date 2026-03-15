@@ -32,12 +32,10 @@ services:
             - ./django_api/msgraph_client:/django_api/msgraph_client
             # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
-            # ログの永続化
-            - ./volumes/django-api/log:/django_api/logs
             # 静的ファイルの永続化
-            - ./volumes/django-api/staticfiles:/django_api/staticfiles
+            - /opt/app/django-api/staticfiles:/django_api/staticfiles
             # SQLiteデータベースの永続化
-            - ./volumes/django-api/db.sqlite3:/django_api/db.sqlite3
+            - /opt/app/django-api/db.sqlite3:/django_api/db.sqlite3
         restart: unless-stopped
         networks:
             - proxy-network
@@ -58,12 +56,10 @@ services:
         volumes:
             # ソースコードのマウント（開発環境用）
             - ./sbv2_api/server.py:/app/server.py
-            # 学習済みモデル（読み取り専用）
-            - ./volumes/sbv2-api/model_assets:/app/model_assets:ro
             # 設定ファイル
             - ./sbv2_api/config.yml:/app/config.yml:ro
-            # ログ
-            - ./volumes/sbv2-api/log:/app/logs
+            # 学習済みモデル（読み取り専用）
+            - /opt/app/sbv2-api/model_assets:/app/model_assets:ro
         environment:
             - TZ=Asia/Tokyo
             - NVIDIA_VISIBLE_DEVICES=all
@@ -82,4 +78,3 @@ networks:
     proxy-network:
         driver: bridge
         name: proxy-network
-
