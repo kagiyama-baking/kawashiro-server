@@ -34,21 +34,21 @@ kawashiro-server/
 
 ## 技術スタック
 
-| カテゴリ | 技術 |
-|---------|------|
-| 言語 | Python 3.13 |
-| フレームワーク | Django 6.0 + Django REST Framework 3.16 |
-| API ドキュメント | drf-spectacular（OpenAPI/Swagger） |
-| データベース | SQLite（開発）/ 永続化ボリューム |
-| 認証 | Token認証（rest_framework.authtoken） |
-| テスト | pytest + pytest-django + pytest-cov + pytest-mock |
-| テストデータ | factory-boy + Faker（日本語ロケール） |
-| リンター/フォーマッター | Ruff |
-| パッケージ管理 | uv（pip互換、高速） |
-| コンテナ | Docker Compose |
-| CI/CD | GitHub Actions |
-| セキュリティスキャン | Trivy |
-| コンテナレジストリ | GitHub Container Registry（GHCR） |
+| カテゴリ                | 技術                                              |
+| ----------------------- | ------------------------------------------------- |
+| 言語                    | Python 3.13                                       |
+| フレームワーク          | Django 6.0 + Django REST Framework 3.16           |
+| API ドキュメント        | drf-spectacular（OpenAPI/Swagger）                |
+| データベース            | SQLite（開発）/ 永続化ボリューム                  |
+| 認証                    | Token認証（rest_framework.authtoken）             |
+| テスト                  | pytest + pytest-django + pytest-cov + pytest-mock |
+| テストデータ            | factory-boy + Faker（日本語ロケール）             |
+| リンター/フォーマッター | Ruff                                              |
+| パッケージ管理          | uv（pip互換、高速）                               |
+| コンテナ                | Docker Compose                                    |
+| CI/CD                   | GitHub Actions                                    |
+| セキュリティスキャン    | Trivy                                             |
+| コンテナレジストリ      | GitHub Container Registry（GHCR）                 |
 
 ## 開発方針
 
@@ -227,18 +227,18 @@ def test_user_login_with_invalid_password_raises_error():
 
 ### 共通フィクスチャ（conftest.py）
 
-| フィクスチャ | 説明 |
-|-------------|------|
-| `api_client` | 未認証の APIClient |
-| `regular_user` | 一般ユーザー |
-| `superuser` | スーパーユーザー |
-| `auth_token` | 一般ユーザー用認証トークン |
-| `superuser_token` | スーパーユーザー用認証トークン |
-| `authenticated_client` | 認証済み APIClient |
-| `superuser_client` | スーパーユーザー認証済み APIClient |
-| `mock_file` / `mock_pdf_file` | テスト用ファイル |
-| `mock_ms_graph_settings` | MS Graph設定モック |
-| `ms_graph_client` | OneDrive MSGraphClientモック |
+| フィクスチャ                  | 説明                               |
+| ----------------------------- | ---------------------------------- |
+| `api_client`                  | 未認証の APIClient                 |
+| `regular_user`                | 一般ユーザー                       |
+| `superuser`                   | スーパーユーザー                   |
+| `auth_token`                  | 一般ユーザー用認証トークン         |
+| `superuser_token`             | スーパーユーザー用認証トークン     |
+| `authenticated_client`        | 認証済み APIClient                 |
+| `superuser_client`            | スーパーユーザー認証済み APIClient |
+| `mock_file` / `mock_pdf_file` | テスト用ファイル                   |
+| `mock_ms_graph_settings`      | MS Graph設定モック                 |
+| `ms_graph_client`             | OneDrive MSGraphClientモック       |
 
 ### テストファクトリ（factory-boy）
 
@@ -260,7 +260,7 @@ file = FileUploadFactory.create_text_file()   # テストファイル
 - **引用符**: ダブルクォート
 - **有効なルール**: E, W, F, I, N, UP, B, C4, DJ, PIE, SIM
 - **無視するルール**: DJ001（文字列フィールドのnull=True）, E501（行長制限、日本語コメント考慮）
-- **除外ディレクトリ**: migrations, .venv, __pycache__
+- **除外ディレクトリ**: migrations, .venv, **pycache**
 
 ### Django アプリ構造パターン
 
@@ -290,37 +290,37 @@ app_name/
 
 Django API に必要な環境変数（`django_api/.env`）：
 
-| 変数名 | 必須 | 説明 |
-|--------|------|------|
-| `SECRET_KEY` | 必須 | Django SECRET_KEY |
-| `DEBUG` | 任意 | デバッグモード（デフォルト: False） |
-| `ALLOWED_HOSTS` | 任意 | 許可ホスト（カンマ区切り、デフォルト: localhost） |
-| `ENCRYPTION_KEY` | 任意 | DB保存用暗号化キー |
-| `OPENAI_API_KEY` | 任意 | OpenAI API キー |
+| 変数名            | 必須 | 説明                                               |
+| ----------------- | ---- | -------------------------------------------------- |
+| `SECRET_KEY`      | 必須 | Django SECRET_KEY                                  |
+| `DEBUG`           | 任意 | デバッグモード（デフォルト: False）                |
+| `ALLOWED_HOSTS`   | 任意 | 許可ホスト（カンマ区切り、デフォルト: localhost）  |
+| `ENCRYPTION_KEY`  | 任意 | DB保存用暗号化キー                                 |
+| `OPENAI_API_KEY`  | 任意 | OpenAI API キー                                    |
 | `TTS_SERVICE_URL` | 任意 | TTSサービスURL（デフォルト: http://sbv2-api:5000） |
 
 ## API エンドポイント
 
-| パス | アプリ | 説明 |
-|------|--------|------|
-| `/admin/` | Django Admin | 管理画面 |
-| `/schema/` | drf-spectacular | OpenAPIスキーマ |
-| `/swagger/` | drf-spectacular | Swagger UI |
-| `/redoc/` | drf-spectacular | ReDoc UI |
-| `/user/` | user | ユーザー管理（作成/トークン/更新） |
-| `/onedrive/` | onedrive | OneDrive連携 |
-| `/outlook/` | outlook | Outlook Calendar連携 |
-| `/media/` | media | 画像処理 |
-| `/tts/` | tts | 音声合成 |
-| `/weather/` | weather | 気象庁天気予報 |
-| `/greeting/` | greeting | 挨拶生成（LLM + 天気 + 予定 + TTS統合） |
+| パス         | アプリ          | 説明                                    |
+| ------------ | --------------- | --------------------------------------- |
+| `/admin/`    | Django Admin    | 管理画面                                |
+| `/schema/`   | drf-spectacular | OpenAPIスキーマ                         |
+| `/swagger/`  | drf-spectacular | Swagger UI                              |
+| `/redoc/`    | drf-spectacular | ReDoc UI                                |
+| `/user/`     | user            | ユーザー管理（作成/トークン/更新）      |
+| `/onedrive/` | onedrive        | OneDrive連携                            |
+| `/outlook/`  | outlook         | Outlook Calendar連携                    |
+| `/media/`    | media           | 画像処理                                |
+| `/tts/`      | tts             | 音声合成                                |
+| `/weather/`  | weather         | 気象庁天気予報                          |
+| `/greeting/` | greeting        | 挨拶生成（LLM + 天気 + 予定 + TTS統合） |
 
 ## Docker サービス構成
 
-| サービス | ポート | 説明 |
-|---------|--------|------|
-| `django-api` | 8000 | Django REST API |
-| `sbv2-api` | 5000（内部） | Style-BERT-VITS2 音声合成 |
+| サービス     | ポート       | 説明                      |
+| ------------ | ------------ | ------------------------- |
+| `django-api` | 8000         | Django REST API           |
+| `sbv2-api`   | 5000（内部） | Style-BERT-VITS2 音声合成 |
 
 ## CI/CD ワークフロー
 
@@ -349,7 +349,8 @@ Django API に必要な環境変数（`django_api/.env`）：
 
 1. GHCR 上の staging イメージ検証
 2. staging → release/latest リタグ
-3. リリースサマリー出力
+3. 本番サーバーへのデプロイ
+4. リリースサマリー出力
 
 本番デプロイは internal.kagiyama.net（Ansible）が担当。
 
@@ -372,13 +373,13 @@ main（本番）← develop（開発）← feature/xxx, hotfix/xxx
 
 レビューコメントには以下の接頭辞を使用：
 
-| 接頭辞 | 意味 |
-|--------|------|
-| `[must]` | 必ず変更が必要 |
-| `[imo]` | 意見（修正必須ではない） |
-| `[nits]` | 些細な指摘 |
-| `[ask]` | 質問 |
-| `[fyi]` | 参考情報 |
+| 接頭辞   | 意味                     |
+| -------- | ------------------------ |
+| `[must]` | 必ず変更が必要           |
+| `[imo]`  | 意見（修正必須ではない） |
+| `[nits]` | 些細な指摘               |
+| `[ask]`  | 質問                     |
+| `[fyi]`  | 参考情報                 |
 
 ## 確認事項
 
