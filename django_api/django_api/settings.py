@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "tts",  # Text-to-Speech機能
     "weather",  # 気象庁天気予報機能
     "greeting",  # 挨拶機能
+    "health",  # ヘルスチェック
 ]
 
 # ミドルウェアの設定

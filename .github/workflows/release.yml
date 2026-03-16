@@ -85,9 +85,61 @@ jobs:
 
                   echo "✅ ${{ matrix.service }}のリタグ完了"
 
+    # 本番サーバーへデプロイ
+    deploy:
+        needs: tag-release
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - name: Tailscale接続
+              uses: tailscale/github-action@v4
+              with:
+                  oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+                  oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+                  tags: tag:ci
+
+            - name: デプロイ実行
+              env:
+                  SSH_HOST: ${{ secrets.SSH_HOST }}
+                  SSH_USER: ${{ secrets.SSH_USER }}
+                  DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+              run: |
+                  SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=30"
+                  REMOTE="${SSH_USER}@${SSH_HOST}"
+
+                  ssh $SSH_OPTS "${REMOTE}" \
+                      DEPLOY_DIR="${DEPLOY_DIR}" bash -s << 'DEPLOY_SCRIPT'
+                  set -euo pipefail
+                  cd "${DEPLOY_DIR}"
+
+                  echo ">>> 新しいイメージをプル中..."
+                  docker compose pull django-api
+
+                  echo ">>> コンテナを再作成中..."
+                  docker compose up -d django-api
+
+                  echo ">>> 古いイメージを削除中..."
+                  docker image prune -f
+
+                  echo ">>> ヘルスチェック中..."
+                  sleep 5
+                  for i in $(seq 1 6); do
+                    if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
+                      echo "✅ ヘルスチェック成功"
+                      docker compose ps django-api
+                      exit 0
+                    fi
+                    echo "⏳ ヘルスチェック待機中... (${i}/6)"
+                    sleep 5
+                  done
+                  echo "❌ ヘルスチェック失敗"
+                  docker compose logs --tail=50 django-api
+                  exit 1
+                  DEPLOY_SCRIPT
+
     # リリースサマリー出力
     summary:
-        needs: tag-release
+        needs: deploy
         runs-on: ubuntu-latest
         timeout-minutes: 5
         steps:
