@@ -49,4 +49,6 @@ urlpatterns = [
     path("weather/", include("weather.urls")),
     # 挨拶関連APIのURL（greeting.urlsにルーティング）
     path("greeting/", include("greeting.urls")),
+    # ヘルスチェックURL（認証不要）
+    path("health/", include("health.urls")),
 ]
