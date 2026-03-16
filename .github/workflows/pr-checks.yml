@@ -72,7 +72,7 @@ jobs:
 
             - name: Run Trivy config scan (${{ matrix.name }})
               if: needs.detect-changes.outputs[matrix.changed] == 'true' || github.event_name == 'workflow_dispatch'
-              uses: aquasecurity/trivy-action@0.28.0
+              uses: aquasecurity/trivy-action@0.35.0
               with:
                   scan-type: 'config'
                   scan-ref: ${{ matrix.path }}
