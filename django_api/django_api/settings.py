@@ -103,6 +103,7 @@ INSTALLED_APPS = [
 # ミドルウェアの設定
 # リクエスト/レスポンス処理のフックポイント
 MIDDLEWARE = [
+    "health.middleware.HealthCheckMiddleware",  # ヘルスチェック（ALLOWED_HOSTSチェック前に応答）
     "django.middleware.security.SecurityMiddleware",  # セキュリティヘッダー追加
     "whitenoise.middleware.WhiteNoiseMiddleware",  # 静的ファイル配信（SecurityMiddlewareの直後に配置）
     "django.contrib.sessions.middleware.SessionMiddleware",  # セッション管理
