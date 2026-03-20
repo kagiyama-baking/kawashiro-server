@@ -28,7 +28,6 @@ jobs:
             matrix:
                 service:
                     - django-api
-                    - backup
         steps:
             - name: Login to GHCR
               uses: docker/login-action@v4
@@ -57,7 +56,6 @@ jobs:
             matrix:
                 service:
                     - django-api
-                    - backup
         steps:
             - name: Login to GHCR
               uses: docker/login-action@v4
@@ -149,7 +147,6 @@ jobs:
                   echo ""
                   echo "📦 リリースされたイメージ:"
                   echo "  - ${{ env.IMAGE_BASE }}/django-api:release"
-                  echo "  - ${{ env.IMAGE_BASE }}/backup:release"
                   echo ""
                   echo "🔗 コミット: ${{ github.sha }}"
                   echo "📅 日時: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
