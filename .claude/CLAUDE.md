@@ -8,25 +8,30 @@
 
 ```
 kawashiro-server/
-├── django_api/          # Django REST Framework API サーバー（メインサービス）
-│   ├── core/            # ユーザー認証・コアモデル（カスタムUserモデル）
-│   ├── user/            # ユーザー管理API（作成・トークン認証・更新）
-│   ├── greeting/        # 挨拶生成API（LLM + 天気 + 予定 + TTS統合）
-│   ├── weather/         # 気象庁天気予報クライアント
-│   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
-│   ├── media/           # 画像処理API
-│   ├── onedrive/        # OneDrive連携API
-│   ├── outlook/         # Outlook Calendar連携API
-│   ├── llm_client/      # LLMクライアント（OpenAI API）
-│   ├── llm_config/      # LLM設定管理
-│   ├── msgraph_client/  # Microsoft Graph APIクライアント
-│   ├── msgraph_config/  # Microsoft Graph設定管理
-│   ├── django_api/      # Djangoプロジェクト設定（settings.py, urls.py）
-│   ├── tests/           # テストディレクトリ（pytestベース）
-│   ├── pyproject.toml   # Python依存関係・ツール設定
-│   └── Dockerfile       # Python 3.13-alpine ベース
-├── sbv2_api/            # Style-BERT-VITS2 音声合成サーバー（FastAPI）
-├── volumes/             # 永続化データ（.gitkeepのみ管理）
+├── django_api/              # Django REST Framework API サーバー（メインサービス）
+│   ├── core/                # ユーザー認証・コアモデル（カスタムUserモデル）
+│   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
+│   ├── health/              # ヘルスチェック
+│   ├── integrations/        # 外部サービス連携
+│   │   ├── llm/             # LLM設定・クライアント（OpenAI API）
+│   │   ├── msgraph/         # Microsoft Graph API設定・クライアント
+│   │   ├── onedrive/        # OneDrive連携API
+│   │   ├── outlook/         # Outlook Calendar連携API
+│   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
+│   │   └── weather/         # 気象庁天気予報クライアント
+│   ├── features/            # ビジネス機能
+│   │   ├── greeting/        # 挨拶生成API（LLM + 天気 + 予定 + TTS統合）
+│   │   └── media/           # 画像処理API
+│   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py）
+│   ├── tests/               # テストディレクトリ（pytestベース）
+│   │   ├── integrations/    # 外部サービス連携テスト
+│   │   ├── features/        # ビジネス機能テスト
+│   │   ├── user/            # ユーザーテスト
+│   │   └── health/          # ヘルスチェックテスト
+│   ├── pyproject.toml       # Python依存関係・ツール設定
+│   └── Dockerfile           # Python 3.13-alpine ベース
+├── sbv2_api/                # Style-BERT-VITS2 音声合成サーバー（FastAPI）
+├── volumes/                 # 永続化データ（.gitkeepのみ管理）
 ├── docker-compose.yml       # 開発環境用
 └── .github/workflows/       # CI/CDワークフロー
 ```
@@ -104,20 +109,20 @@ cd django_api
 
 # 全テスト実行（e2eテストを除く、カバレッジ付き）
 uv run pytest tests/ -v --tb=short \
-  --cov=user --cov=onedrive --cov=outlook --cov=core \
+  --cov=user --cov=core --cov=integrations --cov=features \
   --cov-report=term-missing -m "not e2e"
 
 # 特定アプリのテストのみ実行
-uv run pytest tests/greeting/ -v
-uv run pytest tests/weather/ -v
+uv run pytest tests/features/greeting/ -v
+uv run pytest tests/integrations/weather/ -v
 uv run pytest tests/user/ -v
 
 # 特定テスト関数を実行
-uv run pytest tests/greeting/test_services.py::test_関数名 -v
+uv run pytest tests/features/greeting/test_services.py::test_関数名 -v
 
 # カバレッジレポート付き（CI相当）
 uv run pytest tests/ -v --tb=short \
-  --cov=user --cov=onedrive --cov=outlook --cov=core \
+  --cov=user --cov=core --cov=integrations --cov=features \
   --cov-report=term-missing --cov-report=html \
   --cov-fail-under=80 -m "not e2e"
 ```
@@ -166,22 +171,18 @@ django_api/tests/
 ├── conftest.py              # 共通フィクスチャ（APIClient, User, Token等）
 ├── fixtures/
 │   └── factories.py         # factory-boy ファクトリ（UserFactory等）
-├── greeting/                # 挨拶機能テスト
-│   ├── test_admin.py
-│   ├── test_holiday_client.py
-│   ├── test_models.py
-│   ├── test_serializers.py
-│   ├── test_services.py
-│   └── test_views.py
-├── llm_client/              # LLMクライアントテスト
-├── media/                   # メディア処理テスト
-├── msgraph_client/          # MS Graph クライアントテスト
-├── msgraph_config/          # MS Graph 設定テスト
-├── onedrive/                # OneDrive テスト
-├── outlook/                 # Outlook テスト
-├── tts/                     # TTS テスト
+├── integrations/            # 外部サービス連携テスト
+│   ├── llm/                 # LLM設定・クライアントテスト
+│   ├── msgraph/             # MS Graph設定・クライアントテスト
+│   ├── onedrive/            # OneDriveテスト
+│   ├── outlook/             # Outlookテスト
+│   ├── tts/                 # TTSテスト
+│   └── weather/             # 天気予報テスト
+├── features/                # ビジネス機能テスト
+│   ├── greeting/            # 挨拶機能テスト
+│   └── media/               # メディア処理テスト
 ├── user/                    # ユーザー管理テスト
-└── weather/                 # 天気予報テスト
+└── health/                  # ヘルスチェックテスト
 ```
 
 ### テストマーカー

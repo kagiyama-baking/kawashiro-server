@@ -36,7 +36,9 @@ class TestHealthCheckMiddleware:
         request = factory.get("/health/", HTTP_HOST="unknown-host.example.com")
 
         def dummy_get_response(req):
-            raise AssertionError("ヘルスチェックはミドルウェアチェーンを通過すべきでない")
+            raise AssertionError(
+                "ヘルスチェックはミドルウェアチェーンを通過すべきでない"
+            )
 
         middleware = HealthCheckMiddleware(dummy_get_response)
         response = middleware(request)

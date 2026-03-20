@@ -130,7 +130,8 @@ jobs:
               run: |
                   echo "🧪 テスト実行中..."
                   python -m pytest tests/ -v --tb=short \
-                    --cov=user --cov=onedrive --cov=outlook --cov=core \
+                    --cov=user --cov=core \
+                    --cov=integrations --cov=features \
                     --cov-report=term-missing \
                     --cov-report=html \
                     --cov-fail-under=80 \
@@ -202,7 +203,7 @@ jobs:
             - name: Start containers
               run: |
                   echo "🚀 コンテナ起動中..."
-                  docker compose up -d
+                  docker compose up -d django-api
 
                   echo "⏳ コンテナ準備完了待機中..."
                   sleep 10  # 初期化待ち

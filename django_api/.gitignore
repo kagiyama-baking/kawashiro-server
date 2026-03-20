@@ -17,6 +17,7 @@ __pycache__/
 htmlcov/
 .tox/
 .nox/
+.ruff_cache/
 
 # ビルド関連
 dist/
