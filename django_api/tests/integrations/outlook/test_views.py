@@ -10,7 +10,7 @@ from rest_framework import status
 class TestOutlookEventsView:
     """OutlookEventsViewのテストクラス"""
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_success_default_params(
         self, mock_client_class, authenticated_client
     ):
@@ -41,7 +41,7 @@ class TestOutlookEventsView:
         assert response.data["count"] == 1
         assert response.data["events"][0]["subject"] == "チーム定例"
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_days_parameter(
         self, mock_client_class, authenticated_client
     ):
@@ -58,7 +58,7 @@ class TestOutlookEventsView:
         # クライアントメソッドが呼ばれたことを確認
         mock_client.get_calendar_events.assert_called_once()
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_start_date_and_end_date(
         self, mock_client_class, authenticated_client
     ):
@@ -75,7 +75,7 @@ class TestOutlookEventsView:
         assert response.data["start_date"] == "2025-12-23"
         assert response.data["end_date"] == "2025-12-30"
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_start_date_and_days(
         self, mock_client_class, authenticated_client
     ):
@@ -119,12 +119,12 @@ class TestOutlookEventsView:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_configuration_error(
         self, mock_client_class, authenticated_client
     ):
         """設定エラー時に適切なエラーレスポンスを返すこと"""
-        from msgraph_config.exceptions import ConfigurationError
+        from integrations.msgraph.exceptions import ConfigurationError
 
         mock_client_class.side_effect = ConfigurationError("Missing configuration")
 
@@ -133,12 +133,12 @@ class TestOutlookEventsView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "サービスの設定に問題があります" in response.data["error"]
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_authentication_error(
         self, mock_client_class, authenticated_client
     ):
         """認証エラー時に適切なエラーレスポンスを返すこと"""
-        from msgraph_config.exceptions import AuthenticationError
+        from integrations.msgraph.exceptions import AuthenticationError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -151,12 +151,12 @@ class TestOutlookEventsView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Outlookへの認証に失敗しました" in response.data["error"]
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_calendar_error(
         self, mock_client_class, authenticated_client
     ):
         """カレンダー取得エラー時に適切なエラーレスポンスを返すこと"""
-        from outlook.exceptions import CalendarError
+        from integrations.outlook.exceptions import CalendarError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -169,12 +169,12 @@ class TestOutlookEventsView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"] == "Failed to fetch events"
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_network_error(
         self, mock_client_class, authenticated_client
     ):
         """ネットワークエラー時に適切なエラーレスポンスを返すこと"""
-        from msgraph_config.exceptions import NetworkError
+        from integrations.msgraph.exceptions import NetworkError
 
         mock_client = Mock()
         mock_client_class.return_value = mock_client
@@ -185,7 +185,7 @@ class TestOutlookEventsView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "Outlookへの接続に失敗しました" in response.data["error"]
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_with_unexpected_error(
         self, mock_client_class, authenticated_client
     ):
@@ -199,7 +199,7 @@ class TestOutlookEventsView:
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "予定の取得中に問題が発生しました" in response.data["error"]
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_response_format(self, mock_client_class, authenticated_client):
         """レスポンスが正しい形式であること"""
         mock_client = Mock()
@@ -234,7 +234,7 @@ class TestOutlookEventsView:
         assert "web_link" in event
         assert "body_preview" in event
 
-    @patch("outlook.views.OutlookMSGraphClient")
+    @patch("integrations.outlook.views.OutlookMSGraphClient")
     def test_get_events_all_day_event(self, mock_client_class, authenticated_client):
         """終日イベントが正しく処理されること"""
         mock_client = Mock()

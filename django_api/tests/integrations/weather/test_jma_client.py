@@ -6,13 +6,13 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from weather.exceptions import (
+from integrations.weather.exceptions import (
     JMAAreaNotFoundError,
     JMANetworkError,
     JMAParseError,
     JMATimeoutError,
 )
-from weather.jma_client import JMAWeatherClient
+from integrations.weather.jma_client import JMAWeatherClient
 
 
 class TestJMAWeatherClient:
@@ -131,7 +131,7 @@ class TestJMAWeatherClient:
         assert client.get_prefecture_code("270000") == "270000"
         assert client.get_prefecture_code("140010") == "140000"
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_success(self, mock_get, sample_jma_response):
         """正常にAPIからデータを取得できる"""
         mock_response = Mock()
@@ -148,7 +148,7 @@ class TestJMAWeatherClient:
             timeout=10,
         )
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_network_error(self, mock_get):
         """ネットワークエラー時にJMANetworkErrorを発生させる"""
         mock_get.side_effect = requests.ConnectionError("Connection failed")
@@ -158,7 +158,7 @@ class TestJMAWeatherClient:
         with pytest.raises(JMANetworkError):
             client.fetch_forecast("130000")
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_timeout_error(self, mock_get):
         """タイムアウト時にJMATimeoutErrorを発生させる"""
         mock_get.side_effect = requests.Timeout("Request timed out")
@@ -168,7 +168,7 @@ class TestJMAWeatherClient:
         with pytest.raises(JMATimeoutError):
             client.fetch_forecast("130000")
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_invalid_json(self, mock_get):
         """不正なJSONの場合にJMAParseErrorを発生させる"""
         mock_response = Mock()
@@ -181,7 +181,7 @@ class TestJMAWeatherClient:
         with pytest.raises(JMAParseError):
             client.fetch_forecast("130000")
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_http_404_error(self, mock_get):
         """存在しない都道府県コードの場合（HTTP 404）にJMAAreaNotFoundErrorを発生させる"""
         mock_response = Mock()
@@ -196,7 +196,7 @@ class TestJMAWeatherClient:
         with pytest.raises(JMAAreaNotFoundError):
             client.fetch_forecast("999900")
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_http_500_error(self, mock_get):
         """サーバーエラー（HTTP 500）の場合にJMANetworkErrorを発生させる"""
         mock_response = Mock()
@@ -211,7 +211,7 @@ class TestJMAWeatherClient:
         with pytest.raises(JMANetworkError):
             client.fetch_forecast("130000")
 
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_fetch_forecast_http_503_error(self, mock_get):
         """サービス利用不可（HTTP 503）の場合にJMANetworkErrorを発生させる"""
         mock_response = Mock()
@@ -226,8 +226,8 @@ class TestJMAWeatherClient:
         with pytest.raises(JMANetworkError):
             client.fetch_forecast("130000")
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_today_tokyo(
         self, mock_get, mock_datetime, sample_jma_response
     ):
@@ -256,8 +256,8 @@ class TestJMAWeatherClient:
             timeout=10,
         )
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_today_izu(self, mock_get, mock_datetime, sample_jma_response):
         """伊豆諸島北部（130020）の今日の天気を取得できる"""
         # 通常時間帯（10時）を模擬
@@ -279,8 +279,8 @@ class TestJMAWeatherClient:
         assert result["weather"] == "晴れ　夜　くもり"
         assert result["weather_code"] == "111"
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_tomorrow(self, mock_get, mock_datetime, sample_jma_response):
         """明日の天気を取得できる"""
         # 通常時間帯（10時）を模擬
@@ -304,8 +304,8 @@ class TestJMAWeatherClient:
         assert result["temp_min"] == 4
         assert result["temp_max"] == 7
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_day_after_tomorrow(
         self, mock_get, mock_datetime, sample_jma_response
     ):
@@ -337,8 +337,8 @@ class TestJMAWeatherClient:
         assert result["pop_12_18"] == 60
         assert result["pop_18_24"] == 60
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_with_pop_today(
         self, mock_get, mock_datetime, sample_jma_response
     ):
@@ -359,8 +359,8 @@ class TestJMAWeatherClient:
         # 今日の場合、18時以降のみ取得可能
         assert result["pop_18_24"] == 10
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_with_pop_tomorrow(
         self, mock_get, mock_datetime, sample_jma_response
     ):
@@ -384,8 +384,8 @@ class TestJMAWeatherClient:
         assert result["pop_12_18"] == 80
         assert result["pop_18_24"] == 70
 
-    @patch("weather.jma_client.datetime")
-    @patch("weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
     def test_get_weather_area_not_found(
         self, mock_get, mock_datetime, sample_jma_response
     ):
@@ -419,8 +419,8 @@ class TestJMAWeatherClient:
         assert client._is_late_night(time(12, 0)) is False
         assert client._is_late_night(time(23, 59)) is False
 
-    @patch("weather.jma_client.requests.get")
-    @patch("weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
     def test_get_weather_today_during_late_night_uses_tomorrow_data(
         self, mock_datetime, mock_get, sample_jma_response
     ):
@@ -443,8 +443,8 @@ class TestJMAWeatherClient:
         assert result["weather"] == "雨　朝晩　くもり"  # 元の明日の天気
         assert result["weather_code"] == "302"
 
-    @patch("weather.jma_client.requests.get")
-    @patch("weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
     def test_get_weather_today_during_late_night_gets_pop_from_tomorrow(
         self, mock_datetime, mock_get, sample_jma_response
     ):
@@ -467,8 +467,8 @@ class TestJMAWeatherClient:
         assert result["pop_12_18"] == 80
         assert result["pop_18_24"] == 70
 
-    @patch("weather.jma_client.requests.get")
-    @patch("weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
     def test_get_weather_today_during_late_night_gets_temp_from_weekly(
         self, mock_datetime, mock_get, sample_jma_response
     ):
@@ -491,8 +491,8 @@ class TestJMAWeatherClient:
         assert result["temp_min"] == 4
         assert result["temp_max"] == 7
 
-    @patch("weather.jma_client.requests.get")
-    @patch("weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
     def test_get_weather_tomorrow_during_late_night(
         self, mock_datetime, mock_get, sample_jma_response
     ):
@@ -522,8 +522,8 @@ class TestJMAWeatherClient:
         assert result["pop_12_18"] == 60
         assert result["pop_18_24"] == 60
 
-    @patch("weather.jma_client.requests.get")
-    @patch("weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
     def test_get_weather_normal_hours_uses_original_data(
         self, mock_datetime, mock_get, sample_jma_response
     ):
@@ -545,8 +545,8 @@ class TestJMAWeatherClient:
         assert result["weather"] == "晴れ　夜　くもり"
         assert result["weather_code"] == "111"
 
-    @patch("weather.jma_client.requests.get")
-    @patch("weather.jma_client.datetime")
+    @patch("integrations.weather.jma_client.requests.get")
+    @patch("integrations.weather.jma_client.datetime")
     def test_get_weather_day_after_tomorrow_during_late_night(
         self, mock_datetime, mock_get, sample_jma_response
     ):

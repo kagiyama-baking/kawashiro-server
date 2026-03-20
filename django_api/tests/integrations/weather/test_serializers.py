@@ -1,6 +1,9 @@
 """Tests for weather serializers."""
 
-from weather.serializers import WeatherRequestSerializer, WeatherResponseSerializer
+from integrations.weather.serializers import (
+    WeatherRequestSerializer,
+    WeatherResponseSerializer,
+)
 
 
 class TestWeatherRequestSerializer:

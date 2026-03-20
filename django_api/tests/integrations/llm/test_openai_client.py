@@ -5,13 +5,13 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from openai import APIConnectionError, APITimeoutError
 
-from llm_client.exceptions import (
+from integrations.llm.config import OpenAISettings
+from integrations.llm.exceptions import (
     OpenAIAPIError,
+    OpenAIConfigurationError,
     OpenAITimeoutError,
 )
-from llm_client.openai_client import OpenAIClient
-from llm_config.config import OpenAISettings
-from llm_config.exceptions import OpenAIConfigurationError
+from integrations.llm.openai_client import OpenAIClient
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def mock_openai_settings():
 class TestOpenAIClientInitialization:
     """OpenAIClientの初期化テスト."""
 
-    @patch("llm_client.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.get_openai_settings")
     def test_init_uses_db_settings(self, mock_get_settings, mock_openai_settings):
         """DB設定を使用して初期化できる."""
         mock_get_settings.return_value = mock_openai_settings
@@ -38,7 +38,7 @@ class TestOpenAIClientInitialization:
         assert client.model == "gpt-4o-mini"
         assert client.timeout == 60
 
-    @patch("llm_client.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.get_openai_settings")
     def test_init_with_explicit_api_key(self, mock_get_settings, mock_openai_settings):
         """明示的なAPIキーがDB設定より優先される."""
         mock_get_settings.return_value = mock_openai_settings
@@ -48,7 +48,7 @@ class TestOpenAIClientInitialization:
         assert client.api_key == "explicit-api-key"
         assert client.model == "gpt-4o-mini"  # DB設定を使用
 
-    @patch("llm_client.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.get_openai_settings")
     def test_init_with_custom_model(self, mock_get_settings, mock_openai_settings):
         """カスタムモデルを指定して初期化できる."""
         mock_get_settings.return_value = mock_openai_settings
@@ -57,7 +57,7 @@ class TestOpenAIClientInitialization:
 
         assert client.model == "gpt-4o"
 
-    @patch("llm_client.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.get_openai_settings")
     def test_init_without_db_settings_raises_error(self, mock_get_settings):
         """DB設定がない場合はエラー."""
         mock_get_settings.side_effect = OpenAIConfigurationError(
@@ -85,8 +85,8 @@ class TestOpenAIClientGenerateText:
         mock_response.choices = [mock_choice]
         return mock_response
 
-    @patch("llm_client.openai_client.get_openai_settings")
-    @patch("llm_client.openai_client.OpenAI")
+    @patch("integrations.llm.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.OpenAI")
     def test_generate_text_success(
         self,
         mock_openai_class,
@@ -106,8 +106,8 @@ class TestOpenAIClientGenerateText:
         assert result == "こんにちは！今日も良い一日を！"
         mock_client.chat.completions.create.assert_called_once()
 
-    @patch("llm_client.openai_client.get_openai_settings")
-    @patch("llm_client.openai_client.OpenAI")
+    @patch("integrations.llm.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.OpenAI")
     def test_generate_text_with_system_prompt(
         self,
         mock_openai_class,
@@ -132,8 +132,8 @@ class TestOpenAIClientGenerateText:
         assert messages[1]["role"] == "user"
         assert messages[1]["content"] == "挨拶して"
 
-    @patch("llm_client.openai_client.get_openai_settings")
-    @patch("llm_client.openai_client.OpenAI")
+    @patch("integrations.llm.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.OpenAI")
     def test_generate_text_timeout_error(
         self, mock_openai_class, mock_get_settings, mock_openai_settings
     ):
@@ -150,8 +150,8 @@ class TestOpenAIClientGenerateText:
         with pytest.raises(OpenAITimeoutError):
             client.generate_text("挨拶して")
 
-    @patch("llm_client.openai_client.get_openai_settings")
-    @patch("llm_client.openai_client.OpenAI")
+    @patch("integrations.llm.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.OpenAI")
     def test_generate_text_connection_error(
         self, mock_openai_class, mock_get_settings, mock_openai_settings
     ):
@@ -213,8 +213,8 @@ class TestOpenAIClientChatCompletion:
             }
         ]
 
-    @patch("llm_client.openai_client.get_openai_settings")
-    @patch("llm_client.openai_client.OpenAI")
+    @patch("integrations.llm.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.OpenAI")
     def test_chat_completion_with_tools(
         self,
         mock_openai_class,
@@ -237,8 +237,8 @@ class TestOpenAIClientChatCompletion:
         assert len(result.tool_calls) == 1
         assert result.tool_calls[0].function.name == "get_weather_forecast"
 
-    @patch("llm_client.openai_client.get_openai_settings")
-    @patch("llm_client.openai_client.OpenAI")
+    @patch("integrations.llm.openai_client.get_openai_settings")
+    @patch("integrations.llm.openai_client.OpenAI")
     def test_chat_completion_without_tools(
         self, mock_openai_class, mock_get_settings, mock_openai_settings
     ):

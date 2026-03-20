@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from tts.client import TTSClient, TTSResult
-from tts.exceptions import TTSNetworkError, TTSTimeoutError
+from integrations.tts.client import TTSClient, TTSResult
+from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
 
 
 class TestTTSResult:
@@ -49,7 +49,7 @@ class TestTTSClient:
         mock_response.content = b"fake_wav_data"
         mock_response.headers = {"Content-Type": "audio/wav"}
 
-        with patch("tts.client.requests.post", return_value=mock_response):
+        with patch("integrations.tts.client.requests.post", return_value=mock_response):
             result = tts_client.synthesize(
                 text="こんにちは",
                 style="Neutral",
@@ -68,7 +68,9 @@ class TestTTSClient:
         mock_response.content = b"wav_data"
         mock_response.headers = {"Content-Type": "audio/wav"}
 
-        with patch("tts.client.requests.post", return_value=mock_response) as mock_post:
+        with patch(
+            "integrations.tts.client.requests.post", return_value=mock_response
+        ) as mock_post:
             tts_client.synthesize(text="テスト")
 
             call_args = mock_post.call_args
@@ -81,7 +83,9 @@ class TestTTSClient:
         mock_response.content = b"wav_data"
         mock_response.headers = {"Content-Type": "audio/wav"}
 
-        with patch("tts.client.requests.post", return_value=mock_response) as mock_post:
+        with patch(
+            "integrations.tts.client.requests.post", return_value=mock_response
+        ) as mock_post:
             tts_client.synthesize(text="テスト", format="wav")
 
             call_args = mock_post.call_args
@@ -94,7 +98,7 @@ class TestTTSClient:
         mock_response.content = b"RIFF....WAVEfmt "
         mock_response.headers = {"Content-Type": "audio/wav"}
 
-        with patch("tts.client.requests.post", return_value=mock_response):
+        with patch("integrations.tts.client.requests.post", return_value=mock_response):
             result = tts_client.synthesize(text="テスト", format="wav")
 
             assert result.format == "wav"
@@ -107,7 +111,9 @@ class TestTTSClient:
         mock_response.content = b"MP3_DATA"
         mock_response.headers = {"Content-Type": "audio/mpeg"}
 
-        with patch("tts.client.requests.post", return_value=mock_response) as mock_post:
+        with patch(
+            "integrations.tts.client.requests.post", return_value=mock_response
+        ) as mock_post:
             tts_client.synthesize(
                 text="テスト",
                 model="custom_model",
@@ -119,7 +125,7 @@ class TestTTSClient:
     def test_synthesize_timeout(self, tts_client):
         """タイムアウト時にTTSTimeoutErrorを発生させる."""
         with patch(
-            "tts.client.requests.post",
+            "integrations.tts.client.requests.post",
             side_effect=requests.exceptions.Timeout("Timeout"),
         ):
             with pytest.raises(TTSTimeoutError) as exc_info:
@@ -130,7 +136,7 @@ class TestTTSClient:
     def test_synthesize_connection_error(self, tts_client):
         """接続エラー時にTTSNetworkErrorを発生させる."""
         with patch(
-            "tts.client.requests.post",
+            "integrations.tts.client.requests.post",
             side_effect=requests.exceptions.ConnectionError("Connection refused"),
         ):
             with pytest.raises(TTSNetworkError) as exc_info:
@@ -144,7 +150,7 @@ class TestTTSClient:
         mock_response.status_code = 500
         mock_response.json.return_value = {"error": "Internal server error"}
 
-        with patch("tts.client.requests.post", return_value=mock_response):
+        with patch("integrations.tts.client.requests.post", return_value=mock_response):
             with pytest.raises(TTSNetworkError) as exc_info:
                 tts_client.synthesize(text="テスト")
 
@@ -157,7 +163,9 @@ class TestTTSClient:
         mock_response.content = b"WAV_DATA"
         mock_response.headers = {"Content-Type": "audio/wav"}
 
-        with patch("tts.client.requests.post", return_value=mock_response) as mock_post:
+        with patch(
+            "integrations.tts.client.requests.post", return_value=mock_response
+        ) as mock_post:
             tts_client.synthesize(text="テスト")
 
             call_args = mock_post.call_args
@@ -177,7 +185,7 @@ class TestTTSClient:
         mock_response.content = b"ogg_data"
         mock_response.headers = {"Content-Type": "audio/ogg"}
 
-        with patch("tts.client.requests.post", return_value=mock_response):
+        with patch("integrations.tts.client.requests.post", return_value=mock_response):
             result = tts_client.synthesize(text="テスト", format="ogg")
 
             assert result.content_type == "audio/ogg"
@@ -188,7 +196,7 @@ class TestTTSClient:
         mock_response.status_code = 502
         mock_response.json.side_effect = ValueError("No JSON")
 
-        with patch("tts.client.requests.post", return_value=mock_response):
+        with patch("integrations.tts.client.requests.post", return_value=mock_response):
             with pytest.raises(TTSNetworkError) as exc_info:
                 tts_client.synthesize(text="テスト")
 

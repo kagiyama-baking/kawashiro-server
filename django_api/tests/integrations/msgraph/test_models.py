@@ -12,7 +12,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_create_config(self):
         """設定を作成できること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -33,7 +33,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_create_multiple_configs(self):
         """複数の設定を作成できること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config1 = MSGraphConfig.objects.create(
             name="設定1",
@@ -56,7 +56,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_unique_name_constraint(self):
         """設定名が一意であること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
             name="同じ名前",
@@ -78,7 +78,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_only_one_active_config(self):
         """有効な設定は1つだけであること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config1 = MSGraphConfig.objects.create(
             name="設定1",
@@ -105,7 +105,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_activate_config(self):
         """設定を有効化できること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config1 = MSGraphConfig.objects.create(
             name="設定1",
@@ -136,7 +136,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_get_active_config(self):
         """有効な設定を取得できること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
             name="無効な設定",
@@ -162,7 +162,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_get_active_config_raises_when_none_active(self):
         """有効な設定がない場合にDoesNotExistが発生すること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         MSGraphConfig.objects.create(
             name="無効な設定",
@@ -179,7 +179,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_private_key_encryption(self):
         """秘密鍵が暗号化されて保存されること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -208,7 +208,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_private_key_empty_by_default(self):
         """秘密鍵がデフォルトで空であること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",
@@ -224,7 +224,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_str_representation(self):
         """__str__が設定名を返すこと"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="本番環境設定",
@@ -239,7 +239,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_str_representation_with_active_status(self):
         """__str__が有効状態を含むこと"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="本番環境設定",
@@ -256,7 +256,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_verbose_name(self):
         """verbose_nameが正しいこと"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         assert MSGraphConfig._meta.verbose_name == "Microsoft Graph API設定"
         assert MSGraphConfig._meta.verbose_name_plural == "Microsoft Graph API設定"
@@ -264,7 +264,7 @@ class TestMSGraphConfigModel:
     @override_settings(ENCRYPTION_KEY="test-encryption-key-for-model-tests")
     def test_timestamps_auto_set(self):
         """タイムスタンプが自動設定されること"""
-        from msgraph_config.models import MSGraphConfig
+        from integrations.msgraph.models import MSGraphConfig
 
         config = MSGraphConfig.objects.create(
             name="テスト設定",

@@ -7,7 +7,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from greeting.models import GreetingConfig
+from features.greeting.models import GreetingConfig
 
 
 @pytest.mark.django_db
@@ -24,8 +24,8 @@ class TestTodayInfoView:
         response = api_client.get(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @patch("greeting.views.HolidayClient")
-    @patch("greeting.views.datetime")
+    @patch("features.greeting.views.HolidayClient")
+    @patch("features.greeting.views.datetime")
     def test_today_info_success_weekday(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -47,8 +47,8 @@ class TestTodayInfoView:
         assert response.data["day_of_week_ja"] == "火曜日"
         assert response.data["holiday_name"] is None
 
-    @patch("greeting.views.HolidayClient")
-    @patch("greeting.views.datetime")
+    @patch("features.greeting.views.HolidayClient")
+    @patch("features.greeting.views.datetime")
     def test_today_info_success_holiday(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -70,13 +70,13 @@ class TestTodayInfoView:
         assert response.data["day_of_week_ja"] == "水曜日"
         assert response.data["holiday_name"] == "元日"
 
-    @patch("greeting.views.HolidayClient")
-    @patch("greeting.views.datetime")
+    @patch("features.greeting.views.HolidayClient")
+    @patch("features.greeting.views.datetime")
     def test_today_info_holiday_api_network_error(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
         """祝日APIネットワークエラー時は502エラー"""
-        from greeting.exceptions import HolidayNetworkError
+        from features.greeting.exceptions import HolidayNetworkError
 
         mock_now = datetime(2025, 1, 14, 9, 30, 0)
         mock_datetime.now.return_value = mock_now
@@ -90,13 +90,13 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("greeting.views.HolidayClient")
-    @patch("greeting.views.datetime")
+    @patch("features.greeting.views.HolidayClient")
+    @patch("features.greeting.views.datetime")
     def test_today_info_holiday_api_timeout(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
         """祝日APIタイムアウト時は504エラー"""
-        from greeting.exceptions import HolidayTimeoutError
+        from features.greeting.exceptions import HolidayTimeoutError
 
         mock_now = datetime(2025, 1, 14, 9, 30, 0)
         mock_datetime.now.return_value = mock_now
@@ -110,8 +110,8 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
         assert "error" in response.data
 
-    @patch("greeting.views.HolidayClient")
-    @patch("greeting.views.datetime")
+    @patch("features.greeting.views.HolidayClient")
+    @patch("features.greeting.views.datetime")
     def test_today_info_unexpected_error(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -247,7 +247,7 @@ class TestGreetingView:
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_success(
         self,
         mock_service_class,
@@ -274,7 +274,7 @@ class TestGreetingView:
         assert call_kwargs["config"].name == greeting_config.name
         assert call_kwargs["user_prompt"] == request_data["user_prompt"]
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_with_tts_enabled(
         self,
         mock_service_class,
@@ -300,7 +300,7 @@ class TestGreetingView:
         assert "X-Greeting-Text" in response
         assert "greeting.wav" in response["Content-Disposition"]
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_weather_api_error(
         self,
         mock_service_class,
@@ -309,7 +309,7 @@ class TestGreetingView:
         greeting_config_with_weather,
     ):
         """天気予報API失敗時に502エラー"""
-        from weather.exceptions import JMANetworkError
+        from integrations.weather.exceptions import JMANetworkError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = JMANetworkError("Network error")
@@ -325,7 +325,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_openai_timeout(
         self,
         mock_service_class,
@@ -335,7 +335,7 @@ class TestGreetingView:
         request_data,
     ):
         """OpenAI APIタイムアウト時に504エラー"""
-        from llm_client.exceptions import OpenAITimeoutError
+        from integrations.llm.exceptions import OpenAITimeoutError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = OpenAITimeoutError("Timeout")
@@ -346,7 +346,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_area_not_found(
         self,
         mock_service_class,
@@ -355,7 +355,7 @@ class TestGreetingView:
         greeting_config_with_weather,
     ):
         """予報区コードが見つからない場合は404エラー"""
-        from weather.exceptions import JMAAreaNotFoundError
+        from integrations.weather.exceptions import JMAAreaNotFoundError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = JMAAreaNotFoundError(
@@ -372,7 +372,7 @@ class TestGreetingView:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_header_sanitizes_control_chars(
         self,
         mock_service_class,
@@ -418,7 +418,7 @@ class TestGreetingView:
         assert "おはよう" in header_text
         assert "先輩" in header_text
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_jma_timeout(
         self,
         mock_service_class,
@@ -427,7 +427,7 @@ class TestGreetingView:
         greeting_config_with_weather,
     ):
         """天気APIタイムアウト時に504エラー"""
-        from weather.exceptions import JMATimeoutError
+        from integrations.weather.exceptions import JMATimeoutError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = JMATimeoutError("Timeout")
@@ -443,7 +443,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_openai_api_error(
         self,
         mock_service_class,
@@ -453,7 +453,7 @@ class TestGreetingView:
         request_data,
     ):
         """OpenAI APIエラー時に502エラー"""
-        from llm_client.exceptions import OpenAIAPIError
+        from integrations.llm.exceptions import OpenAIAPIError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = OpenAIAPIError("API error")
@@ -464,7 +464,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_tts_network_error(
         self,
         mock_service_class,
@@ -474,7 +474,7 @@ class TestGreetingView:
         request_data,
     ):
         """TTSネットワークエラー時に502エラー"""
-        from tts.exceptions import TTSNetworkError
+        from integrations.tts.exceptions import TTSNetworkError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = TTSNetworkError(
@@ -487,7 +487,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_configuration_error(
         self,
         mock_service_class,
@@ -497,7 +497,7 @@ class TestGreetingView:
         request_data,
     ):
         """サービス設定エラー時に503エラー"""
-        from msgraph_config.exceptions import ConfigurationError
+        from integrations.msgraph.exceptions import ConfigurationError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = ConfigurationError(
@@ -510,7 +510,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_authentication_error(
         self,
         mock_service_class,
@@ -520,7 +520,7 @@ class TestGreetingView:
         request_data,
     ):
         """外部サービス認証エラー時に502エラー"""
-        from msgraph_config.exceptions import AuthenticationError
+        from integrations.msgraph.exceptions import AuthenticationError
 
         mock_service = MagicMock()
         mock_service.generate_greeting.side_effect = AuthenticationError("Auth failed")
@@ -531,7 +531,7 @@ class TestGreetingView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("greeting.views.GreetingService")
+    @patch("features.greeting.views.GreetingService")
     def test_greeting_unexpected_error(
         self,
         mock_service_class,

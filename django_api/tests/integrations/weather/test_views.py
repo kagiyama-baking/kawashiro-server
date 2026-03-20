@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from rest_framework import status
 
-from weather.exceptions import (
+from integrations.weather.exceptions import (
     JMAAreaNotFoundError,
     JMANetworkError,
     JMAParseError,
@@ -32,7 +32,7 @@ class TestWeatherForecastView:
             "pop_18_24": 40,
         }
 
-    @patch("weather.views.JMAWeatherClient")
+    @patch("integrations.weather.views.JMAWeatherClient")
     def test_get_weather_success(self, mock_client_class, authenticated_client):
         """正常に天気情報を取得できる"""
         mock_client = Mock()
@@ -48,7 +48,7 @@ class TestWeatherForecastView:
         assert response.data["weather"] == "晴れ　夜　くもり"
         mock_client.get_weather.assert_called_once_with("130010", 1)
 
-    @patch("weather.views.JMAWeatherClient")
+    @patch("integrations.weather.views.JMAWeatherClient")
     def test_get_weather_default_day(self, mock_client_class, authenticated_client):
         """dayが指定されない場合、デフォルトで0（今日）が使用される"""
         mock_client = Mock()
@@ -78,7 +78,7 @@ class TestWeatherForecastView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "day" in response.data
 
-    @patch("weather.views.JMAWeatherClient")
+    @patch("integrations.weather.views.JMAWeatherClient")
     def test_get_weather_network_error(self, mock_client_class, authenticated_client):
         """ネットワークエラー時は502を返す"""
         mock_client = Mock()
@@ -92,7 +92,7 @@ class TestWeatherForecastView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("weather.views.JMAWeatherClient")
+    @patch("integrations.weather.views.JMAWeatherClient")
     def test_get_weather_timeout_error(self, mock_client_class, authenticated_client):
         """タイムアウト時は504を返す"""
         mock_client = Mock()
@@ -106,7 +106,7 @@ class TestWeatherForecastView:
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
         assert "error" in response.data
 
-    @patch("weather.views.JMAWeatherClient")
+    @patch("integrations.weather.views.JMAWeatherClient")
     def test_get_weather_parse_error(self, mock_client_class, authenticated_client):
         """パースエラー時は502を返す"""
         mock_client = Mock()
@@ -120,7 +120,7 @@ class TestWeatherForecastView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
         assert "error" in response.data
 
-    @patch("weather.views.JMAWeatherClient")
+    @patch("integrations.weather.views.JMAWeatherClient")
     def test_get_weather_area_not_found(self, mock_client_class, authenticated_client):
         """予報区コードが見つからない場合は404を返す"""
         mock_client = Mock()

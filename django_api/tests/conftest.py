@@ -97,7 +97,7 @@ def mock_ms_graph_settings():
     """MSGraphSettings用のモックフィクスチャ"""
     from unittest.mock import patch
 
-    from msgraph_config.config import MSGraphSettings
+    from integrations.msgraph.config import MSGraphSettings
 
     settings = MSGraphSettings(
         tenant_id="test-tenant",
@@ -107,14 +107,16 @@ def mock_ms_graph_settings():
         target_user="test@example.com",
     )
 
-    with patch("msgraph_client.base.get_ms_graph_settings", return_value=settings):
+    with patch(
+        "integrations.msgraph.base.get_ms_graph_settings", return_value=settings
+    ):
         yield settings
 
 
 @pytest.fixture
 def ms_graph_client(mock_ms_graph_settings):
     """モック設定を使用したOneDriveMSGraphClientのフィクスチャ"""
-    from msgraph_client import OneDriveMSGraphClient
+    from integrations.msgraph import OneDriveMSGraphClient
 
     client = OneDriveMSGraphClient()
     client._access_token = "test-token"

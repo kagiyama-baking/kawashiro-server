@@ -9,8 +9,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import User
-from tts.client import TTSResult
-from tts.exceptions import TTSNetworkError, TTSTimeoutError
+from integrations.tts.client import TTSResult
+from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def authenticated_client(api_client):
 class TestTTSHealthView:
     """TTSヘルスチェックのテスト"""
 
-    @patch("tts.views.requests.get")
+    @patch("integrations.tts.views.requests.get")
     def test_health_check_with_healthy_service_returns_status(
         self, mock_get, authenticated_client
     ):
@@ -48,7 +48,7 @@ class TestTTSHealthView:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["status"] == "healthy"
 
-    @patch("tts.views.requests.get")
+    @patch("integrations.tts.views.requests.get")
     def test_health_check_with_unavailable_service_returns_503(
         self, mock_get, authenticated_client
     ):
@@ -72,7 +72,7 @@ class TestTTSHealthView:
 class TestTTSModelsView:
     """TTSモデル一覧のテスト"""
 
-    @patch("tts.views.requests.get")
+    @patch("integrations.tts.views.requests.get")
     def test_models_list_returns_available_models(self, mock_get, authenticated_client):
         """利用可能なモデル一覧を返す"""
         mock_get.return_value = Mock(
@@ -85,7 +85,7 @@ class TestTTSModelsView:
         assert response.status_code == status.HTTP_200_OK
         assert "models" in response.data
 
-    @patch("tts.views.requests.get")
+    @patch("integrations.tts.views.requests.get")
     def test_models_list_with_unavailable_service_returns_503(
         self, mock_get, authenticated_client
     ):
@@ -109,7 +109,7 @@ class TestTTSModelsView:
 class TestTTSModelStylesView:
     """TTSモデルスタイル一覧のテスト"""
 
-    @patch("tts.views.requests.get")
+    @patch("integrations.tts.views.requests.get")
     def test_model_styles_returns_available_styles(
         self, mock_get, authenticated_client
     ):
@@ -126,7 +126,7 @@ class TestTTSModelStylesView:
         assert response.status_code == status.HTTP_200_OK
         assert "styles" in response.data
 
-    @patch("tts.views.requests.get")
+    @patch("integrations.tts.views.requests.get")
     def test_model_styles_with_unavailable_service_returns_503(
         self, mock_get, authenticated_client
     ):
@@ -187,7 +187,7 @@ class TestTTSSynthesizeView:
             format="wav",
         )
 
-    @patch("tts.views.TTSClient")
+    @patch("integrations.tts.views.TTSClient")
     def test_synthesize_get_default_returns_wav(
         self, mock_client_class, authenticated_client, mock_tts_result_wav
     ):
@@ -205,7 +205,7 @@ class TestTTSSynthesizeView:
         assert "inline" in response["Content-Disposition"]
         assert ".wav" in response["Content-Disposition"]
 
-    @patch("tts.views.TTSClient")
+    @patch("integrations.tts.views.TTSClient")
     def test_synthesize_post_returns_wav_attachment(
         self, mock_client_class, authenticated_client, mock_tts_result_wav
     ):
@@ -224,7 +224,7 @@ class TestTTSSynthesizeView:
         assert response["Content-Type"] == "audio/wav"
         assert "attachment" in response["Content-Disposition"]
 
-    @patch("tts.views.TTSClient")
+    @patch("integrations.tts.views.TTSClient")
     def test_synthesize_with_wav_format_returns_audio_wav(
         self, mock_client_class, authenticated_client, mock_tts_result_wav
     ):
@@ -279,7 +279,7 @@ class TestTTSSynthesizeView:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("tts.views.TTSClient")
+    @patch("integrations.tts.views.TTSClient")
     def test_synthesize_with_timeout_returns_504(
         self, mock_client_class, authenticated_client
     ):
@@ -294,7 +294,7 @@ class TestTTSSynthesizeView:
 
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
-    @patch("tts.views.TTSClient")
+    @patch("integrations.tts.views.TTSClient")
     def test_synthesize_with_connection_error_returns_503(
         self, mock_client_class, authenticated_client
     ):
@@ -309,7 +309,7 @@ class TestTTSSynthesizeView:
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
-    @patch("tts.views.TTSClient")
+    @patch("integrations.tts.views.TTSClient")
     def test_synthesize_get_with_all_parameters(
         self, mock_client_class, authenticated_client, mock_tts_result_mp3
     ):

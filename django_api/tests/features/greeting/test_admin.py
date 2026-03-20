@@ -3,8 +3,8 @@
 import pytest
 from django.contrib.admin.sites import AdminSite
 
-from greeting.admin import GreetingConfigAdmin
-from greeting.models import GreetingConfig
+from features.greeting.admin import GreetingConfigAdmin
+from features.greeting.models import GreetingConfig
 
 
 @pytest.mark.django_db

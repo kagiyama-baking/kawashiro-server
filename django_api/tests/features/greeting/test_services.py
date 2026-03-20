@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from greeting.models import GreetingConfig
-from greeting.services import GreetingService
-from tts.client import TTSResult
+from features.greeting.models import GreetingConfig
+from features.greeting.services import GreetingService
+from integrations.tts.client import TTSResult
 
 
 @pytest.mark.django_db
@@ -124,8 +124,8 @@ class TestGreetingService:
 
     # 正常系テスト
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_datetime_only(
         self,
         mock_openai_class,
@@ -155,9 +155,9 @@ class TestGreetingService:
 
         mock_openai.generate_text.assert_called_once()
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.JMAWeatherClient")
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.JMAWeatherClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_with_weather(
         self,
         mock_openai_class,
@@ -190,10 +190,10 @@ class TestGreetingService:
         assert "greeting_text" in result
         mock_jma.get_weather.assert_called_once_with("130010", 0)
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.JMAWeatherClient")
-    @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.JMAWeatherClient")
+    @patch("features.greeting.services.OutlookMSGraphClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_all_placeholders(
         self,
         mock_openai_class,
@@ -233,7 +233,7 @@ class TestGreetingService:
         mock_jma.get_weather.assert_called_once()
         mock_outlook.get_calendar_events.assert_called_once()
 
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_no_placeholders(
         self,
         mock_openai_class,
@@ -256,9 +256,9 @@ class TestGreetingService:
 
     # TTS関連テスト
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.OpenAIClient")
-    @patch("greeting.services.TTSClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.OpenAIClient")
+    @patch("features.greeting.services.TTSClient")
     def test_generate_greeting_with_tts(
         self,
         mock_tts_class,
@@ -305,8 +305,8 @@ class TestGreetingService:
         assert call_kwargs["speed"] == 1.2
         assert call_kwargs["format"] == "wav"
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_without_tts(
         self,
         mock_openai_class,
@@ -335,14 +335,14 @@ class TestGreetingService:
 
     # エラーハンドリングテスト
 
-    @patch("greeting.services.JMAWeatherClient")
+    @patch("features.greeting.services.JMAWeatherClient")
     def test_generate_greeting_weather_error(
         self,
         mock_jma_class,
         config_with_weather,
     ):
         """天気API失敗時にエラーが発生する"""
-        from weather.exceptions import JMANetworkError
+        from integrations.weather.exceptions import JMANetworkError
 
         mock_jma = MagicMock()
         mock_jma.get_weather.side_effect = JMANetworkError("Network error")
@@ -401,10 +401,10 @@ class TestGreetingService:
 
     # 並列実行テスト
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.JMAWeatherClient")
-    @patch("greeting.services.OutlookMSGraphClient")
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.JMAWeatherClient")
+    @patch("features.greeting.services.OutlookMSGraphClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_parallel_execution(
         self,
         mock_openai_class,
@@ -461,8 +461,8 @@ class TestGreetingService:
 
     # 祝日テスト
 
-    @patch("greeting.services.HolidayClient")
-    @patch("greeting.services.OpenAIClient")
+    @patch("features.greeting.services.HolidayClient")
+    @patch("features.greeting.services.OpenAIClient")
     def test_generate_greeting_with_holiday(
         self,
         mock_openai_class,

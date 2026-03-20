@@ -1,6 +1,6 @@
 """Tests for greeting serializers."""
 
-from greeting.serializers import (
+from features.greeting.serializers import (
     GreetingRequestSerializer,
     GreetingResponseSerializer,
     TodayInfoResponseSerializer,

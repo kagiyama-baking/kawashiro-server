@@ -4,7 +4,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
-from greeting.models import GreetingConfig
+from features.greeting.models import GreetingConfig
 
 
 @pytest.mark.django_db

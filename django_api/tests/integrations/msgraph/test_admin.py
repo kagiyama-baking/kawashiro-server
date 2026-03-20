@@ -4,8 +4,8 @@ import pytest
 from django import forms
 from django.test import override_settings
 
-from msgraph_config.admin import MSGraphConfigForm
-from msgraph_config.models import MSGraphConfig
+from integrations.msgraph.admin import MSGraphConfigForm
+from integrations.msgraph.models import MSGraphConfig
 
 
 @pytest.mark.django_db
@@ -166,7 +166,7 @@ class TestMSGraphConfigAdmin:
         from django.contrib.messages.storage.fallback import FallbackStorage
         from django.test import RequestFactory
 
-        from msgraph_config.admin import MSGraphConfigAdmin
+        from integrations.msgraph.admin import MSGraphConfigAdmin
 
         config1 = MSGraphConfig.objects.create(
             name="設定1",
@@ -208,7 +208,7 @@ class TestMSGraphConfigAdmin:
         from django.contrib.messages.storage.fallback import FallbackStorage
         from django.test import RequestFactory
 
-        from msgraph_config.admin import MSGraphConfigAdmin
+        from integrations.msgraph.admin import MSGraphConfigAdmin
 
         MSGraphConfig.objects.create(
             name="設定1",
