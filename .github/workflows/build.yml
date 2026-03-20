@@ -43,8 +43,6 @@ jobs:
                   filters: |
                       django-api:
                         - 'django_api/**'
-                      backup:
-                        - 'backup/**'
 
             - name: Build service matrix
               id: build-matrix
@@ -52,9 +50,6 @@ jobs:
                   services='[]'
                   if [ "${{ steps.filter.outputs.django-api }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
                     services=$(echo "$services" | jq -c '. + [{"name": "django-api", "context": "django_api", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/django-api"}]')
-                  fi
-                  if [ "${{ steps.filter.outputs.backup }}" = "true" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-                    services=$(echo "$services" | jq -c '. + [{"name": "backup", "context": "backup", "dockerfile": "Dockerfile", "image": "ghcr.io/${{ github.repository }}/backup"}]')
                   fi
                   echo "services=$services" >> "$GITHUB_OUTPUT"
                   echo "📋 ビルド対象サービス: $services"
