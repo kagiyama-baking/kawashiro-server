@@ -38,17 +38,17 @@ urlpatterns = [
     # ユーザー関連APIのURL（user.urlsにルーティング）
     path("user/", include("user.urls")),
     # OneDrive関連APIのURL（onedrive.urlsにルーティング）
-    path("onedrive/", include("onedrive.urls")),
+    path("onedrive/", include("integrations.onedrive.urls")),
     # メディア処理関連APIのURL（media.urlsにルーティング）
-    path("media/", include("media.urls")),
+    path("media/", include("features.media.urls")),
     # TTS読み上げ関連APIのURL（tts.urlsにルーティング）
-    path("tts/", include("tts.urls")),
+    path("tts/", include("integrations.tts.urls")),
     # Outlook Calendar関連APIのURL（outlook.urlsにルーティング）
-    path("outlook/", include("outlook.urls")),
+    path("outlook/", include("integrations.outlook.urls")),
     # 気象庁天気予報関連APIのURL（weather.urlsにルーティング）
-    path("weather/", include("weather.urls")),
+    path("weather/", include("integrations.weather.urls")),
     # 挨拶関連APIのURL（greeting.urlsにルーティング）
-    path("greeting/", include("greeting.urls")),
+    path("greeting/", include("features.greeting.urls")),
     # ヘルスチェックURL（認証不要）
     path("health/", include("health.urls")),
 ]

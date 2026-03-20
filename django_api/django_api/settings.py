@@ -87,16 +87,14 @@ INSTALLED_APPS = [
     # カスタムアプリケーション
     "core",  # ユーザー認証などのコア機能
     "user",  # ユーザーモデルのApp
-    "msgraph_config",  # Microsoft Graph API共通設定
-    "llm_config",  # LLM API設定（OpenAI, Gemini, Claude等）
-    "llm_client",  # LLMクライアント（OpenAI等）
-    "msgraph_client",  # Microsoft Graph APIクライアント
-    "onedrive",  # OneDrive連携機能
-    "outlook",  # Outlook Calendar連携機能
-    "media",  # 画像処理などのメディア関連機能
-    "tts",  # Text-to-Speech機能
-    "weather",  # 気象庁天気予報機能
-    "greeting",  # 挨拶機能
+    "integrations.msgraph",  # Microsoft Graph API設定・クライアント
+    "integrations.llm",  # LLM API設定・クライアント
+    "integrations.onedrive",  # OneDrive連携機能
+    "integrations.outlook",  # Outlook Calendar連携機能
+    "features.media",  # 画像処理などのメディア関連機能
+    "integrations.tts",  # Text-to-Speech機能
+    "integrations.weather",  # 気象庁天気予報機能
+    "features.greeting",  # 挨拶機能
     "health",  # ヘルスチェック
 ]
 
