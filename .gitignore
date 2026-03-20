@@ -10,8 +10,5 @@ Thumbs.db
 # 環境変数ファイル
 .env
 
-# シークレットディレクトリ
-/secrets/
-
 # Django静的ファイル
 django_api/staticfiles/

@@ -7,23 +7,23 @@
 ## 概要
 
 Docker コンテナベースの Web アプリケーションです。
-本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。
+本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。このリポジトリには docker-compose.yml が含まれますが、開発環境用の設定であり、本番環境では使用しません。
 
 ## サービス
 
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
+    - 🛠️ **Core**: 共通機能・ユーティリティ（カスタムUserモデル、暗号化）
     - 🔐 **User**: ユーザー認証・管理機能
-    - ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
-    - 📅 **Outlook**: Outlook Calendar 予定取得機能
-    - 📁 **Media**: メディアファイル管理機能
-    - 🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
-    - 🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
-    - 🎙️ **Greeting**: 挨拶 API（設定ベースの柔軟な挨拶生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
-    - 🤖 **LLM Client**: OpenAI API クライアント（テキスト生成）
-    - 🔧 **LLM Config**: LLM 設定管理
-    - 🔗 **MS Graph Config**: Microsoft Graph API 共通設定・認証モジュール
-    - 🔗 **MS Graph Client**: OneDrive/Outlook 統一クライアント
-    - 🛠️ **Core**: 共通機能・ユーティリティ
+    - **integrations/** - 外部サービス連携
+        - 🤖 **LLM**: OpenAI API 設定・クライアント（テキスト生成）
+        - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
+        - ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
+        - 📅 **Outlook**: Outlook Calendar 予定取得機能
+        - 🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
+        - 🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
+    - **features/** - ビジネス機能
+        - 🎙️ **Greeting**: 挨拶 API（設定ベースの柔軟な挨拶生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
+        - 📁 **Media**: メディアファイル管理機能
 - 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
 
 ## 特徴
@@ -56,33 +56,34 @@ kawashiro-server/
 │   ├── Dockerfile              # Django APIコンテナ
 │   ├── pyproject.toml          # Python依存関係（uv使用）
 │   ├── manage.py               # Djangoコマンド
-│   ├── pytest.ini              # pytestの設定
-│   ├── django_api/             # メインプロジェクト
+│   ├── django_api/             # メインプロジェクト設定
 │   │   ├── settings.py         # Django設定
 │   │   ├── urls.py             # URLルーティング
 │   │   ├── asgi.py             # ASGIエントリーポイント
 │   │   └── wsgi.py             # WSGIエントリーポイント
+│   ├── core/                   # コアアプリ（カスタムUserモデル、暗号化）
 │   ├── user/                   # ユーザー認証アプリ
-│   ├── onedrive/               # OneDrive統合アプリ
-│   ├── outlook/                # Outlook Calendar予定取得アプリ
-│   ├── media/                  # メディアファイル管理アプリ
-│   ├── core/                   # 共通コアアプリ（暗号化ユーティリティ等）
-│   ├── tts/                    # TTS読み上げアプリ（sbv2-apiプロキシ）
-│   ├── weather/                # 気象庁天気予報アプリ
-│   ├── greeting/               # 挨拶アプリ（設定ベースのAI挨拶生成・TTS対応）
-│   ├── llm_client/             # OpenAI APIクライアント
-│   ├── llm_config/             # LLM設定管理
-│   ├── msgraph_client/         # Microsoft Graph統一クライアント
-│   ├── msgraph_config/         # Microsoft Graph設定・認証管理
+│   ├── health/                 # ヘルスチェックアプリ
+│   ├── integrations/           # 外部サービス連携
+│   │   ├── llm/                # LLM設定・クライアント（OpenAI API）
+│   │   ├── msgraph/            # Microsoft Graph API設定・クライアント
+│   │   ├── onedrive/           # OneDrive連携API
+│   │   ├── outlook/            # Outlook Calendar連携API
+│   │   ├── tts/                # TTS読み上げ（sbv2-apiプロキシ）
+│   │   └── weather/            # 気象庁天気予報
+│   ├── features/               # ビジネス機能
+│   │   ├── greeting/           # 挨拶生成（LLM + 天気 + 予定 + TTS統合）
+│   │   └── media/              # 画像処理（ZIP→PDF変換、画像形式変換）
 │   └── tests/                  # テストコード
+│       ├── integrations/       # 外部サービス連携テスト
+│       ├── features/           # ビジネス機能テスト
+│       ├── user/               # ユーザーテスト
+│       └── health/             # ヘルスチェックテスト
 │
-├── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU）
-│   ├── Dockerfile              # コンテナ定義（CUDA 11.8）
-│   ├── server.py               # FastAPIサーバー
-│   └── config.yml              # モデル設定
-│
-└── docs/                       # ドキュメント
-    └── archtecture.drawio      # アーキテクチャ図
+└── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU）
+    ├── Dockerfile              # コンテナ定義（CUDA 11.8）
+    ├── server.py               # FastAPIサーバー
+    └── config.yml              # モデル設定
 ```
 
 ## 必要な環境
@@ -259,6 +260,8 @@ flowchart LR
 ```
 
 **タイムアウト:** 15 分
+
+> **Note:** コンテナ統合テストでは `django-api` のみビルド・起動します。`sbv2-api` は NVIDIA GPU が必須のため CI 環境では実行できません。
 
 #### 2. ビルド・プッシュ (`build.yml`)
 
@@ -448,9 +451,8 @@ docker compose up -d
 # Django APIテスト
 cd django_api
 uv run pytest tests/ -v --tb=short \
-  --cov=user --cov=onedrive --cov=outlook --cov=core \
+  --cov=user --cov=core --cov=integrations --cov=features \
   --cov-report=term-missing -m "not e2e"
-
 ```
 
 ### コーディング規約

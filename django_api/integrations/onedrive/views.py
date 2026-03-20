@@ -1,0 +1,836 @@
+"""OneDriveアプリケーションのビュー"""
+
+import logging
+from urllib.parse import quote
+
+from django.http import HttpResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import authentication, permissions, status
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from integrations.msgraph import OneDriveMSGraphClient
+from integrations.msgraph.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NetworkError,
+)
+
+from .exceptions import (
+    DeleteError,
+    DownloadError,
+    FolderOperationError,
+    ListOperationError,
+    OneDriveFileNotFoundError,
+    UploadError,
+)
+from .serializers import (
+    CreateFolderSerializer,
+    CreateUploadSessionSerializer,
+    DeleteFileSerializer,
+    DownloadFileSerializer,
+    FileInfoSerializer,
+    FileUploadSerializer,
+    ListFilesSerializer,
+    UploadChunkSerializer,
+)
+
+# ロガーを設定
+logger = logging.getLogger(__name__)
+
+
+class OneDriveUploadView(APIView):
+    """OneDriveへのファイルアップロードビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+    # ファイルアップロード用のパーサーを設定
+    parser_classes = (MultiPartParser, FormParser)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="ファイルアップロード",
+        description="ファイルをOneDriveにアップロードします。",
+        request=FileUploadSerializer,
+        responses={
+            201: {
+                "description": "アップロード成功",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "message": "ファイルが正常にアップロードされました",
+                            "file_info": {
+                                "name": "example.pdf",
+                                "size": 1024000,
+                                "created_datetime": "2024-01-01T00:00:00Z",
+                                "web_url": "https://...",
+                            },
+                        }
+                    }
+                },
+            },
+            400: {"description": "入力データの検証エラー"},
+            401: {"description": "認証が必要です"},
+            500: {"description": "サーバーエラー"},
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        """ファイルをOneDriveにアップロード"""
+        serializer = FileUploadSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        file = serializer.validated_data["file"]
+        folder_path = serializer.validated_data.get("folder_path", "/")
+        file_name = serializer.validated_data.get("file_name") or file.name
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # ファイルの内容を読み込み
+            file_content = file.read()
+
+            # OneDriveにアップロード
+            result = client.upload_file_to_onedrive(
+                file_content=file_content, file_name=file_name, folder_path=folder_path
+            )
+
+            # 成功レスポンスを返す
+            return Response(
+                {
+                    "message": "ファイルが正常にアップロードされました",
+                    "file_info": FileInfoSerializer(result).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except UploadError as e:
+            # アップロードエラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Upload error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file upload")
+            return Response(
+                {
+                    "error": "ファイルのアップロード中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class OneDriveFolderView(APIView):
+    """OneDriveのフォルダ操作ビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="フォルダ作成",
+        description="OneDriveに新しいフォルダを作成します。",
+        request=CreateFolderSerializer,
+        responses={
+            201: {
+                "description": "作成成功",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "message": "フォルダが正常に作成されました",
+                            "folder_info": {
+                                "name": "New Folder",
+                                "created_datetime": "2024-01-01T00:00:00Z",
+                                "web_url": "https://...",
+                            },
+                        }
+                    }
+                },
+            },
+            400: {"description": "入力データの検証エラー"},
+            401: {"description": "認証が必要です"},
+            500: {"description": "サーバーエラー"},
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        """フォルダを作成"""
+        serializer = CreateFolderSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        folder_name = serializer.validated_data["folder_name"]
+        parent_path = serializer.validated_data.get("parent_path", "/")
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # フォルダを作成
+            result = client.create_folder(
+                folder_name=folder_name, parent_path=parent_path
+            )
+
+            # 成功レスポンスを返す
+            return Response(
+                {
+                    "message": "フォルダが正常に作成されました",
+                    "folder_info": FileInfoSerializer(result).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except FolderOperationError as e:
+            # フォルダ操作エラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Folder operation error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during folder creation")
+            return Response(
+                {
+                    "error": "フォルダの作成中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class OneDriveListView(APIView):
+    """OneDriveのファイル一覧取得ビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="ファイル一覧取得",
+        description="指定したフォルダ内のファイル一覧を取得します。",
+        parameters=[
+            OpenApiParameter(
+                name="folder_path",
+                description="取得するフォルダのパス（デフォルト: /）",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY,
+            )
+        ],
+        responses={
+            200: {
+                "description": "取得成功",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "folder_path": "/",
+                            "count": 2,
+                            "files": [
+                                {
+                                    "name": "file1.pdf",
+                                    "size": 1024000,
+                                    "created_datetime": "2024-01-01T00:00:00Z",
+                                    "web_url": "https://...",
+                                },
+                                {
+                                    "name": "folder1",
+                                    "folder": True,
+                                    "created_datetime": "2024-01-01T00:00:00Z",
+                                    "web_url": "https://...",
+                                },
+                            ],
+                        }
+                    }
+                },
+            },
+            400: {"description": "入力パラメータエラー"},
+            401: {"description": "認証が必要です"},
+            500: {"description": "サーバーエラー"},
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        """指定したフォルダ内のファイル一覧を取得"""
+        serializer = ListFilesSerializer(data=request.query_params)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        folder_path = serializer.validated_data.get("folder_path", "/")
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # ファイル一覧を取得
+            files = client.list_files(folder_path=folder_path)
+
+            # シリアライズして返す
+            serializer = FileInfoSerializer(files, many=True)
+
+            return Response(
+                {
+                    "folder_path": folder_path,
+                    "count": len(files),
+                    "files": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except ListOperationError as e:
+            # ファイル一覧取得エラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"List operation error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file listing")
+            return Response(
+                {
+                    "error": "ファイル一覧の取得中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class OneDriveDeleteView(APIView):
+    """OneDriveのファイル削除ビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="ファイル削除",
+        description="OneDrive上のファイルを削除します。",
+        parameters=[
+            OpenApiParameter(
+                name="file_path",
+                description="削除するファイルのパス",
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="permanent_delete",
+                description="完全削除（ごみ箱からも削除）",
+                required=False,
+                type=bool,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={
+            200: {
+                "description": "削除成功",
+                "content": {
+                    "application/json": {
+                        "example": {"message": "ファイルが正常に削除されました"}
+                    }
+                },
+            },
+            400: {"description": "入力データの検証エラー"},
+            401: {"description": "認証が必要です"},
+            500: {"description": "サーバーエラー"},
+            502: {"description": "OneDriveへの接続エラー"},
+            503: {"description": "サービス設定エラー"},
+        },
+    )
+    def delete(self, request, *args, **kwargs):
+        """ファイルを削除"""
+        serializer = DeleteFileSerializer(data=request.query_params)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        file_path = serializer.validated_data["file_path"]
+        permanent_delete = serializer.validated_data.get("permanent_delete", False)
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # ファイルを削除
+            client.delete_file(file_path=file_path, permanent_delete=permanent_delete)
+
+            # 成功レスポンスを返す
+            return Response(
+                {"message": "ファイルが正常に削除されました"}, status=status.HTTP_200_OK
+            )
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except DeleteError as e:
+            # 削除エラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Delete error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file deletion")
+            return Response(
+                {
+                    "error": "ファイルの削除中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class OneDriveDownloadView(APIView):
+    """OneDriveのファイルダウンロードビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="ファイルダウンロード",
+        description="OneDrive上のファイルをダウンロードします。",
+        parameters=[
+            OpenApiParameter(
+                name="file_path",
+                description="ダウンロードするファイルのパス",
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY,
+            )
+        ],
+        responses={
+            200: {
+                "description": "ダウンロード成功",
+                "content": {
+                    "application/octet-stream": {
+                        "schema": {"type": "string", "format": "binary"}
+                    }
+                },
+            },
+            400: {"description": "入力データの検証エラー"},
+            401: {"description": "認証が必要です"},
+            404: {"description": "ファイルが見つかりません"},
+            500: {"description": "サーバーエラー"},
+            502: {"description": "OneDriveへの接続エラー"},
+            503: {"description": "サービス設定エラー"},
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        """ファイルをダウンロード"""
+        serializer = DownloadFileSerializer(data=request.query_params)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        file_path = serializer.validated_data["file_path"]
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # ファイルをダウンロード
+            file_content, file_name = client.download_file(file_path=file_path)
+
+            # バイナリレスポンスとして返す
+            response = HttpResponse(
+                file_content, content_type="application/octet-stream"
+            )
+            # ファイル名をサニタイズしてヘッダーインジェクション攻撃を防ぐ
+            # RFC 5987に従ってUTF-8エンコーディングを使用
+            safe_filename = (
+                file_name.replace('"', '\\"').replace("\r", "").replace("\n", "")
+            )
+            encoded_filename = quote(file_name)
+            response["Content-Disposition"] = (
+                f"attachment; filename=\"{safe_filename}\"; filename*=UTF-8''{encoded_filename}"
+            )
+            return response
+
+        except ConfigurationError as e:
+            # 設定エラーは管理者に連絡が必要
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            # 認証エラー
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except OneDriveFileNotFoundError as e:
+            # ファイルが見つからないエラー
+            logger.warning(f"File not found: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except DownloadError as e:
+            # ダウンロードエラー（ユーザーに返すメッセージは具体的なエラー内容）
+            logger.warning(f"Download error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            # ネットワークエラー
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            # 予期しないエラーはログに記録し、一般的なメッセージを返す
+            logger.exception("Unexpected error during file download")
+            return Response(
+                {
+                    "error": "ファイルのダウンロード中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class OneDriveCreateUploadSessionView(APIView):
+    """OneDriveアップロードセッション作成ビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="アップロードセッション作成",
+        description="大容量ファイルアップロード用のセッションを作成します。",
+        request=CreateUploadSessionSerializer,
+        responses={
+            201: {
+                "description": "セッション作成成功",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "upload_url": "https://...",
+                            "expiration_datetime": "2024-01-01T00:00:00Z",
+                        }
+                    }
+                },
+            },
+            400: {"description": "入力データの検証エラー"},
+            401: {"description": "認証が必要です"},
+            500: {"description": "サーバーエラー"},
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        """アップロードセッションを作成"""
+        serializer = CreateUploadSessionSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        file_name = serializer.validated_data["file_name"]
+        file_size = serializer.validated_data["file_size"]
+        folder_path = serializer.validated_data.get("folder_path", "/")
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # アップロードセッションを作成
+            upload_url = client._create_upload_session(
+                file_name=file_name, folder_path=folder_path
+            )
+
+            # 成功レスポンスを返す
+            return Response(
+                {
+                    "upload_url": upload_url,
+                    "file_name": file_name,
+                    "file_size": file_size,
+                    "folder_path": folder_path,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except ConfigurationError as e:
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except UploadError as e:
+            logger.warning(f"Upload session error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            logger.exception("Unexpected error during upload session creation")
+            return Response(
+                {
+                    "error": "アップロードセッションの作成中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class OneDriveUploadChunkView(APIView):
+    """OneDriveチャンクアップロードビュー"""
+
+    # トークン認証を要求
+    authentication_classes = (authentication.TokenAuthentication,)
+    # 認証済みユーザーのみアクセス可能
+    permission_classes = (permissions.IsAuthenticated,)
+    # ファイルアップロード用のパーサーを設定
+    parser_classes = (MultiPartParser, FormParser)
+
+    @extend_schema(
+        tags=["onedrive"],
+        summary="チャンクアップロード",
+        description="大容量ファイルのチャンクをアップロードします。",
+        request=UploadChunkSerializer,
+        responses={
+            200: {
+                "description": "チャンクアップロード成功（継続中）",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "status": "in_progress",
+                            "next_expected_ranges": ["10485760-"],
+                        }
+                    }
+                },
+            },
+            201: {
+                "description": "アップロード完了",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "status": "completed",
+                            "file_info": {
+                                "id": "...",
+                                "name": "example.tar.gz",
+                                "size": 1024000,
+                            },
+                        }
+                    }
+                },
+            },
+            400: {"description": "入力データの検証エラー"},
+            401: {"description": "認証が必要です"},
+            500: {"description": "サーバーエラー"},
+        },
+    )
+    def put(self, request, *args, **kwargs):
+        """チャンクをアップロード"""
+        serializer = UploadChunkSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # バリデートされたデータを取得
+        upload_url = serializer.validated_data["upload_url"]
+        chunk = serializer.validated_data["chunk"]
+        offset = serializer.validated_data["offset"]
+        total_size = serializer.validated_data["total_size"]
+
+        try:
+            # MS Graphクライアントを作成
+            client = OneDriveMSGraphClient()
+
+            # チャンクデータを読み込み
+            chunk_data = chunk.read()
+
+            # チャンクをアップロード
+            result = client._upload_chunk(
+                upload_url=upload_url,
+                chunk_data=chunk_data,
+                offset=offset,
+                total_size=total_size,
+            )
+
+            # アップロード完了を確認
+            if result.get("id"):
+                # アップロード完了
+                return Response(
+                    {
+                        "status": "completed",
+                        "file_info": FileInfoSerializer(result).data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+            else:
+                # 継続中
+                return Response(
+                    {
+                        "status": "in_progress",
+                        "next_expected_ranges": result.get("nextExpectedRanges", []),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+        except ConfigurationError as e:
+            logger.error(f"Configuration error: {str(e)}")
+            return Response(
+                {
+                    "error": "サービスの設定に問題があります。管理者にお問い合わせください。"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except AuthenticationError as e:
+            logger.error(f"Authentication error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの認証に失敗しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except UploadError as e:
+            logger.warning(f"Chunk upload error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except NetworkError as e:
+            logger.error(f"Network error: {str(e)}")
+            return Response(
+                {
+                    "error": "OneDriveへの接続に失敗しました。ネットワーク接続を確認して再試行してください。"
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception:
+            logger.exception("Unexpected error during chunk upload")
+            return Response(
+                {
+                    "error": "チャンクのアップロード中に問題が発生しました。しばらく時間をおいて再試行してください。"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

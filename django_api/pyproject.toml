@@ -33,8 +33,8 @@ dev = [
     "ruff>=0.14.6",
 ]
 
-[tool.setuptools]
-packages = ["django_api", "core", "user", "onedrive", "outlook", "media", "tts", "msgraph_config", "msgraph_client", "weather", "greeting", "llm_config", "llm_client"]
+[tool.setuptools.packages.find]
+include = ["django_api*", "core*", "user*", "integrations*", "features*", "health*"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "django_api.settings"
@@ -82,7 +82,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["django_api", "core", "user", "onedrive", "outlook", "media", "tts", "msgraph_config", "msgraph_client", "weather", "greeting", "llm_config", "llm_client"]
+known-first-party = ["django_api", "core", "user", "integrations", "features", "health"]
 
 [tool.ruff.format]
 quote-style = "double"
