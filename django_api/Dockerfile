@@ -54,7 +54,7 @@ RUN mkdir -p django_api core user integrations features health && \
     uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock && \
     pip uninstall -y uv && \
-    rm -rf django_api core user integrations features
+    rm -rf django_api core user integrations features health
 
 # アプリケーションを実行するためのユーザを作成する（先に作成）
 RUN adduser -D -g django django && \
