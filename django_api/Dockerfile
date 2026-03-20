@@ -49,12 +49,12 @@ RUN pip install --no-cache-dir --upgrade pip setuptools 'wheel>=0.46.2' && \
 # uv pip installでシステムPythonに直接インストール
 # パッケージディレクトリが必要なため、先に作成
 COPY pyproject.toml ./
-RUN mkdir -p django_api core user onedrive outlook media tts msgraph_config msgraph_client weather greeting llm_config llm_client health && \
-    touch django_api/__init__.py core/__init__.py user/__init__.py onedrive/__init__.py outlook/__init__.py media/__init__.py tts/__init__.py msgraph_config/__init__.py msgraph_client/__init__.py weather/__init__.py greeting/__init__.py llm_config/__init__.py llm_client/__init__.py health/__init__.py && \
+RUN mkdir -p django_api core user integrations features health && \
+    touch django_api/__init__.py core/__init__.py user/__init__.py integrations/__init__.py features/__init__.py health/__init__.py && \
     uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock && \
     pip uninstall -y uv && \
-    rm -rf django_api core user onedrive outlook media tts msgraph_config msgraph_client weather greeting llm_config llm_client
+    rm -rf django_api core user integrations features
 
 # アプリケーションを実行するためのユーザを作成する（先に作成）
 RUN adduser -D -g django django && \
@@ -69,16 +69,8 @@ COPY --chown=django:django manage.py .
 COPY --chown=django:django django_api ./django_api
 COPY --chown=django:django core ./core
 COPY --chown=django:django user ./user
-COPY --chown=django:django onedrive ./onedrive
-COPY --chown=django:django outlook ./outlook
-COPY --chown=django:django media ./media
-COPY --chown=django:django tts ./tts
-COPY --chown=django:django msgraph_config ./msgraph_config
-COPY --chown=django:django weather ./weather
-COPY --chown=django:django greeting ./greeting
-COPY --chown=django:django llm_config ./llm_config
-COPY --chown=django:django llm_client ./llm_client
-COPY --chown=django:django msgraph_client ./msgraph_client
+COPY --chown=django:django integrations ./integrations
+COPY --chown=django:django features ./features
 COPY --chown=django:django health ./health
 
 # セキュリティヘッダーを設定

@@ -20,17 +20,9 @@ services:
             - ./django_api/django_api:/django_api/django_api
             - ./django_api/core:/django_api/core
             - ./django_api/user:/django_api/user
-            - ./django_api/onedrive:/django_api/onedrive
-            - ./django_api/outlook:/django_api/outlook
-            - ./django_api/media:/django_api/media
-            - ./django_api/tts:/django_api/tts
-            - ./django_api/weather:/django_api/weather
-            - ./django_api/msgraph_config:/django_api/msgraph_config
-            - ./django_api/greeting:/django_api/greeting
+            - ./django_api/integrations:/django_api/integrations
+            - ./django_api/features:/django_api/features
             - ./django_api/health:/django_api/health
-            - ./django_api/llm_config:/django_api/llm_config
-            - ./django_api/llm_client:/django_api/llm_client
-            - ./django_api/msgraph_client:/django_api/msgraph_client
             # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
             # 静的ファイルの永続化
