@@ -21,7 +21,6 @@ jobs:
         timeout-minutes: 5
         outputs:
             django-api: ${{ steps.filter.outputs.django-api }}
-            backup: ${{ steps.filter.outputs.backup }}
             sbv2-api: ${{ steps.filter.outputs.sbv2-api }}
             docker-compose: ${{ steps.filter.outputs.docker-compose }}
         steps:
@@ -35,8 +34,6 @@ jobs:
                   filters: |
                       django-api:
                         - 'django_api/**'
-                      backup:
-                        - 'backup/**'
                       sbv2-api:
                         - 'sbv2_api/**'
                       docker-compose:
@@ -48,7 +45,6 @@ jobs:
         needs: detect-changes
         if: |
             needs.detect-changes.outputs.django-api == 'true' ||
-            needs.detect-changes.outputs.backup == 'true' ||
             needs.detect-changes.outputs.sbv2-api == 'true' ||
             github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
@@ -60,9 +56,6 @@ jobs:
                     - name: django-api
                       path: ./django_api
                       changed: django-api
-                    - name: backup
-                      path: ./backup
-                      changed: backup
                     - name: sbv2-api
                       path: ./sbv2_api
                       changed: sbv2-api
@@ -150,65 +143,6 @@ jobs:
               with:
                   name: django-coverage-report
                   path: django_api/htmlcov/
-
-    # Backupテストジョブ（backupに変更がある場合のみ実行）
-    backup-test:
-        needs: detect-changes
-        if: needs.detect-changes.outputs.backup == 'true' || github.event_name == 'workflow_dispatch'
-        runs-on: ubuntu-latest
-        timeout-minutes: 10
-
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: '3.13'
-
-            - name: Install uv
-              run: |
-                  pip install --upgrade pip
-                  pip install uv
-
-            - name: Install dependencies
-              working-directory: ./backup
-              run: |
-                  uv pip install --system .
-                  uv pip install --system pytest pytest-cov pytest-mock ruff
-
-            - name: Run ruff linter
-              working-directory: ./backup
-              run: |
-                  echo "🔍 Ruffリンターチェック実行中..."
-                  uv run ruff check .
-                  echo "✅ リンターチェック完了"
-
-            - name: Run ruff formatter check
-              working-directory: ./backup
-              run: |
-                  echo "🎨 Ruffフォーマッターチェック実行中..."
-                  uv run ruff format --check .
-                  echo "✅ フォーマッターチェック完了"
-
-            - name: Run tests with coverage
-              working-directory: ./backup
-              run: |
-                  echo "🧪 テスト実行中..."
-                  python -m pytest tests/ -v --tb=short \
-                    --cov=scripts \
-                    --cov-report=term-missing \
-                    --cov-report=html \
-                    --cov-fail-under=80
-                  echo "✅ テスト完了"
-
-            - name: Upload coverage report
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                  name: backup-coverage-report
-                  path: backup/htmlcov/
 
     # PRチェック用のメインジョブ（いずれかのサービスに変更がある場合のみ実行）
     container-integration-tests:

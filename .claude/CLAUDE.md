@@ -26,7 +26,6 @@ kawashiro-server/
 │   ├── pyproject.toml   # Python依存関係・ツール設定
 │   └── Dockerfile       # Python 3.13-alpine ベース
 ├── sbv2_api/            # Style-BERT-VITS2 音声合成サーバー（FastAPI）
-├── backup/              # バックアップスクリプト（Django）
 ├── volumes/             # 永続化データ（.gitkeepのみ管理）
 ├── docker-compose.yml       # 開発環境用
 └── .github/workflows/       # CI/CDワークフロー
@@ -123,19 +122,10 @@ uv run pytest tests/ -v --tb=short \
   --cov-fail-under=80 -m "not e2e"
 ```
 
-### Backup テスト
-
-```bash
-# backup/ ディレクトリで実行
-cd backup
-uv run pytest tests/ -v --tb=short \
-  --cov=scripts --cov-report=term-missing
-```
-
 ### リンター・フォーマッター（Ruff）
 
 ```bash
-# django_api/ または backup/ ディレクトリで実行
+# django_api/ ディレクトリで実行
 cd django_api
 
 # フォーマット適用
@@ -331,14 +321,13 @@ Django API に必要な環境変数（`django_api/.env`）：
 1. **変更検出**: `dorny/paths-filter` で変更されたサービスを検出
 2. **Dockerfile セキュリティスキャン**: Trivy による設定スキャン（CRITICAL/HIGH）
 3. **Django API テスト**: Ruff リンター/フォーマッター → pytest（カバレッジ 80%以上必須）
-4. **Backup テスト**: Ruff → pytest（カバレッジ 80%以上必須）
-5. **コンテナ統合テスト**: Docker Compose ビルド → マイグレーション → 起動 → Django API 機能テスト
+4. **コンテナ統合テスト**: Docker Compose ビルド → マイグレーション → 起動 → Django API 機能テスト
 
 ### Build & Push（`build.yml`）
 
 `develop` ブランチへの push 時に実行：
 
-1. 変更検出 → 対象サービスのマトリクスビルド（django-api, backup）
+1. 変更検出 → 対象サービスのマトリクスビルド（django-api）
 2. amd64 でビルド → Trivy 脆弱性スキャン
 3. マルチプラットフォーム（amd64/arm64）でビルド＆GHCR へプッシュ
 4. SBOM 生成 + ビルド証明（provenance）の付与

@@ -1,4 +1,4 @@
-# 鍵山製パン社内 Web システム
+# 鍵山製パン社内 Web アプリケーション
 
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
@@ -6,7 +6,7 @@
 
 ## 概要
 
-Docker コンテナベースの Web サービス群です。アプリケーションの開発・ビルド・テストに専念するリポジトリです。
+Docker コンテナベースの Web アプリケーションです。
 本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。
 
 ## サービス
@@ -25,7 +25,6 @@ Docker コンテナベースの Web サービス群です。アプリケーシ�
     - 🔗 **MS Graph Client**: OneDrive/Outlook 統一クライアント
     - 🛠️ **Core**: 共通機能・ユーティリティ
 - 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
-- 💾 **バックアップシステム**: Django のデータをバックアップ・リストア
 
 ## 特徴
 
@@ -34,7 +33,6 @@ Docker コンテナベースの Web サービス群です。アプリケーシ�
 - 🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
 - 📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
 - 🛡️ **脆弱性スキャン**: Trivy によるイメージ検査
-- 💾 **バックアップ**: OneDrive へのバックアップ機能
 - 🔒 **暗号化**: 機密情報の暗号化保存（OneDrive 設定など）
 - 🐍 **最新 Python 環境**: uv を使用した高速なパッケージ管理
 - ✅ **テストカバレッジ**: pytest によるテスト自動化とカバレッジ計測
@@ -44,7 +42,6 @@ Docker コンテナベースの Web サービス群です。アプリケーシ�
 ```
 kawashiro-server/
 ├── docker-compose.yml          # 開発用のDocker Compose設定
-├── docker-compose.backup.yml   # バックアップコンテナ用のDocker Compose設定
 ├── README.md                   # このファイル
 │
 ├── .github/                    # GitHub設定
@@ -83,15 +80,6 @@ kawashiro-server/
 │   ├── Dockerfile              # コンテナ定義（CUDA 11.8）
 │   ├── server.py               # FastAPIサーバー
 │   └── config.yml              # モデル設定
-│
-├── backup/                     # バックアップシステム
-│   ├── Dockerfile              # バックアップコンテナ
-│   ├── pyproject.toml          # Python依存関係（uv使用）
-│   ├── README.md               # バックアップ詳細ドキュメント
-│   ├── scripts/                # バックアップスクリプト（Python）
-│   │   ├── backup_all.py       # 統合バックアップスクリプト
-│   │   └── backup_django.py    # Django APIバックアップ
-│   └── tests/                  # テストコード
 │
 └── docs/                       # ドキュメント
     └── archtecture.drawio      # アーキテクチャ図
@@ -176,23 +164,6 @@ CSRF_TRUSTED_ORIGINS=https://api.example.com
 
 その他の設定（Microsoft Graph API、OpenAI API キーなど）は Django 管理画面（`/admin/`）から設定します。
 
-### バックアップシステム設定
-
-バックアップを使用する場合は、`.env.backup`ファイルを作成して以下の環境変数を設定してください：
-
-```bash
-# Django API設定
-DJANGO_API_URL=http://django-api:8000
-DJANGO_API_TOKEN=your-api-token
-
-# OneDriveバックアップ設定
-DJANGO_ONEDRIVE_BACKUP_PATH=/Backup/kawashiro-server
-
-# バックアップオプション
-BACKUP_RETENTION_GENERATIONS=7         # 保持する世代数
-TZ=Asia/Tokyo                          # タイムゾーン
-```
-
 ## 使用方法
 
 ### サービスの管理
@@ -201,21 +172,11 @@ TZ=Asia/Tokyo                          # タイムゾーン
 # サービスの起動
 docker compose up -d
 
-# バックアップコンテナの実行
-docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py
-
 # サービスの停止
 docker compose down
 
 # サービスの再起動
 docker compose restart
-```
-
-### バックアップの実行
-
-```bash
-# Django APIをバックアップ
-docker compose -f docker-compose.backup.yml run --rm backup python /app/scripts/backup_all.py
 ```
 
 ### ログの確認
@@ -226,9 +187,6 @@ docker compose logs -f
 
 # 特定のサービスのログ
 docker compose logs -f django-api
-
-# バックアップログ
-docker compose -f docker-compose.backup.yml logs backup
 ```
 
 ## CI/CD
@@ -315,7 +273,6 @@ flowchart LR
 # ビルド対象サービス
 services:
   - django-api
-  - backup
 
 # 各サービスに対して実行
 - マルチアーキテクチャビルド (linux/amd64, linux/arm64)
@@ -494,10 +451,6 @@ uv run pytest tests/ -v --tb=short \
   --cov=user --cov=onedrive --cov=outlook --cov=core \
   --cov-report=term-missing -m "not e2e"
 
-# バックアップテスト
-cd backup
-uv run pytest tests/ -v --tb=short \
-  --cov=scripts --cov-report=term-missing
 ```
 
 ### コーディング規約
