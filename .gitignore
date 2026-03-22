@@ -12,3 +12,8 @@ Thumbs.db
 
 # Django静的ファイル
 django_api/staticfiles/
+
+# フロントエンド
+frontend/node_modules/
+frontend/dist/
+frontend/public/banner.jpg

@@ -94,7 +94,7 @@ INSTALLED_APPS = [
     "features.media",  # 画像処理などのメディア関連機能
     "integrations.tts",  # Text-to-Speech機能
     "integrations.weather",  # 気象庁天気予報機能
-    "features.greeting",  # 挨拶機能
+    "features.generate",  # テキスト生成機能
     "health",  # ヘルスチェック
 ]
 
@@ -260,6 +260,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # レート制限（ブルートフォース対策）
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "10/minute",
+    },
 }
 
 # ============================================================
@@ -302,7 +306,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
-        {"name": "greeting", "description": "挨拶API"},
+        {"name": "generate", "description": "テキスト生成API"},
     ],
 }
 
