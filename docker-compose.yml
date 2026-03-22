@@ -68,6 +68,22 @@ services:
                           count: 1
                           capabilities: [gpu]
 
+    # フロントエンド（React SPA）
+    frontend:
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile
+        image: frontend
+        container_name: frontend
+        hostname: frontend
+        ports:
+            - '3000:80'
+        restart: unless-stopped
+        networks:
+            - proxy-network
+        depends_on:
+            - django-api
+
 networks:
     proxy-network:
         driver: bridge

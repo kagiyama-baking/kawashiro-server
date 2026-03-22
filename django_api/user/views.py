@@ -65,6 +65,8 @@ class CreateTokenView(ObtainAuthToken):
     serializer_class = AuthTokenSerializer
     # レンダラークラスをAPI設定のデフォルトから取得
     renderer_classes = api_settings.DEFAULT_RENDERER_CLASSES
+    # ログインAPIは認証不要（SessionAuthenticationのCSRFチェックを回避）
+    authentication_classes = ()
 
 
 @extend_schema_view(

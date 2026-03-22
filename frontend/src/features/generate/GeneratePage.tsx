@@ -1,0 +1,83 @@
+import { AudioDownload } from '@/components/audio/AudioDownload';
+import { AudioPlayer } from '@/components/audio/AudioPlayer';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { GenerateForm } from './GenerateForm';
+import { useGenerate } from './useGenerate';
+
+export function GeneratePage() {
+    const {
+        configs,
+        selectedConfig,
+        setSelectedConfig,
+        result,
+        isLoading,
+        error,
+        handleGenerate,
+    } = useGenerate();
+
+    return (
+        <div className="mx-auto max-w-4xl space-y-6">
+            <div>
+                <h1 className="text-2xl font-bold text-foreground">
+                    テキスト生成読み上げ
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                    事前登録済みのプロンプト設定でテキストを生成し、音声で再生します
+                </p>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="font-sans">プロンプト設定</CardTitle>
+                    <CardDescription>
+                        プリセットを選択し、ユーザープロンプトを入力してください
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <GenerateForm
+                        configs={configs}
+                        selectedConfig={selectedConfig}
+                        onConfigChange={setSelectedConfig}
+                        onSubmit={handleGenerate}
+                        isLoading={isLoading}
+                    />
+
+                    {error && (
+                        <p className="mt-4 text-sm text-destructive">
+                            {error}
+                        </p>
+                    )}
+
+                    {result && (
+                        <div className="mt-4 space-y-3">
+                            <Separator />
+                            {result.text && (
+                                <div className="rounded-lg bg-muted p-4">
+                                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                                        {result.text}
+                                    </p>
+                                </div>
+                            )}
+                            {result.audioUrl && (
+                                <>
+                                    <AudioPlayer src={result.audioUrl} />
+                                    <AudioDownload
+                                        blob={result.audioBlob}
+                                        filename="generated.wav"
+                                    />
+                                </>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
