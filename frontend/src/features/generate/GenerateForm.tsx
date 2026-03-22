@@ -1,5 +1,5 @@
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/common/LoadingButton';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -100,13 +100,15 @@ export function GenerateForm({
                 />
             </div>
 
-            <Button
+            <LoadingButton
                 type="submit"
                 className="w-full"
-                disabled={isLoading || !userPrompt.trim() || !selectedConfig}
+                isLoading={isLoading}
+                loadingText="生成中..."
+                disabled={!userPrompt.trim() || !selectedConfig}
             >
-                {isLoading ? '生成中...' : 'テキストを生成'}
-            </Button>
+                テキストを生成
+            </LoadingButton>
         </form>
     );
 }

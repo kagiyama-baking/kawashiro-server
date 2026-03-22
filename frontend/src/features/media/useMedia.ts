@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
 import { convertImage, zipToPdf } from '@/lib/api/media';
 import type { OutputFormat } from '@/types/media';
 
@@ -27,8 +28,10 @@ export function useMedia() {
                 });
                 const url = URL.createObjectURL(res.blob);
                 setResult({ blob: res.blob, filename: res.filename, url });
+                toast.success('画像を変換しました');
             } catch {
                 setError('画像変換に失敗しました');
+                toast.error('画像変換に失敗しました');
             } finally {
                 setIsLoading(false);
             }
@@ -45,8 +48,10 @@ export function useMedia() {
             const res = await zipToPdf(file);
             const url = URL.createObjectURL(res.blob);
             setResult({ blob: res.blob, filename: res.filename, url });
+            toast.success('PDFに変換しました');
         } catch {
             setError('ZIP→PDF変換に失敗しました');
+            toast.error('ZIP→PDF変換に失敗しました');
         } finally {
             setIsLoading(false);
         }

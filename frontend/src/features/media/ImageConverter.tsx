@@ -1,5 +1,5 @@
 import { type FormEvent, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/common/LoadingButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -90,9 +90,14 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
                 )}
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? '変換中...' : '変換'}
-            </Button>
+            <LoadingButton
+                type="submit"
+                className="w-full"
+                isLoading={isLoading}
+                loadingText="変換中..."
+            >
+                変換
+            </LoadingButton>
         </form>
     );
 }

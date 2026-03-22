@@ -9,7 +9,7 @@ services:
             context: ./django_api
             dockerfile: Dockerfile
         image: django-api
-        container_name: django-api
+        container_name: django
         hostname: django-api
         ports:
             # 開発環境用：直接アクセス
@@ -31,7 +31,7 @@ services:
             - /opt/app/django-api/db.sqlite3:/django_api/db.sqlite3
         restart: unless-stopped
         networks:
-            - proxy-network
+            - container-network
         command: >
             sh -c "python manage.py migrate &&
                    python manage.py collectstatic --noinput &&
@@ -59,7 +59,7 @@ services:
             - NVIDIA_VISIBLE_DEVICES=all
         restart: unless-stopped
         networks:
-            - proxy-network
+            - container-network
         deploy:
             resources:
                 reservations:
@@ -80,11 +80,11 @@ services:
             - '3000:80'
         restart: unless-stopped
         networks:
-            - proxy-network
+            - container-network
         depends_on:
             - django-api
 
 networks:
-    proxy-network:
+    container-network:
         driver: bridge
-        name: proxy-network
+        name: container-network

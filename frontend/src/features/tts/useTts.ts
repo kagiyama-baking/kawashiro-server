@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { fetchModels, fetchStyles, synthesize } from '@/lib/api/tts';
 import { useTtsStore } from '@/stores/tts-store';
 
@@ -53,8 +54,10 @@ export function useTts() {
                 previousUrlRef.current = url;
                 setAudioBlob(blob);
                 setAudioUrl(url);
+                toast.success('音声を生成しました');
             } catch {
                 setError('音声合成に失敗しました');
+                toast.error('音声合成に失敗しました');
             } finally {
                 setIsLoading(false);
             }

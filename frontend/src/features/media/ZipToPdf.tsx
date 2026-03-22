@@ -1,5 +1,5 @@
 import { type FormEvent, useRef } from 'react';
-import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/common/LoadingButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -34,9 +34,14 @@ export function ZipToPdf({ onSubmit, isLoading }: ZipToPdfProps) {
                 </p>
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? '変換中...' : 'PDFに変換'}
-            </Button>
+            <LoadingButton
+                type="submit"
+                className="w-full"
+                isLoading={isLoading}
+                loadingText="変換中..."
+            >
+                PDFに変換
+            </LoadingButton>
         </form>
     );
 }

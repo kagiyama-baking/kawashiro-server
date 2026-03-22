@@ -1,5 +1,5 @@
 import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/common/LoadingButton';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -124,13 +124,15 @@ export function TtsForm({
                 </div>
             </div>
 
-            <Button
+            <LoadingButton
                 type="submit"
                 className="w-full"
-                disabled={isLoading || !text.trim()}
+                isLoading={isLoading}
+                loadingText="合成中..."
+                disabled={!text.trim()}
             >
-                {isLoading ? '合成中...' : '音声を生成'}
-            </Button>
+                音声を生成
+            </LoadingButton>
         </form>
     );
 }

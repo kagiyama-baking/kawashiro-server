@@ -28,6 +28,7 @@ jobs:
             matrix:
                 service:
                     - django-api
+                    - frontend
         steps:
             - name: Login to GHCR
               uses: docker/login-action@v4
@@ -56,6 +57,7 @@ jobs:
             matrix:
                 service:
                     - django-api
+                    - frontend
         steps:
             - name: Login to GHCR
               uses: docker/login-action@v4
@@ -111,10 +113,10 @@ jobs:
                   cd "${DEPLOY_DIR}"
 
                   echo ">>> 新しいイメージをプル中..."
-                  docker compose pull django-api
+                  docker compose pull django-api frontend
 
                   echo ">>> コンテナを再作成中..."
-                  docker compose up -d django-api
+                  docker compose up -d django-api frontend
 
                   echo ">>> 古いイメージを削除中..."
                   docker image prune -f
@@ -147,6 +149,7 @@ jobs:
                   echo ""
                   echo "📦 リリースされたイメージ:"
                   echo "  - ${{ env.IMAGE_BASE }}/django-api:release"
+                  echo "  - ${{ env.IMAGE_BASE }}/frontend:release"
                   echo ""
                   echo "🔗 コミット: ${{ github.sha }}"
                   echo "📅 日時: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

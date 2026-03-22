@@ -1,5 +1,6 @@
 import { AudioDownload } from '@/components/audio/AudioDownload';
 import { AudioPlayer } from '@/components/audio/AudioPlayer';
+import { ErrorMessage } from '@/components/common/ErrorMessage';
 import {
     Card,
     CardContent,
@@ -49,11 +50,7 @@ export function GeneratePage() {
                         isLoading={isLoading}
                     />
 
-                    {error && (
-                        <p className="mt-4 text-sm text-destructive">
-                            {error}
-                        </p>
-                    )}
+                    <ErrorMessage message={error} />
 
                     {result && (
                         <div className="mt-4 space-y-3">

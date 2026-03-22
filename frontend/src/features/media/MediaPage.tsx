@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react';
+import { ErrorMessage } from '@/components/common/ErrorMessage';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -65,11 +66,7 @@ export function MediaPage() {
                         </TabsContent>
                     </Tabs>
 
-                    {error && (
-                        <p className="mt-4 text-sm text-destructive">
-                            {error}
-                        </p>
-                    )}
+                    <ErrorMessage message={error} />
 
                     {result && (
                         <div className="mt-4 space-y-3">

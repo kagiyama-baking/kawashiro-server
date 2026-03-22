@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { fetchConfigs, generateText } from '@/lib/api/generate';
 import type { GenerateConfig, GenerateResult } from '@/types/generate';
 
@@ -41,8 +42,10 @@ export function useGenerate() {
                     previousUrlRef.current = generateResult.audioUrl;
                 }
                 setResult(generateResult);
+                toast.success('テキストを生成しました');
             } catch {
                 setError('テキスト生成に失敗しました');
+                toast.error('テキスト生成に失敗しました');
             } finally {
                 setIsLoading(false);
             }
