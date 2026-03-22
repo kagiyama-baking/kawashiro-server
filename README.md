@@ -7,12 +7,13 @@
 ## 概要
 
 Docker コンテナベースの Web アプリケーションです。
-本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。このリポジトリには docker-compose.yml が含まれますが、開発環境用の設定であり、本番環境では使用しません。
+React SPA フロントエンドと Django REST API バックエンドで構成されています。
+本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。
 
 ## サービス
 
+- 🌐 **Frontend**: React SPA（テキスト読み上げ・テキスト生成・メディア変換の操作画面）
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
-    - 🛠️ **Core**: 共通機能・ユーティリティ（カスタムUserモデル、暗号化）
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
         - 🤖 **LLM**: OpenAI API 設定・クライアント（テキスト生成）
@@ -22,20 +23,20 @@ Docker コンテナベースの Web アプリケーションです。
         - 🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
         - 🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
     - **features/** - ビジネス機能
-        - 🎙️ **Greeting**: 挨拶 API（設定ベースの柔軟な挨拶生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
-        - 📁 **Media**: メディアファイル管理機能
+        - 🎙️ **Generate**: テキスト生成 API（設定ベースの柔軟なテキスト生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
+        - 📁 **Media**: メディアファイル管理機能（画像フォーマット変換、ZIP→PDF変換）
 - 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
 
 ## 特徴
 
+- 🌐 **モダン SPA**: React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui
 - 🚀 **CI/CD**: GitHub Actions による自動ビルド・テスト・リリース
 - 📦 **コンテナレジストリ**: GitHub Container Registry へのイメージ公開
 - 🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
 - 📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
 - 🛡️ **脆弱性スキャン**: Trivy によるイメージ検査
 - 🔒 **暗号化**: 機密情報の暗号化保存（OneDrive 設定など）
-- 🐍 **最新 Python 環境**: uv を使用した高速なパッケージ管理
-- ✅ **テストカバレッジ**: pytest によるテスト自動化とカバレッジ計測
+- ✅ **テスト**: pytest（バックエンド）+ Vitest + Playwright（フロントエンド）
 
 ## プロジェクト構成
 
@@ -45,22 +46,29 @@ kawashiro-server/
 ├── README.md                   # このファイル
 │
 ├── .github/                    # GitHub設定
-│   ├── workflows/              # GitHub Actionsワークフロー
-│   │   ├── build.yml           # ビルド・プッシュ（develop）
-│   │   ├── release.yml         # リリースタグ付け（main）
-│   │   ├── pr-checks.yml       # PRチェック
-│   │   └── cleanup-images.yml  # 古いイメージのクリーンアップ
-│   └── copilot-instructions.md # Copilotレビュー設定
+│   └── workflows/              # GitHub Actionsワークフロー
+│       ├── build.yml           # ビルド・プッシュ（develop）
+│       ├── release.yml         # リリースタグ付け（main）
+│       ├── pr-checks.yml       # PRチェック
+│       └── cleanup-images.yml  # 古いイメージのクリーンアップ
+│
+├── frontend/                   # React SPA フロントエンド
+│   ├── Dockerfile              # マルチステージビルド（node → nginx）
+│   ├── nginx.conf              # SPA配信 + APIプロキシ
+│   ├── package.json            # 依存関係（pnpm）
+│   ├── src/
+│   │   ├── components/         # UIコンポーネント
+│   │   ├── features/           # 画面（home, login, tts, generate, media）
+│   │   ├── lib/                # APIクライアント
+│   │   ├── stores/             # Zustand ストア
+│   │   └── types/              # 型定義
+│   ├── tests/                  # Vitest ユニットテスト
+│   └── e2e/                    # Playwright E2E テスト
 │
 ├── django_api/                 # Django REST API
-│   ├── Dockerfile              # Django APIコンテナ
+│   ├── Dockerfile              # Python 3.13-alpine ベース
 │   ├── pyproject.toml          # Python依存関係（uv使用）
-│   ├── manage.py               # Djangoコマンド
 │   ├── django_api/             # メインプロジェクト設定
-│   │   ├── settings.py         # Django設定
-│   │   ├── urls.py             # URLルーティング
-│   │   ├── asgi.py             # ASGIエントリーポイント
-│   │   └── wsgi.py             # WSGIエントリーポイント
 │   ├── core/                   # コアアプリ（カスタムUserモデル、暗号化）
 │   ├── user/                   # ユーザー認証アプリ
 │   ├── health/                 # ヘルスチェックアプリ
@@ -72,13 +80,9 @@ kawashiro-server/
 │   │   ├── tts/                # TTS読み上げ（sbv2-apiプロキシ）
 │   │   └── weather/            # 気象庁天気予報
 │   ├── features/               # ビジネス機能
-│   │   ├── greeting/           # 挨拶生成（LLM + 天気 + 予定 + TTS統合）
+│   │   ├── generate/           # テキスト生成（LLM + 天気 + 予定 + TTS統合）
 │   │   └── media/              # 画像処理（ZIP→PDF変換、画像形式変換）
 │   └── tests/                  # テストコード
-│       ├── integrations/       # 外部サービス連携テスト
-│       ├── features/           # ビジネス機能テスト
-│       ├── user/               # ユーザーテスト
-│       └── health/             # ヘルスチェックテスト
 │
 └── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU）
     ├── Dockerfile              # コンテナ定義（CUDA 11.8）
@@ -104,17 +108,13 @@ cd kawashiro-server
 ### 2. 環境変数の設定
 
 ```bash
-# Django API用の環境変数ファイルを作成
 cp django_api/.env.sample django_api/.env
-
-# .envファイルを編集して必要な値を設定
 nano django_api/.env
 ```
 
 ### 3. 永続化ディレクトリの準備
 
 ```bash
-# Django APIの永続化データ用ディレクトリを作成
 sudo mkdir -p /opt/app/django-api/staticfiles
 sudo touch /opt/app/django-api/db.sqlite3
 sudo chown -R $USER:$USER /opt/app/
@@ -134,7 +134,14 @@ docker compose logs -f
 
 ```bash
 # Django API ヘルスチェック
-curl http://localhost:8000/schema/
+curl http://localhost:8000/health/
+
+# フロントエンド（Docker）
+curl http://localhost:3000/
+
+# フロントエンド（開発サーバー）
+cd frontend && pnpm install && pnpm dev
+# http://localhost:5173/ でアクセス
 ```
 
 ## 環境変数設定
@@ -188,6 +195,7 @@ docker compose logs -f
 
 # 特定のサービスのログ
 docker compose logs -f django-api
+docker compose logs -f frontend
 ```
 
 ## CI/CD
@@ -207,7 +215,7 @@ flowchart LR
     direction TB
     A[feature/* ブランチ<br/>push & PR]
     B[PR to develop]
-    C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Dockerfile セキュリティスキャン<br/>・Ruff lint/format<br/>・pytest（カバレッジ80%以上）<br/>・Docker compose build<br/>・Django migrate<br/>・Django API 機能テスト]
+    C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Dockerfile セキュリティスキャン<br/>・Django: Ruff lint/format<br/>・Django: pytest（カバレッジ80%以上）<br/>・Frontend: ESLint/Prettier/TypeScript<br/>・Frontend: Vitest（カバレッジ80%以上）<br/>・コンテナ統合テスト]
     D[develop へマージ]
 
     A --> B
@@ -238,79 +246,15 @@ flowchart LR
   Stg -.->|staging images| Rel
 ```
 
-### ワークフロー詳細
+### ビルド対象サービス
 
-#### 1. PR チェック (`pr-checks.yml`)
+| サービス     | PRチェック | ビルド・プッシュ | リリース |
+| ------------ | ---------- | ---------------- | -------- |
+| django-api   | ✓          | ✓                | ✓        |
+| frontend     | ✓          | ✓                | ✓        |
+| sbv2-api     | スキャンのみ | -              | -        |
 
-**トリガー条件:**
-
-- `develop`ブランチへの Pull Request 作成・更新時
-- 手動実行（`workflow_dispatch`）
-
-**実行内容:**
-
-```yaml
-# 主要なチェック項目
-- Dockerfileセキュリティスキャン（Trivy config scan）
-- Ruff リンター・フォーマッターチェック
-- pytest（カバレッジ80%以上必須）
-- Docker Composeビルド検証
-- Django APIのマイグレーション・collectstaticテスト
-- Django API 機能テスト（OpenAPIスキーマ・Swagger UI）
-```
-
-**タイムアウト:** 15 分
-
-> **Note:** コンテナ統合テストでは `django-api` のみビルド・起動します。`sbv2-api` は NVIDIA GPU が必須のため CI 環境では実行できません。
-
-#### 2. ビルド・プッシュ (`build.yml`)
-
-**トリガー条件:**
-
-- `develop`ブランチへのプッシュ時
-- 手動実行（`workflow_dispatch`）
-
-**実行内容:**
-
-```yaml
-# ビルド対象サービス
-services:
-  - django-api
-
-# 各サービスに対して実行
-- マルチアーキテクチャビルド (linux/amd64, linux/arm64)
-- GitHub Container Registry (GHCR) へプッシュ
-- SBOM (Software Bill of Materials) 生成
-- Build Provenance (SLSA Level 3) 添付
-```
-
-**生成されるタグ:**
-
-- `staging` - 最新のステージングビルド
-- `sha-<7文字のSHA>` - コミット固有のタグ
-
-**タイムアウト:** 30 分
-
-#### 3. リリース (`release.yml`)
-
-**トリガー条件:**
-
-- `main`ブランチへのプッシュ時
-- 手動実行
-
-**実行内容:**
-
-```yaml
-# リリースフロー
-1. verify-images: stagingイメージの存在確認
-2. tag-release: staging → release/latest リタグ
-3. summary: リリースサマリー出力
-```
-
-**本番タグ:**
-
-- `release` - 本番環境用の最新リリース
-- `latest` - 最新版（互換性のため）
+> **Note:** `sbv2-api` は NVIDIA GPU が必須のため、CI 環境ではビルド・テストを実行しません。Dockerfileのセキュリティスキャンのみ行います。
 
 ### コンテナイメージのタグ戦略
 
@@ -321,182 +265,56 @@ services:
 | `latest`       | 最新版（互換性） | main ブランチへのマージ時      |
 | `sha-<commit>` | 特定バージョン   | 各ビルド時                     |
 
-### ロールバック手順
+## テストの実行
 
-問題が発生した場合のロールバック：
-
-```bash
-# 特定のSHAタグを使用してロールバック
-docker pull ghcr.io/kagiyama-baking/kawashiro-server/django-api:sha-abc1234
-
-# Ansible側でタグを指定してデプロイ
-```
-
-### ブランチ保護ルール
-
-#### develop ブランチ
-
-- PR が必須
-- ステータスチェック必須（pr-checks）
-- レビュー承認が必要
-- 直接プッシュ禁止
-
-#### main ブランチ
-
-- PR が必須
-- develop からのマージのみ許可
-- 管理者承認が必要
-- タグ付けは自動化
-
-### CI/CD 環境変数
-
-GitHub Secrets に設定が必要な環境変数：
-
-```yaml
-# 必須（自動設定）
-GITHUB_TOKEN: ${{ github.token }}
-```
-
-## トラブルシューティング
-
-### よくある問題と解決方法
-
-#### 1. コンテナが起動しない
+### バックエンド（Django API）
 
 ```bash
-# コンテナの状態を確認
-docker compose ps
-
-# 詳細なログを確認
-docker compose logs -f [サービス名]
-
-# 原因と対処法
-# - ポート競合: 他のサービスが8000番ポートを使用していないか確認
-#   sudo lsof -i :8000
-# - メモリ不足: Docker のメモリ制限を確認
-#   docker system info | grep Memory
-```
-
-#### 2. ディスク容量不足
-
-```bash
-# Dockerが使用している容量を確認
-docker system df
-
-# 不要なイメージ・コンテナを削除
-docker system prune -a --volumes
-```
-
-#### 3. パーミッションエラー
-
-```bash
-# 永続化ディレクトリの所有者を修正
-sudo chown -R $USER:$USER /opt/app/
-```
-
-### ログの確認方法
-
-```bash
-# 全サービスのログをリアルタイム表示
-docker compose logs -f
-
-# 特定期間のログを表示（最新100行）
-docker compose logs --tail=100
-
-# エラーログのみ抽出
-docker compose logs 2>&1 | grep -i error
-
-# ログをファイルに保存
-docker compose logs > logs_$(date +%Y%m%d_%H%M%S).txt
-```
-
-## セキュリティ設定
-
-### 環境変数のセキュリティ
-
-```bash
-# .envファイルの権限を制限
-chmod 600 django_api/.env
-
-# Gitに.envファイルが含まれていないことを確認
-git status --ignored
-```
-
-### イメージの署名と検証
-
-```bash
-# Build Provenanceの確認
-gh attestation verify oci://ghcr.io/kagiyama-baking/kawashiro-server/django-api:staging \
-  --owner kagiyama-baking
-
-# 脆弱性スキャン
-trivy image ghcr.io/kagiyama-baking/kawashiro-server/django-api:staging
-```
-
-## 開発者向けガイド
-
-### 開発環境のセットアップ
-
-```bash
-# 開発用ブランチの作成
-git checkout -b feature/your-feature-name
-
-# 開発環境の起動
-docker compose up -d
-```
-
-### テストの実行
-
-```bash
-# Django APIテスト
 cd django_api
 uv run pytest tests/ -v --tb=short \
   --cov=user --cov=core --cov=integrations --cov=features \
   --cov-report=term-missing -m "not e2e"
 ```
 
-### コーディング規約
+### フロントエンド
 
-- Dockerfile はベストプラクティスに従う
-- 環境変数は大文字とアンダースコア
-- ドキュメントは日本語で記述
+```bash
+cd frontend
+pnpm test:ci       # ユニットテスト（カバレッジ付き）
+pnpm test:e2e      # E2Eテスト（Playwright）
+```
 
 ## 技術スタック
 
+### フロントエンド
+
+- **React 19**: UI ライブラリ
+- **Vite**: ビルドツール
+- **TypeScript**: 型安全な JavaScript
+- **Tailwind CSS v4**: ユーティリティファースト CSS
+- **shadcn/ui**: UI コンポーネントライブラリ
+- **Zustand**: 状態管理
+- **ky**: HTTP クライアント
+
 ### バックエンド
 
-- **Django**: Python Web フレームワーク
+- **Django 6.0**: Python Web フレームワーク
 - **Django REST Framework**: REST API 構築
-- **Gunicorn**: WSGI HTTP サーバー（本番環境）
-- **SQLite**: 軽量データベース（Django API 用）
+- **SQLite**: 軽量データベース
+- **uv**: 高速 Python パッケージマネージャー
 
 ### インフラ・DevOps
 
 - **Docker & Docker Compose**: コンテナ化とオーケストレーション
+- **nginx**: フロントエンド配信 + API プロキシ
 - **Traefik**: リバースプロキシ（internal.kagiyama.net で管理）
 - **GitHub Actions**: CI/CD パイプライン
 - **GitHub Container Registry**: コンテナイメージレジストリ
-
-### ツール・ユーティリティ
-
-- **uv**: 高速 Python パッケージマネージャー
-- **pytest**: Python テストフレームワーク
-- **Ruff**: Python リンター・フォーマッター
 - **Trivy**: コンテナセキュリティスキャナー
 
 ### 外部サービス連携
 
 - **Microsoft Graph API**: OneDrive/Outlook 連携
-- **OpenAI API**: テキスト生成（挨拶機能）
+- **OpenAI API**: テキスト生成
 - **気象庁天気予報 API**: 天気予報データ取得
 - **Style-BERT-VITS2**: 高品質日本語音声合成エンジン（CUDA 11.8）
-
-## 謝辞
-
-このプロジェクトは以下のオープンソースプロジェクト・サービスを使用しています：
-
-- [Django](https://www.djangoproject.com/) - Python Web フレームワーク
-- [Docker](https://www.docker.com/) - コンテナ化プラットフォーム
-- [uv](https://github.com/astral-sh/uv) - 高速 Python パッケージマネージャー
-- [Style-BERT-VITS2](https://github.com/litagin02/Style-Bert-VITS2) - 高品質日本語音声合成エンジン
-- [OpenAI](https://openai.com/) - AI テキスト生成 API
