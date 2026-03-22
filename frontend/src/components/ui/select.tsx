@@ -5,24 +5,9 @@ import { cn } from '@/lib/utils';
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from 'lucide-react';
 
 function Select({
-    onOpenChange,
     ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-    return (
-        <SelectPrimitive.Root
-            data-slot="select"
-            onOpenChange={(open) => {
-                // Radix Selectが開く際にaria-hiddenをトリガーに設定しようとするが、
-                // トリガーがフォーカスを保持していると競合する。
-                // 開く前にフォーカスを解放して回避する。
-                if (open && document.activeElement instanceof HTMLElement) {
-                    document.activeElement.blur();
-                }
-                onOpenChange?.(open);
-            }}
-            {...props}
-        />
-    );
+    return <SelectPrimitive.Root data-slot="select" {...props} />;
 }
 
 function SelectGroup({
