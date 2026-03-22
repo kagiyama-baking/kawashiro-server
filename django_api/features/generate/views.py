@@ -1,4 +1,4 @@
-"""Views for greeting app."""
+"""Views for generate app."""
 
 import logging
 import re
@@ -356,14 +356,22 @@ class ConfigsListView(APIView):
     )
     def get(self, request):
         """設定一覧を取得."""
-        configs = GreetingConfig.objects.all().values(
-            "name",
-            "display_name",
-            "tts_enabled",
-            "use_weather",
-            "use_events",
-            "use_datetime",
-        )
-        serializer = ConfigListResponseSerializer(data={"configs": list(configs)})
-        serializer.is_valid(raise_exception=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            configs = GreetingConfig.objects.all().values(
+                "name",
+                "display_name",
+                "tts_enabled",
+                "use_weather",
+                "use_events",
+                "use_datetime",
+            )
+            serializer = ConfigListResponseSerializer(data={"configs": list(configs)})
+            serializer.is_valid(raise_exception=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.exception("設定一覧取得中の予期しないエラー: %s", str(e))
+            return Response(
+                {"error": "設定一覧の取得中に問題が発生しました"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

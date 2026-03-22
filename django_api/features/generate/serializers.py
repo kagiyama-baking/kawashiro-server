@@ -1,4 +1,4 @@
-"""Serializers for greeting app."""
+"""Serializers for generate app."""
 
 from rest_framework import serializers
 

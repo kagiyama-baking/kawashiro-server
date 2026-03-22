@@ -4,6 +4,7 @@ from rest_framework.authtoken.serializers import AuthTokenSerializer
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.permissions import BasePermission
 from rest_framework.settings import api_settings
+from rest_framework.throttling import AnonRateThrottle
 
 from user.serializers import UserSerializer
 
@@ -67,6 +68,8 @@ class CreateTokenView(ObtainAuthToken):
     renderer_classes = api_settings.DEFAULT_RENDERER_CLASSES
     # ログインAPIは認証不要（SessionAuthenticationのCSRFチェックを回避）
     authentication_classes = ()
+    # ブルートフォース対策のレート制限
+    throttle_classes = (AnonRateThrottle,)
 
 
 @extend_schema_view(

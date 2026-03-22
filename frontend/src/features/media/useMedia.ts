@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { convertImage, zipToPdf } from '@/lib/api/media';
 import type { OutputFormat } from '@/types/media';
@@ -13,11 +13,16 @@ export function useMedia() {
     const [result, setResult] = useState<MediaResult | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const previousUrlRef = useRef<string | null>(null);
 
     const handleConvertImage = useCallback(
         async (file: File, outputFormat: OutputFormat, quality: number) => {
             setIsLoading(true);
             setError(null);
+
+            if (previousUrlRef.current) {
+                URL.revokeObjectURL(previousUrlRef.current);
+            }
             setResult(null);
 
             try {
@@ -27,6 +32,7 @@ export function useMedia() {
                     quality,
                 });
                 const url = URL.createObjectURL(res.blob);
+                previousUrlRef.current = url;
                 setResult({ blob: res.blob, filename: res.filename, url });
                 toast.success('画像を変換しました');
             } catch {
@@ -42,11 +48,16 @@ export function useMedia() {
     const handleZipToPdf = useCallback(async (file: File) => {
         setIsLoading(true);
         setError(null);
+
+        if (previousUrlRef.current) {
+            URL.revokeObjectURL(previousUrlRef.current);
+        }
         setResult(null);
 
         try {
             const res = await zipToPdf(file);
             const url = URL.createObjectURL(res.blob);
+            previousUrlRef.current = url;
             setResult({ blob: res.blob, filename: res.filename, url });
             toast.success('PDFに変換しました');
         } catch {
@@ -55,6 +66,14 @@ export function useMedia() {
         } finally {
             setIsLoading(false);
         }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (previousUrlRef.current) {
+                URL.revokeObjectURL(previousUrlRef.current);
+            }
+        };
     }, []);
 
     const downloadResult = useCallback(() => {

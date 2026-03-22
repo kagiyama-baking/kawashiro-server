@@ -96,8 +96,12 @@ export function GenerateForm({
                     onKeyDown={handleKeyDown}
                     placeholder="プロンプトを入力...（Ctrl+Enterで送信）"
                     rows={5}
+                    maxLength={10000}
                     required
                 />
+                <p className="text-xs text-muted-foreground">
+                    {userPrompt.length}/10000文字
+                </p>
             </div>
 
             <LoadingButton
