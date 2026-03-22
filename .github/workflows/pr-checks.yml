@@ -282,36 +282,18 @@ jobs:
             # 準備完了待機（django-api）
             - name: Wait for readiness :django-api
               run: |
-                  # Django APIのヘルスチェック
                   echo "🔍 Django API確認中..."
-                  api_ready=false
                   for i in {1..30}; do
-                    # コンテナが起動中かチェック
-                    if docker ps --filter "name=django-api" --filter "status=running" | grep -q django-api; then
-                      # curlで確認
-                      if docker exec django-api sh -c "command -v curl >/dev/null 2>&1 && curl -s http://localhost:8000/schema/ 2>/dev/null | head -n1 | grep -q openapi" 2>/dev/null; then
-                        echo "✅ Django API準備完了 (curl使用)"
-                        api_ready=true
-                        break
-                      # wgetで確認
-                      elif docker exec django-api sh -c "command -v wget >/dev/null 2>&1 && wget -q -O - http://localhost:8000/schema/ 2>/dev/null | head -n1 | grep -q openapi" 2>/dev/null; then
-                        echo "✅ Django API準備完了 (wget使用)"
-                        api_ready=true
-                        break
-                      # pythonで確認
-                      elif docker exec django-api sh -c "python -c 'import urllib.request; print(urllib.request.urlopen(\"http://localhost:8000/schema/\").read().decode()[:100])' 2>/dev/null | grep -q openapi" 2>/dev/null; then
-                        echo "✅ Django API準備完了 (Python urllib使用)"
-                        api_ready=true
-                        break
-                      fi
+                    if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
+                      echo "✅ Django API準備完了"
+                      exit 0
                     fi
                     echo "  [$i/30] 待機中..."
                     sleep 3
                   done
-                  # タイムアウトチェック
-                  if [ "$api_ready" = false ]; then
-                    echo "⚠️ Django API準備確認タイムアウト（後続テストで動作確認）"
-                  fi
+                  echo "❌ Django API準備確認タイムアウト"
+                  docker compose logs django-api | tail -n 30
+                  exit 1
 
             # Django API機能テスト
             - name: Django API functionality tests
