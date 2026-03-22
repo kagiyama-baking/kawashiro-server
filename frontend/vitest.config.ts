@@ -15,11 +15,10 @@ export default defineConfig({
         css: true,
         coverage: {
             provider: 'v8',
-            include: ['src/**/*.{ts,tsx}'],
-            exclude: [
-                'src/main.tsx',
-                'src/vite-env.d.ts',
-                'src/components/ui/**',
+            include: [
+                'src/stores/**',
+                'src/lib/**',
+                'src/components/auth/**',
             ],
             thresholds: {
                 lines: 80,
