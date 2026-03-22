@@ -35,10 +35,10 @@ export function TtsPage() {
     return (
         <div className="mx-auto max-w-4xl space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-foreground">
+                <h1 className="text-foreground text-2xl font-bold">
                     テキスト読み上げ
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                     テキストを入力して音声を生成します
                 </p>
             </div>
@@ -46,7 +46,9 @@ export function TtsPage() {
             <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
                 <Card>
                     <CardHeader>
-                        <CardTitle className="font-sans">テキスト入力</CardTitle>
+                        <CardTitle className="font-sans">
+                            テキスト入力
+                        </CardTitle>
                         <CardDescription>
                             読み上げたいテキストとパラメータを設定してください
                         </CardDescription>

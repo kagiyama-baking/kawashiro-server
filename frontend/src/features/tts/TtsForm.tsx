@@ -61,7 +61,7 @@ export function TtsForm({
                     maxLength={500}
                     required
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                     {text.length}/500文字
                 </p>
             </div>

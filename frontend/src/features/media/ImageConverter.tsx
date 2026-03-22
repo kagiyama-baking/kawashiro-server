@@ -44,7 +44,7 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
                     accept=".jpg,.jpeg,.png,.webp,.tiff,.heif,.heic,.psd,.dng"
                     required
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                     対応形式: JPG, PNG, WEBP, TIFF, HEIF, HEIC, PSD,
                     DNG（最大50MB）
                 </p>
@@ -75,7 +75,7 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
                             <Label>品質</Label>
-                            <span className="text-sm text-muted-foreground">
+                            <span className="text-muted-foreground text-sm">
                                 {quality}
                             </span>
                         </div>

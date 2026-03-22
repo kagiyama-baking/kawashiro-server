@@ -18,7 +18,9 @@ export function useLogin() {
             setAuth(response.token, email);
             navigate('/', { replace: true });
         } catch {
-            setError('ログインに失敗しました。メールアドレスまたはパスワードを確認してください。');
+            setError(
+                'ログインに失敗しました。メールアドレスまたはパスワードを確認してください。',
+            );
         } finally {
             setIsLoading(false);
         }

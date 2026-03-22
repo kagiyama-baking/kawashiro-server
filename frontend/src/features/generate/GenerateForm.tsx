@@ -62,24 +62,24 @@ export function GenerateForm({
                     </SelectContent>
                 </Select>
                 {selected && (
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <div className="text-muted-foreground flex flex-wrap gap-2 text-xs">
                         {selected.use_datetime && (
-                            <span className="rounded bg-muted px-2 py-0.5">
+                            <span className="bg-muted rounded px-2 py-0.5">
                                 日時
                             </span>
                         )}
                         {selected.use_weather && (
-                            <span className="rounded bg-muted px-2 py-0.5">
+                            <span className="bg-muted rounded px-2 py-0.5">
                                 天気
                             </span>
                         )}
                         {selected.use_events && (
-                            <span className="rounded bg-muted px-2 py-0.5">
+                            <span className="bg-muted rounded px-2 py-0.5">
                                 予定
                             </span>
                         )}
                         {selected.tts_enabled && (
-                            <span className="rounded bg-primary/20 px-2 py-0.5 text-primary">
+                            <span className="bg-primary/20 text-primary rounded px-2 py-0.5">
                                 TTS有効
                             </span>
                         )}
@@ -99,7 +99,7 @@ export function GenerateForm({
                     maxLength={10000}
                     required
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                     {userPrompt.length}/10000文字
                 </p>
             </div>

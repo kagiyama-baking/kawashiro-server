@@ -26,10 +26,10 @@ export function GeneratePage() {
     return (
         <div className="mx-auto max-w-4xl space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-foreground">
+                <h1 className="text-foreground text-2xl font-bold">
                     テキスト生成読み上げ
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                     事前登録済みのプロンプト設定でテキストを生成し、音声で再生します
                 </p>
             </div>
@@ -56,8 +56,8 @@ export function GeneratePage() {
                         <div className="mt-4 space-y-3">
                             <Separator />
                             {result.text && (
-                                <div className="rounded-lg bg-muted p-4">
-                                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                                <div className="bg-muted rounded-lg p-4">
+                                    <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap">
                                         {result.text}
                                     </p>
                                 </div>

@@ -29,7 +29,7 @@ export function ZipToPdf({ onSubmit, isLoading }: ZipToPdfProps) {
                     accept=".zip"
                     required
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                     画像を含むZIPファイルをアップロードしてください（最大1GB、最大1000ファイル）
                 </p>
             </div>

@@ -10,9 +10,7 @@ interface StylesResponse {
 }
 
 export async function fetchModels(): Promise<string[]> {
-    const response = await apiClient
-        .get('tts/models/')
-        .json<ModelsResponse>();
+    const response = await apiClient.get('tts/models/').json<ModelsResponse>();
     return response.models;
 }
 

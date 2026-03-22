@@ -27,10 +27,10 @@ export function MediaPage() {
     return (
         <div className="mx-auto max-w-4xl space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-foreground">
+                <h1 className="text-foreground text-2xl font-bold">
                     メディア変換
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                     画像フォーマットの変換やZIPからPDFへの変換を行います
                 </p>
             </div>
@@ -48,9 +48,7 @@ export function MediaPage() {
                             <TabsTrigger value="image">
                                 画像フォーマット変換
                             </TabsTrigger>
-                            <TabsTrigger value="zip">
-                                ZIP → PDF
-                            </TabsTrigger>
+                            <TabsTrigger value="zip">ZIP → PDF</TabsTrigger>
                         </TabsList>
                         <TabsContent value="image">
                             <ImageConverter
@@ -71,8 +69,8 @@ export function MediaPage() {
                     {result && (
                         <div className="mt-4 space-y-3">
                             <Separator />
-                            <div className="flex items-center justify-between rounded-lg bg-muted p-3">
-                                <span className="text-sm text-foreground">
+                            <div className="bg-muted flex items-center justify-between rounded-lg p-3">
+                                <span className="text-foreground text-sm">
                                     {result.filename}
                                 </span>
                                 <Button

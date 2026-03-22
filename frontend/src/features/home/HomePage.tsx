@@ -12,10 +12,10 @@ export function HomePage() {
     return (
         <div className="mx-auto max-w-5xl space-y-8">
             {/* バナーエリア */}
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card">
+            <div className="border-border bg-card relative overflow-hidden rounded-xl border">
                 <div className="relative flex min-h-[200px] items-end sm:min-h-[280px] lg:min-h-[320px]">
                     {/* 画像がない場合のフォールバック背景（画像があれば隠れる） */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-muted via-card to-background" />
+                    <div className="from-muted via-card to-background absolute inset-0 bg-gradient-to-br" />
                     {/* バナー背景画像（フォールバックの上に配置） */}
                     <img
                         src={BANNER_IMAGE}
@@ -26,11 +26,11 @@ export function HomePage() {
                         }}
                     />
                     {/* テキスト読み取り用の下部グラデーション */}
-                    <div className="relative z-[2] w-full bg-gradient-to-t from-background/95 via-background/60 to-transparent p-6 sm:p-8">
-                        <h1 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl lg:text-4xl">
+                    <div className="from-background/95 via-background/60 relative z-[2] w-full bg-gradient-to-t to-transparent p-6 sm:p-8">
+                        <h1 className="font-heading text-foreground text-2xl font-medium tracking-tight sm:text-3xl lg:text-4xl">
                             鍵山製パンWebApp
                         </h1>
-                        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+                        <p className="text-muted-foreground mt-2 text-sm sm:text-base">
                             鍵山製パンの統合Webアプリケーション
                         </p>
                     </div>
@@ -47,7 +47,7 @@ export function HomePage() {
                                 'hover:border-primary/50 hover:bg-accent/30 hover:shadow-md',
                             )}
                         >
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                            <div className="bg-primary/10 text-primary group-hover:bg-primary/20 flex h-12 w-12 shrink-0 items-center justify-center rounded-lg transition-colors">
                                 <Icon className="h-6 w-6" />
                             </div>
                             <div>
@@ -59,8 +59,7 @@ export function HomePage() {
                                         'テキストを入力して音声を生成'}
                                     {to === '/generate' &&
                                         'プロンプトからテキスト生成＋読み上げ'}
-                                    {to === '/media' &&
-                                        '画像変換・ZIP→PDF変換'}
+                                    {to === '/media' && '画像変換・ZIP→PDF変換'}
                                 </CardDescription>
                             </div>
                         </Card>

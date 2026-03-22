@@ -22,10 +22,10 @@ export function LoginPage() {
     };
 
     return (
-        <div className="flex min-h-svh items-center justify-center bg-background p-4">
+        <div className="bg-background flex min-h-svh items-center justify-center p-4">
             <Card className="w-full max-w-md">
                 <CardHeader className="text-center">
-                    <CardTitle className="font-heading text-2xl font-medium text-primary">
+                    <CardTitle className="font-heading text-primary text-2xl font-medium">
                         鍵山製パンWebApp
                     </CardTitle>
                     <CardDescription>
@@ -58,7 +58,7 @@ export function LoginPage() {
                             />
                         </div>
                         {error && (
-                            <p className="text-sm text-destructive">{error}</p>
+                            <p className="text-destructive text-sm">{error}</p>
                         )}
                         <Button
                             type="submit"

@@ -36,14 +36,8 @@ function App() {
                 >
                     <Route index element={<HomePage />} />
                     <Route path="/tts" element={<TtsPage />} />
-                    <Route
-                        path="/generate"
-                        element={<GeneratePage />}
-                    />
-                    <Route
-                        path="/media"
-                        element={<MediaPage />}
-                    />
+                    <Route path="/generate" element={<GeneratePage />} />
+                    <Route path="/media" element={<MediaPage />} />
                 </Route>
             </Routes>
             <Toaster />

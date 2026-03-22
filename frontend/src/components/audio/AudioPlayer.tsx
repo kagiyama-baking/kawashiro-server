@@ -38,15 +38,17 @@ function AudioPlayerInner({ src }: { readonly src: string }) {
     };
 
     return (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+        <div className="border-border bg-card flex items-center gap-3 rounded-lg border p-3">
             <audio
                 ref={audioRef}
                 src={src}
                 onTimeUpdate={() => {
-                    if (audioRef.current) setProgress(audioRef.current.currentTime);
+                    if (audioRef.current)
+                        setProgress(audioRef.current.currentTime);
                 }}
                 onLoadedMetadata={() => {
-                    if (audioRef.current) setDuration(audioRef.current.duration);
+                    if (audioRef.current)
+                        setDuration(audioRef.current.duration);
                 }}
                 onEnded={() => {
                     setIsPlaying(false);
@@ -68,7 +70,7 @@ function AudioPlayerInner({ src }: { readonly src: string }) {
                 )}
             </Button>
             <div className="flex flex-1 items-center gap-2">
-                <span className="w-10 text-xs text-muted-foreground">
+                <span className="text-muted-foreground w-10 text-xs">
                     {formatTime(progress)}
                 </span>
                 <Slider
@@ -78,7 +80,7 @@ function AudioPlayerInner({ src }: { readonly src: string }) {
                     onValueChange={handleSeek}
                     className="flex-1"
                 />
-                <span className="w-10 text-xs text-muted-foreground">
+                <span className="text-muted-foreground w-10 text-xs">
                     {formatTime(duration)}
                 </span>
             </div>

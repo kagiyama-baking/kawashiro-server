@@ -13,7 +13,7 @@ export function TtsParamSliders() {
                 <div key={key} className="space-y-2">
                     <div className="flex items-center justify-between">
                         <Label className="text-sm">{label}</Label>
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-muted-foreground text-sm">
                             {params[key]}
                         </span>
                     </div>

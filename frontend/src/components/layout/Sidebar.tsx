@@ -20,7 +20,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     return (
         <>
             <div className="flex items-center justify-between p-6">
-                <h1 className="font-heading text-lg font-medium text-sidebar-foreground">
+                <h1 className="font-heading text-sidebar-foreground text-lg font-medium">
                     鍵山製パン
                 </h1>
                 {onClose && (
@@ -62,7 +62,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
             <Separator />
 
             <div className="p-4">
-                <p className="mb-2 truncate text-xs text-muted-foreground">
+                <p className="text-muted-foreground mb-2 truncate text-xs">
                     {email}
                 </p>
                 <Button
@@ -88,7 +88,7 @@ export function Sidebar() {
             <Button
                 variant="ghost"
                 size="icon"
-                className="fixed left-4 top-4 z-50 lg:hidden"
+                className="fixed top-4 left-4 z-50 lg:hidden"
                 onClick={() => setMobileOpen(true)}
             >
                 <Menu className="h-5 w-5" />
@@ -105,7 +105,7 @@ export function Sidebar() {
             {/* モバイルサイドバー */}
             <aside
                 className={cn(
-                    'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar transition-transform duration-200 lg:hidden',
+                    'border-border bg-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-200 lg:hidden',
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
                 )}
             >
@@ -113,7 +113,7 @@ export function Sidebar() {
             </aside>
 
             {/* デスクトップサイドバー */}
-            <aside className="hidden h-full w-64 flex-col border-r border-border bg-sidebar lg:flex">
+            <aside className="border-border bg-sidebar hidden h-full w-64 flex-col border-r lg:flex">
                 <SidebarContent />
             </aside>
         </>

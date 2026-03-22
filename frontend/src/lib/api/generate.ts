@@ -55,11 +55,10 @@ export async function fetchConfigs(): Promise<GenerateConfig[]> {
 export async function generateText(
     request: GenerateRequest,
 ): Promise<GenerateResult> {
-    const response = await apiClient
-        .post('generate/generate/', {
-            json: request,
-            timeout: 120000,
-        });
+    const response = await apiClient.post('generate/generate/', {
+        json: request,
+        timeout: 120000,
+    });
 
     const contentType = response.headers.get('Content-Type') ?? '';
     const rawText = response.headers.get('X-Generate-Text') ?? '';
