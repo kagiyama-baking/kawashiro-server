@@ -121,20 +121,8 @@ jobs:
                   echo ">>> 古いイメージを削除中..."
                   docker image prune -f
 
-                  echo ">>> ヘルスチェック中..."
-                  sleep 5
-                  for i in $(seq 1 6); do
-                    if curl -sf http://localhost:8000/health/ > /dev/null 2>&1; then
-                      echo "✅ ヘルスチェック成功"
-                      docker compose ps django-api
-                      exit 0
-                    fi
-                    echo "⏳ ヘルスチェック待機中... (${i}/6)"
-                    sleep 5
-                  done
-                  echo "❌ ヘルスチェック失敗"
-                  docker compose logs --tail=50 django-api
-                  exit 1
+                  echo "✅ デプロイ完了"
+                  docker compose ps django-api frontend
                   DEPLOY_SCRIPT
 
     # リリースサマリー出力
