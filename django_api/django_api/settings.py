@@ -308,6 +308,8 @@ SPECTACULAR_SETTINGS = {
         {"name": "weather", "description": "気象庁天気予報API"},
         {"name": "generate", "description": "テキスト生成API"},
     ],
+    # Swagger UIのAPIベースURL（nginx リバースプロキシが /api/ プレフィックスを除去して転送）
+    "SERVERS": [{"url": "/api", "description": "API"}],
 }
 
 # ============================================================

@@ -30,11 +30,14 @@ urlpatterns = [
     # API Documentation (OpenAPI/Swagger)
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     # Swagger UI (メインのドキュメント)
+    # url="/api/schema/": nginx経由でアクセスする際、/api プレフィックス付きでスキーマを取得する
     path(
-        "swagger/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"
+        "swagger/",
+        SpectacularSwaggerView.as_view(url="/api/schema/"),
+        name="swagger-ui",
     ),
     # Redoc UI (alternative documentation UI)
-    path("redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    path("redoc/", SpectacularRedocView.as_view(url="/api/schema/"), name="redoc"),
     # ユーザー関連APIのURL（user.urlsにルーティング）
     path("user/", include("user.urls")),
     # OneDrive関連APIのURL（onedrive.urlsにルーティング）
