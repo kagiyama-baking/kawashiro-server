@@ -26,3 +26,7 @@ dist-ssr
 # Playwright
 test-results/
 playwright-report/
+
+# Vite / Vitest
+.vite/
+coverage/
