@@ -24,7 +24,7 @@
 | `/login`    | ログイン           | メールアドレス + パスワードでToken認証     |
 | `/`         | ホーム             | バナー + メニューカード                    |
 | `/tts`      | テキスト読み上げ   | テキスト入力 → 音声合成 → 再生/ダウンロード |
-| `/generate` | テキスト生成読み上げ | プリセット選択 → LLM生成 → TTS再生        |
+| `/talk`     | 会話生成読み上げ     | プリセット選択 → LLM生成 → TTS再生        |
 | `/media`    | メディア変換       | 画像フォーマット変換 / ZIP→PDF変換         |
 
 ## セットアップ
@@ -111,11 +111,11 @@ frontend/
 │   │   ├── home/                # ホーム画面
 │   │   ├── login/               # ログイン画面
 │   │   ├── tts/                 # テキスト読み上げ
-│   │   ├── generate/            # テキスト生成読み上げ
+│   │   ├── talk/                # 会話生成読み上げ
 │   │   └── media/               # メディア変換
 │   ├── lib/
 │   │   ├── api-client.ts        # ky インスタンス（Auth自動付与）
-│   │   └── api/                 # API 関数（auth, tts, generate, media）
+│   │   └── api/                 # API 関数（auth, tts, talk, media）
 │   ├── stores/                  # Zustand ストア（auth, tts）
 │   └── types/                   # TypeScript 型定義
 ├── tests/                       # Vitest ユニットテスト

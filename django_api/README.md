@@ -12,7 +12,7 @@ REST API で複数の機能を提供するバックエンドサーバです。
 | media    | `/media/`      | メディアファイル管理（画像変換・ZIP→PDF）              |
 | tts      | `/tts/`        | テキスト読み上げ（Style-BERT-VITS2 プロキシ）          |
 | weather  | `/weather/`    | 気象庁天気予報                                         |
-| generate | `/generate/`   | テキスト生成（設定ベースの AI テキスト生成・TTS 対応） |
+| talk     | `/talk/`       | 会話生成（設定ベースの AI 会話生成・TTS 対応）         |
 
 ## セットアップ
 
@@ -33,7 +33,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 # 暗号化キー（データベースに保存する機密情報の暗号化に使用）
 ENCRYPTION_KEY=your-encryption-key
 
-# OpenAI API（テキスト生成機能などのAI生成に使用）
+# OpenAI API（会話生成機能などのAI生成に使用）
 OPENAI_API_KEY=your-openai-api-key
 
 # Style-BERT-VITS2 API（音声合成機能）
@@ -78,9 +78,9 @@ Django 管理画面（`http://localhost:8000/admin/`）で以下の設定を行�
 | 秘密鍵             | PEM 形式の秘密鍵（暗号化されて DB に保存） |
 | 対象ユーザー       | アクセス対象のユーザーメールアドレス       |
 
-### テキスト生成設定（Generate 機能）
+### 会話生成設定（Talk 機能）
 
-「テキスト生成」→「テキスト生成設定」から複数の設定を登録できます：
+「会話生成」→「会話生成設定」から複数の設定を登録できます：
 
 | 項目               | 説明                                               |
 | ------------------ | -------------------------------------------------- |
@@ -98,11 +98,11 @@ Django 管理画面（`http://localhost:8000/admin/`）で以下の設定を行�
 
 ```bash
 # 設定一覧を取得
-curl http://localhost:8000/generate/configs/ \
+curl http://localhost:8000/talk/configs/ \
   -H "Authorization: Token YOUR_TOKEN"
 
-# テキスト生成
-curl -X POST http://localhost:8000/generate/generate/ \
+# 会話生成
+curl -X POST http://localhost:8000/talk/synthesize/ \
   -H "Authorization: Token YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -138,7 +138,7 @@ uv run pytest tests/ -v --tb=short \
   --cov-report=term-missing --cov-fail-under=80 -m "not e2e"
 
 # 特定のアプリのテスト
-uv run pytest tests/features/generate/
+uv run pytest tests/features/talk/
 uv run pytest tests/user/
 ```
 

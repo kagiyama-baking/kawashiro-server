@@ -68,7 +68,7 @@ export function TtsPage() {
                         {audioUrl && (
                             <div className="mt-4 space-y-3">
                                 <Separator />
-                                <AudioPlayer src={audioUrl} />
+                                <AudioPlayer src={audioUrl} autoPlay />
                                 <AudioDownload
                                     blob={audioBlob}
                                     filename={`tts_output.${format}`}

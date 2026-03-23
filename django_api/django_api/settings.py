@@ -94,7 +94,7 @@ INSTALLED_APPS = [
     "features.media",  # 画像処理などのメディア関連機能
     "integrations.tts",  # Text-to-Speech機能
     "integrations.weather",  # 気象庁天気予報機能
-    "features.generate",  # テキスト生成機能
+    "features.talk",  # 会話生成機能
     "health",  # ヘルスチェック
 ]
 
@@ -306,7 +306,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
-        {"name": "generate", "description": "テキスト生成API"},
+        {"name": "talk", "description": "会話生成API"},
     ],
     # Swagger UIのAPIベースURL（nginx リバースプロキシが /api/ プレフィックスを除去して転送）
     "SERVERS": [{"url": "/api", "description": "API"}],

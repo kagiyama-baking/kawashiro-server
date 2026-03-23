@@ -20,7 +20,7 @@ kawashiro-server/
 │   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
 │   │   └── weather/         # 気象庁天気予報クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── greeting/        # 挨拶生成API（LLM + 天気 + 予定 + TTS統合）
+│   │   ├── talk/             # 会話生成API（LLM + 天気 + 予定 + TTS統合）
 │   │   └── media/           # 画像処理API
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
@@ -113,12 +113,12 @@ uv run pytest tests/ -v --tb=short \
   --cov-report=term-missing -m "not e2e"
 
 # 特定アプリのテストのみ実行
-uv run pytest tests/features/greeting/ -v
+uv run pytest tests/features/talk/ -v
 uv run pytest tests/integrations/weather/ -v
 uv run pytest tests/user/ -v
 
 # 特定テスト関数を実行
-uv run pytest tests/features/greeting/test_services.py::test_関数名 -v
+uv run pytest tests/features/talk/test_services.py::test_関数名 -v
 
 # カバレッジレポート付き（CI相当）
 uv run pytest tests/ -v --tb=short \
@@ -179,7 +179,7 @@ django_api/tests/
 │   ├── tts/                 # TTSテスト
 │   └── weather/             # 天気予報テスト
 ├── features/                # ビジネス機能テスト
-│   ├── greeting/            # 挨拶機能テスト
+│   ├── talk/                # 会話生成テスト
 │   └── media/               # メディア処理テスト
 ├── user/                    # ユーザー管理テスト
 └── health/                  # ヘルスチェックテスト
@@ -304,7 +304,7 @@ Django API に必要な環境変数（`django_api/.env`）：
 | `/media/`    | media           | 画像処理                                |
 | `/tts/`      | tts             | 音声合成                                |
 | `/weather/`  | weather         | 気象庁天気予報                          |
-| `/greeting/` | greeting        | 挨拶生成（LLM + 天気 + 予定 + TTS統合） |
+| `/talk/`     | talk            | 会話生成（LLM + 天気 + 予定 + TTS統合） |
 
 ## Docker サービス構成
 
