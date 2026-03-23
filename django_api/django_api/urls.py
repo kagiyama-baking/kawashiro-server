@@ -50,8 +50,8 @@ urlpatterns = [
     path("outlook/", include("integrations.outlook.urls")),
     # 気象庁天気予報関連APIのURL（weather.urlsにルーティング）
     path("weather/", include("integrations.weather.urls")),
-    # テキスト生成関連APIのURL
-    path("generate/", include("features.generate.urls")),
+    # 会話生成関連APIのURL
+    path("talk/", include("features.talk.urls")),
     # ヘルスチェックURL（認証不要）
     path("health/", include("health.urls")),
 ]

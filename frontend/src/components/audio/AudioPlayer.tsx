@@ -5,9 +5,16 @@ import { Slider } from '@/components/ui/slider';
 
 interface AudioPlayerProps {
     readonly src: string | null;
+    readonly autoPlay?: boolean;
 }
 
-function AudioPlayerInner({ src }: { readonly src: string }) {
+function AudioPlayerInner({
+    src,
+    autoPlay = false,
+}: {
+    readonly src: string;
+    readonly autoPlay: boolean;
+}) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -42,6 +49,7 @@ function AudioPlayerInner({ src }: { readonly src: string }) {
             <audio
                 ref={audioRef}
                 src={src}
+                autoPlay={autoPlay}
                 onTimeUpdate={() => {
                     if (audioRef.current)
                         setProgress(audioRef.current.currentTime);
@@ -88,8 +96,8 @@ function AudioPlayerInner({ src }: { readonly src: string }) {
     );
 }
 
-export function AudioPlayer({ src }: AudioPlayerProps) {
+export function AudioPlayer({ src, autoPlay = false }: AudioPlayerProps) {
     if (!src) return null;
     // key={src}で src 変更時にコンポーネントをリマウントし、ステートをリセット
-    return <AudioPlayerInner key={src} src={src} />;
+    return <AudioPlayerInner key={src} src={src} autoPlay={autoPlay} />;
 }

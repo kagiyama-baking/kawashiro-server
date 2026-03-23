@@ -57,8 +57,8 @@ export function HomePage() {
                                 <CardDescription className="text-xs">
                                     {to === '/tts' &&
                                         'テキストを入力して音声を生成'}
-                                    {to === '/generate' &&
-                                        'プロンプトからテキスト生成＋読み上げ'}
+                                    {to === '/talk' &&
+                                        '設定に基づき会話テキスト生成＋読み上げ'}
                                     {to === '/media' && '画像変換・ZIP→PDF変換'}
                                 </CardDescription>
                             </div>
