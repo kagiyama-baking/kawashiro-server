@@ -20,6 +20,7 @@ jobs:
             matrix:
                 image:
                     - django-api
+                    - frontend
         steps:
             - name: Checkout
               uses: actions/checkout@v4
