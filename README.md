@@ -12,18 +12,18 @@ React SPA フロントエンドと Django REST API バックエンドで構成�
 
 ## サービス
 
-- 🌐 **Frontend**: React SPA（テキスト読み上げ・テキスト生成・メディア変換の操作画面）
+- 🌐 **Frontend**: React SPA（テキスト読み上げ・会話生成・メディア変換の操作画面）
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
-        - 🤖 **LLM**: OpenAI API 設定・クライアント（テキスト生成）
+        - 🤖 **LLM**: OpenAI API 設定・クライアント（会話生成）
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
         - 🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
         - 🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
     - **features/** - ビジネス機能
-        - 🎙️ **Generate**: テキスト生成 API（設定ベースの柔軟なテキスト生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
+        - 🎙️ **Talk**: 会話生成 API（設定ベースの柔軟な会話生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
         - 📁 **Media**: メディアファイル管理機能（画像フォーマット変換、ZIP→PDF変換）
 - 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
 
@@ -58,7 +58,7 @@ kawashiro-server/
 │   ├── package.json            # 依存関係（pnpm）
 │   ├── src/
 │   │   ├── components/         # UIコンポーネント
-│   │   ├── features/           # 画面（home, login, tts, generate, media）
+│   │   ├── features/           # 画面（home, login, tts, talk, media）
 │   │   ├── lib/                # APIクライアント
 │   │   ├── stores/             # Zustand ストア
 │   │   └── types/              # 型定義
@@ -80,7 +80,7 @@ kawashiro-server/
 │   │   ├── tts/                # TTS読み上げ（sbv2-apiプロキシ）
 │   │   └── weather/            # 気象庁天気予報
 │   ├── features/               # ビジネス機能
-│   │   ├── generate/           # テキスト生成（LLM + 天気 + 予定 + TTS統合）
+│   │   ├── talk/               # 会話生成（LLM + 天気 + 予定 + TTS統合）
 │   │   └── media/              # 画像処理（ZIP→PDF変換、画像形式変換）
 │   └── tests/                  # テストコード
 │
@@ -315,6 +315,6 @@ pnpm test:e2e      # E2Eテスト（Playwright）
 ### 外部サービス連携
 
 - **Microsoft Graph API**: OneDrive/Outlook 連携
-- **OpenAI API**: テキスト生成
+- **OpenAI API**: 会話生成
 - **気象庁天気予報 API**: 天気予報データ取得
 - **Style-BERT-VITS2**: 高品質日本語音声合成エンジン（CUDA 11.8）

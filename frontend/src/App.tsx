@@ -3,7 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { Toaster } from '@/components/ui/sonner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { GeneratePage } from '@/features/generate/GeneratePage';
+import { GeneratePage } from '@/features/talk/GeneratePage';
 import { HomePage } from '@/features/home/HomePage';
 import { LoginPage } from '@/features/login/LoginPage';
 import { MediaPage } from '@/features/media/MediaPage';
@@ -36,7 +36,7 @@ function App() {
                 >
                     <Route index element={<HomePage />} />
                     <Route path="/tts" element={<TtsPage />} />
-                    <Route path="/generate" element={<GeneratePage />} />
+                    <Route path="/talk" element={<GeneratePage />} />
                     <Route path="/media" element={<MediaPage />} />
                 </Route>
             </Routes>
