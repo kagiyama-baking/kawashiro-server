@@ -34,10 +34,10 @@ jobs:
             services: ${{ steps.build-matrix.outputs.services }}
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Detect changes
-              uses: dorny/paths-filter@v3
+              uses: dorny/paths-filter@v4
               id: filter
               with:
                   filters: |
@@ -73,11 +73,11 @@ jobs:
         steps:
             # ソースコードの取得
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             # マルチプラットフォームビルド用のQEMU設定
             - name: Set up QEMU
-              uses: docker/setup-qemu-action@v3
+              uses: docker/setup-qemu-action@v4
 
             # Buildxのセットアップ（高度なビルド機能用）
             - name: Set up Buildx
@@ -176,7 +176,7 @@ jobs:
 
             # ビルド証明の生成
             - name: Attest build provenance
-              uses: actions/attest-build-provenance@v3
+              uses: actions/attest-build-provenance@v4
               if: github.event_name != 'workflow_dispatch' # 手動実行時はスキップ
               continue-on-error: true # エラーが発生してもワークフローを続行
               with:
@@ -198,7 +198,7 @@ jobs:
 
             # ダイジェストアーティファクトのアップロード
             - name: Upload digest artifact
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: digest-${{ matrix.service.name }}
                   path: digest.txt
