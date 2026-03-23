@@ -64,7 +64,10 @@ export function GeneratePage() {
                             )}
                             {result.audioUrl && (
                                 <>
-                                    <AudioPlayer src={result.audioUrl} autoPlay />
+                                    <AudioPlayer
+                                        src={result.audioUrl}
+                                        autoPlay
+                                    />
                                     <AudioDownload
                                         blob={result.audioBlob}
                                         filename="generated.wav"
