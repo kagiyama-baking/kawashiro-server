@@ -79,9 +79,6 @@ services:
         hostname: frontend
         ports:
             - '3000:80'
-        volumes:
-            # バナー画像の差し替え用（ホスト側のファイルでコンテナ内を上書き）
-            - ./frontend/public/banner.jpg:/usr/share/nginx/html/banner.jpg:ro
         restart: unless-stopped
         networks:
             - container-network
