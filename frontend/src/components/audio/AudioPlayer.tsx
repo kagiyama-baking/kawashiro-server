@@ -45,7 +45,7 @@ function AudioPlayerInner({
     };
 
     return (
-        <div className="border-border bg-card flex items-center gap-3 rounded-lg border p-3">
+        <div className="glass neon-border flex items-center gap-3 rounded-xl p-3.5">
             <audio
                 ref={audioRef}
                 src={src}
@@ -69,6 +69,7 @@ function AudioPlayerInner({
                 variant="ghost"
                 size="icon"
                 onClick={togglePlay}
+                className="hover:bg-[oklch(0.75_0.20_155/0.1)] hover:text-[oklch(0.75_0.20_155)]"
                 aria-label={isPlaying ? '一時停止' : '再生'}
             >
                 {isPlaying ? (
@@ -78,7 +79,7 @@ function AudioPlayerInner({
                 )}
             </Button>
             <div className="flex flex-1 items-center gap-2">
-                <span className="text-muted-foreground w-10 text-xs">
+                <span className="text-muted-foreground w-10 font-mono text-[11px] tabular-nums">
                     {formatTime(progress)}
                 </span>
                 <Slider
@@ -88,7 +89,7 @@ function AudioPlayerInner({
                     onValueChange={handleSeek}
                     className="flex-1"
                 />
-                <span className="text-muted-foreground w-10 text-xs">
+                <span className="text-muted-foreground w-10 font-mono text-[11px] tabular-nums">
                     {formatTime(duration)}
                 </span>
             </div>
