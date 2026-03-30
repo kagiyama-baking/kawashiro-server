@@ -36,7 +36,7 @@ export function HomePage() {
                 <div className="relative z-10 p-8 sm:p-10">
                     {/* タイトル部分 */}
                     <p className="mb-3 font-mono text-xs font-medium tracking-[0.2em] text-[oklch(0.75_0.20_155)] uppercase">
-                        $ kagiyama-bakery --version
+                        $ kagiyama-baking --version
                     </p>
                     <h1 className="font-heading text-foreground text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
                         鍵山製パン
@@ -46,20 +46,12 @@ export function HomePage() {
 
                     {/* メニューリスト（ヒーロー内統合） */}
                     <nav className="mt-8 space-y-1">
-                        {menuItems.map(({ to, label, icon: Icon }, index) => (
-                            <NavLink
-                                key={to}
-                                to={to}
-                                className="group animate-slide-up"
-                                style={{
-                                    animationDelay: `${(index + 1) * 80}ms`,
-                                }}
-                            >
+                        {menuItems.map(({ to, label, icon: Icon }) => (
+                            <NavLink key={to} to={to} className="group">
                                 <div
                                     className={cn(
                                         'flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-200',
-                                        'border-l-2 border-transparent',
-                                        'hover:border-[oklch(0.75_0.20_155)] hover:bg-[oklch(0.75_0.20_155/0.08)]',
+                                        'hover:bg-[oklch(0.75_0.20_155/0.08)]',
                                     )}
                                 >
                                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.75_0.20_155/0.1)] text-[oklch(0.75_0.20_155)] transition-all duration-200 group-hover:bg-[oklch(0.75_0.20_155/0.2)] group-hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.3)]">

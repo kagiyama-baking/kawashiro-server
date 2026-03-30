@@ -15,7 +15,7 @@ export function AppLayout() {
                         backgroundSize: '24px 24px',
                     }}
                 />
-                <div className="relative px-6 pt-16 pb-8 lg:px-10 lg:pt-8 lg:pb-10">
+                <div className="relative pt-16 pr-6 pb-8 pl-14 lg:px-10 lg:pt-8 lg:pb-10">
                     <Outlet />
                 </div>
             </main>
