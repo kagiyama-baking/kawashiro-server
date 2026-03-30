@@ -11,7 +11,7 @@ export function AppLayout() {
                     className="pointer-events-none absolute inset-0 opacity-[0.02]"
                     style={{
                         backgroundImage:
-                            'radial-gradient(oklch(0.82 0.18 192) 1px, transparent 1px)',
+                            'radial-gradient(oklch(0.75 0.20 155) 1px, transparent 1px)',
                         backgroundSize: '24px 24px',
                     }}
                 />

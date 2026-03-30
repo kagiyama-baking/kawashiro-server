@@ -1,10 +1,35 @@
-import { LogOut, Menu, X } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { navItems } from './nav-items';
+
+function HamburgerIcon({ open }: { readonly open: boolean }) {
+    return (
+        <div className="relative h-5 w-5">
+            <span
+                className={cn(
+                    'absolute left-0 block h-0.5 w-5 bg-current transition-all duration-300',
+                    open ? 'top-[9px] rotate-45' : 'top-1',
+                )}
+            />
+            <span
+                className={cn(
+                    'absolute top-[9px] left-0 block h-0.5 w-5 bg-current transition-opacity duration-300',
+                    open ? 'opacity-0' : 'opacity-100',
+                )}
+            />
+            <span
+                className={cn(
+                    'absolute left-0 block h-0.5 w-5 bg-current transition-all duration-300',
+                    open ? 'top-[9px] -rotate-45' : 'top-[17px]',
+                )}
+            />
+        </div>
+    );
+}
 
 function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     const email = useAuthStore((s) => s.email);
@@ -23,7 +48,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                     <h1 className="font-heading neon-text text-lg font-bold tracking-tight">
                         鍵山製パン
                     </h1>
-                    <div className="mt-2 h-px w-12 bg-gradient-to-r from-[oklch(0.82_0.18_192)] to-transparent" />
+                    <div className="mt-2 h-px w-12 bg-gradient-to-r from-[oklch(0.75_0.20_155)] to-transparent" />
                 </div>
                 {onClose && (
                     <Button
@@ -33,7 +58,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                         className="lg:hidden"
                         aria-label="メニューを閉じる"
                     >
-                        <X className="h-5 w-5" />
+                        <HamburgerIcon open={true} />
                     </Button>
                 )}
             </div>
@@ -52,7 +77,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                             cn(
                                 'flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200',
                                 isActive
-                                    ? 'border-l-2 border-[oklch(0.82_0.18_192)] bg-[oklch(0.82_0.18_192/0.1)] text-[oklch(0.82_0.18_192)]'
+                                    ? 'border-l-2 border-[oklch(0.75_0.20_155)] bg-[oklch(0.75_0.20_155/0.1)] text-[oklch(0.75_0.20_155)]'
                                     : 'hover:text-foreground text-[oklch(0.65_0.01_240)] hover:bg-[oklch(0.95_0_0/0.04)]',
                             )
                         }
@@ -70,7 +95,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="text-muted-foreground w-full justify-start gap-2 hover:text-[oklch(0.82_0.18_192)]"
+                    className="text-muted-foreground w-full justify-start gap-2 hover:text-[oklch(0.75_0.20_155)]"
                     onClick={handleLogout}
                 >
                     <LogOut className="h-4 w-4" />
@@ -95,15 +120,15 @@ export function Sidebar() {
 
     return (
         <>
-            {/* モバイルハンバーガーボタン */}
+            {/* モバイルハンバーガーボタン（3本線↔バツ アニメーション） */}
             <Button
                 variant="ghost"
                 size="icon"
                 className="fixed top-4 left-4 z-50 lg:hidden"
-                onClick={() => setMobileOpen(true)}
-                aria-label="メニューを開く"
+                onClick={() => setMobileOpen((v) => !v)}
+                aria-label={mobileOpen ? 'メニューを閉じる' : 'メニューを開く'}
             >
-                <Menu className="h-5 w-5" />
+                <HamburgerIcon open={mobileOpen} />
             </Button>
 
             {/* モバイルオーバーレイ */}

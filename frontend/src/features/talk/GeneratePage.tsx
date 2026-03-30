@@ -1,6 +1,7 @@
 import { AudioDownload } from '@/components/audio/AudioDownload';
 import { AudioPlayer } from '@/components/audio/AudioPlayer';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
+import { TerminalText } from '@/components/common/TerminalText';
 import {
     Card,
     CardContent,
@@ -29,9 +30,7 @@ export function GeneratePage() {
                 <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
                     会話生成読み上げ
                 </h1>
-                <p className="text-muted-foreground mt-1 font-mono text-xs">
-                    // llm-powered conversation generation
-                </p>
+                <TerminalText text="talk --generate" />
             </div>
 
             <Card className="animate-slide-up neon-border">

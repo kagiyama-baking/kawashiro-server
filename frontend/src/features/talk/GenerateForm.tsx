@@ -69,17 +69,17 @@ export function GenerateForm({
                 {selected && (
                     <div className="flex flex-wrap gap-2 text-xs">
                         {selected.use_datetime && (
-                            <span className="rounded-md border border-[oklch(0.82_0.18_192/0.2)] bg-[oklch(0.82_0.18_192/0.08)] px-1.5 py-0.5 text-[oklch(0.82_0.18_192)]">
+                            <span className="rounded-md border border-[oklch(0.75_0.20_155/0.2)] bg-[oklch(0.75_0.20_155/0.08)] px-1.5 py-0.5 text-[oklch(0.75_0.20_155)]">
                                 日時
                             </span>
                         )}
                         {selected.use_weather && (
-                            <span className="rounded-md border border-[oklch(0.82_0.18_192/0.2)] bg-[oklch(0.82_0.18_192/0.08)] px-1.5 py-0.5 text-[oklch(0.82_0.18_192)]">
+                            <span className="rounded-md border border-[oklch(0.75_0.20_155/0.2)] bg-[oklch(0.75_0.20_155/0.08)] px-1.5 py-0.5 text-[oklch(0.75_0.20_155)]">
                                 天気
                             </span>
                         )}
                         {selected.use_events && (
-                            <span className="rounded-md border border-[oklch(0.82_0.18_192/0.2)] bg-[oklch(0.82_0.18_192/0.08)] px-1.5 py-0.5 text-[oklch(0.82_0.18_192)]">
+                            <span className="rounded-md border border-[oklch(0.75_0.20_155/0.2)] bg-[oklch(0.75_0.20_155/0.08)] px-1.5 py-0.5 text-[oklch(0.75_0.20_155)]">
                                 予定
                             </span>
                         )}

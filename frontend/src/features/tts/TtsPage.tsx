@@ -2,6 +2,7 @@ import { RotateCcw } from 'lucide-react';
 import { AudioDownload } from '@/components/audio/AudioDownload';
 import { AudioPlayer } from '@/components/audio/AudioPlayer';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
+import { TerminalText } from '@/components/common/TerminalText';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -38,9 +39,7 @@ export function TtsPage() {
                 <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
                     テキスト読み上げ
                 </h1>
-                <p className="text-muted-foreground mt-1 font-mono text-xs">
-                    // text-to-speech synthesis
-                </p>
+                <TerminalText text="tts --synthesize" />
             </div>
 
             <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
@@ -93,7 +92,7 @@ export function TtsPage() {
                                 onClick={resetParams}
                                 title="デフォルトに戻す"
                                 aria-label="デフォルトに戻す"
-                                className="hover:text-[oklch(0.82_0.18_192)]"
+                                className="hover:text-[oklch(0.75_0.20_155)]"
                             >
                                 <RotateCcw className="h-4 w-4" />
                             </Button>

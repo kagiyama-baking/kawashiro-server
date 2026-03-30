@@ -19,7 +19,7 @@ export function LoginPage() {
             {/* 背景オーブ */}
             <div className="pointer-events-none absolute inset-0">
                 <div
-                    className="animate-float-orb absolute -top-32 -right-32 h-72 w-72 rounded-full bg-[oklch(0.82_0.18_192/0.08)] blur-3xl"
+                    className="animate-float-orb absolute -top-32 -right-32 h-72 w-72 rounded-full bg-[oklch(0.75_0.20_155/0.08)] blur-3xl"
                     style={{ animationDelay: '-2s' }}
                 />
                 <div className="animate-float-orb absolute -bottom-20 -left-20 h-48 w-48 rounded-full bg-[oklch(0.72_0.20_155/0.06)] blur-3xl" />
@@ -33,7 +33,7 @@ export function LoginPage() {
                     <p className="text-muted-foreground text-sm">
                         ログインして続行してください
                     </p>
-                    <div className="mx-auto h-px w-16 bg-gradient-to-r from-transparent via-[oklch(0.82_0.18_192/0.5)] to-transparent" />
+                    <div className="mx-auto h-px w-16 bg-gradient-to-r from-transparent via-[oklch(0.75_0.20_155/0.5)] to-transparent" />
                 </div>
 
                 <form onSubmit={onSubmit} className="space-y-4">
@@ -75,7 +75,7 @@ export function LoginPage() {
                     )}
                     <Button
                         type="submit"
-                        className="w-full font-semibold hover:shadow-[0_0_20px_oklch(0.82_0.18_192/0.4)]"
+                        className="w-full font-semibold hover:shadow-[0_0_20px_oklch(0.75_0.20_155/0.4)]"
                         disabled={isLoading}
                     >
                         {isLoading ? 'ログイン中...' : 'ログイン'}

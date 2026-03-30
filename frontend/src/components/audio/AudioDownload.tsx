@@ -25,7 +25,7 @@ export function AudioDownload({
         <Button
             variant="outline"
             size="sm"
-            className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.82_0.18_192/0.15)]"
+            className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.15)]"
             onClick={handleDownload}
         >
             <Download className="mr-1.5 h-4 w-4" />

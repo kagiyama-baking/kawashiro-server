@@ -1,5 +1,6 @@
 import { Download } from 'lucide-react';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
+import { TerminalText } from '@/components/common/TerminalText';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -30,9 +31,7 @@ export function MediaPage() {
                 <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
                     メディア変換
                 </h1>
-                <p className="text-muted-foreground mt-1 font-mono text-xs">
-                    // image &amp; document conversion
-                </p>
+                <TerminalText text="media --convert" />
             </div>
 
             <Card className="animate-slide-up neon-border">
@@ -78,7 +77,7 @@ export function MediaPage() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.82_0.18_192/0.15)]"
+                                    className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.15)]"
                                     onClick={downloadResult}
                                 >
                                     <Download className="mr-2 h-4 w-4" />

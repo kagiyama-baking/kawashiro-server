@@ -69,7 +69,7 @@ function AudioPlayerInner({
                 variant="ghost"
                 size="icon"
                 onClick={togglePlay}
-                className="hover:bg-[oklch(0.82_0.18_192/0.1)] hover:text-[oklch(0.82_0.18_192)]"
+                className="hover:bg-[oklch(0.75_0.20_155/0.1)] hover:text-[oklch(0.75_0.20_155)]"
                 aria-label={isPlaying ? '一時停止' : '再生'}
             >
                 {isPlaying ? (
