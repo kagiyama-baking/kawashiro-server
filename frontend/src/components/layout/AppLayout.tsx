@@ -3,10 +3,21 @@ import { Sidebar } from './Sidebar';
 
 export function AppLayout() {
     return (
-        <div className="flex h-svh overflow-hidden">
+        <div className="bg-background flex h-svh overflow-hidden">
             <Sidebar />
-            <main className="flex-1 overflow-auto p-4 pt-16 lg:p-6 lg:pt-6">
-                <Outlet />
+            <main className="relative flex-1 overflow-auto">
+                {/* ドットグリッド背景 */}
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-[0.02]"
+                    style={{
+                        backgroundImage:
+                            'radial-gradient(oklch(0.82 0.18 192) 1px, transparent 1px)',
+                        backgroundSize: '24px 24px',
+                    }}
+                />
+                <div className="relative px-6 pt-16 pb-8 lg:px-10 lg:pt-8 lg:pb-10">
+                    <Outlet />
+                </div>
             </main>
         </div>
     );

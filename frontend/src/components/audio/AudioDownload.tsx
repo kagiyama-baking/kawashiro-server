@@ -22,8 +22,13 @@ export function AudioDownload({
     };
 
     return (
-        <Button variant="outline" size="sm" onClick={handleDownload}>
-            <Download className="mr-2 h-4 w-4" />
+        <Button
+            variant="outline"
+            size="sm"
+            className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.82_0.18_192/0.15)]"
+            onClick={handleDownload}
+        >
+            <Download className="mr-1.5 h-4 w-4" />
             ダウンロード
         </Button>
     );

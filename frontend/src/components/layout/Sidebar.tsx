@@ -1,8 +1,7 @@
 import { LogOut, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { navItems } from './nav-items';
@@ -19,25 +18,27 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
 
     return (
         <>
-            <div className="flex items-center justify-between p-6">
-                <h1 className="font-heading text-sidebar-foreground text-lg font-medium">
-                    鍵山製パン
-                </h1>
+            <div className="flex items-center justify-between px-5 py-5">
+                <div>
+                    <h1 className="font-heading neon-text text-lg font-bold tracking-tight">
+                        鍵山製パン
+                    </h1>
+                    <div className="mt-2 h-px w-12 bg-gradient-to-r from-[oklch(0.82_0.18_192)] to-transparent" />
+                </div>
                 {onClose && (
                     <Button
                         variant="ghost"
                         size="icon"
                         onClick={onClose}
                         className="lg:hidden"
+                        aria-label="メニューを閉じる"
                     >
                         <X className="h-5 w-5" />
                     </Button>
                 )}
             </div>
 
-            <Separator />
-
-            <nav className="flex-1 space-y-1 p-3">
+            <nav className="flex-1 space-y-1 p-4">
                 {navItems.map(({ to, label, icon: Icon }) => (
                     <NavLink
                         key={to}
@@ -49,10 +50,10 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                         }}
                         className={({ isActive }) =>
                             cn(
-                                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                                'flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200',
                                 isActive
-                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                                    ? 'border-l-2 border-[oklch(0.82_0.18_192)] bg-[oklch(0.82_0.18_192/0.1)] text-[oklch(0.82_0.18_192)]'
+                                    : 'hover:text-foreground text-[oklch(0.65_0.01_240)] hover:bg-[oklch(0.95_0_0/0.04)]',
                             )
                         }
                     >
@@ -62,16 +63,14 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                 ))}
             </nav>
 
-            <Separator />
-
-            <div className="p-4">
-                <p className="text-muted-foreground mb-2 truncate text-xs">
+            <div className="px-5 py-4">
+                <p className="text-muted-foreground mb-3 truncate font-mono text-[11px] tracking-wide">
                     {email}
                 </p>
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full justify-start gap-2"
+                    className="text-muted-foreground w-full justify-start gap-2 hover:text-[oklch(0.82_0.18_192)]"
                     onClick={handleLogout}
                 >
                     <LogOut className="h-4 w-4" />
@@ -85,6 +84,15 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
 export function Sidebar() {
     const [mobileOpen, setMobileOpen] = useState(false);
 
+    useEffect(() => {
+        if (!mobileOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setMobileOpen(false);
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [mobileOpen]);
+
     return (
         <>
             {/* モバイルハンバーガーボタン */}
@@ -93,6 +101,7 @@ export function Sidebar() {
                 size="icon"
                 className="fixed top-4 left-4 z-50 lg:hidden"
                 onClick={() => setMobileOpen(true)}
+                aria-label="メニューを開く"
             >
                 <Menu className="h-5 w-5" />
             </Button>
@@ -100,7 +109,7 @@ export function Sidebar() {
             {/* モバイルオーバーレイ */}
             {mobileOpen && (
                 <div
-                    className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+                    className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
                     onClick={() => setMobileOpen(false)}
                 />
             )}
@@ -108,7 +117,7 @@ export function Sidebar() {
             {/* モバイルサイドバー */}
             <aside
                 className={cn(
-                    'border-border bg-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-200 lg:hidden',
+                    'glass fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-[oklch(0.95_0_0/0.06)] transition-transform duration-200 lg:hidden',
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
                 )}
             >
@@ -116,7 +125,7 @@ export function Sidebar() {
             </aside>
 
             {/* デスクトップサイドバー */}
-            <aside className="border-border bg-sidebar hidden h-full w-64 flex-col border-r lg:flex">
+            <aside className="glass hidden h-full w-60 flex-col border-r border-[oklch(0.95_0_0/0.06)] lg:flex">
                 <SidebarContent />
             </aside>
         </>

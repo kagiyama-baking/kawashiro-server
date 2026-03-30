@@ -26,19 +26,21 @@ export function MediaPage() {
 
     return (
         <div className="mx-auto max-w-4xl space-y-6">
-            <div>
-                <h1 className="text-foreground text-2xl font-bold">
+            <div className="animate-slide-up">
+                <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
                     メディア変換
                 </h1>
-                <p className="text-muted-foreground text-sm">
-                    画像フォーマットの変換やZIPからPDFへの変換を行います
+                <p className="text-muted-foreground mt-1 font-mono text-xs">
+                    // image &amp; document conversion
                 </p>
             </div>
 
-            <Card>
+            <Card className="animate-slide-up neon-border">
                 <CardHeader>
-                    <CardTitle className="font-sans">変換ツール</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="font-heading font-semibold">
+                        変換ツール
+                    </CardTitle>
+                    <CardDescription className="text-[13px]">
                         変換タイプを選択してファイルをアップロードしてください
                     </CardDescription>
                 </CardHeader>
@@ -67,15 +69,16 @@ export function MediaPage() {
                     <ErrorMessage message={error} />
 
                     {result && (
-                        <div className="mt-4 space-y-3">
-                            <Separator />
-                            <div className="bg-muted flex items-center justify-between rounded-lg p-3">
-                                <span className="text-foreground text-sm">
+                        <div className="animate-slide-up mt-4 space-y-3">
+                            <Separator className="opacity-30" />
+                            <div className="glass neon-border flex items-center justify-between rounded-xl p-4">
+                                <span className="text-foreground font-mono text-sm">
                                     {result.filename}
                                 </span>
                                 <Button
                                     variant="outline"
                                     size="sm"
+                                    className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.82_0.18_192/0.15)]"
                                     onClick={downloadResult}
                                 >
                                     <Download className="mr-2 h-4 w-4" />
