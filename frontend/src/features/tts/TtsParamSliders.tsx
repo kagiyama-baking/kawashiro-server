@@ -12,8 +12,8 @@ export function TtsParamSliders() {
             {TTS_PARAM_CONFIGS.map(({ key, label, min, max, step }) => (
                 <div key={key} className="space-y-2">
                     <div className="flex items-center justify-between">
-                        <Label className="text-sm">{label}</Label>
-                        <span className="text-muted-foreground text-sm">
+                        <Label className="text-[13px]">{label}</Label>
+                        <span className="text-muted-foreground font-mono text-[13px] tabular-nums">
                             {params[key]}
                         </span>
                     </div>

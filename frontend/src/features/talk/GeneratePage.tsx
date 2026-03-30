@@ -1,6 +1,7 @@
 import { AudioDownload } from '@/components/audio/AudioDownload';
 import { AudioPlayer } from '@/components/audio/AudioPlayer';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
+import { TerminalText } from '@/components/common/TerminalText';
 import {
     Card,
     CardContent,
@@ -25,19 +26,19 @@ export function GeneratePage() {
 
     return (
         <div className="mx-auto max-w-4xl space-y-6">
-            <div>
-                <h1 className="text-foreground text-2xl font-bold">
+            <div className="animate-slide-up">
+                <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
                     会話生成読み上げ
                 </h1>
-                <p className="text-muted-foreground text-sm">
-                    事前登録済みの設定に基づき会話テキストを生成し、音声で再生します
-                </p>
+                <TerminalText text="talk --generate" />
             </div>
 
-            <Card>
+            <Card className="animate-slide-up neon-border">
                 <CardHeader>
-                    <CardTitle className="font-sans">プロンプト設定</CardTitle>
-                    <CardDescription>
+                    <CardTitle className="font-heading font-semibold">
+                        プロンプト設定
+                    </CardTitle>
+                    <CardDescription className="text-[13px]">
                         プリセットを選択し、ユーザープロンプトを入力してください
                     </CardDescription>
                 </CardHeader>
@@ -53,11 +54,11 @@ export function GeneratePage() {
                     <ErrorMessage message={error} />
 
                     {result && (
-                        <div className="mt-4 space-y-3">
-                            <Separator />
+                        <div className="animate-slide-up mt-5 space-y-3">
+                            <Separator className="opacity-30" />
                             {result.text && (
-                                <div className="bg-muted rounded-lg p-4">
-                                    <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap">
+                                <div className="glass rounded-xl p-5">
+                                    <p className="text-foreground font-mono text-[13px] leading-relaxed whitespace-pre-wrap">
                                         {result.text}
                                     </p>
                                 </div>

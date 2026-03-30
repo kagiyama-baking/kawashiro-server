@@ -48,9 +48,11 @@ export function TtsForm({
     };
 
     return (
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-2">
-                <Label htmlFor="tts-text">テキスト</Label>
+                <Label htmlFor="tts-text" className="text-[13px] font-medium">
+                    テキスト
+                </Label>
                 <Textarea
                     id="tts-text"
                     value={text}
@@ -61,16 +63,21 @@ export function TtsForm({
                     maxLength={500}
                     required
                 />
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground font-mono text-[11px]">
                     {text.length}/500文字
                 </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                    <Label>モデル</Label>
+                    <Label
+                        htmlFor="model-select"
+                        className="text-[13px] font-medium"
+                    >
+                        モデル
+                    </Label>
                     <Select value={selectedModel} onValueChange={onModelChange}>
-                        <SelectTrigger>
+                        <SelectTrigger id="model-select">
                             <SelectValue placeholder="モデルを選択" />
                         </SelectTrigger>
                         <SelectContent>
@@ -84,12 +91,17 @@ export function TtsForm({
                 </div>
 
                 <div className="space-y-2">
-                    <Label>スタイル</Label>
+                    <Label
+                        htmlFor="style-select"
+                        className="text-[13px] font-medium"
+                    >
+                        スタイル
+                    </Label>
                     <Select
                         value={params.style}
                         onValueChange={(v) => setParam('style', v)}
                     >
-                        <SelectTrigger>
+                        <SelectTrigger id="style-select">
                             <SelectValue placeholder="スタイルを選択" />
                         </SelectTrigger>
                         <SelectContent>
@@ -103,16 +115,21 @@ export function TtsForm({
                 </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-2">
-                    <Label>出力形式</Label>
+                    <Label
+                        htmlFor="format-select"
+                        className="text-[13px] font-medium"
+                    >
+                        出力形式
+                    </Label>
                     <Select
                         value={params.format}
                         onValueChange={(v) =>
                             setParam('format', v as 'wav' | 'mp3' | 'ogg')
                         }
                     >
-                        <SelectTrigger>
+                        <SelectTrigger id="format-select">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -126,7 +143,7 @@ export function TtsForm({
 
             <LoadingButton
                 type="submit"
-                className="w-full"
+                className="mt-1 w-full font-medium"
                 isLoading={isLoading}
                 loadingText="合成中..."
                 disabled={!text.trim()}

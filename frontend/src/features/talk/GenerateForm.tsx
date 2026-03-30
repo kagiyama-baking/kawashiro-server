@@ -46,11 +46,16 @@ export function GenerateForm({
     const selected = configs.find((c) => c.name === selectedConfig);
 
     return (
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-2">
-                <Label>プリセット</Label>
+                <Label
+                    htmlFor="preset-select"
+                    className="text-[13px] font-medium"
+                >
+                    プリセット
+                </Label>
                 <Select value={selectedConfig} onValueChange={onConfigChange}>
-                    <SelectTrigger>
+                    <SelectTrigger id="preset-select">
                         <SelectValue placeholder="設定を選択" />
                     </SelectTrigger>
                     <SelectContent>
@@ -62,24 +67,24 @@ export function GenerateForm({
                     </SelectContent>
                 </Select>
                 {selected && (
-                    <div className="text-muted-foreground flex flex-wrap gap-2 text-xs">
+                    <div className="flex flex-wrap gap-2 text-xs">
                         {selected.use_datetime && (
-                            <span className="bg-muted rounded px-2 py-0.5">
+                            <span className="rounded-md border border-[oklch(0.75_0.20_155/0.2)] bg-[oklch(0.75_0.20_155/0.08)] px-1.5 py-0.5 text-[oklch(0.75_0.20_155)]">
                                 日時
                             </span>
                         )}
                         {selected.use_weather && (
-                            <span className="bg-muted rounded px-2 py-0.5">
+                            <span className="rounded-md border border-[oklch(0.75_0.20_155/0.2)] bg-[oklch(0.75_0.20_155/0.08)] px-1.5 py-0.5 text-[oklch(0.75_0.20_155)]">
                                 天気
                             </span>
                         )}
                         {selected.use_events && (
-                            <span className="bg-muted rounded px-2 py-0.5">
+                            <span className="rounded-md border border-[oklch(0.75_0.20_155/0.2)] bg-[oklch(0.75_0.20_155/0.08)] px-1.5 py-0.5 text-[oklch(0.75_0.20_155)]">
                                 予定
                             </span>
                         )}
                         {selected.tts_enabled && (
-                            <span className="bg-primary/20 text-primary rounded px-2 py-0.5">
+                            <span className="rounded-md border border-[oklch(0.72_0.20_155/0.2)] bg-[oklch(0.72_0.20_155/0.1)] px-1.5 py-0.5 text-[oklch(0.72_0.20_155)]">
                                 TTS有効
                             </span>
                         )}
@@ -88,7 +93,12 @@ export function GenerateForm({
             </div>
 
             <div className="space-y-2">
-                <Label htmlFor="user-prompt">ユーザープロンプト</Label>
+                <Label
+                    htmlFor="user-prompt"
+                    className="text-[13px] font-medium"
+                >
+                    ユーザープロンプト
+                </Label>
                 <Textarea
                     id="user-prompt"
                     value={userPrompt}
@@ -99,14 +109,14 @@ export function GenerateForm({
                     maxLength={10000}
                     required
                 />
-                <p className="text-muted-foreground text-xs">
+                <p className="text-muted-foreground font-mono text-[11px]">
                     {userPrompt.length}/10000文字
                 </p>
             </div>
 
             <LoadingButton
                 type="submit"
-                className="w-full"
+                className="mt-1 w-full font-medium"
                 isLoading={isLoading}
                 loadingText="生成中..."
                 disabled={!userPrompt.trim() || !selectedConfig}
