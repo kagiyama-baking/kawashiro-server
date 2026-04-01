@@ -5,7 +5,7 @@ Djangoアプリのリネーム時に、既存のマイグレーション記録�
 """
 
 from django.core.management.base import BaseCommand
-from django.db import connection
+from django.db import OperationalError, ProgrammingError, connection
 
 
 class Command(BaseCommand):
@@ -23,12 +23,19 @@ class Command(BaseCommand):
         old_app = options["old_app"]
         new_app = options["new_app"]
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "UPDATE django_migrations SET app=%s WHERE app=%s",
-                [new_app, old_app],
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE django_migrations SET app=%s WHERE app=%s",
+                    [new_app, old_app],
+                )
+                count = cursor.rowcount
+        except (OperationalError, ProgrammingError):
+            # django_migrationsテーブルが未作成の場合（初回migrate前）
+            self.stdout.write(
+                self.style.NOTICE("django_migrationsテーブルが未作成のためスキップ")
             )
-            count = cursor.rowcount
+            return
 
         if count > 0:
             self.stdout.write(
