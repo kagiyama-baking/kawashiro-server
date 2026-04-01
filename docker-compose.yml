@@ -27,16 +27,49 @@ services:
             - ./django_api/.env:/django_api/.env
             # 静的ファイルの永続化
             - /opt/app/django-api/staticfiles:/django_api/staticfiles
-            # SQLiteデータベースの永続化
-            - /opt/app/django-api/db.sqlite3:/django_api/db.sqlite3
         restart: unless-stopped
         networks:
             - container-network
+        depends_on:
+            app-database:
+                condition: service_healthy
         command: >
             sh -c "python manage.py rename_app_migrations generate talk &&
                    python manage.py migrate &&
                    python manage.py collectstatic --noinput &&
                    python manage.py runserver 0.0.0.0:8000"
+
+    # PostgreSQL データベース
+    app-database:
+        image: postgres:17-alpine
+        container_name: app-database
+        hostname: app-database
+        volumes:
+            - app-db-data:/var/lib/postgresql/data
+        environment:
+            - POSTGRES_USER=kawashiro
+            - POSTGRES_PASSWORD=kawashiro-dev
+            - POSTGRES_DB=kawashiro
+            - POSTGRES_INITDB_ARGS=--data-checksums
+        restart: unless-stopped
+        networks:
+            - container-network
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -d kawashiro -U kawashiro"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 30s
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        cap_add:
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
 
     # Style-BERT-VITS2 読み上げAPI（GPU版）
     sbv2-api:
@@ -89,3 +122,6 @@ networks:
     container-network:
         driver: bridge
         name: container-network
+
+volumes:
+    app-db-data:
