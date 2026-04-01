@@ -33,9 +33,7 @@ class Command(BaseCommand):
         except (OperationalError, ProgrammingError):
             # django_migrationsテーブルが未作成の場合（初回migrate前）
             self.stdout.write(
-                self.style.NOTICE(
-                    "django_migrationsテーブルが未作成のためスキップ"
-                )
+                self.style.NOTICE("django_migrationsテーブルが未作成のためスキップ")
             )
             return
 
