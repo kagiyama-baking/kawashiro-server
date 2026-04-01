@@ -16,6 +16,7 @@ RUN apk update && \
         tzdata \
         curl \
         libheif \
+        libpq \
         libcrypto3 \
         libssl3 \
         zlib && \

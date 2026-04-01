@@ -141,20 +141,27 @@ WSGI_APPLICATION = "django_api.wsgi.application"
 # ============================================================
 # 参照: https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",  # SQLiteエンジン
-        "NAME": BASE_DIR / "db.sqlite3",  # データベースファイルのパス
-        # 本番環境ではPostgreSQLやMySQLの使用を推奨
-        # 例:
-        # 'ENGINE': 'django.db.backends.postgresql',
-        # 'NAME': 'database_name',
-        # 'USER': 'database_user',
-        # 'PASSWORD': 'database_password',
-        # 'HOST': 'localhost',
-        # 'PORT': '5432',
+if os.getenv("DB_ENGINE"):
+    _db_password = os.getenv("DB_PASSWORD")
+    if not _db_password:
+        raise ValueError("DB_PASSWORD is required when DB_ENGINE is set.")
+    DATABASES = {
+        "default": {
+            "ENGINE": os.getenv("DB_ENGINE"),
+            "NAME": os.getenv("DB_NAME", "kawashiro"),
+            "USER": os.getenv("DB_USER", "kawashiro"),
+            "PASSWORD": _db_password,
+            "HOST": os.getenv("DB_HOST", "localhost"),
+            "PORT": os.getenv("DB_PORT", "5432"),
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # ============================================================
