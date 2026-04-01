@@ -240,19 +240,28 @@ jobs:
             - name: Prepare volume directories
               run: |
                   sudo mkdir -p /opt/app/django-api/staticfiles
-                  sudo touch /opt/app/django-api/db.sqlite3
                   sudo chmod -R 777 /opt/app/
 
             # Dockerイメージのビルド
             - name: Build Docker images
               run: docker compose build --pull django-api
 
-            # Django API: マイグレーション確認
+            # PostgreSQLの起動とマイグレーション確認
             - name: Test Django migrations
               run: |
-                  echo "🔧 Django マイグレーション確認..."
+                  echo "🔧 PostgreSQL起動 & Django マイグレーション確認..."
+                  docker compose up -d app-database
+                  # PostgreSQLの準備完了を待機
+                  for i in {1..30}; do
+                    if docker compose exec app-database pg_isready -U kawashiro > /dev/null 2>&1; then
+                      echo "✅ PostgreSQL準備完了"
+                      break
+                    fi
+                    echo "  [$i/30] PostgreSQL待機中..."
+                    sleep 2
+                  done
                   # CI環境用：rootユーザーで実行して権限問題を回避
-                  docker compose run --rm --no-deps -u root -w /django_api django-api sh -c "
+                  docker compose run --rm -u root -w /django_api django-api sh -c "
                     python manage.py migrate --run-syncdb && \
                     python manage.py migrate --check
                   "
