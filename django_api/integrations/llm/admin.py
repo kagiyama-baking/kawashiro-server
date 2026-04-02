@@ -60,6 +60,7 @@ class OpenAIConfigForm(BaseLLMConfigForm):
             "name",
             "is_active",
             "model",
+            "embedding_model",
             "timeout",
         ]
 
@@ -70,7 +71,14 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
 
     form = OpenAIConfigForm
 
-    list_display = ["name", "is_active", "model", "timeout", "updated_at"]
+    list_display = [
+        "name",
+        "is_active",
+        "model",
+        "embedding_model",
+        "timeout",
+        "updated_at",
+    ]
     list_filter = ["is_active", "model"]
     search_fields = ["name", "model"]
     readonly_fields = ["created_at", "updated_at"]
@@ -86,8 +94,8 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
         (
             "モデル設定",
             {
-                "fields": ("model", "timeout"),
-                "description": "使用するOpenAIモデルとタイムアウトを設定します。",
+                "fields": ("model", "embedding_model", "timeout"),
+                "description": "チャット補完とEmbedding生成に使用するモデルを設定します。",
             },
         ),
         (

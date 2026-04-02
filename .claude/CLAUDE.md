@@ -13,15 +13,19 @@ kawashiro-server/
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
 │   ├── health/              # ヘルスチェック
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LLM設定・クライアント（OpenAI API）
+│   │   ├── llm/             # LLM設定・クライアント（OpenAI API: チャット + Embedding）
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント
 │   │   ├── onedrive/        # OneDrive連携API
 │   │   ├── outlook/         # Outlook Calendar連携API
 │   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
-│   │   └── weather/         # 気象庁天気予報クライアント
+│   │   ├── weather/         # 気象庁天気予報クライアント
+│   │   ├── hn/              # Hacker News Algolia APIクライアント
+│   │   ├── tavily/          # Tavily Web検索APIクライアント
+│   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/             # 会話生成API（LLM + 天気 + 予定 + TTS統合）
-│   │   └── media/           # 画像処理API
+│   │   ├── talk/            # 会話生成API（LLM + 天気 + 予定 + TTS統合）
+│   │   ├── media/           # 画像処理API
+│   │   └── hn_agent/        # HN監視・分析エージェント
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
 │   │   ├── integrations/    # 外部サービス連携テスト
@@ -43,7 +47,8 @@ kawashiro-server/
 | 言語                    | Python 3.13                                       |
 | フレームワーク          | Django 6.0 + Django REST Framework 3.16           |
 | API ドキュメント        | drf-spectacular（OpenAPI/Swagger）                |
-| データベース            | SQLite（開発）/ 永続化ボリューム                  |
+| データベース            | PostgreSQL 17（pgvector拡張対応）                 |
+| タスクキュー            | Celery + Redis（定期タスク: django-celery-beat）  |
 | 認証                    | Token認証（rest_framework.authtoken）             |
 | テスト                  | pytest + pytest-django + pytest-cov + pytest-mock |
 | テストデータ            | factory-boy + Faker（日本語ロケール）             |
@@ -177,10 +182,14 @@ django_api/tests/
 │   ├── onedrive/            # OneDriveテスト
 │   ├── outlook/             # Outlookテスト
 │   ├── tts/                 # TTSテスト
-│   └── weather/             # 天気予報テスト
+│   ├── weather/             # 天気予報テスト
+│   ├── hn/                  # HN Algolia APIテスト
+│   ├── tavily/              # Tavily APIテスト
+│   └── slack/               # Slack通知テスト
 ├── features/                # ビジネス機能テスト
 │   ├── talk/                # 会話生成テスト
-│   └── media/               # メディア処理テスト
+│   ├── media/               # メディア処理テスト
+│   └── hn_agent/            # HN Agentテスト（タスク・Agent・Orchestrator・Reporter）
 ├── user/                    # ユーザー管理テスト
 └── health/                  # ヘルスチェックテスト
 ```
@@ -287,31 +296,38 @@ Django API に必要な環境変数（`django_api/.env`）：
 | `DEBUG`           | 任意 | デバッグモード（デフォルト: False）                |
 | `ALLOWED_HOSTS`   | 任意 | 許可ホスト（カンマ区切り、デフォルト: localhost）  |
 | `ENCRYPTION_KEY`  | 任意 | DB保存用暗号化キー                                 |
-| `OPENAI_API_KEY`  | 任意 | OpenAI API キー                                    |
 | `TTS_SERVICE_URL` | 任意 | TTSサービスURL（デフォルト: http://sbv2-api:5000） |
+| `CELERY_BROKER_URL` | 任意 | Celeryブローカー（デフォルト: redis://redis:6379/0）|
+
+> **Note:** OpenAI APIキー、Tavily APIキー、Slack Webhook URL等の機密情報はDjango管理画面（`/admin/`）からDB設定として管理。環境変数では管理しない。
 
 ## API エンドポイント
 
-| パス         | アプリ          | 説明                                    |
-| ------------ | --------------- | --------------------------------------- |
-| `/admin/`    | Django Admin    | 管理画面                                |
-| `/schema/`   | drf-spectacular | OpenAPIスキーマ                         |
-| `/swagger/`  | drf-spectacular | Swagger UI                              |
-| `/redoc/`    | drf-spectacular | ReDoc UI                                |
-| `/user/`     | user            | ユーザー管理（作成/トークン/更新）      |
-| `/onedrive/` | onedrive        | OneDrive連携                            |
-| `/outlook/`  | outlook         | Outlook Calendar連携                    |
-| `/media/`    | media           | 画像処理                                |
-| `/tts/`      | tts             | 音声合成                                |
-| `/weather/`  | weather         | 気象庁天気予報                          |
-| `/talk/`     | talk            | 会話生成（LLM + 天気 + 予定 + TTS統合） |
+| パス           | アプリ          | 説明                                    |
+| -------------- | --------------- | --------------------------------------- |
+| `/admin/`      | Django Admin    | 管理画面                                |
+| `/schema/`     | drf-spectacular | OpenAPIスキーマ                         |
+| `/swagger/`    | drf-spectacular | Swagger UI                              |
+| `/redoc/`      | drf-spectacular | ReDoc UI                                |
+| `/user/`       | user            | ユーザー管理（作成/トークン/更新）      |
+| `/onedrive/`   | onedrive        | OneDrive連携                            |
+| `/outlook/`    | outlook         | Outlook Calendar連携                    |
+| `/media/`      | media           | 画像処理                                |
+| `/tts/`        | tts             | 音声合成                                |
+| `/weather/`    | weather         | 気象庁天気予報                          |
+| `/talk/`       | talk            | 会話生成（LLM + 天気 + 予定 + TTS統合） |
+| `/hn-agent/`   | hn_agent        | HN監視・分析エージェント                |
 
 ## Docker サービス構成
 
-| サービス     | ポート       | 説明                      |
-| ------------ | ------------ | ------------------------- |
-| `django-api` | 8000         | Django REST API           |
-| `sbv2-api`   | 5000（内部） | Style-BERT-VITS2 音声合成 |
+| サービス        | ポート       | 説明                          |
+| --------------- | ------------ | ----------------------------- |
+| `django-api`    | 8000         | Django REST API               |
+| `celery-worker` | —            | Celeryワーカー（バックグラウンドタスク）|
+| `celery-beat`   | —            | Celery Beatスケジューラ       |
+| `redis`         | 6379（内部） | Celeryブローカー              |
+| `app-database`  | 5432（内部） | PostgreSQL 17（pgvector）     |
+| `sbv2-api`      | 5000（内部） | Style-BERT-VITS2 音声合成     |
 
 ## CI/CD ワークフロー
 

@@ -13,6 +13,7 @@ REST API で複数の機能を提供するバックエンドサーバです。
 | tts      | `/tts/`        | テキスト読み上げ（Style-BERT-VITS2 プロキシ）          |
 | weather  | `/weather/`    | 気象庁天気予報                                         |
 | talk     | `/talk/`       | 会話生成（設定ベースの AI 会話生成・TTS 対応）         |
+| hn_agent | `/hn-agent/`   | HN監視・分析エージェント（Watcher・調査・結果閲覧）    |
 
 ## セットアップ
 
@@ -30,15 +31,22 @@ SECRET_KEY=your-secret-key
 DEBUG=False
 ALLOWED_HOSTS=localhost,127.0.0.1
 
+# データベース設定（PostgreSQL）
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME=kawashiro
+DB_USER=kawashiro
+DB_PASSWORD=kawashiro-dev
+DB_HOST=app-database
+DB_PORT=5432
+
 # 暗号化キー（データベースに保存する機密情報の暗号化に使用）
 ENCRYPTION_KEY=your-encryption-key
-
-# OpenAI API（会話生成機能などのAI生成に使用）
-OPENAI_API_KEY=your-openai-api-key
 
 # Style-BERT-VITS2 API（音声合成機能）
 TTS_SERVICE_URL=http://sbv2-api:5000
 ```
+
+> **Note:** OpenAI APIキー、Tavily APIキー、Slack Webhook URL等の機密情報はDjango管理画面（`/admin/`）から設定します。環境変数では管理しません。
 
 ### 2. マイグレーションの実行
 
@@ -119,15 +127,62 @@ curl -X POST http://localhost:8000/talk/synthesize/ \
 | `{{weather}}`    | 天気予報データ       | 天気情報を使用     |
 | `{{events}}`     | 本日の予定データ     | 予定情報を使用     |
 
-### LLM 設定（AI テキスト生成）
+### OpenAI API 設定（LLM テキスト生成・Embedding）
 
-「LLM CONFIG」から以下を設定：
+「OpenAI API設定」から以下を設定：
 
-| 項目           | 説明                                 |
-| -------------- | ------------------------------------ |
-| モデル名       | OpenAI モデル名（例: `gpt-4o-mini`） |
-| 最大トークン数 | 生成する最大トークン数               |
-| 温度           | 生成のランダム性（0.0〜2.0）         |
+| 項目              | 説明                                                    |
+| ----------------- | ------------------------------------------------------- |
+| 設定名            | この設定を識別するための名前                            |
+| 有効              | この設定を有効にする（1つだけ有効可）                   |
+| チャットモデル    | チャット補完に使用するモデル（例: `gpt-4o-mini`）       |
+| Embeddingモデル   | Embedding生成に使用するモデル（例: `text-embedding-3-small`）|
+| タイムアウト      | APIリクエストのタイムアウト秒数                          |
+| APIキー           | OpenAI APIキー（暗号化されてDBに保存）                   |
+
+### Tavily API 設定（Web検索・HN Agent背景調査）
+
+「Tavily API設定」から以下を設定：
+
+| 項目           | 説明                                   |
+| -------------- | -------------------------------------- |
+| 設定名         | この設定を識別するための名前           |
+| 有効           | この設定を有効にする（1つだけ有効可）  |
+| APIキー        | Tavily APIキー（暗号化されてDBに保存） |
+| タイムアウト   | APIリクエストのタイムアウト秒数        |
+
+### Slack 通知設定
+
+「Slack通知設定」から以下を設定：
+
+| 項目          | 説明                                          |
+| ------------- | --------------------------------------------- |
+| 設定名        | この設定を識別するための名前                  |
+| 有効          | この設定を有効にする（1つだけ有効可）         |
+| Webhook URL   | Slack Incoming Webhook URL（暗号化されてDBに保存）|
+
+### HN Agent 設定
+
+「HN Agent設定」から以下を設定：
+
+| 項目                  | 説明                                                |
+| --------------------- | --------------------------------------------------- |
+| Embedding次元数       | Embedding APIの出力次元数（small: 1536, large: 3072）|
+| スコア閾値            | 調査をトリガーするスコアの閾値                      |
+| 速度閾値              | 調査をトリガーするスコア上昇速度の閾値              |
+| 類似度閾値            | 過去スレッド検索のcosine similarity閾値（0-1）      |
+| ポーリング間隔        | HNフロントページのポーリング間隔（秒）              |
+
+### HN Agent API
+
+| メソッド | パス                              | 説明                                    |
+| -------- | --------------------------------- | --------------------------------------- |
+| `POST`   | `/hn-agent/run-all/`              | Watcher + Orchestrator一括実行          |
+| `POST`   | `/hn-agent/watcher/run/`          | Watcherのみ手動実行                     |
+| `POST`   | `/hn-agent/investigate/`          | 指定hn_idのスレッドをOrchestrator調査   |
+| `GET`    | `/hn-agent/threads/`              | 監視中スレッド一覧                      |
+| `GET`    | `/hn-agent/investigations/`       | 調査結果一覧                            |
+| `GET`    | `/hn-agent/investigations/<id>/`  | 調査結果の詳細                          |
 
 ## テストの実行
 
