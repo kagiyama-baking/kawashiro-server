@@ -96,10 +96,17 @@ class OpenAIConfig(BaseLLMConfig):
 
     # モデル設定
     model = models.CharField(
-        "モデル",
+        "チャットモデル",
         max_length=255,
         default="gpt-4o-mini",
-        help_text="使用するOpenAIモデル（例：gpt-4o-mini, gpt-4o, gpt-5.2-chat-latest）",
+        help_text="チャット補完に使用するモデル（例：gpt-4o-mini, gpt-4o）",
+    )
+
+    embedding_model = models.CharField(
+        "Embeddingモデル",
+        max_length=255,
+        default="text-embedding-3-small",
+        help_text="Embedding生成に使用するモデル（例：text-embedding-3-small）",
     )
 
     objects = OpenAIConfigManager()

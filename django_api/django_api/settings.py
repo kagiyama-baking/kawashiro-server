@@ -96,6 +96,13 @@ INSTALLED_APPS = [
     "integrations.weather",  # 気象庁天気予報機能
     "features.talk",  # 会話生成機能
     "health",  # ヘルスチェック
+    # タスクキュー
+    "django_celery_beat",  # Celery Beat定期タスクスケジューラ
+    # HN Agent
+    "integrations.hn",  # Hacker News Algolia API連携
+    "integrations.tavily",  # Tavily Web検索API連携
+    "integrations.slack",  # Slack通知連携
+    "features.hn_agent",  # HN監視・分析エージェント
 ]
 
 # ミドルウェアの設定
@@ -313,11 +320,23 @@ SPECTACULAR_SETTINGS = {
         {"name": "media", "description": "画像処理などのメディア関連API"},
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
+        {"name": "hn-agent", "description": "HN監視・分析エージェントAPI"},
         {"name": "talk", "description": "会話生成API"},
     ],
     # Swagger UIのAPIベースURL（nginx リバースプロキシが /api/ プレフィックスを除去して転送）
     "SERVERS": [{"url": "/api", "description": "API"}],
 }
+
+# ============================================================
+# Celery設定
+# ============================================================
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # ============================================================
 # TTS設定
