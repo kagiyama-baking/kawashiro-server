@@ -58,6 +58,15 @@ class SlackConfig(models.Model):
             return f"{self.name}（有効）"
         return self.name
 
+    def save(self, *args, **kwargs):
+        """保存時にバリデーション実行、有効な設定が1つだけになるようにする."""
+        self.full_clean()
+        if self.is_active:
+            SlackConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(
+                is_active=False
+            )
+        super().save(*args, **kwargs)
+
     @property
     def webhook_url(self) -> str:
         """Webhook URLを復号化して取得."""
@@ -67,12 +76,3 @@ class SlackConfig(models.Model):
     def webhook_url(self, value: str):
         """Webhook URLを暗号化して保存."""
         self._encrypted_webhook_url = encrypt_value(value)
-
-    def save(self, *args, **kwargs):
-        """保存時にバリデーション実行、有効な設定が1つだけになるようにする."""
-        self.full_clean()
-        if self.is_active:
-            SlackConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(
-                is_active=False
-            )
-        super().save(*args, **kwargs)

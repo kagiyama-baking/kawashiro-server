@@ -63,6 +63,15 @@ class TavilyConfig(models.Model):
             return f"{self.name}（有効）"
         return self.name
 
+    def save(self, *args, **kwargs):
+        """保存時にバリデーション実行、有効な設定が1つだけになるようにする."""
+        self.full_clean()
+        if self.is_active:
+            TavilyConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(
+                is_active=False
+            )
+        super().save(*args, **kwargs)
+
     @property
     def api_key(self) -> str:
         """APIキーを復号化して取得."""
@@ -72,12 +81,3 @@ class TavilyConfig(models.Model):
     def api_key(self, value: str):
         """APIキーを暗号化して保存."""
         self._encrypted_api_key = encrypt_value(value)
-
-    def save(self, *args, **kwargs):
-        """保存時にバリデーション実行、有効な設定が1つだけになるようにする."""
-        self.full_clean()
-        if self.is_active:
-            TavilyConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(
-                is_active=False
-            )
-        super().save(*args, **kwargs)
