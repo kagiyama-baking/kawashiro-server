@@ -11,6 +11,7 @@ class OpenAISettings:
 
     api_key: str
     model: str
+    embedding_model: str
     timeout: int
 
 
@@ -50,5 +51,6 @@ def get_openai_settings() -> OpenAISettings:
     return OpenAISettings(
         api_key=config.api_key,
         model=config.model,
+        embedding_model=config.embedding_model,
         timeout=config.timeout,
     )

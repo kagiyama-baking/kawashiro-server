@@ -20,6 +20,7 @@ def mock_openai_settings():
     return OpenAISettings(
         api_key="test-db-api-key",
         model="gpt-4o-mini",
+        embedding_model="text-embedding-3-small",
         timeout=60,
     )
 

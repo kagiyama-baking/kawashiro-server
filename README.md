@@ -16,15 +16,19 @@ React SPA フロントエンドと Django REST API バックエンドで構成�
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
-        - 🤖 **LLM**: OpenAI API 設定・クライアント（会話生成）
+        - 🤖 **LLM**: OpenAI API 設定・クライアント（チャット補完 + Embedding生成）
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
         - 🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
         - 🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
+        - 📰 **HN**: Hacker News Algolia API クライアント
+        - 🔍 **Tavily**: Tavily Web検索 API クライアント
+        - 💬 **Slack**: Slack Incoming Webhook 通知クライアント
     - **features/** - ビジネス機能
         - 🎙️ **Talk**: 会話生成 API（設定ベースの柔軟な会話生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
         - 📁 **Media**: メディアファイル管理機能（画像フォーマット変換、ZIP→PDF変換）
+        - 🕵️ **HN Agent**: Hacker News 監視・分析エージェント（Watcher → Orchestrator → Memory/Detective/Hypothesis Agent → Slack通知）
 - 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
 
 ## 特徴
@@ -78,10 +82,14 @@ kawashiro-server/
 │   │   ├── onedrive/           # OneDrive連携API
 │   │   ├── outlook/            # Outlook Calendar連携API
 │   │   ├── tts/                # TTS読み上げ（sbv2-apiプロキシ）
-│   │   └── weather/            # 気象庁天気予報
+│   │   ├── weather/            # 気象庁天気予報
+│   │   ├── hn/                 # Hacker News Algolia APIクライアント
+│   │   ├── tavily/             # Tavily Web検索APIクライアント
+│   │   └── slack/              # Slack Incoming Webhook通知
 │   ├── features/               # ビジネス機能
 │   │   ├── talk/               # 会話生成（LLM + 天気 + 予定 + TTS統合）
-│   │   └── media/              # 画像処理（ZIP→PDF変換、画像形式変換）
+│   │   ├── media/              # 画像処理（ZIP→PDF変換、画像形式変換）
+│   │   └── hn_agent/           # HN監視・分析エージェント
 │   └── tests/                  # テストコード
 │
 └── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU）
@@ -300,7 +308,8 @@ pnpm test:e2e      # E2Eテスト（Playwright）
 
 - **Django 6.0**: Python Web フレームワーク
 - **Django REST Framework**: REST API 構築
-- **SQLite**: 軽量データベース
+- **PostgreSQL 17**: リレーショナルデータベース（pgvector拡張対応）
+- **Celery + Redis**: 非同期タスクキュー・定期タスクスケジューラ
 - **uv**: 高速 Python パッケージマネージャー
 
 ### インフラ・DevOps
@@ -315,6 +324,9 @@ pnpm test:e2e      # E2Eテスト（Playwright）
 ### 外部サービス連携
 
 - **Microsoft Graph API**: OneDrive/Outlook 連携
-- **OpenAI API**: 会話生成
+- **OpenAI API**: チャット補完・Embedding生成
 - **気象庁天気予報 API**: 天気予報データ取得
 - **Style-BERT-VITS2**: 高品質日本語音声合成エンジン（CUDA 11.8）
+- **Hacker News Algolia API**: HNスレッド・コメント取得
+- **Tavily API**: Web検索（HN Agent背景調査）
+- **Slack Incoming Webhook**: 調査結果通知

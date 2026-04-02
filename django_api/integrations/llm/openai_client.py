@@ -38,6 +38,7 @@ class OpenAIClient:
         # 引数が指定されていればそちらを優先、なければDB設定を使用
         self.api_key = api_key or db_settings.api_key
         self.model = model or db_settings.model
+        self.embedding_model = db_settings.embedding_model
         self.timeout = timeout or db_settings.timeout
 
         self._client = OpenAI(api_key=self.api_key, timeout=self.timeout)
@@ -67,6 +68,40 @@ class OpenAIClient:
                 messages=messages,  # type: ignore[arg-type]
             )
             return response.choices[0].message.content or ""
+        except APITimeoutError as e:
+            raise OpenAITimeoutError(
+                "OpenAI APIへのリクエストがタイムアウトしました"
+            ) from e
+        except APIConnectionError as e:
+            raise OpenAIAPIError("OpenAI APIへの接続に失敗しました") from e
+
+    def generate_embedding(
+        self,
+        text: str,
+        model: str | None = None,
+        dimensions: int | None = None,
+    ) -> list[float]:
+        """テキストからembeddingベクトルを生成.
+
+        Args:
+            text: 埋め込み対象のテキスト
+            model: 使用するEmbeddingモデル名
+            dimensions: 出力次元数（指定するとAPIが切り詰める）
+
+        Returns:
+            embeddingベクトル（float のリスト）
+
+        Raises:
+            OpenAITimeoutError: タイムアウト時
+            OpenAIAPIError: API呼び出しエラー時
+        """
+        model = model or self.embedding_model
+        kwargs: dict[str, Any] = {"model": model, "input": text}
+        if dimensions is not None:
+            kwargs["dimensions"] = dimensions
+        try:
+            response = self._client.embeddings.create(**kwargs)
+            return response.data[0].embedding
         except APITimeoutError as e:
             raise OpenAITimeoutError(
                 "OpenAI APIへのリクエストがタイムアウトしました"

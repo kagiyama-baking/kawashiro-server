@@ -23,6 +23,8 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+import django_api.admin  # noqa: F401 — django-celery-beat管理画面の日本語化
+
 # プロジェクト全体のURLパターン定義
 urlpatterns = [
     # Django管理画面のURL
@@ -54,4 +56,6 @@ urlpatterns = [
     path("talk/", include("features.talk.urls")),
     # ヘルスチェックURL（認証不要）
     path("health/", include("health.urls")),
+    # HN Agent API
+    path("hn-agent/", include("features.hn_agent.urls")),
 ]
