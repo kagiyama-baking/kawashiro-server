@@ -1,5 +1,6 @@
 """Memory Agent / Detective Agentのテスト."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -99,11 +100,28 @@ class TestMemoryAgent:
 class TestDetectiveAgent:
     """DetectiveAgentのテスト."""
 
+    MOCK_ANALYSIS_JSON = json.dumps(
+        {
+            "title_ja": "テスト記事タイトル",
+            "why_trending": "技術的に面白い内容のため。",
+            "background": "著者はテスト分野の専門家。",
+            "comment_highlights": [
+                {
+                    "author": "user1",
+                    "quote": "素晴らしい記事だ",
+                    "stance": "肯定",
+                }
+            ],
+            "summary": "技術的関心が高い。",
+        },
+        ensure_ascii=False,
+    )
+
     @pytest.fixture
     def mock_openai_client(self):
         """モックOpenAIクライアント."""
         client = MagicMock()
-        client.generate_text.return_value = "これはテスト分析結果です。"
+        client.generate_text.return_value = self.MOCK_ANALYSIS_JSON
         return client
 
     @pytest.fixture
@@ -166,7 +184,8 @@ class TestDetectiveAgent:
         result = agent.investigate(thread)
 
         assert result["thread_hn_id"] == 600
-        assert result["analysis"] == "これはテスト分析結果です。"
+        assert isinstance(result["analysis"], dict)
+        assert result["analysis"]["title_ja"] == "テスト記事タイトル"
         assert result["comments_analyzed"] == 2
         assert len(result["background_sources"]) == 1
         assert Investigation.objects.filter(
@@ -195,7 +214,8 @@ class TestDetectiveAgent:
             result = agent.investigate(thread)
 
         assert result["background_sources"] == []
-        assert result["analysis"] == "これはテスト分析結果です。"
+        assert isinstance(result["analysis"], dict)
+        assert result["analysis"]["title_ja"] == "テスト記事タイトル"
 
     def test_build_analysis_prompt_includes_all_sections(
         self, mock_openai_client, mock_hn_client
