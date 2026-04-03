@@ -51,14 +51,23 @@ class RunAllView(APIView):
         orchestrator = Orchestrator()
         investigations = []
 
+        investigated_ids = set()
         for triggered_thread in triggered:
             hn_id = triggered_thread["hn_id"]
+            if hn_id in investigated_ids:
+                continue
+
             try:
                 thread = HNThread.objects.get(hn_id=hn_id)
             except HNThread.DoesNotExist:
                 continue
 
+            # 調査済みスレッドはスキップ
+            if thread.is_investigated:
+                continue
+
             result = orchestrator.investigate(thread)
+            investigated_ids.add(hn_id)
             investigations.append(
                 {
                     "hn_id": hn_id,
