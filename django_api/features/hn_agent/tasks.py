@@ -131,10 +131,13 @@ def poll_front_page(auto_investigate: bool = True) -> dict:
         )
         snapshot_count += 1
 
-        # 閾値チェック: 調査トリガー
+        # 閾値チェック: 調査トリガー（調査済みスレッドはスキップ）
+        if thread.is_investigated:
+            continue
+
         should_investigate = False
 
-        if story.score >= score_threshold and not thread.is_investigated:
+        if story.score >= score_threshold:
             should_investigate = True
             logger.info(
                 "スコア閾値超え: [%d] %s (score=%d, threshold=%d)",
