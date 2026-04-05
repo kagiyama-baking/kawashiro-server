@@ -18,6 +18,7 @@ class HNThread(models.Model):
         verbose_name="タイトル",
     )
     url = models.URLField(
+        max_length=2048,
         blank=True,
         default="",
         verbose_name="URL",
