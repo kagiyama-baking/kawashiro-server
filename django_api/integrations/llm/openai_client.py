@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from openai import APIConnectionError, APITimeoutError, OpenAI
-from openai.types.chat import ChatCompletionMessage
+from langfuse.openai import OpenAI
+from openai import APIConnectionError, APITimeoutError
 
 from .config import get_openai_settings
 from .exceptions import OpenAIAPIError, OpenAITimeoutError
@@ -109,21 +109,23 @@ class OpenAIClient:
         except APIConnectionError as e:
             raise OpenAIAPIError("OpenAI APIへの接続に失敗しました") from e
 
-    def chat_completion(
+    def responses_create(
         self,
-        messages: list[dict[str, Any]],
+        input_items: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str = "auto",
-    ) -> ChatCompletionMessage:
-        """チャット補完を実行（Function Calling対応）.
+        reasoning_effort: str | None = "low",
+    ) -> Any:
+        """Responses APIでLLM呼び出し（Function Calling + reasoning対応）.
 
         Args:
-            messages: メッセージリスト
-            tools: ツール定義リスト
+            input_items: 入力メッセージリスト
+            tools: ツール定義リスト（Responses API形式）
             tool_choice: ツール選択モード（"auto", "none", "required"）
+            reasoning_effort: 推論の深さ（"low", "medium", "high"、Noneで無効）
 
         Returns:
-            ChatCompletionMessage: レスポンスメッセージ
+            Responseオブジェクト（output配列にreasoning/function_call/messageを含む）
 
         Raises:
             OpenAITimeoutError: タイムアウト時
@@ -132,14 +134,18 @@ class OpenAIClient:
         try:
             kwargs: dict[str, Any] = {
                 "model": self.model,
-                "messages": messages,
+                "input": input_items,
             }
+            if reasoning_effort:
+                kwargs["reasoning"] = {
+                    "effort": reasoning_effort,
+                    "summary": "auto",
+                }
             if tools:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
 
-            response = self._client.chat.completions.create(**kwargs)
-            return response.choices[0].message
+            return self._client.responses.create(**kwargs)
         except APITimeoutError as e:
             raise OpenAITimeoutError(
                 "OpenAI APIへのリクエストがタイムアウトしました"

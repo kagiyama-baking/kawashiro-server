@@ -116,7 +116,6 @@ class Investigation(models.Model):
 
     AGENT_TYPES = [
         ("detective", "Detective"),
-        ("hypothesis", "Hypothesis"),
         ("memory", "Memory"),
     ]
 
@@ -180,6 +179,19 @@ class HNAgentConfig(models.Model):
         "有効",
         default=False,
         help_text="この設定を有効にする（有効にできるのは1つの設定のみ）",
+    )
+    reasoning_effort = models.CharField(
+        "推論深度",
+        max_length=10,
+        default="low",
+        blank=True,
+        choices=[
+            ("", "無効（モデル非対応時）"),
+            ("low", "低（ツール選択等の単純判断向け）"),
+            ("medium", "中"),
+            ("high", "高（複雑な判断向け）"),
+        ],
+        help_text="Orchestratorの推論トークン量を制御（コストに影響）。モデルが非対応の場合は「無効」を選択",
     )
     embedding_dimensions = models.IntegerField(
         "Embedding次元数",

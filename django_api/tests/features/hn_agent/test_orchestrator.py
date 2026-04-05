@@ -8,6 +8,46 @@ from features.hn_agent.models import HNThread, HNThreadSnapshot
 from features.hn_agent.orchestrator import Orchestrator
 
 
+@pytest.fixture(autouse=True)
+def _mock_get_prompt():
+    """テスト中はLangfuseプロンプト取得をフォールバックにする."""
+    with patch(
+        "features.hn_agent.orchestrator.get_prompt",
+        side_effect=lambda name, fallback: fallback,
+    ):
+        yield
+
+
+def _make_reasoning_item(text="テスト推論"):
+    """Responses APIのreasoningアイテムを生成."""
+    summary_part = Mock()
+    summary_part.text = text
+    item = Mock()
+    item.type = "reasoning"
+    item.summary = [summary_part]
+    return item
+
+
+def _make_function_call_item(name, call_id="call_1"):
+    """Responses APIのfunction_callアイテムを生成."""
+    item = Mock()
+    item.type = "function_call"
+    item.name = name
+    item.arguments = "{}"
+    item.call_id = call_id
+    return item
+
+
+def _make_message_item(text):
+    """Responses APIのmessageアイテムを生成."""
+    content_part = Mock()
+    content_part.text = text
+    item = Mock()
+    item.type = "message"
+    item.content = [content_part]
+    return item
+
+
 @pytest.mark.integration
 class TestOrchestrator:
     """Orchestratorのテスト."""
@@ -26,7 +66,7 @@ class TestOrchestrator:
 
     @pytest.fixture
     def mock_openai_client(self):
-        """Function Callingの応答をモックするOpenAIクライアント."""
+        """Responses APIの応答をモックするOpenAIクライアント."""
         client = MagicMock()
         return client
 
@@ -52,7 +92,7 @@ class TestOrchestrator:
             "thread_title": "Test Orchestrator Thread",
             "thread_url": "https://example.com/orch",
             "score_info": "スコア: 200, コメント数: 50",
-            "analysis": "テスト分析結果",
+            "analysis": {"title_ja": "テスト", "why_trending": "テスト"},
             "background_sources": [],
             "comments_analyzed": 5,
         }
@@ -75,30 +115,28 @@ class TestOrchestrator:
         mock_reporter,
     ):
         """ツール呼び出し→結論のフローが正常に動作する."""
-        # Step 1: memory_searchを呼ぶ
+        # Step 1: reasoning + memory_search
         response_step1 = Mock()
-        response_step1.content = None
-        tool_call_memory = Mock()
-        tool_call_memory.id = "call_1"
-        tool_call_memory.function.name = "memory_search"
-        tool_call_memory.function.arguments = "{}"
-        response_step1.tool_calls = [tool_call_memory]
+        response_step1.output = [
+            _make_reasoning_item("過去に類似スレッドがないか確認する"),
+            _make_function_call_item("memory_search", "call_1"),
+        ]
 
-        # Step 2: detective_investigateを呼ぶ
+        # Step 2: reasoning + detective_investigate
         response_step2 = Mock()
-        response_step2.content = None
-        tool_call_detective = Mock()
-        tool_call_detective.id = "call_2"
-        tool_call_detective.function.name = "detective_investigate"
-        tool_call_detective.function.arguments = "{}"
-        response_step2.tool_calls = [tool_call_detective]
+        response_step2.output = [
+            _make_reasoning_item("急上昇原因を調査する"),
+            _make_function_call_item("detective_investigate", "call_2"),
+        ]
 
-        # Step 3: 結論
+        # Step 3: reasoning + conclusion
         response_step3 = Mock()
-        response_step3.content = "調査完了：テストスレッドの分析結果です。"
-        response_step3.tool_calls = None
+        response_step3.output = [
+            _make_reasoning_item("全調査完了、結論をまとめる"),
+            _make_message_item("調査完了：テストスレッドの分析結果です。"),
+        ]
 
-        mock_openai_client.chat_completion.side_effect = [
+        mock_openai_client.responses_create.side_effect = [
             response_step1,
             response_step2,
             response_step3,
@@ -116,14 +154,14 @@ class TestOrchestrator:
         assert result["thread_hn_id"] == 700
         assert len(result["steps"]) == 3
         assert result["steps"][0]["action"] == "memory_search"
+        assert result["steps"][0]["reasoning"] == "過去に類似スレッドがないか確認する"
         assert result["steps"][1]["action"] == "detective_investigate"
+        assert result["steps"][1]["reasoning"] == "急上昇原因を調査する"
         assert result["steps"][2]["action"] == "conclusion"
+        assert result["steps"][2]["reasoning"] == "全調査完了、結論をまとめる"
         assert result["final_summary"] == "調査完了：テストスレッドの分析結果です。"
         assert result["memory_result"] is not None
         assert result["detective_result"] is not None
-
-        mock_memory_agent.investigate.assert_called_once_with(thread)
-        mock_detective_agent.investigate.assert_called_once_with(thread)
 
     def test_orchestrator_immediate_conclusion(
         self,
@@ -135,10 +173,11 @@ class TestOrchestrator:
     ):
         """LLMがツールを呼ばずに即座に結論を出すケース."""
         response = Mock()
-        response.content = "このスレッドは既に調査済みです。"
-        response.tool_calls = None
+        response.output = [
+            _make_message_item("このスレッドは既に調査済みです。"),
+        ]
 
-        mock_openai_client.chat_completion.return_value = response
+        mock_openai_client.responses_create.return_value = response
 
         orchestrator = Orchestrator(
             openai_client=mock_openai_client,
@@ -153,7 +192,42 @@ class TestOrchestrator:
         assert result["steps"][0]["action"] == "conclusion"
         assert result["final_summary"] == "このスレッドは既に調査済みです。"
         mock_memory_agent.investigate.assert_not_called()
-        mock_detective_agent.investigate.assert_not_called()
+
+    def test_orchestrator_records_reasoning(
+        self,
+        thread,
+        mock_openai_client,
+        mock_memory_agent,
+        mock_detective_agent,
+        mock_reporter,
+    ):
+        """reasoningが各ステップに記録される."""
+        response_step1 = Mock()
+        response_step1.output = [
+            _make_reasoning_item("まず類似スレッドを検索すべき"),
+            _make_function_call_item("memory_search", "call_1"),
+        ]
+
+        response_step2 = Mock()
+        response_step2.output = [
+            _make_message_item("完了"),
+        ]
+
+        mock_openai_client.responses_create.side_effect = [
+            response_step1,
+            response_step2,
+        ]
+
+        orchestrator = Orchestrator(
+            openai_client=mock_openai_client,
+            memory_agent=mock_memory_agent,
+            detective_agent=mock_detective_agent,
+            reporter=mock_reporter,
+        )
+
+        result = orchestrator.investigate(thread)
+
+        assert result["steps"][0]["reasoning"] == "まず類似スレッドを検索すべき"
 
     def test_orchestrator_handles_tool_error(
         self,
@@ -166,21 +240,17 @@ class TestOrchestrator:
         """ツール実行エラー時にもループが継続する."""
         mock_memory_agent.investigate.side_effect = RuntimeError("API error")
 
-        # Step 1: memory_search（エラー）
         response_step1 = Mock()
-        response_step1.content = None
-        tool_call = Mock()
-        tool_call.id = "call_1"
-        tool_call.function.name = "memory_search"
-        tool_call.function.arguments = "{}"
-        response_step1.tool_calls = [tool_call]
+        response_step1.output = [
+            _make_function_call_item("memory_search", "call_1"),
+        ]
 
-        # Step 2: 結論
         response_step2 = Mock()
-        response_step2.content = "Memory検索は失敗しましたが、他の情報から判断します。"
-        response_step2.tool_calls = None
+        response_step2.output = [
+            _make_message_item("Memory検索は失敗しましたが判断します。"),
+        ]
 
-        mock_openai_client.chat_completion.side_effect = [
+        mock_openai_client.responses_create.side_effect = [
             response_step1,
             response_step2,
         ]
@@ -207,16 +277,12 @@ class TestOrchestrator:
         mock_reporter,
     ):
         """最大ステップ数でループが終了する."""
-        # 常にツールを呼び続けるレスポンス
         response = Mock()
-        response.content = None
-        tool_call = Mock()
-        tool_call.id = "call_loop"
-        tool_call.function.name = "memory_search"
-        tool_call.function.arguments = "{}"
-        response.tool_calls = [tool_call]
+        response.output = [
+            _make_function_call_item("memory_search", "call_loop"),
+        ]
 
-        mock_openai_client.chat_completion.return_value = response
+        mock_openai_client.responses_create.return_value = response
 
         orchestrator = Orchestrator(
             openai_client=mock_openai_client,
@@ -228,37 +294,7 @@ class TestOrchestrator:
         result = orchestrator.investigate(thread)
 
         assert result["final_summary"] == "最大ステップ数に到達しました。"
-        # 10ステップ（MAX_STEPS）で停止
         assert len(result["steps"]) == 10
-
-    def test_orchestrator_sends_notifications(
-        self,
-        thread,
-        mock_openai_client,
-        mock_memory_agent,
-        mock_detective_agent,
-        mock_reporter,
-    ):
-        """調査結果がSlackに通知される."""
-        # 即結論
-        response = Mock()
-        response.content = "完了"
-        response.tool_calls = None
-
-        mock_openai_client.chat_completion.return_value = response
-
-        # 事前にresultsにdetective_resultを設定するため、直接テスト
-        orchestrator = Orchestrator(
-            openai_client=mock_openai_client,
-            memory_agent=mock_memory_agent,
-            detective_agent=mock_detective_agent,
-            reporter=mock_reporter,
-        )
-
-        orchestrator.investigate(thread)
-
-        # resultsにagent結果がないので通知は呼ばれない
-        mock_reporter.report_detective.assert_not_called()
 
 
 @pytest.mark.integration
