@@ -4,8 +4,6 @@ import json
 import logging
 from typing import Any
 
-from langfuse import observe
-
 from integrations.hn.client import HNAlgoliaClient
 from integrations.llm.openai_client import OpenAIClient
 from integrations.tavily.client import TavilyClient
@@ -125,7 +123,6 @@ class DetectiveAgent:
             logger.warning("Tavily検索に失敗: [%d] %s", thread.hn_id, thread.title)
             return []
 
-    @observe(name="detective.investigate")
     def investigate(self, thread: HNThread) -> dict:
         """スレッドの調査を実行.
 

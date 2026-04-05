@@ -3,6 +3,7 @@
 import logging
 
 from drf_spectacular.utils import extend_schema
+from langfuse import observe
 from rest_framework import authentication, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -38,57 +39,7 @@ class RunAllView(APIView):
     )
     def post(self, request):
         """Watcher + Orchestrator を同期実行."""
-        from .orchestrator import Orchestrator
-        from .tasks import poll_front_page
-
-        # 1. Watcher実行
-        watcher_result = poll_front_page()
-        triggered = watcher_result.get("triggered_threads", [])
-        skipped_count = max(0, len(triggered) - MAX_SYNC_INVESTIGATIONS)
-        triggered = triggered[:MAX_SYNC_INVESTIGATIONS]
-
-        # 2. 閾値超えスレッドをOrchestrator調査（上限あり）
-        orchestrator = Orchestrator()
-        investigations = []
-
-        investigated_ids = set()
-        for triggered_thread in triggered:
-            hn_id = triggered_thread["hn_id"]
-            if hn_id in investigated_ids:
-                continue
-
-            try:
-                thread = HNThread.objects.get(hn_id=hn_id)
-            except HNThread.DoesNotExist:
-                continue
-
-            # 調査済みスレッドはスキップ
-            if thread.is_investigated:
-                continue
-
-            result = orchestrator.investigate(thread)
-            investigated_ids.add(hn_id)
-            investigations.append(
-                {
-                    "hn_id": hn_id,
-                    "title": triggered_thread["title"],
-                    "steps": len(result.get("steps", [])),
-                    "final_summary": result.get("final_summary", "")[:200],
-                }
-            )
-
-        return Response(
-            {
-                "watcher": {
-                    "stories_fetched": watcher_result["stories_fetched"],
-                    "new_threads": watcher_result["new_threads"],
-                    "triggered_count": len(triggered) + skipped_count,
-                    "investigated_count": len(investigations),
-                    "skipped_count": skipped_count,
-                },
-                "investigations": investigations,
-            }
-        )
+        return Response(_run_all_impl())
 
 
 class WatcherRunView(APIView):
@@ -142,13 +93,7 @@ class InvestigateView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        from .orchestrator import Orchestrator
-        from .reporter import Reporter
-
-        reporter = None if skip_notify else Reporter()
-        orchestrator = Orchestrator(reporter=reporter)
-        result = orchestrator.investigate(thread)
-
+        result = _investigate_impl(thread, skip_notify)
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -238,3 +183,72 @@ class InvestigationDetailView(APIView):
                 "created_at": investigation.created_at,
             }
         )
+
+
+# ============================================================
+# Langfuseトレース付きの実装関数
+# APIビューのエントリーポイントとして@observeを適用し、
+# 配下の全LLM呼び出しを1トレースに集約する。
+# ============================================================
+
+
+@observe(name="hn-agent/run-all")
+def _run_all_impl() -> dict:
+    """run-allの実装（Langfuseトレース対応）."""
+    from .orchestrator import Orchestrator
+    from .tasks import poll_front_page
+
+    watcher_result = poll_front_page(auto_investigate=False)
+    triggered = watcher_result.get("triggered_threads", [])
+    skipped_count = max(0, len(triggered) - MAX_SYNC_INVESTIGATIONS)
+    triggered = triggered[:MAX_SYNC_INVESTIGATIONS]
+
+    orchestrator = Orchestrator()
+    investigations = []
+
+    investigated_ids = set()
+    for triggered_thread in triggered:
+        hn_id = triggered_thread["hn_id"]
+        if hn_id in investigated_ids:
+            continue
+
+        try:
+            thread = HNThread.objects.get(hn_id=hn_id)
+        except HNThread.DoesNotExist:
+            continue
+
+        if thread.is_investigated:
+            continue
+
+        result = orchestrator.investigate(thread)
+        investigated_ids.add(hn_id)
+        investigations.append(
+            {
+                "hn_id": hn_id,
+                "title": triggered_thread["title"],
+                "steps": len(result.get("steps", [])),
+                "final_summary": result.get("final_summary", "")[:200],
+            }
+        )
+
+    return {
+        "watcher": {
+            "stories_fetched": watcher_result["stories_fetched"],
+            "new_threads": watcher_result["new_threads"],
+            "triggered_count": len(triggered) + skipped_count,
+            "investigated_count": len(investigations),
+            "skipped_count": skipped_count,
+        },
+        "investigations": investigations,
+    }
+
+
+@observe(name="hn-agent/investigate")
+def _investigate_impl(thread: HNThread, skip_notify: bool) -> dict:
+    """investigateの実装（Langfuseトレース対応）."""
+    from .orchestrator import Orchestrator
+    from .reporter import Reporter
+
+    reporter = None if skip_notify else Reporter()
+    orchestrator = Orchestrator(reporter=reporter)
+    return orchestrator.investigate(thread)

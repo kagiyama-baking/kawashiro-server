@@ -24,13 +24,13 @@ Hacker News（HN）のフロントページを定期監視し、急上昇する�
 │ ・LLMが「どのAgentを使うべきか」を判断する                         │
 │ ・最大10ステップで停止（無限ループ防止）                            │
 │                                                                     │
-│  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────┐     │
-│  │ Memory Agent │  │ Detective Agent  │  │ Hypothesis Agent  │     │
-│  │              │  │                  │  │                   │     │
-│  │ pgvectorで   │  │ コメント分析     │  │ 対立主張を抽出    │     │
-│  │ 過去類似     │  │ + Tavily背景調査 │  │ + 根拠検索        │     │
-│  │ スレッド検索 │  │ + LLM総合分析    │  │ + LLM結論出力     │     │
-│  └──────────────┘  └──────────────────┘  └───────────────────┘     │
+│  ┌──────────────┐  ┌──────────────────┐                            │
+│  │ Memory Agent │  │ Detective Agent  │                            │
+│  │              │  │                  │                            │
+│  │ pgvectorで   │  │ コメント分析     │                            │
+│  │ 過去類似     │  │ + Tavily背景調査 │                            │
+│  │ スレッド検索 │  │ + LLM総合分析    │                            │
+│  └──────────────┘  └──────────────────┘                            │
 └────────────────────┬────────────────────────────────────────────────┘
                      ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -41,19 +41,18 @@ Hacker News（HN）のフロントページを定期監視し、急上昇する�
 
 ## Orchestratorの判断フロー
 
-Orchestratorは**OpenAI Function Calling**を利用し、LLM自身が「次にどのAgentを呼ぶべきか」を自律判断する。自前のReActパーサーは不要で、OpenAI SDKの型安全性をそのまま活用している。
+OrchestratorはOpenAIの**Responses API**を利用し、LLM自身が「次にどのAgentを呼ぶべきか」を自律判断する。`reasoning`パラメータにより、LLMの判断理由もトレースに記録される。
 
 ```
 [LLM] スレッド情報を受け取る
   │
-  ├→ tool_call: memory_search      → Memory Agentを実行 → 結果をLLMに返す
+  ├→ reasoning: 「過去に類似スレッドがないか確認すべき」
+  ├→ function_call: memory_search   → Memory Agentを実行 → 結果をLLMに返す
   │
-  ├→ tool_call: detective_investigate → Detective Agentを実行 → 結果をLLMに返す
+  ├→ reasoning: 「急上昇の原因を調査する」
+  ├→ function_call: detective_investigate → Detective Agentを実行 → 結果をLLMに返す
   │
-  ├→ tool_call: hypothesis_analyze  → Hypothesis Agentを実行 → 結果をLLMに返す
-  │   （意見対立が明確な場合のみLLMが選択）
-  │
-  └→ tool_callなし（テキスト応答） → 調査完了、最終サマリーを出力
+  └→ message（テキスト応答）        → 調査完了、最終サマリーを出力
 ```
 
 最初の2ステップは`tool_choice="required"`で強制的にAgent呼び出しを行い、3ステップ目以降は`tool_choice="auto"`でLLMが結論を出せるようにしている。
@@ -100,26 +99,13 @@ pgvectorのcosine similarityで過去スレッドとの類似性を検索する�
 - **Investigationに保存**: agent_type="detective"
 - **副作用**: `HNThread.is_investigated = True`に更新
 
-### Hypothesis Agent（agents/hypothesis.py）
-
-コメント内で意見が明確に割れている場合に、対立主張を検出・検証する。
-
-- **入力**: 調査対象`HNThread`
-- **処理**:
-  1. HNコメントをLLMに渡して対立主張ペアを抽出（JSON形式）
-  2. 各主張についてTavily APIで根拠を検索
-  3. 主張A vs 主張Bの根拠をLLMに渡して結論を出力
-- **出力**: 対立主張のリスト（主張A/B、根拠、結論）
-- **Investigationに保存**: agent_type="hypothesis"
-
 ### Reporter（reporter.py）
 
 調査結果をSlack Block Kit形式でフォーマットして通知する。
 
 - **対応フォーマット**:
-  - Detective Report: 分析結果 + 参考情報リンク
+  - Detective Report: 分析結果 + コメントピックアップ + 参考情報リンク
   - Memory Report: 類似スレッドリスト + 類似度
-  - Hypothesis Report: 対立主張 + 結論
 
 ## データモデル
 
@@ -140,7 +126,7 @@ pgvectorのcosine similarityで過去スレッドとの類似性を検索する�
 | **OpenAI API設定** | APIキー、チャットモデル、Embeddingモデル |
 | **Tavily API設定** | APIキー（Web検索用） |
 | **Slack通知設定** | Webhook URL |
-| **HN Agent設定** | Embedding次元数、スコア閾値、速度閾値、類似度閾値、ポーリング間隔 |
+| **HN Agent設定** | 推論深度、Embedding次元数、スコア閾値、速度閾値、類似度閾値、ポーリング間隔 |
 
 ## API エンドポイント
 
@@ -159,8 +145,9 @@ pgvectorのcosine similarityで過去スレッドとの類似性を検索する�
 features/hn_agent/
 ├── models.py          # HNThread, HNThreadSnapshot, ThreadEmbedding, Investigation, HNAgentConfig
 ├── tasks.py           # Celeryタスク（poll_front_page, run_orchestrator, cleanup_old_snapshots）
-├── orchestrator.py    # Function CallingベースのOrchestrator
-├── tools.py           # OpenAI Function Calling用ツール定義
+├── orchestrator.py    # Responses APIベースのOrchestrator
+├── tools.py           # OpenAI Responses API用ツール定義
+├── prompts.py         # Langfuseプロンプト取得ヘルパー
 ├── reporter.py        # Slack通知フォーマッター
 ├── views.py           # DRF APIビュー
 ├── serializers.py     # DRFシリアライザ
@@ -168,21 +155,34 @@ features/hn_agent/
 ├── admin.py           # Django管理画面設定
 ├── agents/
 │   ├── memory.py      # Memory Agent（pgvector類似検索）
-│   ├── detective.py   # Detective Agent（背景調査 + LLM分析）
-│   └── hypothesis.py  # Hypothesis Agent（対立主張検証）
+│   └── detective.py   # Detective Agent（背景調査 + LLM分析）
 └── management/
     └── commands/
         ├── run_hn_watcher.py       # Watcher手動実行
         └── run_hn_investigation.py # Orchestrator手動実行
 ```
 
+## LLMOps（Langfuse統合）
+
+全LLM呼び出しはLangfuseでトレース・記録される。
+
+- **OpenAI drop-in wrapper**: `langfuse.openai.OpenAI`で全Generation/Embeddingを自動トレース
+- **@observe デコレータ**: APIエントリーポイント（`_run_all_impl`, `_investigate_impl`）とOrchestrator/Agentにスパン階層を構築
+- **Responses API + reasoning**: Orchestratorの判断理由をreasoningサマリーとして記録（対応モデルのみ）
+- **プロンプト管理**: `prompts.py`経由でLangfuse UIからプロンプトのバージョン管理・A/Bテストが可能
+
+環境変数:
+- `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_BASE_URL`: Langfuse接続設定
+- `LANGFUSE_TRACING_ENVIRONMENT`: `dev`（開発）or `prd`（本番）
+
 ## 依存する外部サービス
 
 | サービス | 用途 | 必須 |
 |---------|------|------|
-| OpenAI API | チャット補完（分析）+ Embedding生成 | 必須 |
+| OpenAI API | Responses API（Orchestrator）+ Chat Completions（分析）+ Embedding | 必須 |
 | HN Algolia API | スレッド・コメント取得 | 必須（無料） |
 | Tavily API | Web検索（背景調査） | 任意（未設定時はスキップ） |
 | Slack Webhook | 調査結果通知 | 任意（未設定時はスキップ） |
+| Langfuse | LLMトレーシング・プロンプト管理 | 任意（未設定時は無効） |
 | PostgreSQL + pgvector | Embedding保存・類似検索 | 必須 |
 | Redis | Celeryブローカー | 必須（定期実行時） |

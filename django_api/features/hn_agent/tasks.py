@@ -99,9 +99,8 @@ def poll_front_page(auto_investigate: bool = True) -> dict:
     return _poll_front_page_impl(auto_investigate)
 
 
-@observe(name="watcher.poll")
 def _poll_front_page_impl(auto_investigate: bool) -> dict:
-    """poll_front_pageの実装（@observeトレーシング対応）."""
+    """poll_front_pageの実装."""
     client = HNAlgoliaClient()
     stories = client.get_front_page_stories()
 
@@ -206,7 +205,7 @@ def run_orchestrator(hn_id: int) -> dict:
     return _run_orchestrator_impl(hn_id)
 
 
-@observe(name="orchestrator.run_task")
+@observe(name="hn-agent/orchestrator")
 def _run_orchestrator_impl(hn_id: int) -> dict:
     """run_orchestratorの実装（@observeトレーシング対応）."""
     from .orchestrator import Orchestrator
