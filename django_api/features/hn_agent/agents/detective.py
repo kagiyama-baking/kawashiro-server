@@ -155,7 +155,7 @@ class DetectiveAgent:
             background=background,
         )
 
-        system_prompt = get_prompt("hn-detective-system", DETECTIVE_SYSTEM_PROMPT)
+        system_prompt = get_prompt("hn-agent-detective", DETECTIVE_SYSTEM_PROMPT)
         raw_analysis = self.openai_client.generate_text(
             prompt=user_prompt,
             system_prompt=system_prompt,

@@ -107,7 +107,7 @@ class Orchestrator:
                 f"スコア: {snapshot.score}, コメント数: {snapshot.num_comments}"
             )
 
-        system_prompt = get_prompt("hn-orchestrator-system", ORCHESTRATOR_SYSTEM_PROMPT)
+        system_prompt = get_prompt("hn-agent-orchestrator", ORCHESTRATOR_SYSTEM_PROMPT)
 
         # Responses APIのinput_items構築
         input_items: list[Any] = [
