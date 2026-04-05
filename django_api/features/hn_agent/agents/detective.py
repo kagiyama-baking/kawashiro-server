@@ -4,12 +4,15 @@ import json
 import logging
 from typing import Any
 
+from langfuse import observe
+
 from integrations.hn.client import HNAlgoliaClient
 from integrations.llm.openai_client import OpenAIClient
 from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
 from ..models import HNThread, Investigation
+from ..prompts import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,7 @@ class DetectiveAgent:
             logger.warning("Tavily検索に失敗: [%d] %s", thread.hn_id, thread.title)
             return []
 
+    @observe(name="detective.investigate")
     def investigate(self, thread: HNThread) -> dict:
         """スレッドの調査を実行.
 
@@ -154,9 +158,10 @@ class DetectiveAgent:
             background=background,
         )
 
+        system_prompt = get_prompt("hn-detective-system", DETECTIVE_SYSTEM_PROMPT)
         raw_analysis = self.openai_client.generate_text(
             prompt=user_prompt,
-            system_prompt=DETECTIVE_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
         )
 
         # JSON応答をパース（失敗時はフォールバック）

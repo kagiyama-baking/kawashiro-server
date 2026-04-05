@@ -4,12 +4,15 @@ import json
 import logging
 from typing import Any
 
+from langfuse import observe
+
 from integrations.llm.openai_client import OpenAIClient
 
 from .agents.detective import DetectiveAgent
 from .agents.hypothesis import HypothesisAgent
 from .agents.memory import MemoryAgent
 from .models import HNThread
+from .prompts import get_prompt
 from .reporter import Reporter
 from .tools import ORCHESTRATOR_TOOLS
 
@@ -85,6 +88,7 @@ class Orchestrator:
             self._reporter = Reporter()
         return self._reporter
 
+    @observe(name="orchestrator.investigate")
     def investigate(self, thread: HNThread) -> dict[str, Any]:
         """スレッドの調査をオーケストレーション.
 
@@ -109,8 +113,10 @@ class Orchestrator:
                 f"スコア: {snapshot.score}, コメント数: {snapshot.num_comments}"
             )
 
+        system_prompt = get_prompt("hn-orchestrator-system", ORCHESTRATOR_SYSTEM_PROMPT)
+
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": ORCHESTRATOR_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": (

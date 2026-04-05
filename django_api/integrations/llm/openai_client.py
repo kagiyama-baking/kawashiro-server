@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from openai import APIConnectionError, APITimeoutError, OpenAI
+from langfuse.openai import OpenAI
+from openai import APIConnectionError, APITimeoutError
 from openai.types.chat import ChatCompletionMessage
 
 from .config import get_openai_settings

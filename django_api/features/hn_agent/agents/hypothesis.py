@@ -4,12 +4,15 @@ import json
 import logging
 from typing import Any
 
+from langfuse import observe
+
 from integrations.hn.client import HNAlgoliaClient
 from integrations.llm.openai_client import OpenAIClient
 from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
 from ..models import HNThread, Investigation
+from ..prompts import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +108,10 @@ class HypothesisAgent:
         """
         prompt = f"以下のHNコメントから対立する主張を抽出してください:\n\n{comments_text[:3000]}"
 
+        system_prompt = get_prompt("hn-hypothesis-extraction", EXTRACTION_SYSTEM_PROMPT)
         response = self.openai_client.generate_text(
             prompt=prompt,
-            system_prompt=EXTRACTION_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
         )
 
         try:
@@ -178,11 +182,13 @@ class HypothesisAgent:
             f"上記の情報を元に、どちらの主張がより強い根拠を持つか分析してください。"
         )
 
+        system_prompt = get_prompt("hn-hypothesis-verdict", VERDICT_SYSTEM_PROMPT)
         return self.openai_client.generate_text(
             prompt=prompt,
-            system_prompt=VERDICT_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
         )
 
+    @observe(name="hypothesis.investigate")
     def investigate(self, thread: HNThread) -> dict:
         """スレッドの仮説検証を実行.
 

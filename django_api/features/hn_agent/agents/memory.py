@@ -2,6 +2,8 @@
 
 import logging
 
+from langfuse import observe
+
 from integrations.llm.openai_client import OpenAIClient
 
 from ..models import HNAgentConfig, HNThread, Investigation, ThreadEmbedding
@@ -128,6 +130,7 @@ class MemoryAgent:
 
         return results
 
+    @observe(name="memory.investigate")
     def investigate(self, thread: HNThread) -> dict:
         """スレッドのメモリ調査を実行.
 
