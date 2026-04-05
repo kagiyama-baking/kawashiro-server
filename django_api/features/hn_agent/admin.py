@@ -81,10 +81,10 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Embedding設定",
+            "LLM設定",
             {
-                "fields": ("embedding_dimensions",),
-                "description": "EmbeddingモデルはOpenAI API設定で管理。ここでは出力次元数のみ設定。",
+                "fields": ("reasoning_effort", "embedding_dimensions"),
+                "description": "モデルやAPIキーはOpenAI API設定で管理。ここでは推論深度とEmbedding次元数を設定。",
             },
         ),
         (

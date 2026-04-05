@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from celery import shared_task
 from django.utils import timezone
+from langfuse import observe
 
 from integrations.hn.client import HNAlgoliaClient
 
@@ -95,6 +96,11 @@ def poll_front_page(auto_investigate: bool = True) -> dict:
     Returns:
         実行結果のサマリー
     """
+    return _poll_front_page_impl(auto_investigate)
+
+
+def _poll_front_page_impl(auto_investigate: bool) -> dict:
+    """poll_front_pageの実装."""
     client = HNAlgoliaClient()
     stories = client.get_front_page_stories()
 
@@ -196,6 +202,12 @@ def run_orchestrator(hn_id: int) -> dict:
     Returns:
         Orchestratorの実行結果サマリー
     """
+    return _run_orchestrator_impl(hn_id)
+
+
+@observe(name="hn-agent/orchestrator")
+def _run_orchestrator_impl(hn_id: int) -> dict:
+    """run_orchestratorの実装（@observeトレーシング対応）."""
     from .orchestrator import Orchestrator
 
     try:

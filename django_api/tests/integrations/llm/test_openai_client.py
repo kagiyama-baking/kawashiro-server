@@ -170,98 +170,70 @@ class TestOpenAIClientGenerateText:
             client.generate_text("挨拶して")
 
 
-class TestOpenAIClientChatCompletion:
-    """OpenAIClientのチャット補完テスト（Function Calling対応）."""
-
-    @pytest.fixture
-    def mock_tool_call_response(self):
-        """ツール呼び出しを含むモックレスポンス."""
-        mock_tool_call = Mock()
-        mock_tool_call.id = "call_123"
-        mock_tool_call.function.name = "get_weather_forecast"
-        mock_tool_call.function.arguments = '{"area_code": "130010", "day": 0}'
-
-        mock_message = Mock()
-        mock_message.content = None
-        mock_message.tool_calls = [mock_tool_call]
-
-        mock_choice = Mock()
-        mock_choice.message = mock_message
-        mock_choice.finish_reason = "tool_calls"
-
-        mock_response = Mock()
-        mock_response.choices = [mock_choice]
-        return mock_response
+class TestOpenAIClientResponsesCreate:
+    """OpenAIClientのResponses APIテスト."""
 
     @pytest.fixture
     def sample_tools(self):
-        """サンプルツール定義."""
+        """Responses API形式のサンプルツール定義."""
         return [
             {
                 "type": "function",
-                "function": {
-                    "name": "get_weather_forecast",
-                    "description": "天気予報を取得する",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "area_code": {"type": "string"},
-                            "day": {"type": "integer"},
-                        },
-                        "required": ["area_code"],
+                "name": "get_weather_forecast",
+                "description": "天気予報を取得する",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "area_code": {"type": "string"},
                     },
+                    "required": ["area_code"],
                 },
             }
         ]
 
     @patch("integrations.llm.openai_client.get_openai_settings")
     @patch("integrations.llm.openai_client.OpenAI")
-    def test_chat_completion_with_tools(
+    def test_responses_create_with_tools(
         self,
         mock_openai_class,
         mock_get_settings,
         mock_openai_settings,
-        mock_tool_call_response,
         sample_tools,
     ):
-        """ツール付きチャット補完が動作する."""
+        """ツール付きResponses API呼び出しが動作する."""
         mock_get_settings.return_value = mock_openai_settings
+        mock_response = Mock()
+        mock_response.output = []
         mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_tool_call_response
+        mock_client.responses.create.return_value = mock_response
         mock_openai_class.return_value = mock_client
 
         client = OpenAIClient()
-        messages = [{"role": "user", "content": "今日の天気を教えて"}]
-        result = client.chat_completion(messages, tools=sample_tools)
+        input_items = [{"role": "user", "content": "テスト"}]
+        result = client.responses_create(
+            input_items, tools=sample_tools, reasoning_effort="low"
+        )
 
-        assert result.tool_calls is not None
-        assert len(result.tool_calls) == 1
-        assert result.tool_calls[0].function.name == "get_weather_forecast"
+        assert result == mock_response
+        mock_client.responses.create.assert_called_once()
+        call_kwargs = mock_client.responses.create.call_args.kwargs
+        assert call_kwargs["reasoning"] == {"effort": "low", "summary": "auto"}
 
     @patch("integrations.llm.openai_client.get_openai_settings")
     @patch("integrations.llm.openai_client.OpenAI")
-    def test_chat_completion_without_tools(
+    def test_responses_create_without_tools(
         self, mock_openai_class, mock_get_settings, mock_openai_settings
     ):
-        """ツールなしのチャット補完が動作する."""
+        """ツールなしのResponses API呼び出しが動作する."""
         mock_get_settings.return_value = mock_openai_settings
-        mock_message = Mock()
-        mock_message.content = "今日は晴れです。"
-        mock_message.tool_calls = None
-
-        mock_choice = Mock()
-        mock_choice.message = mock_message
-
         mock_response = Mock()
-        mock_response.choices = [mock_choice]
-
+        mock_response.output = []
         mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.responses.create.return_value = mock_response
         mock_openai_class.return_value = mock_client
 
         client = OpenAIClient()
-        messages = [{"role": "user", "content": "こんにちは"}]
-        result = client.chat_completion(messages)
+        input_items = [{"role": "user", "content": "こんにちは"}]
+        result = client.responses_create(input_items)
 
-        assert result.content == "今日は晴れです。"
-        assert result.tool_calls is None
+        assert result == mock_response
