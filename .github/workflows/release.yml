@@ -116,13 +116,13 @@ jobs:
                   docker compose pull django-api frontend
 
                   echo ">>> コンテナを再作成中..."
-                  docker compose up -d django-api frontend
+                  docker compose up -d django-api celery-worker celery-beat frontend
 
                   echo ">>> 古いイメージを削除中..."
                   docker image prune -f
 
                   echo "✅ デプロイ完了"
-                  docker compose ps django-api frontend
+                  docker compose ps django-api celery-worker celery-beat frontend
                   DEPLOY_SCRIPT
 
     # リリースサマリー出力
