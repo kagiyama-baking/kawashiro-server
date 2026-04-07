@@ -311,10 +311,10 @@ class TestTalkSynthesizeView:
         greeting_config_with_weather,
     ):
         """天気予報API失敗時に502エラー"""
-        from integrations.weather.exceptions import JMANetworkError
+        from integrations.weather.exceptions import WeatherNetworkError
 
         mock_service = MagicMock()
-        mock_service.synthesize.side_effect = JMANetworkError("Network error")
+        mock_service.synthesize.side_effect = WeatherNetworkError("Network error")
         mock_service_class.return_value = mock_service
 
         request_data = {
@@ -357,10 +357,10 @@ class TestTalkSynthesizeView:
         greeting_config_with_weather,
     ):
         """予報区コードが見つからない場合は404エラー"""
-        from integrations.weather.exceptions import JMAAreaNotFoundError
+        from integrations.weather.exceptions import WeatherAreaNotFoundError
 
         mock_service = MagicMock()
-        mock_service.synthesize.side_effect = JMAAreaNotFoundError("Area not found")
+        mock_service.synthesize.side_effect = WeatherAreaNotFoundError("Area not found")
         mock_service_class.return_value = mock_service
 
         request_data = {
@@ -403,7 +403,7 @@ class TestTalkSynthesizeView:
         assert len(response.data["greeting_text"]) == 500
 
     @patch("features.talk.views.TalkService")
-    def test_greeting_jma_timeout(
+    def test_greeting_weather_timeout(
         self,
         mock_service_class,
         authenticated_client,
@@ -411,10 +411,10 @@ class TestTalkSynthesizeView:
         greeting_config_with_weather,
     ):
         """天気APIタイムアウト時に504エラー"""
-        from integrations.weather.exceptions import JMATimeoutError
+        from integrations.weather.exceptions import WeatherTimeoutError
 
         mock_service = MagicMock()
-        mock_service.synthesize.side_effect = JMATimeoutError("Timeout")
+        mock_service.synthesize.side_effect = WeatherTimeoutError("Timeout")
         mock_service_class.return_value = mock_service
 
         request_data = {
