@@ -12,7 +12,7 @@ from django.utils import timezone
 from integrations.llm.openai_client import OpenAIClient
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
-from integrations.weather.jma_client import JMAWeatherClient
+from integrations.weather.client import WeatherClient
 
 from .constants import DAY_OF_WEEK_JA
 from .holiday_client import HolidayClient
@@ -31,7 +31,7 @@ class TalkService:
         self._openai_client = None
         self._tts_client = None
         self._holiday_client = None
-        self._jma_client = None
+        self._weather_client = None
         self._outlook_client = None
 
     @property
@@ -56,11 +56,11 @@ class TalkService:
         return self._holiday_client
 
     @property
-    def jma_client(self) -> JMAWeatherClient:
-        """JMAクライアントを取得（遅延初期化）."""
-        if self._jma_client is None:
-            self._jma_client = JMAWeatherClient()
-        return self._jma_client
+    def weather_client(self) -> WeatherClient:
+        """天気予報クライアントを取得（遅延初期化）."""
+        if self._weather_client is None:
+            self._weather_client = WeatherClient()
+        return self._weather_client
 
     @property
     def outlook_client(self) -> OutlookMSGraphClient:
@@ -131,7 +131,7 @@ class TalkService:
         with ThreadPoolExecutor(max_workers=min(task_count, 3)) as executor:
             if config.use_weather:
                 futures["weather"] = executor.submit(
-                    self.jma_client.get_weather,
+                    self.weather_client.get_weather,
                     config.area_code,
                     0,
                 )
