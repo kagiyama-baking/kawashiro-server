@@ -5,21 +5,21 @@ class WeatherError(Exception):
     """Base exception for weather-related errors."""
 
 
-class JMAAPIError(WeatherError):
-    """Error occurred while fetching data from JMA API."""
+class WeatherAPIError(WeatherError):
+    """Error occurred while fetching data from weather API."""
 
 
-class JMANetworkError(JMAAPIError):
-    """Network error when connecting to JMA API."""
+class WeatherNetworkError(WeatherAPIError):
+    """Network error when connecting to weather API."""
 
 
-class JMATimeoutError(JMAAPIError):
-    """Timeout error when connecting to JMA API."""
+class WeatherTimeoutError(WeatherAPIError):
+    """Timeout error when connecting to weather API."""
 
 
-class JMAParseError(JMAAPIError):
-    """Error parsing JMA API response."""
+class WeatherParseError(WeatherAPIError):
+    """Error parsing weather API response."""
 
 
-class JMAAreaNotFoundError(JMAAPIError):
+class WeatherAreaNotFoundError(WeatherAPIError):
     """Specified area code not found in API response."""

@@ -10,13 +10,13 @@ from rest_framework import authentication, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .client import WeatherClient
 from .exceptions import (
-    JMAAreaNotFoundError,
-    JMANetworkError,
-    JMAParseError,
-    JMATimeoutError,
+    WeatherAreaNotFoundError,
+    WeatherNetworkError,
+    WeatherParseError,
+    WeatherTimeoutError,
 )
-from .jma_client import JMAWeatherClient
 from .serializers import WeatherRequestSerializer, WeatherResponseSerializer
 
 
@@ -29,7 +29,7 @@ class WeatherForecastView(APIView):
     @extend_schema(
         tags=["weather"],
         summary="天気予報を取得",
-        description="""気象庁の天気予報APIを利用して、指定した地域の天気予報を取得します。
+        description="""天気予報API（tsukumijima.net経由）を利用して、指定した地域の天気予報を取得します。
 
 ## 予報区コード
 
@@ -40,28 +40,13 @@ class WeatherForecastView(APIView):
 - `270000`: 大阪府
 - `400010`: 福岡県 福岡地方
 
-詳細は[気象庁の地域コード一覧](https://www.jma.go.jp/bosai/common/const/area.json)を参照。
-
-## 特殊仕様
-
-### 深夜帯のデータ調整（0:00〜5:00 JST）
-
-気象庁APIは5:00/11:00/17:00頃に更新されるため、深夜帯は前日のデータが返されます。
-このAPIでは自動的にインデックスを調整し、正しい日付のデータを返します：
-
-| day | 通常時（5:00〜23:59） | 深夜帯（0:00〜4:59） |
-|-----|---------------------|---------------------|
-| 0   | 当日の予報           | 翌日の予報（=実際の今日） |
-| 1   | 翌日の予報           | 翌々日の予報（=実際の明日） |
-| 2   | 翌々日の予報         | 週間予報から取得 |
-
-### データソース
+## 取得可能データ
 
 | day | 天気 | 気温 | 降水確率 |
 |-----|------|------|----------|
-| 0   | 短期予報 | 取得不可 | 18時〜24時のみ |
-| 1   | 短期予報 | 短期予報 | 4時間ごと（4区分） |
-| 2   | 短期予報 | 週間予報 | 週間予報（1日1値、全時間帯同値） |
+| 0   | 今日 | 最低/最高 | 4時間ごと（4区分） |
+| 1   | 明日 | 最低/最高 | 4時間ごと（4区分） |
+| 2   | 明後日 | 最低/最高 | 4時間ごと（4区分） |
 """,
         parameters=[
             OpenApiParameter(
@@ -103,9 +88,9 @@ class WeatherForecastView(APIView):
                 description="予報区コードが見つからない（都道府県コードまたは地域コードが無効）"
             ),
             502: OpenApiResponse(
-                description="気象庁APIへの接続エラーまたはレスポンス解析エラー"
+                description="天気予報APIへの接続エラーまたはレスポンス解析エラー"
             ),
-            504: OpenApiResponse(description="気象庁APIへのリクエストタイムアウト"),
+            504: OpenApiResponse(description="天気予報APIへのリクエストタイムアウト"),
         },
     )
     def get(self, request):
@@ -119,22 +104,22 @@ class WeatherForecastView(APIView):
         day = serializer.validated_data["day"]
 
         try:
-            client = JMAWeatherClient()
+            client = WeatherClient()
             weather_data = client.get_weather(area_code, day)
             response_serializer = WeatherResponseSerializer(weather_data)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-        except JMAAreaNotFoundError as e:
+        except WeatherAreaNotFoundError as e:
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        except JMATimeoutError as e:
+        except WeatherTimeoutError as e:
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
-        except (JMANetworkError, JMAParseError) as e:
+        except (WeatherNetworkError, WeatherParseError) as e:
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_502_BAD_GATEWAY,

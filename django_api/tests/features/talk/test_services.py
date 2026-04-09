@@ -156,12 +156,12 @@ class TestTalkService:
         mock_openai.generate_text.assert_called_once()
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.JMAWeatherClient")
+    @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OpenAIClient")
     def test_synthesize_with_weather(
         self,
         mock_openai_class,
-        mock_jma_class,
+        mock_weather_class,
         mock_holiday_class,
         mock_weather_response,
         mock_openai_response,
@@ -172,9 +172,9 @@ class TestTalkService:
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
 
-        mock_jma = MagicMock()
-        mock_jma.get_weather.return_value = mock_weather_response
-        mock_jma_class.return_value = mock_jma
+        mock_weather = MagicMock()
+        mock_weather.get_weather.return_value = mock_weather_response
+        mock_weather_class.return_value = mock_weather
 
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
@@ -188,17 +188,17 @@ class TestTalkService:
 
         assert result is not None
         assert "greeting_text" in result
-        mock_jma.get_weather.assert_called_once_with("130010", 0)
+        mock_weather.get_weather.assert_called_once_with("130010", 0)
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.JMAWeatherClient")
+    @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
     @patch("features.talk.services.OpenAIClient")
     def test_synthesize_all_placeholders(
         self,
         mock_openai_class,
         mock_outlook_class,
-        mock_jma_class,
+        mock_weather_class,
         mock_holiday_class,
         mock_weather_response,
         mock_events_response,
@@ -210,9 +210,9 @@ class TestTalkService:
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
 
-        mock_jma = MagicMock()
-        mock_jma.get_weather.return_value = mock_weather_response
-        mock_jma_class.return_value = mock_jma
+        mock_weather = MagicMock()
+        mock_weather.get_weather.return_value = mock_weather_response
+        mock_weather_class.return_value = mock_weather
 
         mock_outlook = MagicMock()
         mock_outlook.get_calendar_events.return_value = mock_events_response
@@ -230,7 +230,7 @@ class TestTalkService:
 
         assert result is not None
         assert "greeting_text" in result
-        mock_jma.get_weather.assert_called_once()
+        mock_weather.get_weather.assert_called_once()
         mock_outlook.get_calendar_events.assert_called_once()
 
     @patch("features.talk.services.OpenAIClient")
@@ -335,22 +335,22 @@ class TestTalkService:
 
     # エラーハンドリングテスト
 
-    @patch("features.talk.services.JMAWeatherClient")
+    @patch("features.talk.services.WeatherClient")
     def test_synthesize_weather_error(
         self,
-        mock_jma_class,
+        mock_weather_class,
         config_with_weather,
     ):
         """天気API失敗時にエラーが発生する"""
-        from integrations.weather.exceptions import JMANetworkError
+        from integrations.weather.exceptions import WeatherNetworkError
 
-        mock_jma = MagicMock()
-        mock_jma.get_weather.side_effect = JMANetworkError("Network error")
-        mock_jma_class.return_value = mock_jma
+        mock_weather = MagicMock()
+        mock_weather.get_weather.side_effect = WeatherNetworkError("Network error")
+        mock_weather_class.return_value = mock_weather
 
         service = TalkService()
 
-        with pytest.raises(JMANetworkError):
+        with pytest.raises(WeatherNetworkError):
             service.synthesize(
                 config=config_with_weather,
                 user_prompt="{{weather}}",
@@ -402,14 +402,14 @@ class TestTalkService:
     # 並列実行テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.JMAWeatherClient")
+    @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
     @patch("features.talk.services.OpenAIClient")
     def test_synthesize_parallel_execution(
         self,
         mock_openai_class,
         mock_outlook_class,
-        mock_jma_class,
+        mock_weather_class,
         mock_holiday_class,
         mock_weather_response,
         mock_events_response,
@@ -430,9 +430,9 @@ class TestTalkService:
             time.sleep(0.1)
             return None
 
-        mock_jma = MagicMock()
-        mock_jma.get_weather.side_effect = slow_weather
-        mock_jma_class.return_value = mock_jma
+        mock_weather = MagicMock()
+        mock_weather.get_weather.side_effect = slow_weather
+        mock_weather_class.return_value = mock_weather
 
         mock_outlook = MagicMock()
         mock_outlook.get_calendar_events.side_effect = slow_events

@@ -19,10 +19,10 @@ from integrations.msgraph.exceptions import (
 )
 from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
 from integrations.weather.exceptions import (
-    JMAAreaNotFoundError,
-    JMANetworkError,
-    JMAParseError,
-    JMATimeoutError,
+    WeatherAreaNotFoundError,
+    WeatherNetworkError,
+    WeatherParseError,
+    WeatherTimeoutError,
 )
 
 from .constants import DAY_OF_WEEK_JA
@@ -142,14 +142,14 @@ TTS無効の場合はJSONでテキストのみ返します。
 
             return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-        except JMAAreaNotFoundError as e:
+        except WeatherAreaNotFoundError as e:
             logger.warning("予報区コードが見つからない: %s", str(e))
             return Response(
                 {"error": "指定された予報区コードが見つかりません"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        except JMATimeoutError as e:
+        except WeatherTimeoutError as e:
             logger.error("外部APIタイムアウト: %s", str(e))
             return Response(
                 {"error": "外部サービスへのリクエストがタイムアウトしました"},
@@ -164,8 +164,8 @@ TTS無効の場合はJSONでテキストのみ返します。
             )
 
         except (
-            JMANetworkError,
-            JMAParseError,
+            WeatherNetworkError,
+            WeatherParseError,
             NetworkError,
             HolidayNetworkError,
         ) as e:
