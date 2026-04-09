@@ -35,8 +35,6 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
-            litellm-proxy:
-                condition: service_healthy
         command: >
             sh -c "python manage.py rename_app_migrations generate talk &&
                    python manage.py migrate &&
@@ -68,8 +66,6 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
-            litellm-proxy:
-                condition: service_healthy
         command: celery -A django_api worker -l info
         security_opt:
             - no-new-privileges:true
@@ -99,71 +95,7 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
-            litellm-proxy:
-                condition: service_healthy
         command: celery -A django_api beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-        security_opt:
-            - no-new-privileges:true
-
-    # ============================================================
-    # LLMゲートウェイ
-    # ============================================================
-
-    # LiteLLM Proxy（LLMプロバイダー抽象化 + Web UI + Langfuse OTelトレース）
-    litellm-proxy:
-        image: litellm/litellm:latest
-        container_name: litellm-proxy
-        hostname: litellm-proxy
-        ports:
-            - '4000:4000'
-        volumes:
-            - ./litellm/config.yaml:/app/config.yaml:ro
-        command: ["--config", "/app/config.yaml", "--port", "4000"]
-        environment:
-            - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-dev-key}
-            - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-            # DB接続（Web UI・モデル管理・APIキー管理に必要）
-            - DATABASE_URL=postgresql://litellm:litellm-dev@litellm-db:5432/litellm
-            - STORE_MODEL_IN_DB=True
-            # Langfuse OTel統合（環境変数未設定時は無効）
-            - OTEL_EXPORTER=${OTEL_EXPORTER:-}
-            - OTEL_ENDPOINT=${OTEL_ENDPOINT:-}
-            - OTEL_HEADERS=${OTEL_HEADERS:-}
-        restart: unless-stopped
-        networks:
-            - container-network
-        depends_on:
-            litellm-db:
-                condition: service_healthy
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:4000/health/liveliness"]
-            interval: 30s
-            timeout: 10s
-            retries: 5
-            start_period: 30s
-        security_opt:
-            - no-new-privileges:true
-
-    # LiteLLM用 PostgreSQLデータベース
-    litellm-db:
-        image: postgres:17-alpine
-        container_name: litellm-db
-        hostname: litellm-db
-        volumes:
-            - litellm-db-data:/var/lib/postgresql/data
-        environment:
-            - POSTGRES_USER=litellm
-            - POSTGRES_PASSWORD=litellm-dev
-            - POSTGRES_DB=litellm
-        restart: unless-stopped
-        networks:
-            - container-network
-        healthcheck:
-            test: ["CMD-SHELL", "pg_isready -d litellm -U litellm"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
-            start_period: 10s
         security_opt:
             - no-new-privileges:true
 
@@ -279,4 +211,3 @@ networks:
 
 volumes:
     app-db-data:
-    litellm-db-data:
