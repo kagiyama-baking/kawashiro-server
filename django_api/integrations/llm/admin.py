@@ -1,9 +1,9 @@
-"""LLM API設定管理画面"""
+"""LLM API設定管理画面."""
 
 from django import forms
 from django.contrib import admin, messages
 
-from .models import OpenAIConfig
+from .models import LLMServiceConfig, OpenAIConfig
 
 
 class BaseLLMConfigForm(forms.ModelForm):
@@ -118,7 +118,7 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
 
     @admin.action(description="選択した設定を有効にする")
     def activate_config(self, request, queryset):
-        """選択した設定を有効にするアクション"""
+        """選択した設定を有効にするアクション."""
         if queryset.count() != 1:
             self.message_user(
                 request,
@@ -135,3 +135,46 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
             request,
             f"設定「{config.name}」を有効にしました。",
         )
+
+
+@admin.register(LLMServiceConfig)
+class LLMServiceConfigAdmin(admin.ModelAdmin):
+    """LLMサービス設定管理画面."""
+
+    list_display = [
+        "service_name",
+        "model_alias",
+        "is_active",
+        "timeout",
+        "updated_at",
+    ]
+    list_filter = ["is_active", "service_name"]
+    list_editable = ["model_alias", "is_active"]
+    search_fields = ["service_name", "model_alias"]
+    readonly_fields = ["created_at", "updated_at"]
+
+    fieldsets = (
+        (
+            "基本設定",
+            {
+                "fields": ("service_name", "model_alias", "is_active"),
+                "description": (
+                    "サービスごとに使用するLLMモデルを設定します。"
+                    "model_aliasはLiteLLM Proxy config.yamlのmodel_nameに対応します。"
+                ),
+            },
+        ),
+        (
+            "詳細設定",
+            {
+                "fields": ("timeout",),
+            },
+        ),
+        (
+            "メタ情報",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )

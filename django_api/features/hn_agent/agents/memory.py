@@ -2,7 +2,7 @@
 
 import logging
 
-from integrations.llm.openai_client import OpenAIClient
+from integrations.llm.client import LLMClient
 
 from ..models import HNAgentConfig, HNThread, Investigation, ThreadEmbedding
 
@@ -14,20 +14,20 @@ MAX_SIMILAR_RESULTS = 5
 class MemoryAgent:
     """pgvectorを使って過去スレッドとの類似性を検索するエージェント."""
 
-    def __init__(self, openai_client: OpenAIClient | None = None):
+    def __init__(self, llm_client: LLMClient | None = None):
         """初期化.
 
         Args:
-            openai_client: embedding生成用OpenAIクライアント
+            llm_client: embedding生成用LLMクライアント
         """
-        self._openai_client = openai_client
+        self._llm_client = llm_client
 
     @property
-    def openai_client(self) -> OpenAIClient:
-        """OpenAIクライアントを取得（遅延初期化）."""
-        if self._openai_client is None:
-            self._openai_client = OpenAIClient()
-        return self._openai_client
+    def llm_client(self) -> LLMClient:
+        """LLMクライアントを取得（遅延初期化）."""
+        if self._llm_client is None:
+            self._llm_client = LLMClient(service_name="embedding")
+        return self._llm_client
 
     def _get_similarity_threshold(self) -> float:
         """類似度閾値を取得."""
@@ -57,7 +57,7 @@ class MemoryAgent:
             embeddingベクトル
         """
         dimensions = self._get_embedding_dimensions()
-        return self.openai_client.generate_embedding(text, dimensions=dimensions)
+        return self.llm_client.generate_embedding(text, dimensions=dimensions)
 
     def ensure_embedding(self, thread: HNThread) -> ThreadEmbedding:
         """スレッドのembeddingを確保（存在しなければ生成）.

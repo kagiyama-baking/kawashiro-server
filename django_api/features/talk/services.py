@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
 
-from integrations.llm.openai_client import OpenAIClient
+from integrations.llm.client import LLMClient
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
 from integrations.weather.client import WeatherClient
@@ -28,18 +28,18 @@ class TalkService:
 
     def __init__(self):
         """サービスを初期化."""
-        self._openai_client = None
+        self._llm_client = None
         self._tts_client = None
         self._holiday_client = None
         self._weather_client = None
         self._outlook_client = None
 
     @property
-    def openai_client(self) -> OpenAIClient:
-        """OpenAIクライアントを取得（遅延初期化）."""
-        if self._openai_client is None:
-            self._openai_client = OpenAIClient()
-        return self._openai_client
+    def llm_client(self) -> LLMClient:
+        """LLMクライアントを取得（遅延初期化）."""
+        if self._llm_client is None:
+            self._llm_client = LLMClient(service_name="talk")
+        return self._llm_client
 
     @property
     def tts_client(self) -> TTSClient:
@@ -92,7 +92,7 @@ class TalkService:
         built_user_prompt = self._build_user_prompt(user_prompt, data)
 
         # OpenAI APIで会話を生成
-        greeting_text = self.openai_client.generate_text(
+        greeting_text = self.llm_client.generate_text(
             prompt=built_user_prompt,
             system_prompt=config.system_prompt,
         )

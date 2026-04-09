@@ -16,43 +16,43 @@ class TestMemoryAgent:
     """MemoryAgentのテスト."""
 
     @pytest.fixture
-    def mock_openai_client(self):
-        """モックOpenAIクライアント."""
+    def mock_llm_client(self):
+        """モックLLMクライアント."""
         client = MagicMock()
         client.generate_embedding.return_value = [0.1] * 1536
         return client
 
-    def test_ensure_embedding_creates_new(self, mock_openai_client):
+    def test_ensure_embedding_creates_new(self, mock_llm_client):
         """embeddingがない場合に新規作成する."""
         thread = HNThread.objects.create(
             hn_id=500, title="Test Thread", url="https://example.com"
         )
-        agent = MemoryAgent(openai_client=mock_openai_client)
+        agent = MemoryAgent(llm_client=mock_llm_client)
 
         embedding = agent.ensure_embedding(thread)
 
         assert embedding.thread == thread
         assert len(embedding.embedding) == 1536
 
-    def test_ensure_embedding_returns_existing(self, mock_openai_client):
+    def test_ensure_embedding_returns_existing(self, mock_llm_client):
         """既存embeddingがある場合はそれを返す."""
         from features.hn_agent.models import ThreadEmbedding
 
         thread = HNThread.objects.create(hn_id=501, title="Test")
         ThreadEmbedding.objects.create(thread=thread, embedding=[0.5] * 1536)
 
-        agent = MemoryAgent(openai_client=mock_openai_client)
+        agent = MemoryAgent(llm_client=mock_llm_client)
         embedding = agent.ensure_embedding(thread)
 
         # OpenAI APIは呼ばれない
-        mock_openai_client.generate_embedding.assert_not_called()
+        mock_llm_client.generate_embedding.assert_not_called()
         assert embedding.thread == thread
 
     @patch.object(MemoryAgent, "find_similar_threads", return_value=[])
-    def test_investigate_creates_investigation(self, _mock_find, mock_openai_client):
+    def test_investigate_creates_investigation(self, _mock_find, mock_llm_client):
         """調査結果がInvestigationに保存される."""
         thread = HNThread.objects.create(hn_id=502, title="Test Investigation")
-        agent = MemoryAgent(openai_client=mock_openai_client)
+        agent = MemoryAgent(llm_client=mock_llm_client)
 
         result = agent.investigate(thread)
 
@@ -74,10 +74,10 @@ class TestMemoryAgent:
             }
         ],
     )
-    def test_investigate_finds_similar_threads(self, _mock_find, mock_openai_client):
+    def test_investigate_finds_similar_threads(self, _mock_find, mock_llm_client):
         """類似スレッドが見つかった場合の結果構造を検証する."""
         thread = HNThread.objects.create(hn_id=503, title="Test Similar")
-        agent = MemoryAgent(openai_client=mock_openai_client)
+        agent = MemoryAgent(llm_client=mock_llm_client)
 
         result = agent.investigate(thread)
 
@@ -86,10 +86,10 @@ class TestMemoryAgent:
         assert result["similar_threads"][0]["hn_id"] == 999
         assert "見つかりました" in result["summary"]
 
-    def test_build_summary_no_similar(self, mock_openai_client):
+    def test_build_summary_no_similar(self, mock_llm_client):
         """類似なしのサマリーを生成する."""
         thread = HNThread.objects.create(hn_id=504, title="No Similar")
-        agent = MemoryAgent(openai_client=mock_openai_client)
+        agent = MemoryAgent(llm_client=mock_llm_client)
 
         summary = agent._build_summary(thread, [])
 
@@ -118,8 +118,8 @@ class TestDetectiveAgent:
     )
 
     @pytest.fixture
-    def mock_openai_client(self):
-        """モックOpenAIクライアント."""
+    def mock_llm_client(self):
+        """モックLLMクライアント."""
         client = MagicMock()
         client.generate_text.return_value = self.MOCK_ANALYSIS_JSON
         return client
@@ -165,7 +165,7 @@ class TestDetectiveAgent:
         return client
 
     def test_investigate_creates_investigation(
-        self, mock_openai_client, mock_hn_client, mock_tavily_client
+        self, mock_llm_client, mock_hn_client, mock_tavily_client
     ):
         """調査結果がInvestigationに保存される."""
         thread = HNThread.objects.create(
@@ -177,7 +177,7 @@ class TestDetectiveAgent:
         HNThreadSnapshot.objects.create(thread=thread, score=200, num_comments=50)
 
         agent = DetectiveAgent(
-            openai_client=mock_openai_client,
+            llm_client=mock_llm_client,
             hn_client=mock_hn_client,
             tavily_client=mock_tavily_client,
         )
@@ -196,14 +196,14 @@ class TestDetectiveAgent:
         thread.refresh_from_db()
         assert thread.is_investigated is True
 
-    def test_investigate_without_tavily(self, mock_openai_client, mock_hn_client):
+    def test_investigate_without_tavily(self, mock_llm_client, mock_hn_client):
         """Tavily未設定でも調査が完了する."""
         thread = HNThread.objects.create(
             hn_id=601, title="No Tavily Thread", author="author2"
         )
 
         agent = DetectiveAgent(
-            openai_client=mock_openai_client,
+            llm_client=mock_llm_client,
             hn_client=mock_hn_client,
             tavily_client=None,
         )
@@ -218,16 +218,14 @@ class TestDetectiveAgent:
         assert result["analysis"]["title_ja"] == "テスト記事タイトル"
 
     def test_build_analysis_prompt_includes_all_sections(
-        self, mock_openai_client, mock_hn_client
+        self, mock_llm_client, mock_hn_client
     ):
         """分析プロンプトに全セクションが含まれる."""
         thread = HNThread.objects.create(
             hn_id=602, title="Prompt Test", url="https://example.com", author="test"
         )
 
-        agent = DetectiveAgent(
-            openai_client=mock_openai_client, hn_client=mock_hn_client
-        )
+        agent = DetectiveAgent(llm_client=mock_llm_client, hn_client=mock_hn_client)
 
         prompt = agent._build_analysis_prompt(
             thread=thread,

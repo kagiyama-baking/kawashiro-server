@@ -1,4 +1,4 @@
-"""LLM API設定モデル"""
+"""LLM API設定モデル."""
 
 from django.db import models
 
@@ -116,12 +116,57 @@ class OpenAIConfig(BaseLLMConfig):
         verbose_name_plural = "OpenAI API設定"
 
     def save(self, *args, **kwargs):
-        """
-        保存時に有効な設定が1つだけになるようにする
-        """
+        """保存時に有効な設定が1つだけになるようにする."""
         if self.is_active:
             # 他の有効な設定を無効にする
             OpenAIConfig.objects.filter(is_active=True).exclude(pk=self.pk).update(
                 is_active=False
             )
         super().save(*args, **kwargs)
+
+
+class LLMServiceConfig(models.Model):
+    """サービスごとのLLMモデル割り当て設定.
+
+    LiteLLM Proxy経由で使用するモデルをサービス単位で管理する。
+    model_aliasはLiteLLM Proxy config.yamlのmodel_nameに対応する。
+    """
+
+    SERVICE_CHOICES = [
+        ("orchestrator", "HN Agent Orchestrator"),
+        ("detective", "HN Agent Detective"),
+        ("talk", "Talk（会話生成）"),
+        ("embedding", "Embedding生成"),
+    ]
+
+    service_name = models.CharField(
+        "サービス名",
+        max_length=50,
+        unique=True,
+        choices=SERVICE_CHOICES,
+        help_text="LLMを使用するサービスの識別名",
+    )
+    model_alias = models.CharField(
+        "モデルエイリアス",
+        max_length=100,
+        help_text="LiteLLM Proxyのmodel_name（例: gpt-4o, kimi-k2.5, claude-sonnet）",
+    )
+    is_active = models.BooleanField(
+        "有効",
+        default=True,
+        help_text="このサービス設定を有効にする",
+    )
+    timeout = models.IntegerField(
+        "タイムアウト（秒）",
+        default=60,
+        help_text="APIリクエストのタイムアウト秒数",
+    )
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+    updated_at = models.DateTimeField("更新日時", auto_now=True)
+
+    class Meta:
+        verbose_name = "LLMサービス設定"
+        verbose_name_plural = "LLMサービス設定"
+
+    def __str__(self):
+        return f"{self.get_service_name_display()} → {self.model_alias}"

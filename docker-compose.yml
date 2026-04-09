@@ -35,6 +35,8 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+            litellm-proxy:
+                condition: service_healthy
         command: >
             sh -c "python manage.py rename_app_migrations generate talk &&
                    python manage.py migrate &&
@@ -66,6 +68,8 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+            litellm-proxy:
+                condition: service_healthy
         command: celery -A django_api worker -l info
         security_opt:
             - no-new-privileges:true
@@ -95,7 +99,41 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+            litellm-proxy:
+                condition: service_healthy
         command: celery -A django_api beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+        security_opt:
+            - no-new-privileges:true
+
+    # ============================================================
+    # LLMゲートウェイ
+    # ============================================================
+
+    # LiteLLM Proxy（LLMプロバイダー抽象化 + Langfuse OTelトレース）
+    litellm-proxy:
+        image: ghcr.io/berriai/litellm:main-v1.83.5-stable
+        container_name: litellm-proxy
+        hostname: litellm-proxy
+        ports:
+            - '4000:4000'
+        volumes:
+            - ./litellm/config.yaml:/app/config.yaml:ro
+        environment:
+            - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+            # Langfuse OTel統合
+            - OTEL_EXPORTER=otlp_http
+            - OTEL_ENDPOINT=${LANGFUSE_BASE_URL}/api/public/otel
+            - OTEL_HEADERS=Authorization=Basic ${LANGFUSE_OTEL_AUTH}
+        restart: unless-stopped
+        networks:
+            - container-network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
         security_opt:
             - no-new-privileges:true
 
