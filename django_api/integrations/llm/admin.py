@@ -137,13 +137,60 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
         )
 
 
+class LLMServiceConfigForm(forms.ModelForm):
+    """LLMServiceConfig用のカスタムフォーム."""
+
+    proxy_api_key = forms.CharField(
+        label="Virtual Key",
+        widget=forms.PasswordInput(
+            attrs={
+                "placeholder": "sk-...",
+                "autocomplete": "off",
+            },
+            render_value=False,
+        ),
+        required=False,
+        help_text="LiteLLM Virtual Keyを入力してください。空のままにすると環境変数LITELLM_MASTER_KEYを使用します。",
+    )
+
+    class Meta:
+        model = LLMServiceConfig
+        fields = [
+            "service_name",
+            "model_alias",
+            "is_active",
+            "timeout",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance._encrypted_proxy_api_key:
+            self.fields[
+                "proxy_api_key"
+            ].help_text = (
+                "Virtual Keyは既に設定されています。変更する場合のみ入力してください。"
+            )
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        proxy_api_key = self.cleaned_data.get("proxy_api_key")
+        if proxy_api_key:
+            instance.proxy_api_key = proxy_api_key
+        if commit:
+            instance.save()
+        return instance
+
+
 @admin.register(LLMServiceConfig)
 class LLMServiceConfigAdmin(admin.ModelAdmin):
     """LLMサービス設定管理画面."""
 
+    form = LLMServiceConfigForm
+
     list_display = [
         "service_name",
         "model_alias",
+        "has_virtual_key",
         "is_active",
         "timeout",
         "updated_at",
@@ -165,6 +212,17 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "認証設定",
+            {
+                "fields": ("proxy_api_key",),
+                "description": (
+                    "LiteLLM Virtual Keyを設定します。"
+                    "マスターキーではなくサービス専用のVirtual Keyを使うことで、"
+                    "コスト上限の設定やアクセスログの識別が可能になります。"
+                ),
+            },
+        ),
+        (
             "詳細設定",
             {
                 "fields": ("timeout",),
@@ -178,3 +236,8 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    @admin.display(boolean=True, description="Virtual Key")
+    def has_virtual_key(self, obj):
+        """Virtual Keyが設定されているかを表示."""
+        return bool(obj._encrypted_proxy_api_key)

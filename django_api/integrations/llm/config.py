@@ -18,12 +18,14 @@ class OpenAISettings:
 
 @dataclass
 class LLMSettings:
-    """LiteLLM Proxy経由のLLM設定を保持するデータクラス."""
+    """LiteLLM Proxy経���のLLM設定を保持するデータ���ラス."""
 
     proxy_base_url: str
     proxy_api_key: str
     model_alias: str
     timeout: int
+    service_name: str
+    environment: str
 
 
 def get_openai_settings() -> OpenAISettings:
@@ -89,11 +91,15 @@ def get_llm_settings(service_name: str) -> LLMSettings:
         ) from err
 
     proxy_base_url = os.getenv("LITELLM_PROXY_URL", "http://litellm-proxy:4000/v1")
-    proxy_api_key = os.getenv("LITELLM_MASTER_KEY", "")
+    # サービス固有のVirtual Keyを優先、未設定時はマスターキーにフォールバック
+    proxy_api_key = config.proxy_api_key or os.getenv("LITELLM_MASTER_KEY", "")
+    environment = os.getenv("LANGFUSE_TRACING_ENVIRONMENT", "default")
 
     return LLMSettings(
         proxy_base_url=proxy_base_url,
         proxy_api_key=proxy_api_key,
         model_alias=config.model_alias,
         timeout=config.timeout,
+        service_name=service_name,
+        environment=environment,
     )

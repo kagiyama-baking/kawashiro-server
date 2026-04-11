@@ -8,6 +8,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
+from langfuse import observe
 
 from integrations.llm.client import LLMClient
 from integrations.msgraph import OutlookMSGraphClient
@@ -69,6 +70,7 @@ class TalkService:
             self._outlook_client = OutlookMSGraphClient()
         return self._outlook_client
 
+    @observe(name="talk/synthesize")
     def synthesize(
         self,
         config: "TalkConfig",

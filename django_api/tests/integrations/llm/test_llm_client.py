@@ -21,6 +21,8 @@ class MockLLMSettings:
     proxy_api_key: str = "sk-test-master-key"
     model_alias: str = "gpt-4o-mini"
     timeout: int = 60
+    service_name: str = "talk"
+    environment: str = "dev"
 
 
 @pytest.fixture
@@ -174,13 +176,11 @@ class TestLLMClientChatCompletion:
 
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")
-    def test_chat_completion_with_tools(
-        self, mock_openai_class, mock_get_settings, mock_llm_settings
-    ):
+    def test_chat_completion_with_tools(self, mock_openai_class, mock_get_settings):
         """ツール付きChat Completions呼び出しが動作する."""
         from integrations.llm.client import LLMClient
 
-        mock_get_settings.return_value = mock_llm_settings
+        mock_get_settings.return_value = MockLLMSettings(service_name="orchestrator")
         mock_response = Mock()
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = mock_response
@@ -207,6 +207,10 @@ class TestLLMClientChatCompletion:
         call_kwargs = mock_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["tools"] == tools
         assert call_kwargs["tool_choice"] == "auto"
+        assert call_kwargs["extra_body"] == {
+            "metadata": {"service_name": "orchestrator", "environment": "dev"}
+        }
+        assert call_kwargs["name"] == "llm/orchestrator"
 
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")
@@ -230,6 +234,10 @@ class TestLLMClientChatCompletion:
         assert result == mock_response
         call_kwargs = mock_client.chat.completions.create.call_args.kwargs
         assert "tools" not in call_kwargs
+        assert call_kwargs["extra_body"] == {
+            "metadata": {"service_name": "talk", "environment": "dev"}
+        }
+        assert call_kwargs["name"] == "llm/talk"
 
 
 class TestLLMClientGenerateEmbedding:
@@ -237,13 +245,11 @@ class TestLLMClientGenerateEmbedding:
 
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")
-    def test_generate_embedding_success(
-        self, mock_openai_class, mock_get_settings, mock_llm_settings
-    ):
+    def test_generate_embedding_success(self, mock_openai_class, mock_get_settings):
         """Embedding生成が正常に動作する."""
         from integrations.llm.client import LLMClient
 
-        mock_get_settings.return_value = mock_llm_settings
+        mock_get_settings.return_value = MockLLMSettings(service_name="embedding")
         mock_embedding_data = Mock()
         mock_embedding_data.embedding = [0.1, 0.2, 0.3]
         mock_response = Mock()
@@ -256,6 +262,11 @@ class TestLLMClientGenerateEmbedding:
         result = client.generate_embedding("テストテキスト")
 
         assert result == [0.1, 0.2, 0.3]
+        call_kwargs = mock_client.embeddings.create.call_args.kwargs
+        assert call_kwargs["extra_body"] == {
+            "metadata": {"service_name": "embedding", "environment": "dev"}
+        }
+        assert call_kwargs["name"] == "llm/embedding"
 
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")

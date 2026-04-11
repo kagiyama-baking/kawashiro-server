@@ -130,6 +130,7 @@ class LLMServiceConfig(models.Model):
 
     LiteLLM Proxy経由で使用するモデルをサービス単位で管理する。
     model_aliasはLiteLLM Proxy config.yamlのmodel_nameに対応する。
+    proxy_api_keyにはLiteLLM Virtual Keyを設定する（マスターキー直接使用を避ける）。
     """
 
     SERVICE_CHOICES = [
@@ -151,6 +152,13 @@ class LLMServiceConfig(models.Model):
         max_length=100,
         help_text="LiteLLM Proxyのmodel_name（例: gpt-4o, kimi-k2.5, claude-sonnet）",
     )
+    _encrypted_proxy_api_key = models.TextField(
+        "暗号化されたAPIキー",
+        blank=True,
+        default="",
+        db_column="encrypted_proxy_api_key",
+        help_text="LiteLLM Virtual Key（未設定時はLITELLM_MASTER_KEY環境変数を使用）",
+    )
     is_active = models.BooleanField(
         "有効",
         default=True,
@@ -170,3 +178,13 @@ class LLMServiceConfig(models.Model):
 
     def __str__(self):
         return f"{self.get_service_name_display()} → {self.model_alias}"
+
+    @property
+    def proxy_api_key(self) -> str:
+        """Virtual Keyを復号化して取得（未設定時は空文字列）."""
+        return decrypt_value(self._encrypted_proxy_api_key)
+
+    @proxy_api_key.setter
+    def proxy_api_key(self, value: str):
+        """Virtual Keyを暗号化して保存."""
+        self._encrypted_proxy_api_key = encrypt_value(value)

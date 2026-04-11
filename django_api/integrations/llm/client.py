@@ -7,7 +7,8 @@ Chat Completions API / Embeddings APIをプロバイダー非依存で使用す�
 
 from typing import Any
 
-from openai import APIConnectionError, APITimeoutError, OpenAI
+from langfuse.openai import OpenAI
+from openai import APIConnectionError, APITimeoutError
 
 from .config import get_llm_settings
 from .exceptions import LLMClientError, LLMTimeoutError
@@ -29,6 +30,8 @@ class LLMClient:
 
         self.model = settings.model_alias
         self.timeout = settings.timeout
+        self._service_name = settings.service_name
+        self._environment = settings.environment
 
         self._client = OpenAI(
             base_url=settings.proxy_base_url,
@@ -61,6 +64,13 @@ class LLMClient:
         params: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
+            "extra_body": {
+                "metadata": {
+                    "service_name": self._service_name,
+                    "environment": self._environment,
+                }
+            },
+            "name": f"llm/{self._service_name}",
         }
         if tools:
             params["tools"] = tools
@@ -116,7 +126,17 @@ class LLMClient:
             LLMTimeoutError: タイムアウト時
             LLMClientError: API接続エラー時
         """
-        kwargs: dict[str, Any] = {"model": self.model, "input": text}
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": text,
+            "extra_body": {
+                "metadata": {
+                    "service_name": self._service_name,
+                    "environment": self._environment,
+                }
+            },
+            "name": f"llm/{self._service_name}",
+        }
         if dimensions is not None:
             kwargs["dimensions"] = dimensions
 

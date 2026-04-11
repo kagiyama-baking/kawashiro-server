@@ -131,6 +131,12 @@ class Orchestrator:
             api_key=settings.proxy_api_key,
             model=settings.model_alias,
             timeout=settings.timeout,
+            extra_body={
+                "metadata": {
+                    "service_name": settings.service_name,
+                    "environment": settings.environment,
+                }
+            },
         )
 
         # ツールをクロージャとして定義（thread/resultsをキャプチャ）

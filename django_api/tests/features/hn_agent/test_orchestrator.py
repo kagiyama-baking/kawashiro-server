@@ -94,6 +94,8 @@ class TestOrchestrator:
             proxy_api_key="sk-test",
             model_alias="gpt-4o",
             timeout=60,
+            service_name="orchestrator",
+            environment="dev",
         )
 
         # LangGraphエージェントの出力をモック
@@ -163,6 +165,8 @@ class TestOrchestrator:
             proxy_api_key="sk-test",
             model_alias="gpt-4o",
             timeout=60,
+            service_name="orchestrator",
+            environment="dev",
         )
 
         mock_agent = MagicMock()
@@ -207,6 +211,8 @@ class TestOrchestrator:
             proxy_api_key="sk-test",
             model_alias="gpt-4o",
             timeout=60,
+            service_name="orchestrator",
+            environment="dev",
         )
 
         mock_agent = MagicMock()
@@ -242,6 +248,8 @@ class TestOrchestrator:
             proxy_api_key="sk-test",
             model_alias="gpt-4o",
             timeout=60,
+            service_name="orchestrator",
+            environment="dev",
         )
 
         mock_agent = MagicMock()
