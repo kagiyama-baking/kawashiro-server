@@ -181,7 +181,6 @@ class LLMServiceConfig(models.Model):
         ("orchestrator", "HN Agent Orchestrator"),
         ("detective", "HN Agent Detective"),
         ("talk", "Talk（会話生成）"),
-        ("embedding", "Embedding生成"),
     ]
 
     service_name = models.CharField(

@@ -48,13 +48,3 @@ class ThreadListSerializer(serializers.Serializer):
     first_seen = serializers.DateTimeField()
     latest_score = serializers.IntegerField(allow_null=True)
     latest_num_comments = serializers.IntegerField(allow_null=True)
-
-
-class InvestigationListSerializer(serializers.Serializer):
-    """調査結果一覧."""
-
-    id = serializers.IntegerField()
-    thread_hn_id = serializers.IntegerField(source="thread.hn_id")
-    thread_title = serializers.CharField(source="thread.title")
-    agent_type = serializers.CharField()
-    created_at = serializers.DateTimeField()

@@ -11,7 +11,7 @@ from integrations.llm.client import LLMClient
 from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
-from ..models import HNThread, Investigation
+from ..models import HNThread
 from ..prompts import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ class DetectiveAgent:
             logger.warning("Tavily検索に失敗: [%d] %s", thread.hn_id, thread.title)
             return []
 
-    @observe(name="hn-agent/detective")
+    @observe(name="hn-agent/detective", as_type="tool")
     def investigate(self, thread: HNThread) -> dict:
         """スレッドの調査を実行.
 
@@ -178,12 +178,6 @@ class DetectiveAgent:
                 len(comments_text.split("\n\n")), MAX_COMMENTS_FOR_ANALYSIS
             ),
         }
-
-        Investigation.objects.create(
-            thread=thread,
-            agent_type="detective",
-            result=result,
-        )
 
         thread.is_investigated = True
         thread.save(update_fields=["is_investigated"])

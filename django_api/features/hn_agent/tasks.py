@@ -179,6 +179,9 @@ def _poll_front_page_impl(auto_investigate: bool) -> dict:
     if auto_investigate and triggered_threads:
         _run_triggered_investigations(triggered_threads)
 
+    # Langfuseトレースを確実に送信
+    _flush_langfuse()
+
     logger.info(
         "ポーリング完了: 新規=%d, スナップショット=%d, トリガー=%d",
         created_count,
@@ -228,7 +231,7 @@ def run_orchestrator(hn_id: int) -> dict:
     return _run_orchestrator_impl(hn_id)
 
 
-@observe(name="hn-agent/orchestrator")
+@observe(name="hn-agent/run-orchestrator")
 def _run_orchestrator_impl(hn_id: int) -> dict:
     """run_orchestratorの実装（@observeトレーシング対応）."""
     from .orchestrator import Orchestrator
@@ -245,7 +248,6 @@ def _run_orchestrator_impl(hn_id: int) -> dict:
     return {
         "hn_id": hn_id,
         "steps": len(result.get("steps", [])),
-        "has_memory": result.get("memory_result") is not None,
         "has_detective": result.get("detective_result") is not None,
     }
 
@@ -290,3 +292,13 @@ def cleanup_old_snapshots(days: int = 90) -> dict:
         "snapshots_deleted": deleted_count,
         "threads_deleted": orphan_count,
     }
+
+
+def _flush_langfuse() -> None:
+    """Langfuseのトレースデータを確実に送信."""
+    try:
+        from langfuse import get_client
+
+        get_client().flush()
+    except Exception:
+        pass

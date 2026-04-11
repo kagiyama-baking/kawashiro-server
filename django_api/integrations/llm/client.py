@@ -7,6 +7,7 @@ Chat Completions API / Embeddings APIをプロバイダー非依存で使用す�
 
 from typing import Any
 
+import httpx
 from langfuse.openai import OpenAI
 from openai import APIConnectionError, APITimeoutError
 
@@ -129,8 +130,6 @@ class LLMClient:
             LLMTimeoutError: タイムアウト時
             LLMClientError: API接続エラー時
         """
-        import httpx
-
         body: dict[str, Any] = {"model": self.model, "input": text}
         if dimensions is not None:
             body["dimensions"] = dimensions

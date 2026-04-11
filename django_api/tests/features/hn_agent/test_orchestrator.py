@@ -36,19 +36,6 @@ class TestOrchestrator:
         return t
 
     @pytest.fixture
-    def mock_memory_agent(self):
-        """モックMemory Agent."""
-        agent = MagicMock()
-        agent.investigate.return_value = {
-            "thread_hn_id": 700,
-            "thread_title": "Test Orchestrator Thread",
-            "similar_threads": [],
-            "has_similar": False,
-            "summary": "類似スレッドなし",
-        }
-        return agent
-
-    @pytest.fixture
     def mock_detective_agent(self):
         """モックDetective Agent."""
         agent = MagicMock()
@@ -67,7 +54,6 @@ class TestOrchestrator:
     def mock_reporter(self):
         """モックReporter."""
         reporter = MagicMock()
-        reporter.report_memory.return_value = False
         reporter.report_detective.return_value = True
         return reporter
 
@@ -84,7 +70,6 @@ class TestOrchestrator:
         mock_chat_class,
         mock_create_agent,
         thread,
-        mock_memory_agent,
         mock_detective_agent,
         mock_reporter,
     ):
@@ -98,7 +83,6 @@ class TestOrchestrator:
             environment="dev",
         )
 
-        # LangGraphエージェントの出力をモック
         mock_agent = MagicMock()
         mock_agent.invoke.return_value = self._make_agent_result(
             [
@@ -106,22 +90,13 @@ class TestOrchestrator:
                 HumanMessage(content="user"),
                 AIMessage(
                     content="",
-                    tool_calls=[{"id": "call_1", "name": "memory_search", "args": {}}],
-                ),
-                ToolMessage(
-                    content='{"has_similar": false}',
-                    tool_call_id="call_1",
-                    name="memory_search",
-                ),
-                AIMessage(
-                    content="",
                     tool_calls=[
-                        {"id": "call_2", "name": "detective_investigate", "args": {}}
+                        {"id": "call_1", "name": "detective_investigate", "args": {}}
                     ],
                 ),
                 ToolMessage(
-                    content='{"analysis": {}}',
-                    tool_call_id="call_2",
+                    content='{"analysis": {"title_ja": "テスト"}}',
+                    tool_call_id="call_1",
                     name="detective_investigate",
                 ),
                 AIMessage(content="調査完了：テストスレッドの分析結果です。"),
@@ -130,7 +105,6 @@ class TestOrchestrator:
         mock_create_agent.return_value = mock_agent
 
         orchestrator = Orchestrator(
-            memory_agent=mock_memory_agent,
             detective_agent=mock_detective_agent,
             reporter=mock_reporter,
         )
@@ -139,12 +113,10 @@ class TestOrchestrator:
 
         assert result["thread_hn_id"] == 700
         assert result["final_summary"] == "調査完了：テストスレッドの分析結果です。"
-        assert result["memory_result"] is not None
         assert result["detective_result"] is not None
-        assert len(result["steps"]) == 3
-        assert result["steps"][0]["action"] == "memory_search"
-        assert result["steps"][1]["action"] == "detective_investigate"
-        assert result["steps"][2]["action"] == "conclusion"
+        assert len(result["steps"]) == 2
+        assert result["steps"][0]["action"] == "detective_investigate"
+        assert result["steps"][1]["action"] == "conclusion"
 
     @patch("features.hn_agent.orchestrator.create_react_agent")
     @patch("features.hn_agent.orchestrator.ChatOpenAI")
@@ -155,7 +127,6 @@ class TestOrchestrator:
         mock_chat_class,
         mock_create_agent,
         thread,
-        mock_memory_agent,
         mock_detective_agent,
         mock_reporter,
     ):
@@ -180,7 +151,6 @@ class TestOrchestrator:
         mock_create_agent.return_value = mock_agent
 
         orchestrator = Orchestrator(
-            memory_agent=mock_memory_agent,
             detective_agent=mock_detective_agent,
             reporter=mock_reporter,
         )
@@ -190,7 +160,6 @@ class TestOrchestrator:
         assert len(result["steps"]) == 1
         assert result["steps"][0]["action"] == "conclusion"
         assert result["final_summary"] == "このスレッドは既に調査済みです。"
-        mock_memory_agent.investigate.assert_not_called()
 
     @patch("features.hn_agent.orchestrator.create_react_agent")
     @patch("features.hn_agent.orchestrator.ChatOpenAI")
@@ -201,7 +170,6 @@ class TestOrchestrator:
         mock_chat_class,
         mock_create_agent,
         thread,
-        mock_memory_agent,
         mock_detective_agent,
         mock_reporter,
     ):
@@ -220,7 +188,6 @@ class TestOrchestrator:
         mock_create_agent.return_value = mock_agent
 
         orchestrator = Orchestrator(
-            memory_agent=mock_memory_agent,
             detective_agent=mock_detective_agent,
             reporter=mock_reporter,
         )
@@ -238,7 +205,6 @@ class TestOrchestrator:
         mock_chat_class,
         mock_create_agent,
         thread,
-        mock_memory_agent,
         mock_detective_agent,
         mock_reporter,
     ):
@@ -259,22 +225,13 @@ class TestOrchestrator:
                 HumanMessage(content="user"),
                 AIMessage(
                     content="",
-                    tool_calls=[{"id": "call_1", "name": "memory_search", "args": {}}],
-                ),
-                ToolMessage(
-                    content='{"has_similar": false, "similar_threads": []}',
-                    tool_call_id="call_1",
-                    name="memory_search",
-                ),
-                AIMessage(
-                    content="",
                     tool_calls=[
-                        {"id": "call_2", "name": "detective_investigate", "args": {}}
+                        {"id": "call_1", "name": "detective_investigate", "args": {}}
                     ],
                 ),
                 ToolMessage(
                     content='{"analysis": {"title_ja": "test"}}',
-                    tool_call_id="call_2",
+                    tool_call_id="call_1",
                     name="detective_investigate",
                 ),
                 AIMessage(content="調査完了"),
@@ -283,14 +240,12 @@ class TestOrchestrator:
         mock_create_agent.return_value = mock_agent
 
         orchestrator = Orchestrator(
-            memory_agent=mock_memory_agent,
             detective_agent=mock_detective_agent,
             reporter=mock_reporter,
         )
 
         orchestrator.investigate(thread)
 
-        mock_reporter.report_memory.assert_called_once()
         mock_reporter.report_detective.assert_called_once()
 
 
@@ -307,7 +262,6 @@ class TestRunOrchestratorTask:
 
         mock_orch_class.return_value.investigate.return_value = {
             "steps": [{"step": 1, "action": "conclusion"}],
-            "memory_result": None,
             "detective_result": None,
         }
 

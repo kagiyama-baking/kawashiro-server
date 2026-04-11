@@ -234,53 +234,6 @@ class Reporter:
             },
         ]
 
-    def report_memory(self, result: dict) -> bool:
-        """Memory調査結果をSlackに通知."""
-        if not result.get("has_similar"):
-            return False
-
-        client = self.slack_client
-        if client is None:
-            return False
-
-        hn_url = HN_ITEM_URL.format(hn_id=result["thread_hn_id"])
-
-        similar_lines = []
-        for st in result.get("similar_threads", []):
-            st_url = HN_ITEM_URL.format(hn_id=st["hn_id"])
-            safe_title = _escape_mrkdwn(st["title"])
-            similar_lines.append(
-                f"• <{st_url}|{safe_title}> (類似度: {st['similarity']:.0%})"
-            )
-
-        blocks = [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": ":brain: HN Memory Report"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*<{hn_url}|{_escape_mrkdwn(result['thread_title'])}>* に類似する過去スレッド:\n"
-                        + "\n".join(similar_lines)
-                    ),
-                },
-            },
-        ]
-
-        try:
-            client.send_blocks(
-                blocks=blocks,
-                text=f"HN Memory: {result['thread_title']} に類似スレッド発見",
-            )
-            logger.info("Memory結果をSlackに送信: [%d]", result["thread_hn_id"])
-            return True
-        except SlackError:
-            logger.exception("Slack送信に失敗: [%d]", result["thread_hn_id"])
-            return False
-
 
 def _truncate(text: str, max_length: int) -> str:
     """テキストを最大長で切り詰める."""

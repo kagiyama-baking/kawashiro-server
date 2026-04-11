@@ -1,4 +1,4 @@
-"""Orchestrator — LangGraph ReAct AgentでSub-Agentを制御."""
+"""Orchestrator — LangGraph ReAct AgentでDetective Agentを制御."""
 
 import json
 import logging
@@ -13,7 +13,6 @@ from langgraph.prebuilt import create_react_agent
 from integrations.llm.config import get_llm_settings
 
 from .agents.detective import DetectiveAgent
-from .agents.memory import MemoryAgent
 from .models import HNThread
 from .prompts import get_prompt
 from .reporter import Reporter
@@ -26,35 +25,25 @@ ORCHESTRATOR_SYSTEM_PROMPT = """あなたはHacker Newsの調査オーケスト�
 急上昇中のHNスレッドについて、利用可能なツールを使って調査を行います。
 
 ## 調査フロー
-1. まずmemory_searchで過去に類似するスレッドがなかったか確認する
-2. detective_investigateでスレッドの急上昇原因を調査する
-3. 全ての調査が完了したら、ツールを呼ばずに最終的なサマリーを日本語で返す
+1. detective_investigateでスレッドの急上昇原因を調査する
+2. 調査が完了したら、ツールを呼ばずに最終的なサマリーを日本語で返す
 
 ## 注意事項
-- 各ツールは1回ずつ呼べば十分です
+- ツールは1回呼べば十分です
 - 調査完了後はツールを呼ばずにテキストで結論を返してください"""
 
 
 class Orchestrator:
-    """LangGraph ReAct AgentベースでMemory/Detective Agentを制御するオーケストレーター."""
+    """LangGraph ReAct AgentベースでDetective Agentを制御するオーケストレーター."""
 
     def __init__(
         self,
-        memory_agent: MemoryAgent | None = None,
         detective_agent: DetectiveAgent | None = None,
         reporter: Reporter | None = None,
     ):
         """初期化."""
-        self._memory_agent = memory_agent
         self._detective_agent = detective_agent
         self._reporter = reporter
-
-    @property
-    def memory_agent(self) -> MemoryAgent:
-        """Memory Agentを取得（遅延初期化）."""
-        if self._memory_agent is None:
-            self._memory_agent = MemoryAgent()
-        return self._memory_agent
 
     @property
     def detective_agent(self) -> DetectiveAgent:
@@ -70,12 +59,12 @@ class Orchestrator:
             self._reporter = Reporter()
         return self._reporter
 
-    @observe(name="hn-agent/orchestrator")
+    @observe(name="hn-agent/orchestrator", as_type="agent")
     def investigate(self, thread: HNThread) -> dict[str, Any]:
         """スレッドの調査をオーケストレーション.
 
         LangGraph ReAct Agentがツール呼び出しを自律的に判断し、
-        Memory/Detective Agentを実行する。
+        Detective Agentを実行する。
 
         Args:
             thread: 調査対象スレッド
@@ -89,7 +78,6 @@ class Orchestrator:
             "thread_hn_id": thread.hn_id,
             "thread_title": thread.title,
             "steps": [],
-            "memory_result": None,
             "detective_result": None,
             "final_summary": "",
         }
@@ -115,15 +103,7 @@ class Orchestrator:
         return results
 
     def _run_agent(self, thread: HNThread, results: dict[str, Any]) -> dict[str, Any]:
-        """LangGraph ReAct Agentを構築・実行.
-
-        Args:
-            thread: 調査対象スレッド
-            results: 結果を格納するdict（ツール実行時に更新される）
-
-        Returns:
-            LangGraphエージェントの出力state
-        """
+        """LangGraph ReAct Agentを構築・実行."""
         settings = get_llm_settings("orchestrator")
 
         llm = ChatOpenAI(
@@ -139,20 +119,7 @@ class Orchestrator:
             },
         )
 
-        # ツールをクロージャとして定義（thread/resultsをキャプチャ）
-        memory_agent = self.memory_agent
         detective_agent = self.detective_agent
-
-        @tool
-        def memory_search() -> str:
-            """過去に類似するHNスレッドがあったか検索する。pgvectorのcosine similarityを使い、過去のスレッドと照合する。"""
-            try:
-                result = memory_agent.investigate(thread)
-                results["memory_result"] = result
-                return json.dumps(result, ensure_ascii=False, default=str)
-            except Exception:
-                logger.exception("Memory Agent実行エラー: [%d]", thread.hn_id)
-                return json.dumps({"error": "Memory Agent実行に失敗しました"})
 
         @tool
         def detective_investigate() -> str:
@@ -165,20 +132,15 @@ class Orchestrator:
                 logger.exception("Detective Agent実行エラー: [%d]", thread.hn_id)
                 return json.dumps({"error": "Detective Agent実行に失敗しました"})
 
-        tools = [memory_search, detective_investigate]
-        agent = create_react_agent(llm, tools)
+        agent = create_react_agent(llm, [detective_investigate])
 
         # メッセージ構築
         system_prompt = get_prompt("hn-agent-orchestrator", ORCHESTRATOR_SYSTEM_PROMPT)
         user_content = self._build_user_message(thread)
 
-        # Langfuseコールバック
         config: dict[str, Any] = {
             "recursion_limit": MAX_STEPS * 2 + 1,
         }
-        langfuse_handler = self._get_langfuse_handler()
-        if langfuse_handler:
-            config["callbacks"] = [langfuse_handler]
 
         return agent.invoke(
             {
@@ -223,9 +185,7 @@ class Orchestrator:
                     results["final_summary"] = msg.content
 
         # ToolMessageからエージェント結果を補完
-        # （クロージャで既にセット済みの場合はスキップ）
         tool_result_map = {
-            "memory_search": "memory_result",
             "detective_investigate": "detective_result",
         }
         for msg in messages:
@@ -264,15 +224,6 @@ class Orchestrator:
             f"投稿者: {thread.author}\n"
             f"{score_info}"
         )
-
-    def _get_langfuse_handler(self) -> Any:
-        """Langfuseコールバックハンドラーを取得."""
-        try:
-            from langfuse.callback import CallbackHandler
-
-            return CallbackHandler()
-        except Exception:
-            return None
 
     def _finalize_trace(self, thread: HNThread, results: dict[str, Any]) -> None:
         """Orchestratorの判断フローをLangfuseスパンに記録."""
@@ -313,8 +264,5 @@ class Orchestrator:
 
     def _send_notifications(self, results: dict[str, Any]) -> None:
         """調査結果をSlackに通知."""
-        if results.get("memory_result"):
-            self.reporter.report_memory(results["memory_result"])
-
         if results.get("detective_result"):
             self.reporter.report_detective(results["detective_result"])

@@ -255,9 +255,7 @@ class TestLLMClientGenerateEmbedding:
         mock_get_settings.return_value = MockLLMSettings(service_name="embedding")
         mock_openai_class.return_value = MagicMock()
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "data": [{"embedding": [0.1, 0.2, 0.3]}]
-        }
+        mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
         mock_response.raise_for_status = Mock()
         mock_httpx.post.return_value = mock_response
 
@@ -283,9 +281,7 @@ class TestLLMClientGenerateEmbedding:
         mock_get_settings.return_value = mock_llm_settings
         mock_openai_class.return_value = MagicMock()
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "data": [{"embedding": [0.1, 0.2]}]
-        }
+        mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2]}]}
         mock_response.raise_for_status = Mock()
         mock_httpx.post.return_value = mock_response
 
