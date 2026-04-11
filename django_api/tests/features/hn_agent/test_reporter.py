@@ -69,32 +69,6 @@ class TestReporter:
             "comments_analyzed": 5,
         }
 
-    @pytest.fixture
-    def memory_result_with_similar(self):
-        """類似あり Memory調査結果のサンプル."""
-        return {
-            "thread_hn_id": 100,
-            "thread_title": "Test Thread",
-            "has_similar": True,
-            "similar_threads": [
-                {
-                    "hn_id": 50,
-                    "title": "Similar Thread",
-                    "similarity": 0.92,
-                }
-            ],
-        }
-
-    @pytest.fixture
-    def memory_result_no_similar(self):
-        """類似なし Memory調査結果のサンプル."""
-        return {
-            "thread_hn_id": 100,
-            "thread_title": "Test Thread",
-            "has_similar": False,
-            "similar_threads": [],
-        }
-
     def test_report_detective_sends_structured_blocks(
         self, mock_slack_client, detective_result
     ):
@@ -120,26 +94,6 @@ class TestReporter:
 
         assert success is True
         mock_slack_client.send_blocks.assert_called_once()
-
-    def test_report_memory_sends_when_similar(
-        self, mock_slack_client, memory_result_with_similar
-    ):
-        """類似スレッドがある場合にSlackに送信する."""
-        reporter = Reporter(slack_client=mock_slack_client)
-        success = reporter.report_memory(memory_result_with_similar)
-
-        assert success is True
-        mock_slack_client.send_blocks.assert_called_once()
-
-    def test_report_memory_skips_when_no_similar(
-        self, mock_slack_client, memory_result_no_similar
-    ):
-        """類似スレッドがない場合はSlackに送信しない."""
-        reporter = Reporter(slack_client=mock_slack_client)
-        success = reporter.report_memory(memory_result_no_similar)
-
-        assert success is False
-        mock_slack_client.send_blocks.assert_not_called()
 
     def test_report_detective_without_slack_returns_false(self, detective_result):
         """Slack未設定でFalseを返す."""

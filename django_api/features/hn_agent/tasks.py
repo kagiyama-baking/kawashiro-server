@@ -99,8 +99,9 @@ def poll_front_page(auto_investigate: bool = True) -> dict:
     return _poll_front_page_impl(auto_investigate)
 
 
+@observe(name="hn-agent/scheduled-run")
 def _poll_front_page_impl(auto_investigate: bool) -> dict:
-    """poll_front_pageの実装."""
+    """poll_front_pageの実装（Langfuseトレース対応）."""
     client = HNAlgoliaClient()
     stories = client.get_front_page_stories()
 
@@ -173,9 +174,13 @@ def _poll_front_page_impl(auto_investigate: bool) -> dict:
                     "comment_velocity": comment_velocity,
                 }
             )
-            # Orchestratorをバックグラウンドで起動
-            if auto_investigate:
-                run_orchestrator.delay(story.hn_id)
+
+    # Orchestratorを同期実行（1トレースにまとめるため）
+    if auto_investigate and triggered_threads:
+        _run_triggered_investigations(triggered_threads)
+
+    # Langfuseトレースを確実に送信
+    _flush_langfuse()
 
     logger.info(
         "ポーリング完了: 新規=%d, スナップショット=%d, トリガー=%d",
@@ -192,6 +197,27 @@ def _poll_front_page_impl(auto_investigate: bool) -> dict:
     }
 
 
+def _run_triggered_investigations(triggered_threads: list[dict]) -> None:
+    """閾値超えスレッドに対してOrchestratorを同期実行."""
+    from .orchestrator import Orchestrator
+
+    orchestrator = Orchestrator()
+    for triggered_thread in triggered_threads:
+        hn_id = triggered_thread["hn_id"]
+        try:
+            thread = HNThread.objects.get(hn_id=hn_id)
+        except HNThread.DoesNotExist:
+            continue
+
+        if thread.is_investigated:
+            continue
+
+        try:
+            orchestrator.investigate(thread)
+        except Exception:
+            logger.exception("Orchestrator実行エラー: [%d]", hn_id)
+
+
 @shared_task(name="hn_agent.run_orchestrator")
 def run_orchestrator(hn_id: int) -> dict:
     """指定スレッドに対してOrchestratorを実行.
@@ -205,7 +231,7 @@ def run_orchestrator(hn_id: int) -> dict:
     return _run_orchestrator_impl(hn_id)
 
 
-@observe(name="hn-agent/orchestrator")
+@observe(name="hn-agent/run-orchestrator")
 def _run_orchestrator_impl(hn_id: int) -> dict:
     """run_orchestratorの実装（@observeトレーシング対応）."""
     from .orchestrator import Orchestrator
@@ -222,7 +248,6 @@ def _run_orchestrator_impl(hn_id: int) -> dict:
     return {
         "hn_id": hn_id,
         "steps": len(result.get("steps", [])),
-        "has_memory": result.get("memory_result") is not None,
         "has_detective": result.get("detective_result") is not None,
     }
 
@@ -267,3 +292,13 @@ def cleanup_old_snapshots(days: int = 90) -> dict:
         "snapshots_deleted": deleted_count,
         "threads_deleted": orphan_count,
     }
+
+
+def _flush_langfuse() -> None:
+    """Langfuseのトレースデータを確実に送信."""
+    try:
+        from langfuse import get_client
+
+        get_client().flush()
+    except Exception:
+        pass

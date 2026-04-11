@@ -8,11 +8,10 @@ from rest_framework import authentication, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import HNThread, Investigation
+from .models import HNThread
 from .serializers import (
     InvestigateRequestSerializer,
     InvestigateResponseSerializer,
-    InvestigationListSerializer,
     ThreadListSerializer,
     WatcherResponseSerializer,
 )
@@ -133,58 +132,6 @@ class ThreadListView(APIView):
         return Response(serializer.data)
 
 
-class InvestigationListView(APIView):
-    """調査結果一覧API."""
-
-    authentication_classes = (authentication.TokenAuthentication,)
-    permission_classes = (permissions.IsAdminUser,)
-
-    @extend_schema(
-        tags=["hn-agent"],
-        summary="調査結果一覧",
-        description="エージェントによる調査結果の一覧を返す。",
-        responses={200: InvestigationListSerializer(many=True)},
-    )
-    def get(self, request):
-        """調査結果一覧を取得."""
-        investigations = Investigation.objects.select_related("thread").all()[:50]
-        serializer = InvestigationListSerializer(investigations, many=True)
-        return Response(serializer.data)
-
-
-class InvestigationDetailView(APIView):
-    """調査結果詳細API."""
-
-    authentication_classes = (authentication.TokenAuthentication,)
-    permission_classes = (permissions.IsAdminUser,)
-
-    @extend_schema(
-        tags=["hn-agent"],
-        summary="調査結果詳細",
-        description="指定したIDの調査結果の全データ（JSON）を返す。",
-    )
-    def get(self, request, pk):
-        """調査結果の詳細を取得."""
-        try:
-            investigation = Investigation.objects.select_related("thread").get(pk=pk)
-        except Investigation.DoesNotExist:
-            return Response(
-                {"error": "調査結果が見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        return Response(
-            {
-                "id": investigation.id,
-                "thread_hn_id": investigation.thread.hn_id,
-                "thread_title": investigation.thread.title,
-                "agent_type": investigation.agent_type,
-                "result": investigation.result,
-                "created_at": investigation.created_at,
-            }
-        )
-
-
 # ============================================================
 # Langfuseトレース付きの実装関数
 # APIビューのエントリーポイントとして@observeを適用し、
@@ -231,6 +178,8 @@ def _run_all_impl() -> dict:
             }
         )
 
+    _flush_langfuse()
+
     return {
         "watcher": {
             "stories_fetched": watcher_result["stories_fetched"],
@@ -251,4 +200,16 @@ def _investigate_impl(thread: HNThread, skip_notify: bool) -> dict:
 
     reporter = None if skip_notify else Reporter()
     orchestrator = Orchestrator(reporter=reporter)
-    return orchestrator.investigate(thread)
+    result = orchestrator.investigate(thread)
+    _flush_langfuse()
+    return result
+
+
+def _flush_langfuse() -> None:
+    """Langfuseのトレースデータを確実に送信."""
+    try:
+        from langfuse import get_client
+
+        get_client().flush()
+    except Exception:
+        pass

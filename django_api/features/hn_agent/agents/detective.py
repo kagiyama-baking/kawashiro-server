@@ -4,12 +4,14 @@ import json
 import logging
 from typing import Any
 
+from langfuse import observe
+
 from integrations.hn.client import HNAlgoliaClient
-from integrations.llm.openai_client import OpenAIClient
+from integrations.llm.client import LLMClient
 from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
-from ..models import HNThread, Investigation
+from ..models import HNThread
 from ..prompts import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -53,21 +55,21 @@ class DetectiveAgent:
 
     def __init__(
         self,
-        openai_client: OpenAIClient | None = None,
+        llm_client: LLMClient | None = None,
         hn_client: HNAlgoliaClient | None = None,
         tavily_client: TavilyClient | None = None,
     ):
         """初期化."""
-        self._openai_client = openai_client
+        self._llm_client = llm_client
         self._hn_client = hn_client
         self._tavily_client = tavily_client
 
     @property
-    def openai_client(self) -> OpenAIClient:
-        """OpenAIクライアントを取得（遅延初期化）."""
-        if self._openai_client is None:
-            self._openai_client = OpenAIClient()
-        return self._openai_client
+    def llm_client(self) -> LLMClient:
+        """LLMクライアントを取得（遅延初期化）."""
+        if self._llm_client is None:
+            self._llm_client = LLMClient(service_name="detective")
+        return self._llm_client
 
     @property
     def hn_client(self) -> HNAlgoliaClient:
@@ -123,6 +125,7 @@ class DetectiveAgent:
             logger.warning("Tavily検索に失敗: [%d] %s", thread.hn_id, thread.title)
             return []
 
+    @observe(name="hn-agent/detective", as_type="tool")
     def investigate(self, thread: HNThread) -> dict:
         """スレッドの調査を実行.
 
@@ -156,7 +159,7 @@ class DetectiveAgent:
         )
 
         system_prompt = get_prompt("hn-agent-detective", DETECTIVE_SYSTEM_PROMPT)
-        raw_analysis = self.openai_client.generate_text(
+        raw_analysis = self.llm_client.generate_text(
             prompt=user_prompt,
             system_prompt=system_prompt,
         )
@@ -175,12 +178,6 @@ class DetectiveAgent:
                 len(comments_text.split("\n\n")), MAX_COMMENTS_FOR_ANALYSIS
             ),
         }
-
-        Investigation.objects.create(
-            thread=thread,
-            agent_type="detective",
-            result=result,
-        )
 
         thread.is_investigated = True
         thread.save(update_fields=["is_investigated"])

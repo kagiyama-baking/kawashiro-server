@@ -125,7 +125,7 @@ class TestTalkService:
     # 正常系テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_datetime_only(
         self,
         mock_openai_class,
@@ -157,7 +157,7 @@ class TestTalkService:
 
     @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.WeatherClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_with_weather(
         self,
         mock_openai_class,
@@ -193,7 +193,7 @@ class TestTalkService:
     @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_all_placeholders(
         self,
         mock_openai_class,
@@ -233,7 +233,7 @@ class TestTalkService:
         mock_weather.get_weather.assert_called_once()
         mock_outlook.get_calendar_events.assert_called_once()
 
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_no_placeholders(
         self,
         mock_openai_class,
@@ -257,7 +257,7 @@ class TestTalkService:
     # TTS関連テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     @patch("features.talk.services.TTSClient")
     def test_synthesize_with_tts(
         self,
@@ -306,7 +306,7 @@ class TestTalkService:
         assert call_kwargs["format"] == "wav"
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_without_tts(
         self,
         mock_openai_class,
@@ -404,7 +404,7 @@ class TestTalkService:
     @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_parallel_execution(
         self,
         mock_openai_class,
@@ -462,7 +462,7 @@ class TestTalkService:
     # 祝日テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.OpenAIClient")
+    @patch("features.talk.services.LLMClient")
     def test_synthesize_with_holiday(
         self,
         mock_openai_class,
