@@ -1,19 +1,21 @@
-"""Orchestrator — Responses API + reasoningでSub-Agentを制御."""
+"""Orchestrator — LangGraph ReAct AgentでDetective Agentを制御."""
 
 import json
 import logging
 from typing import Any
 
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
 from langfuse import observe
+from langgraph.prebuilt import create_react_agent
 
-from integrations.llm.openai_client import OpenAIClient
+from integrations.llm.config import get_llm_settings
 
 from .agents.detective import DetectiveAgent
-from .agents.memory import MemoryAgent
-from .models import HNAgentConfig, HNThread
+from .models import HNThread
 from .prompts import get_prompt
 from .reporter import Reporter
-from .tools import ORCHESTRATOR_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -23,53 +25,25 @@ ORCHESTRATOR_SYSTEM_PROMPT = """あなたはHacker Newsの調査オーケスト�
 急上昇中のHNスレッドについて、利用可能なツールを使って調査を行います。
 
 ## 調査フロー
-1. まずmemory_searchで過去に類似するスレッドがなかったか確認する
-2. detective_investigateでスレッドの急上昇原因を調査する
-3. 全ての調査が完了したら、ツールを呼ばずに最終的なサマリーを日本語で返す
+1. detective_investigateでスレッドの急上昇原因を調査する
+2. 調査が完了したら、ツールを呼ばずに最終的なサマリーを日本語で返す
 
 ## 注意事項
-- 各ツールは1回ずつ呼べば十分です
+- ツールは1回呼べば十分です
 - 調査完了後はツールを呼ばずにテキストで結論を返してください"""
 
 
-def _get_reasoning_effort() -> str | None:
-    """HN Agent設定からreasoning effortを取得."""
-    try:
-        config = HNAgentConfig.objects.get_active_config()
-        return config.reasoning_effort or None
-    except HNAgentConfig.DoesNotExist:
-        return "low"
-
-
 class Orchestrator:
-    """Responses APIベースでMemory/Detective Agentを制御するオーケストレーター."""
+    """LangGraph ReAct AgentベースでDetective Agentを制御するオーケストレーター."""
 
     def __init__(
         self,
-        openai_client: OpenAIClient | None = None,
-        memory_agent: MemoryAgent | None = None,
         detective_agent: DetectiveAgent | None = None,
         reporter: Reporter | None = None,
     ):
         """初期化."""
-        self._openai_client = openai_client
-        self._memory_agent = memory_agent
         self._detective_agent = detective_agent
         self._reporter = reporter
-
-    @property
-    def openai_client(self) -> OpenAIClient:
-        """OpenAIクライアントを取得（遅延初期化）."""
-        if self._openai_client is None:
-            self._openai_client = OpenAIClient()
-        return self._openai_client
-
-    @property
-    def memory_agent(self) -> MemoryAgent:
-        """Memory Agentを取得（遅延初期化）."""
-        if self._memory_agent is None:
-            self._memory_agent = MemoryAgent()
-        return self._memory_agent
 
     @property
     def detective_agent(self) -> DetectiveAgent:
@@ -85,12 +59,12 @@ class Orchestrator:
             self._reporter = Reporter()
         return self._reporter
 
-    @observe(name="hn-agent/orchestrator")
+    @observe(name="hn-agent/orchestrator", as_type="agent")
     def investigate(self, thread: HNThread) -> dict[str, Any]:
         """スレッドの調査をオーケストレーション.
 
-        Responses APIのreasoningでLLMの判断理由を記録しながら、
-        自律的にAgent呼び出しを決定する。
+        LangGraph ReAct Agentがツール呼び出しを自律的に判断し、
+        Detective Agentを実行する。
 
         Args:
             thread: 調査対象スレッド
@@ -100,131 +74,20 @@ class Orchestrator:
         """
         logger.info("Orchestrator開始: [%d] %s", thread.hn_id, thread.title)
 
-        snapshot = thread.latest_snapshot
-        score_info = ""
-        if snapshot:
-            score_info = (
-                f"スコア: {snapshot.score}, コメント数: {snapshot.num_comments}"
-            )
-
-        system_prompt = get_prompt("hn-agent-orchestrator", ORCHESTRATOR_SYSTEM_PROMPT)
-
-        # Responses APIのinput_items構築
-        input_items: list[Any] = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": (
-                    f"以下のHNスレッドを調査してください。\n\n"
-                    f"HN ID: {thread.hn_id}\n"
-                    f"タイトル: {thread.title}\n"
-                    f"URL: {thread.url or '(self-post)'}\n"
-                    f"投稿者: {thread.author}\n"
-                    f"{score_info}"
-                ),
-            },
-        ]
-
         results: dict[str, Any] = {
             "thread_hn_id": thread.hn_id,
             "thread_title": thread.title,
             "steps": [],
-            "memory_result": None,
             "detective_result": None,
             "final_summary": "",
         }
 
-        reasoning_effort = _get_reasoning_effort()
-
-        for step in range(MAX_STEPS):
-            logger.info("Orchestrator step %d/%d", step + 1, MAX_STEPS)
-
-            tool_choice = "required" if step < 2 else "auto"
-
-            try:
-                response = self.openai_client.responses_create(
-                    input_items=input_items,
-                    tools=ORCHESTRATOR_TOOLS,
-                    tool_choice=tool_choice,
-                    reasoning_effort=reasoning_effort,
-                )
-            except Exception:
-                logger.exception(
-                    "Orchestrator LLM呼び出しエラー: [%d] step=%d",
-                    thread.hn_id,
-                    step + 1,
-                )
-                results["final_summary"] = "LLM呼び出しエラーにより調査を中断しました。"
-                break
-
-            # response.outputからreasoning/function_call/messageを分離
-            reasoning_text, function_calls, conclusion_text = (
-                self._parse_response_output(response.output)
-            )
-
-            # reasoningがあればステップ情報に記録
-            if reasoning_text:
-                logger.info(
-                    "Orchestrator reasoning (step %d): %s",
-                    step + 1,
-                    reasoning_text[:100],
-                )
-
-            # ツール呼び出しがない = LLMが結論を出した
-            if not function_calls:
-                results["final_summary"] = conclusion_text
-                results["steps"].append(
-                    {
-                        "step": step + 1,
-                        "action": "conclusion",
-                        "content": conclusion_text,
-                        "reasoning": reasoning_text,
-                    }
-                )
-                logger.info("Orchestrator完了: 結論に到達 (step %d)", step + 1)
-                break
-
-            # response.outputの全アイテムをinput_itemsに追加
-            # （reasoning itemsも含める — 省略するとAPIエラー）
-            for item in response.output:
-                input_items.append(item)
-
-            # ツール実行 + 結果をinput_itemsに追加
-            for fc in function_calls:
-                tool_result = self._execute_tool(fc.name, thread)
-
-                results["steps"].append(
-                    {
-                        "step": step + 1,
-                        "action": fc.name,
-                        "success": tool_result is not None,
-                        "reasoning": reasoning_text,
-                    }
-                )
-
-                if fc.name == "memory_search":
-                    results["memory_result"] = tool_result
-                elif fc.name == "detective_investigate":
-                    results["detective_result"] = tool_result
-                # ツール結果をinput_itemsに追加
-                observation = json.dumps(
-                    tool_result or {"error": "ツール実行に失敗しました"},
-                    ensure_ascii=False,
-                    default=str,
-                )
-                input_items.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": fc.call_id,
-                        "output": observation[:3000],
-                    }
-                )
-        else:
-            logger.warning(
-                "Orchestrator: 最大ステップ数に到達 [%d]",
-                thread.hn_id,
-            )
-            results["final_summary"] = "最大ステップ数に到達しました。"
+        try:
+            agent_output = self._run_agent(thread, results)
+            self._extract_results(agent_output, results)
+        except Exception:
+            logger.exception("Orchestrator LLM呼び出しエラー: [%d]", thread.hn_id)
+            results["final_summary"] = "LLM呼び出しエラーにより調査を中断しました。"
 
         # Langfuseに判断フローを記録
         self._finalize_trace(thread, results)
@@ -239,34 +102,128 @@ class Orchestrator:
         )
         return results
 
-    def _parse_response_output(self, output: list[Any]) -> tuple[str, list[Any], str]:
-        """Responses APIのoutputを解析.
+    def _run_agent(self, thread: HNThread, results: dict[str, Any]) -> dict[str, Any]:
+        """LangGraph ReAct Agentを構築・実行."""
+        settings = get_llm_settings("orchestrator")
 
-        Args:
-            output: response.output配列
+        llm = ChatOpenAI(
+            base_url=settings.proxy_base_url,
+            api_key=settings.proxy_api_key,
+            model=settings.model_alias,
+            timeout=settings.timeout,
+            extra_body={
+                "metadata": {
+                    "service_name": settings.service_name,
+                    "environment": settings.environment,
+                }
+            },
+        )
 
-        Returns:
-            (reasoning_text, function_calls, conclusion_text)
-        """
-        reasoning_text = ""
-        function_calls = []
-        conclusion_text = ""
+        detective_agent = self.detective_agent
 
-        for item in output:
-            if item.type == "reasoning":
-                # reasoning summaryからテキストを結合
-                if hasattr(item, "summary") and item.summary:
-                    reasoning_text = " ".join(
-                        s.text for s in item.summary if hasattr(s, "text")
+        @tool
+        def detective_investigate() -> str:
+            """スレッドが急上昇している理由を調査する。HNコメント分析、Web検索、LLM総合分析を行う。"""
+            try:
+                result = detective_agent.investigate(thread)
+                results["detective_result"] = result
+                return json.dumps(result, ensure_ascii=False, default=str)
+            except Exception:
+                logger.exception("Detective Agent実行エラー: [%d]", thread.hn_id)
+                return json.dumps({"error": "Detective Agent実行に失敗しました"})
+
+        agent = create_react_agent(llm, [detective_investigate])
+
+        # メッセージ構築
+        system_prompt = get_prompt("hn-agent-orchestrator", ORCHESTRATOR_SYSTEM_PROMPT)
+        user_content = self._build_user_message(thread)
+
+        config: dict[str, Any] = {
+            "recursion_limit": MAX_STEPS * 2 + 1,
+        }
+
+        return agent.invoke(
+            {
+                "messages": [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_content),
+                ]
+            },
+            config=config,
+        )
+
+    def _extract_results(
+        self, agent_output: dict[str, Any], results: dict[str, Any]
+    ) -> None:
+        """LangGraphの出力からステップ情報と最終サマリーを抽出."""
+        from langchain_core.messages import ToolMessage
+
+        messages = agent_output.get("messages", [])
+        step_num = 0
+
+        for msg in messages:
+            if isinstance(msg, AIMessage):
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        step_num += 1
+                        results["steps"].append(
+                            {
+                                "step": step_num,
+                                "action": tc["name"],
+                                "success": True,
+                            }
+                        )
+                elif msg.content:
+                    step_num += 1
+                    results["steps"].append(
+                        {
+                            "step": step_num,
+                            "action": "conclusion",
+                            "content": msg.content,
+                        }
                     )
-            elif item.type == "function_call":
-                function_calls.append(item)
-            elif item.type == "message" and hasattr(item, "content") and item.content:
-                for content_part in item.content:
-                    if hasattr(content_part, "text"):
-                        conclusion_text += content_part.text
+                    results["final_summary"] = msg.content
 
-        return reasoning_text, function_calls, conclusion_text
+        # ToolMessageからエージェント結果を補完
+        tool_result_map = {
+            "detective_investigate": "detective_result",
+        }
+        for msg in messages:
+            if isinstance(msg, ToolMessage) and msg.name in tool_result_map:
+                result_key = tool_result_map[msg.name]
+                if results[result_key] is None:
+                    try:
+                        parsed = json.loads(msg.content)
+                        if "error" not in parsed:
+                            results[result_key] = parsed
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        # ツールエラーチェック
+        for step in results["steps"]:
+            action = step["action"]
+            if action in tool_result_map:
+                result_key = tool_result_map[action]
+                if results[result_key] is None:
+                    step["success"] = False
+
+    def _build_user_message(self, thread: HNThread) -> str:
+        """ユーザーメッセージを構築."""
+        snapshot = thread.latest_snapshot
+        score_info = ""
+        if snapshot:
+            score_info = (
+                f"スコア: {snapshot.score}, コメント数: {snapshot.num_comments}"
+            )
+
+        return (
+            f"以下のHNスレッドを調査してください。\n\n"
+            f"HN ID: {thread.hn_id}\n"
+            f"タイトル: {thread.title}\n"
+            f"URL: {thread.url or '(self-post)'}\n"
+            f"投稿者: {thread.author}\n"
+            f"{score_info}"
+        )
 
     def _finalize_trace(self, thread: HNThread, results: dict[str, Any]) -> None:
         """Orchestratorの判断フローをLangfuseスパンに記録."""
@@ -279,7 +236,6 @@ class Orchestrator:
             for step_info in results.get("steps", []):
                 action = step_info.get("action", "unknown")
                 step_num = step_info.get("step", 0)
-                reasoning = step_info.get("reasoning", "")
 
                 if action == "conclusion":
                     entry = f"Step {step_num}: 結論を出力"
@@ -287,9 +243,6 @@ class Orchestrator:
                     success = step_info.get("success", False)
                     status = "成功" if success else "失敗"
                     entry = f"Step {step_num}: {action} を実行 → {status}"
-
-                if reasoning:
-                    entry += f"\n  理由: {reasoning[:200]}"
 
                 decision_log.append(entry)
 
@@ -309,41 +262,7 @@ class Orchestrator:
         except Exception:
             pass  # Langfuse未設定時は無視
 
-    def _execute_tool(self, tool_name: str, thread: HNThread) -> dict[str, Any] | None:
-        """ツールを実行."""
-        agent_map = {
-            "memory_search": ("hn-agent/memory", self.memory_agent),
-            "detective_investigate": ("hn-agent/detective", self.detective_agent),
-        }
-
-        entry = agent_map.get(tool_name)
-        if entry is None:
-            logger.warning("未知のツール: %s", tool_name)
-            return None
-
-        span_name, agent = entry
-        return self._run_agent(span_name, agent, thread)
-
-    @observe()
-    def _run_agent(
-        self, name: str, agent: Any, thread: HNThread
-    ) -> dict[str, Any] | None:
-        """エージェントを@observeスパン内で実行."""
-        from langfuse import get_client
-
-        client = get_client()
-        client.update_current_span(name=name)
-
-        try:
-            return agent.investigate(thread)
-        except Exception:
-            logger.exception("エージェント実行エラー: %s [%d]", name, thread.hn_id)
-            return None
-
     def _send_notifications(self, results: dict[str, Any]) -> None:
         """調査結果をSlackに通知."""
-        if results.get("memory_result"):
-            self.reporter.report_memory(results["memory_result"])
-
         if results.get("detective_result"):
             self.reporter.report_detective(results["detective_result"])

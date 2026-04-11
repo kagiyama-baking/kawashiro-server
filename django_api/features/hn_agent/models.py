@@ -1,8 +1,7 @@
 """HN Agentデータモデル."""
 
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MinValueValidator
 from django.db import models
-from pgvector.django import VectorField
 
 
 class HNThread(models.Model):
@@ -86,68 +85,6 @@ class HNThreadSnapshot(models.Model):
         return f"{self.thread.hn_id}: score={self.score}, comments={self.num_comments} @ {self.fetched_at}"
 
 
-class ThreadEmbedding(models.Model):
-    """調査対象スレッドのembedding（pgvector）."""
-
-    thread = models.OneToOneField(
-        HNThread,
-        on_delete=models.CASCADE,
-        related_name="embedding",
-        verbose_name="スレッド",
-    )
-    embedding = VectorField(
-        verbose_name="埋め込みベクトル",
-        help_text="次元数はHN Agent設定のembedding_dimensionsに依存",
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="作成日時",
-    )
-
-    class Meta:
-        verbose_name = "スレッド埋め込み"
-        verbose_name_plural = "スレッド埋め込み"
-
-    def __str__(self):
-        return f"Embedding: [{self.thread.hn_id}] {self.thread.title}"
-
-
-class Investigation(models.Model):
-    """エージェント調査結果."""
-
-    AGENT_TYPES = [
-        ("detective", "Detective"),
-        ("memory", "Memory"),
-    ]
-
-    thread = models.ForeignKey(
-        HNThread,
-        on_delete=models.CASCADE,
-        related_name="investigations",
-        verbose_name="スレッド",
-    )
-    agent_type = models.CharField(
-        max_length=50,
-        choices=AGENT_TYPES,
-        verbose_name="エージェント種別",
-    )
-    result = models.JSONField(
-        verbose_name="調査結果",
-    )
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="作成日時",
-    )
-
-    class Meta:
-        verbose_name = "調査結果"
-        verbose_name_plural = "調査結果"
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"{self.agent_type}: [{self.thread.hn_id}] {self.thread.title}"
-
-
 class HNAgentConfigManager(models.Manager):
     """HNAgentConfig用カスタムマネージャー."""
 
@@ -194,16 +131,6 @@ class HNAgentConfig(models.Model):
         ],
         help_text="Orchestratorの推論トークン量を制御（コストに影響）。モデルが非対応の場合は「無効」を選択",
     )
-    embedding_dimensions = models.IntegerField(
-        "Embedding次元数",
-        default=1536,
-        validators=[MinValueValidator(1), MaxValueValidator(3072)],
-        help_text=(
-            "Embedding APIに渡す出力次元数。"
-            "DBのベクトルカラムもこの値に合わせる必要がある。"
-            "text-embedding-3-small: 最大1536、text-embedding-3-large: 最大3072"
-        ),
-    )
     score_threshold = models.IntegerField(
         "スコア閾値",
         default=100,
@@ -215,12 +142,6 @@ class HNAgentConfig(models.Model):
         default=50.0,
         validators=[MinValueValidator(0.1)],
         help_text="調査をトリガーするスコア上昇速度の閾値",
-    )
-    similarity_threshold = models.FloatField(
-        "類似度閾値",
-        default=0.85,
-        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
-        help_text="過去スレッド検索のcosine similarity閾値（0-1）",
     )
     poll_interval_seconds = models.IntegerField(
         "ポーリング間隔（秒）",

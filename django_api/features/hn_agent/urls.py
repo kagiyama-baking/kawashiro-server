@@ -15,16 +15,4 @@ urlpatterns = [
     path("investigate/", views.InvestigateView.as_view(), name="investigate"),
     # スレッド一覧
     path("threads/", views.ThreadListView.as_view(), name="thread-list"),
-    # 調査結果一覧
-    path(
-        "investigations/",
-        views.InvestigationListView.as_view(),
-        name="investigation-list",
-    ),
-    # 調査結果詳細
-    path(
-        "investigations/<int:pk>/",
-        views.InvestigationDetailView.as_view(),
-        name="investigation-detail",
-    ),
 ]

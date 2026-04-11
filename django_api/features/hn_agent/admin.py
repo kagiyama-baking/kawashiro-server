@@ -6,8 +6,6 @@ from .models import (
     HNAgentConfig,
     HNThread,
     HNThreadSnapshot,
-    Investigation,
-    ThreadEmbedding,
 )
 
 
@@ -40,23 +38,6 @@ class HNThreadSnapshotAdmin(admin.ModelAdmin):
     readonly_fields = ("fetched_at",)
 
 
-@admin.register(Investigation)
-class InvestigationAdmin(admin.ModelAdmin):
-    """調査結果管理."""
-
-    list_display = ("thread", "agent_type", "created_at")
-    list_filter = ("agent_type", "created_at")
-    readonly_fields = ("created_at",)
-
-
-@admin.register(ThreadEmbedding)
-class ThreadEmbeddingAdmin(admin.ModelAdmin):
-    """スレッド埋め込み管理."""
-
-    list_display = ("thread", "created_at")
-    readonly_fields = ("created_at",)
-
-
 @admin.register(HNAgentConfig)
 class HNAgentConfigAdmin(admin.ModelAdmin):
     """HN Agent設定管理."""
@@ -83,8 +64,8 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
         (
             "LLM設定",
             {
-                "fields": ("reasoning_effort", "embedding_dimensions"),
-                "description": "モデルやAPIキーはOpenAI API設定で管理。ここでは推論深度とEmbedding次元数を設定。",
+                "fields": ("reasoning_effort",),
+                "description": "モデルやAPIキーはLLMサービス設定で管理。ここでは推論深度を設定。",
             },
         ),
         (
@@ -93,7 +74,6 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
                 "fields": (
                     "score_threshold",
                     "velocity_threshold",
-                    "similarity_threshold",
                 ),
             },
         ),
