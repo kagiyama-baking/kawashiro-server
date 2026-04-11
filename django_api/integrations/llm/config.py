@@ -83,22 +83,25 @@ def get_llm_settings(service_name: str) -> LLMSettings:
     from .models import LLMServiceConfig
 
     try:
-        config = LLMServiceConfig.objects.get(service_name=service_name, is_active=True)
+        config = LLMServiceConfig.objects.select_related("provider_config").get(
+            service_name=service_name, is_active=True
+        )
     except LLMServiceConfig.DoesNotExist as err:
         raise LLMConfigurationError(
             f"サービス '{service_name}' のLLM設定がありません。\n"
             "Django管理画面からLLMサービス設定を作成してください。"
         ) from err
 
+    provider = config.provider_config
     proxy_base_url = os.getenv("LITELLM_PROXY_URL", "http://litellm-proxy:4000/v1")
-    # サービス固有のVirtual Keyを優先、未設定時はマスターキーにフォールバック
-    proxy_api_key = config.proxy_api_key or os.getenv("LITELLM_MASTER_KEY", "")
+    # プロバイダー設定のVirtual Keyを優先、未設定時はマスターキーにフォールバック
+    proxy_api_key = provider.proxy_api_key or os.getenv("LITELLM_MASTER_KEY", "")
     environment = os.getenv("LANGFUSE_TRACING_ENVIRONMENT", "default")
 
     return LLMSettings(
         proxy_base_url=proxy_base_url,
         proxy_api_key=proxy_api_key,
-        model_alias=config.model_alias,
+        model_alias=provider.model_alias,
         timeout=config.timeout,
         service_name=service_name,
         environment=environment,

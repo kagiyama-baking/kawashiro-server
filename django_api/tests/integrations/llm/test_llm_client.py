@@ -243,66 +243,74 @@ class TestLLMClientChatCompletion:
 class TestLLMClientGenerateEmbedding:
     """LLMClient の Embedding 生成テスト."""
 
+    @patch("integrations.llm.client.httpx")
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")
-    def test_generate_embedding_success(self, mock_openai_class, mock_get_settings):
+    def test_generate_embedding_success(
+        self, mock_openai_class, mock_get_settings, mock_httpx
+    ):
         """Embedding生成が正常に動作する."""
         from integrations.llm.client import LLMClient
 
         mock_get_settings.return_value = MockLLMSettings(service_name="embedding")
-        mock_embedding_data = Mock()
-        mock_embedding_data.embedding = [0.1, 0.2, 0.3]
+        mock_openai_class.return_value = MagicMock()
         mock_response = Mock()
-        mock_response.data = [mock_embedding_data]
-        mock_client = MagicMock()
-        mock_client.embeddings.create.return_value = mock_response
-        mock_openai_class.return_value = mock_client
+        mock_response.json.return_value = {
+            "data": [{"embedding": [0.1, 0.2, 0.3]}]
+        }
+        mock_response.raise_for_status = Mock()
+        mock_httpx.post.return_value = mock_response
 
         client = LLMClient(service_name="embedding")
         result = client.generate_embedding("テストテキスト")
 
         assert result == [0.1, 0.2, 0.3]
-        call_kwargs = mock_client.embeddings.create.call_args.kwargs
-        assert call_kwargs["extra_body"] == {
-            "metadata": {"service_name": "embedding", "environment": "dev"}
-        }
-        assert call_kwargs["name"] == "llm/embedding"
+        call_kwargs = mock_httpx.post.call_args
+        body = call_kwargs.kwargs["json"]
+        assert body["model"] == "gpt-4o-mini"
+        assert body["input"] == "テストテキスト"
+        assert "vector_store_ids" not in body
 
+    @patch("integrations.llm.client.httpx")
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")
     def test_generate_embedding_with_dimensions(
-        self, mock_openai_class, mock_get_settings, mock_llm_settings
+        self, mock_openai_class, mock_get_settings, mock_httpx, mock_llm_settings
     ):
         """次元数指定付きEmbedding生成."""
         from integrations.llm.client import LLMClient
 
         mock_get_settings.return_value = mock_llm_settings
-        mock_embedding_data = Mock()
-        mock_embedding_data.embedding = [0.1, 0.2]
+        mock_openai_class.return_value = MagicMock()
         mock_response = Mock()
-        mock_response.data = [mock_embedding_data]
-        mock_client = MagicMock()
-        mock_client.embeddings.create.return_value = mock_response
-        mock_openai_class.return_value = mock_client
+        mock_response.json.return_value = {
+            "data": [{"embedding": [0.1, 0.2]}]
+        }
+        mock_response.raise_for_status = Mock()
+        mock_httpx.post.return_value = mock_response
 
         client = LLMClient(service_name="embedding")
         client.generate_embedding("テスト", dimensions=512)
 
-        call_kwargs = mock_client.embeddings.create.call_args.kwargs
-        assert call_kwargs["dimensions"] == 512
+        body = mock_httpx.post.call_args.kwargs["json"]
+        assert body["dimensions"] == 512
 
+    @patch("integrations.llm.client.httpx")
     @patch("integrations.llm.client.get_llm_settings")
     @patch("integrations.llm.client.OpenAI")
     def test_generate_embedding_timeout(
-        self, mock_openai_class, mock_get_settings, mock_llm_settings
+        self, mock_openai_class, mock_get_settings, mock_httpx, mock_llm_settings
     ):
         """Embeddingタイムアウトでエラー."""
+        import httpx as real_httpx
+
         from integrations.llm.client import LLMClient
 
         mock_get_settings.return_value = mock_llm_settings
-        mock_client = MagicMock()
-        mock_client.embeddings.create.side_effect = APITimeoutError(request=Mock())
-        mock_openai_class.return_value = mock_client
+        mock_openai_class.return_value = MagicMock()
+        mock_httpx.post.side_effect = real_httpx.TimeoutException("timeout")
+        mock_httpx.TimeoutException = real_httpx.TimeoutException
+        mock_httpx.HTTPError = real_httpx.HTTPError
 
         client = LLMClient(service_name="embedding")
         with pytest.raises(LLMTimeoutError):

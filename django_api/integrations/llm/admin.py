@@ -3,7 +3,7 @@
 from django import forms
 from django.contrib import admin, messages
 
-from .models import LLMServiceConfig, OpenAIConfig
+from .models import LLMProviderConfig, LLMServiceConfig, OpenAIConfig
 
 
 class BaseLLMConfigForm(forms.ModelForm):
@@ -137,8 +137,13 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
         )
 
 
-class LLMServiceConfigForm(forms.ModelForm):
-    """LLMServiceConfig用のカスタムフォーム."""
+# ============================================================
+# LLMProviderConfig（LLM設定）
+# ============================================================
+
+
+class LLMProviderConfigForm(forms.ModelForm):
+    """LLMProviderConfig用のカスタムフォーム."""
 
     proxy_api_key = forms.CharField(
         label="Virtual Key",
@@ -154,13 +159,8 @@ class LLMServiceConfigForm(forms.ModelForm):
     )
 
     class Meta:
-        model = LLMServiceConfig
-        fields = [
-            "service_name",
-            "model_alias",
-            "is_active",
-            "timeout",
-        ]
+        model = LLMProviderConfig
+        fields = ["name", "model_alias"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -181,34 +181,27 @@ class LLMServiceConfigForm(forms.ModelForm):
         return instance
 
 
-@admin.register(LLMServiceConfig)
-class LLMServiceConfigAdmin(admin.ModelAdmin):
-    """LLMサービス設定管理画面."""
+@admin.register(LLMProviderConfig)
+class LLMProviderConfigAdmin(admin.ModelAdmin):
+    """LLM設定管理画面."""
 
-    form = LLMServiceConfigForm
+    form = LLMProviderConfigForm
 
     list_display = [
-        "service_name",
+        "name",
         "model_alias",
         "has_virtual_key",
-        "is_active",
-        "timeout",
         "updated_at",
     ]
-    list_filter = ["is_active", "service_name"]
-    list_editable = ["model_alias", "is_active"]
-    search_fields = ["service_name", "model_alias"]
+    search_fields = ["name", "model_alias"]
     readonly_fields = ["created_at", "updated_at"]
 
     fieldsets = (
         (
             "基本設定",
             {
-                "fields": ("service_name", "model_alias", "is_active"),
-                "description": (
-                    "サービスごとに使用するLLMモデルを設定します。"
-                    "model_aliasはLiteLLM Proxy config.yamlのmodel_nameに対応します。"
-                ),
+                "fields": ("name", "model_alias"),
+                "description": "設定名とLiteLLM Proxyのモデルエイリアスを設定します。",
             },
         ),
         (
@@ -220,6 +213,47 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
                     "マスターキーではなくサービス専用のVirtual Keyを使うことで、"
                     "コスト上限の設定やアクセスログの識別が可能になります。"
                 ),
+            },
+        ),
+        (
+            "メタ情報",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    @admin.display(boolean=True, description="Virtual Key")
+    def has_virtual_key(self, obj):
+        """Virtual Keyが設定されているかを表示."""
+        return bool(obj._encrypted_proxy_api_key)
+
+
+# ============================================================
+# LLMServiceConfig（LLMサービス設定）
+# ============================================================
+
+
+@admin.register(LLMServiceConfig)
+class LLMServiceConfigAdmin(admin.ModelAdmin):
+    """LLMサービス設定管理画面."""
+
+    list_display = [
+        "service_name",
+        "provider_config",
+        "is_active",
+        "timeout",
+    ]
+    list_filter = ["is_active"]
+    readonly_fields = ["created_at", "updated_at"]
+
+    fieldsets = (
+        (
+            "基本設定",
+            {
+                "fields": ("service_name", "provider_config", "is_active"),
+                "description": "サービスごとに使用するLLM設定を選択します。",
             },
         ),
         (
@@ -236,8 +270,3 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
             },
         ),
     )
-
-    @admin.display(boolean=True, description="Virtual Key")
-    def has_virtual_key(self, obj):
-        """Virtual Keyが設定されているかを表示."""
-        return bool(obj._encrypted_proxy_api_key)

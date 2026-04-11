@@ -115,6 +115,9 @@ class LLMClient:
     ) -> list[float]:
         """テキストからembeddingベクトルを生成.
 
+        OpenAI SDK v2.xがvector_store_ids等の余分なパラメータを自動付与し
+        Bedrock等のプロバイダーが拒否するため、httpxで直接リクエストする。
+
         Args:
             text: 埋め込み対象のテキスト
             dimensions: 出力次元数（指定するとAPIが切り詰める）
@@ -126,26 +129,27 @@ class LLMClient:
             LLMTimeoutError: タイムアウト時
             LLMClientError: API接続エラー時
         """
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "input": text,
-            "extra_body": {
-                "metadata": {
-                    "service_name": self._service_name,
-                    "environment": self._environment,
-                }
-            },
-            "name": f"llm/{self._service_name}",
-        }
+        import httpx
+
+        body: dict[str, Any] = {"model": self.model, "input": text}
         if dimensions is not None:
-            kwargs["dimensions"] = dimensions
+            body["dimensions"] = dimensions
 
         try:
-            response = self._client.embeddings.create(**kwargs)
-            return response.data[0].embedding
-        except APITimeoutError as e:
+            response = httpx.post(
+                f"{self._client.base_url}embeddings",
+                headers={
+                    "Authorization": f"Bearer {self._client.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()["data"][0]["embedding"]
+        except httpx.TimeoutException as e:
             raise LLMTimeoutError(
                 "Embedding APIへのリクエストがタイムアウトしました"
             ) from e
-        except APIConnectionError as e:
+        except httpx.HTTPError as e:
             raise LLMClientError("Embedding APIへの接続に失敗しました") from e

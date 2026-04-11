@@ -99,8 +99,9 @@ def poll_front_page(auto_investigate: bool = True) -> dict:
     return _poll_front_page_impl(auto_investigate)
 
 
+@observe(name="hn-agent/scheduled-run")
 def _poll_front_page_impl(auto_investigate: bool) -> dict:
-    """poll_front_pageの実装."""
+    """poll_front_pageの実装（Langfuseトレース対応）."""
     client = HNAlgoliaClient()
     stories = client.get_front_page_stories()
 
@@ -173,9 +174,10 @@ def _poll_front_page_impl(auto_investigate: bool) -> dict:
                     "comment_velocity": comment_velocity,
                 }
             )
-            # Orchestratorをバックグラウンドで起動
-            if auto_investigate:
-                run_orchestrator.delay(story.hn_id)
+
+    # Orchestratorを同期実行（1トレースにまとめるため）
+    if auto_investigate and triggered_threads:
+        _run_triggered_investigations(triggered_threads)
 
     logger.info(
         "ポーリング完了: 新規=%d, スナップショット=%d, トリガー=%d",
@@ -190,6 +192,27 @@ def _poll_front_page_impl(auto_investigate: bool) -> dict:
         "snapshots_created": snapshot_count,
         "triggered_threads": triggered_threads,
     }
+
+
+def _run_triggered_investigations(triggered_threads: list[dict]) -> None:
+    """閾値超えスレッドに対してOrchestratorを同期実行."""
+    from .orchestrator import Orchestrator
+
+    orchestrator = Orchestrator()
+    for triggered_thread in triggered_threads:
+        hn_id = triggered_thread["hn_id"]
+        try:
+            thread = HNThread.objects.get(hn_id=hn_id)
+        except HNThread.DoesNotExist:
+            continue
+
+        if thread.is_investigated:
+            continue
+
+        try:
+            orchestrator.investigate(thread)
+        except Exception:
+            logger.exception("Orchestrator実行エラー: [%d]", hn_id)
 
 
 @shared_task(name="hn_agent.run_orchestrator")
