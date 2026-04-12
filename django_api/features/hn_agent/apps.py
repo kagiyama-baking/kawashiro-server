@@ -9,4 +9,4 @@ class HNAgentConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "features.hn_agent"
     label = "hn_agent"
-    verbose_name = "HN Agent"
+    verbose_name = "HackerNews Agent"

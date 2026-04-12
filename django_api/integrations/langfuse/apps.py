@@ -9,4 +9,4 @@ class LangfuseConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "integrations.langfuse"
     label = "langfuse_integration"
-    verbose_name = "Langfuse統合"
+    verbose_name = "Langfuse"
