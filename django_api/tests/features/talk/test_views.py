@@ -312,11 +312,11 @@ class TestTalkSynthesizeView:
         greeting_config,
         request_data,
     ):
-        """OpenAI APIタイムアウト時に504エラー."""
-        from integrations.llm.exceptions import OpenAITimeoutError
+        """LLM APIタイムアウト時に504エラー."""
+        from integrations.llm.exceptions import LLMTimeoutError
 
         mock_service = MagicMock()
-        mock_service.synthesize.side_effect = OpenAITimeoutError("Timeout")
+        mock_service.synthesize.side_effect = LLMTimeoutError("Timeout")
         mock_service_class.return_value = mock_service
 
         response = authenticated_client.post(url, request_data, format="json")
@@ -403,11 +403,11 @@ class TestTalkSynthesizeView:
         greeting_config,
         request_data,
     ):
-        """OpenAI APIエラー時に502エラー."""
-        from integrations.llm.exceptions import OpenAIAPIError
+        """LLM APIエラー時に502エラー."""
+        from integrations.llm.exceptions import LLMClientError
 
         mock_service = MagicMock()
-        mock_service.synthesize.side_effect = OpenAIAPIError("API error")
+        mock_service.synthesize.side_effect = LLMClientError("API error")
         mock_service_class.return_value = mock_service
 
         response = authenticated_client.post(url, request_data, format="json")

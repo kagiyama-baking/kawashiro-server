@@ -11,7 +11,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from integrations.llm.exceptions import OpenAIAPIError, OpenAITimeoutError
+from integrations.llm.exceptions import LLMClientError, LLMTimeoutError
 from integrations.msgraph.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -153,7 +153,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
 
-        except (OpenAITimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
+        except (LLMTimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
             logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(e))
             return Response(
                 {"error": "サービスへのリクエストがタイムアウトしました"},
@@ -172,7 +172,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        except (OpenAIAPIError, TTSNetworkError) as e:
+        except (LLMClientError, TTSNetworkError) as e:
             logger.error("AI/TTSサービスエラー: %s", str(e))
             return Response(
                 {"error": "AI生成サービスへの接続に失敗しました"},
