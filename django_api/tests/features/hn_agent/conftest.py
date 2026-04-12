@@ -32,6 +32,7 @@ def hn_agent_config(hn_prompt_refs):
         score_threshold=100,
         velocity_threshold=50.0,
         poll_interval_seconds=600,
+        front_page_limit=30,
         orchestrator_system_prompt=hn_prompt_refs["orchestrator_system"],
         orchestrator_user_prompt=hn_prompt_refs["orchestrator_user"],
         detective_system_prompt=hn_prompt_refs["detective_system"],

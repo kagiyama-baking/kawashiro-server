@@ -102,7 +102,7 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
         (
             "ポーリング設定",
             {
-                "fields": ("poll_interval_seconds",),
+                "fields": ("poll_interval_seconds", "front_page_limit"),
             },
         ),
         (

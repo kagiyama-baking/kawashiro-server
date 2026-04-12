@@ -156,6 +156,15 @@ class HNAgentConfig(models.Model):
         validators=[MinValueValidator(60)],
         help_text="HNフロントページのポーリング間隔（最低60秒）",
     )
+    front_page_limit = models.IntegerField(
+        "フロントページ取得件数",
+        default=30,
+        validators=[MinValueValidator(1)],
+        help_text=(
+            "HNフロントページから1回のポーリングで取得するストーリー件数。"
+            "HN Web UI のトップは30件ですが、Algolia API 経由で最大1000件程度まで取得可能。"
+        ),
+    )
 
     # プロンプト参照（Langfuse 管理）
     orchestrator_system_prompt = models.ForeignKey(
