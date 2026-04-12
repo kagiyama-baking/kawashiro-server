@@ -29,17 +29,16 @@ class TestTalkConfigAdmin:
         assert "tts_enabled" in admin_instance.list_display
 
     def test_fieldsets_organized_properly(self):
-        """fieldsets が適切にグループ化されている"""
+        """fieldsets が適切にグループ化されている."""
         admin_instance = TalkConfigAdmin(TalkConfig, AdminSite())
 
         fieldset_names = [name for name, _ in admin_instance.fieldsets]
 
-        # 基本設定、プレースホルダー設定、天気設定、TTS設定、プロンプト設定のセクションがあること
         assert None in fieldset_names  # 基本設定（名前なし）
         assert "プレースホルダー設定" in fieldset_names
         assert "天気設定" in fieldset_names
         assert "TTS設定" in fieldset_names
-        assert "プロンプト設定" in fieldset_names
+        assert "プロンプト参照（Langfuse）" in fieldset_names
 
     def test_placeholder_fieldset_has_description(self):
         """プレースホルダー設定セクションに説明がある"""

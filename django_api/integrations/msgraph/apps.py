@@ -9,4 +9,4 @@ class MsgraphConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "integrations.msgraph"
     label = "msgraph_config"
-    verbose_name = "Microsoft Graph API設定"
+    verbose_name = "Microsoft 365"

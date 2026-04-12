@@ -10,27 +10,16 @@ from langchain_openai import ChatOpenAI
 from langfuse import observe
 from langgraph.prebuilt import create_react_agent
 
+from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
 
 from .agents.detective import DetectiveAgent
-from .models import HNThread
-from .prompts import get_prompt
+from .models import HNAgentConfig, HNThread
 from .reporter import Reporter
 
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 10
-
-ORCHESTRATOR_SYSTEM_PROMPT = """あなたはHacker Newsの調査オーケストレーターです。
-急上昇中のHNスレッドについて、利用可能なツールを使って調査を行います。
-
-## 調査フロー
-1. detective_investigateでスレッドの急上昇原因を調査する
-2. 調査が完了したら、ツールを呼ばずに最終的なサマリーを日本語で返す
-
-## 注意事項
-- ツールは1回呼べば十分です
-- 調査完了後はツールを呼ばずにテキストで結論を返してください"""
 
 
 class Orchestrator:
@@ -105,6 +94,7 @@ class Orchestrator:
     def _run_agent(self, thread: HNThread, results: dict[str, Any]) -> dict[str, Any]:
         """LangGraph ReAct Agentを構築・実行."""
         settings = get_llm_settings("orchestrator")
+        agent_config = HNAgentConfig.objects.get_active_config()
 
         llm = ChatOpenAI(
             base_url=settings.proxy_base_url,
@@ -134,9 +124,11 @@ class Orchestrator:
 
         agent = create_react_agent(llm, [detective_investigate])
 
-        # メッセージ構築
-        system_prompt = get_prompt("hn-agent-orchestrator", ORCHESTRATOR_SYSTEM_PROMPT)
-        user_content = self._build_user_message(thread)
+        system_prompt = resolve_prompt(agent_config.orchestrator_system_prompt)
+        user_content = resolve_prompt(
+            agent_config.orchestrator_user_prompt,
+            **self._build_user_variables(thread),
+        )
 
         config: dict[str, Any] = {
             "recursion_limit": MAX_STEPS * 2 + 1,
@@ -207,8 +199,8 @@ class Orchestrator:
                 if results[result_key] is None:
                     step["success"] = False
 
-    def _build_user_message(self, thread: HNThread) -> str:
-        """ユーザーメッセージを構築."""
+    def _build_user_variables(self, thread: HNThread) -> dict[str, str]:
+        """Orchestrator ユーザープロンプトの変数を組み立てる."""
         snapshot = thread.latest_snapshot
         score_info = ""
         if snapshot:
@@ -216,14 +208,13 @@ class Orchestrator:
                 f"スコア: {snapshot.score}, コメント数: {snapshot.num_comments}"
             )
 
-        return (
-            f"以下のHNスレッドを調査してください。\n\n"
-            f"HN ID: {thread.hn_id}\n"
-            f"タイトル: {thread.title}\n"
-            f"URL: {thread.url or '(self-post)'}\n"
-            f"投稿者: {thread.author}\n"
-            f"{score_info}"
-        )
+        return {
+            "hn_id": str(thread.hn_id),
+            "title": thread.title,
+            "url": thread.url or "(self-post)",
+            "author": thread.author,
+            "score_info": score_info,
+        }
 
     def _finalize_trace(self, thread: HNThread, results: dict[str, Any]) -> None:
         """Orchestratorの判断フローをLangfuseスパンに記録."""

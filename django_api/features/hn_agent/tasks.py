@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # デフォルト設定値（DB設定がない場合のフォールバック）
 DEFAULT_SCORE_THRESHOLD = 100
 DEFAULT_VELOCITY_THRESHOLD = 50  # ポイント/時間
+DEFAULT_FRONT_PAGE_LIMIT = 30
 
 
 def _get_score_threshold() -> int:
@@ -34,6 +35,15 @@ def _get_velocity_threshold() -> float:
         return config.velocity_threshold
     except HNAgentConfig.DoesNotExist:
         return DEFAULT_VELOCITY_THRESHOLD
+
+
+def _get_front_page_limit() -> int:
+    """フロントページ取得件数を取得（DB設定優先、なければデフォルト）."""
+    try:
+        config = HNAgentConfig.objects.get_active_config()
+        return config.front_page_limit
+    except HNAgentConfig.DoesNotExist:
+        return DEFAULT_FRONT_PAGE_LIMIT
 
 
 def _calculate_score_velocity(thread: HNThread, current_score: int) -> float | None:
@@ -103,7 +113,7 @@ def poll_front_page(auto_investigate: bool = True) -> dict:
 def _poll_front_page_impl(auto_investigate: bool) -> dict:
     """poll_front_pageの実装（Langfuseトレース対応）."""
     client = HNAlgoliaClient()
-    stories = client.get_front_page_stories()
+    stories = client.get_front_page_stories(hits_per_page=_get_front_page_limit())
 
     created_count = 0
     snapshot_count = 0

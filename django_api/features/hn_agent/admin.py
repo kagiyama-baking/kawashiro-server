@@ -53,6 +53,13 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     readonly_fields = ("created_at", "updated_at")
 
+    autocomplete_fields = (
+        "orchestrator_system_prompt",
+        "orchestrator_user_prompt",
+        "detective_system_prompt",
+        "detective_user_prompt",
+    )
+
     fieldsets = (
         (
             "基本設定",
@@ -69,6 +76,21 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "プロンプト参照（Langfuse）",
+            {
+                "fields": (
+                    "orchestrator_system_prompt",
+                    "orchestrator_user_prompt",
+                    "detective_system_prompt",
+                    "detective_user_prompt",
+                ),
+                "description": (
+                    "Orchestrator / Detective それぞれの system / user プロンプトを "
+                    "Langfuseプロンプト参照から選択します。"
+                ),
+            },
+        ),
+        (
             "調査トリガー設定",
             {
                 "fields": (
@@ -80,7 +102,7 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
         (
             "ポーリング設定",
             {
-                "fields": ("poll_interval_seconds",),
+                "fields": ("poll_interval_seconds", "front_page_limit"),
             },
         ),
         (

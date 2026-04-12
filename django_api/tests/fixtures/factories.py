@@ -48,6 +48,44 @@ class SuperUserFactory(UserFactory):
     is_staff = True
 
 
+class LangfusePromptRefFactory(factory.django.DjangoModelFactory):
+    """LangfusePromptRef のファクトリ."""
+
+    class Meta:
+        model = "langfuse_integration.LangfusePromptRef"
+        django_get_or_create = ("name",)
+
+    name = factory.Sequence(lambda n: f"prompt-ref-{n}")
+    langfuse_prompt_name = factory.LazyAttribute(lambda o: o.name)
+    label = "production"
+    fallback_text = "fallback"
+    description = ""
+
+
+class TalkConfigFactory(factory.django.DjangoModelFactory):
+    """TalkConfig のファクトリ."""
+
+    class Meta:
+        model = "talk.TalkConfig"
+        django_get_or_create = ("name",)
+
+    name = factory.Sequence(lambda n: f"talk-config-{n}")
+    display_name = factory.LazyAttribute(lambda o: o.name)
+    use_weather = False
+    use_events = False
+    use_datetime = True
+    system_prompt_ref = factory.SubFactory(
+        LangfusePromptRefFactory,
+        name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
+        fallback_text="system prompt fallback",
+    )
+    user_prompt_ref = factory.SubFactory(
+        LangfusePromptRefFactory,
+        name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-user"),
+        fallback_text="user prompt fallback",
+    )
+
+
 class FileUploadFactory:
     """ファイルアップロードテスト用のファクトリ"""
 

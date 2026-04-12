@@ -9,7 +9,6 @@ export interface GenerateConfig {
 
 export interface GenerateRequest {
     readonly config_name: string;
-    readonly user_prompt: string;
 }
 
 export interface GenerateResult {

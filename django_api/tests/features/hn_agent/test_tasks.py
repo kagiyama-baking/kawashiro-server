@@ -64,6 +64,23 @@ class TestPollFrontPage:
         assert HNThreadSnapshot.objects.count() == 2
 
     @patch("features.hn_agent.tasks.HNAlgoliaClient")
+    def test_poll_front_page_uses_configured_limit(
+        self, mock_client_class, _mock_delay, hn_agent_config
+    ):
+        """HNAgentConfig.front_page_limit が Algolia 呼び出しに渡される."""
+        hn_agent_config.front_page_limit = 90
+        hn_agent_config.save()
+
+        mock_client_class.return_value.get_front_page_stories.return_value = []
+
+        poll_front_page()
+
+        call_kwargs = (
+            mock_client_class.return_value.get_front_page_stories.call_args.kwargs
+        )
+        assert call_kwargs["hits_per_page"] == 90
+
+    @patch("features.hn_agent.tasks.HNAlgoliaClient")
     def test_poll_front_page_updates_existing_thread(
         self, mock_client_class, _mock_delay, sample_stories
     ):

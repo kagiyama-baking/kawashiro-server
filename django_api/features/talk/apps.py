@@ -9,4 +9,4 @@ class TalkAppConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "features.talk"
     label = "talk"
-    verbose_name = "会話生成"
+    verbose_name = "Talk Generator"

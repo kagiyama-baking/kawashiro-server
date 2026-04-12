@@ -51,7 +51,6 @@ describe('Generate API', () => {
     it('テキスト生成でレスポンスが返る', async () => {
         const result = await generateText({
             config_name: 'morning',
-            user_prompt: 'テスト',
         });
         expect(result.text).toBe('おはようございます');
         expect(result.audioBlob).toBeInstanceOf(Blob);

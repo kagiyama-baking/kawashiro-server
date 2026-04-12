@@ -7,7 +7,37 @@ import pytest
 
 from features.talk.models import TalkConfig
 from features.talk.services import TalkService
+from integrations.langfuse.models import LangfusePromptRef
 from integrations.tts.client import TTSResult
+
+
+@pytest.fixture(autouse=True)
+def _disable_langfuse_client():
+    """Langfuse 接続を切って fallback_text 経由に統一する."""
+    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
+        yield
+
+
+@pytest.fixture
+def prompt_refs(db):
+    sys_ref = LangfusePromptRef.objects.create(
+        name="talk-service-system",
+        langfuse_prompt_name="talk-service-system",
+        fallback_text="system fallback",
+    )
+    user_ref = LangfusePromptRef.objects.create(
+        name="talk-service-user",
+        langfuse_prompt_name="talk-service-user",
+        fallback_text=("weather={{weather}} events={{events}} datetime={{datetime}}"),
+    )
+    return sys_ref, user_ref
+
+
+def _refs(prompt_refs):
+    return {
+        "system_prompt_ref": prompt_refs[0],
+        "user_prompt_ref": prompt_refs[1],
+    }
 
 
 @pytest.mark.django_db
@@ -16,7 +46,6 @@ class TestTalkService:
 
     @pytest.fixture
     def mock_weather_response(self):
-        """天気予報APIのモックレスポンス"""
         return {
             "area_name": "東京都 東京地方",
             "area_code": "130010",
@@ -33,7 +62,6 @@ class TestTalkService:
 
     @pytest.fixture
     def mock_events_response(self):
-        """予定取得APIのモックレスポンス"""
         return [
             {
                 "id": "AAMkAGI...",
@@ -53,24 +81,21 @@ class TestTalkService:
 
     @pytest.fixture
     def mock_openai_response(self):
-        """OpenAI APIのモックレスポンス"""
         return "おはようございます、先輩。\n今日は晴れですね。最高気温は10度です。"
 
     @pytest.fixture
-    def config_datetime_only(self):
-        """日時のみ使用の設定"""
+    def config_datetime_only(self, prompt_refs):
         return TalkConfig.objects.create(
             name="datetime_only",
             display_name="日時のみテスト",
             use_weather=False,
             use_events=False,
             use_datetime=True,
-            system_prompt="テスト用システムプロンプト",
+            **_refs(prompt_refs),
         )
 
     @pytest.fixture
-    def config_with_weather(self):
-        """天気使用の設定"""
+    def config_with_weather(self, prompt_refs):
         return TalkConfig.objects.create(
             name="with_weather",
             display_name="天気テスト",
@@ -78,12 +103,11 @@ class TestTalkService:
             use_events=False,
             use_datetime=True,
             area_code="130010",
-            system_prompt="テスト用システムプロンプト",
+            **_refs(prompt_refs),
         )
 
     @pytest.fixture
-    def config_all_placeholders(self):
-        """全プレースホルダー使用の設定"""
+    def config_all_placeholders(self, prompt_refs):
         return TalkConfig.objects.create(
             name="all_placeholders",
             display_name="全プレースホルダーテスト",
@@ -91,35 +115,33 @@ class TestTalkService:
             use_events=True,
             use_datetime=True,
             area_code="130010",
-            system_prompt="テスト用システムプロンプト",
+            **_refs(prompt_refs),
         )
 
     @pytest.fixture
-    def config_with_tts(self):
-        """TTS有効の設定"""
+    def config_with_tts(self, prompt_refs):
         return TalkConfig.objects.create(
             name="with_tts",
             display_name="TTSテスト",
             use_weather=False,
             use_events=False,
             use_datetime=True,
-            system_prompt="テスト用システムプロンプト",
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
             tts_speed=1.2,
+            **_refs(prompt_refs),
         )
 
     @pytest.fixture
-    def config_no_placeholders(self):
-        """プレースホルダー無効の設定"""
+    def config_no_placeholders(self, prompt_refs):
         return TalkConfig.objects.create(
             name="no_placeholders",
             display_name="プレースホルダー無効",
             use_weather=False,
             use_events=False,
             use_datetime=False,
-            system_prompt="テスト用システムプロンプト",
+            **_refs(prompt_refs),
         )
 
     # 正常系テスト
@@ -133,7 +155,7 @@ class TestTalkService:
         mock_openai_response,
         config_datetime_only,
     ):
-        """日時のみ使用時に挨拶が生成される"""
+        """日時のみ使用時に挨拶が生成される."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -143,16 +165,11 @@ class TestTalkService:
         mock_openai_class.return_value = mock_openai
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_datetime_only,
-            user_prompt="今日は{{datetime}}です。挨拶してください。",
-        )
+        result = service.synthesize(config=config_datetime_only)
 
         assert result is not None
-        assert "greeting_text" in result
         assert result["greeting_text"] == mock_openai_response
         assert "audio_data" not in result
-
         mock_openai.generate_text.assert_called_once()
 
     @patch("features.talk.services.HolidayClient")
@@ -167,7 +184,7 @@ class TestTalkService:
         mock_openai_response,
         config_with_weather,
     ):
-        """天気使用時に天気APIが呼ばれる"""
+        """天気使用時に天気APIが呼ばれる."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -181,10 +198,7 @@ class TestTalkService:
         mock_openai_class.return_value = mock_openai
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_with_weather,
-            user_prompt="天気: {{weather}} 日時: {{datetime}}",
-        )
+        result = service.synthesize(config=config_with_weather)
 
         assert result is not None
         assert "greeting_text" in result
@@ -205,7 +219,7 @@ class TestTalkService:
         mock_openai_response,
         config_all_placeholders,
     ):
-        """全プレースホルダー使用時に全APIが呼ばれる"""
+        """全プレースホルダー使用時に全APIが呼ばれる."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -223,10 +237,7 @@ class TestTalkService:
         mock_openai_class.return_value = mock_openai
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_all_placeholders,
-            user_prompt="{{weather}} {{events}} {{datetime}}",
-        )
+        result = service.synthesize(config=config_all_placeholders)
 
         assert result is not None
         assert "greeting_text" in result
@@ -240,16 +251,13 @@ class TestTalkService:
         mock_openai_response,
         config_no_placeholders,
     ):
-        """プレースホルダー無効時はAPIを呼ばない"""
+        """プレースホルダー無効時はAPIを呼ばない."""
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
         mock_openai_class.return_value = mock_openai
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_no_placeholders,
-            user_prompt="挨拶してください。",
-        )
+        result = service.synthesize(config=config_no_placeholders)
 
         assert result is not None
         assert "greeting_text" in result
@@ -267,7 +275,7 @@ class TestTalkService:
         mock_openai_response,
         config_with_tts,
     ):
-        """TTS有効時に音声が生成される"""
+        """TTS有効時に音声が生成される."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -285,14 +293,9 @@ class TestTalkService:
         mock_tts_class.return_value = mock_tts
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_with_tts,
-            user_prompt="{{datetime}}",
-        )
+        result = service.synthesize(config=config_with_tts)
 
         assert result is not None
-        assert "greeting_text" in result
-        assert "audio_data" in result
         assert result["audio_data"] == b"fake_wav_data"
         assert result["audio_content_type"] == "audio/wav"
         assert result["audio_format"] == "wav"
@@ -314,7 +317,7 @@ class TestTalkService:
         mock_openai_response,
         config_datetime_only,
     ):
-        """TTS無効時は音声データがない"""
+        """TTS無効時は音声データがない."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -324,13 +327,8 @@ class TestTalkService:
         mock_openai_class.return_value = mock_openai
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_datetime_only,
-            user_prompt="{{datetime}}",
-        )
+        result = service.synthesize(config=config_datetime_only)
 
-        assert result is not None
-        assert "greeting_text" in result
         assert "audio_data" not in result
 
     # エラーハンドリングテスト
@@ -341,7 +339,7 @@ class TestTalkService:
         mock_weather_class,
         config_with_weather,
     ):
-        """天気API失敗時にエラーが発生する"""
+        """天気API失敗時にエラーが発生する."""
         from integrations.weather.exceptions import WeatherNetworkError
 
         mock_weather = MagicMock()
@@ -351,53 +349,31 @@ class TestTalkService:
         service = TalkService()
 
         with pytest.raises(WeatherNetworkError):
-            service.synthesize(
-                config=config_with_weather,
-                user_prompt="{{weather}}",
-            )
+            service.synthesize(config=config_with_weather)
 
-    # プロンプト構築テスト
+    # プロンプト変数構築テスト
 
-    def test_build_user_prompt_replaces_placeholders(self):
-        """_build_user_promptがプレースホルダーを置換する"""
+    def test_build_prompt_variables_includes_json_strings(self):
+        """_build_prompt_variables は JSON 文字列を返す."""
         service = TalkService()
 
-        template = "天気: {{weather}} 日時: {{datetime}}"
         data = {
-            "weather": {"area_name": "東京地方", "weather": "晴れ"},
-            "datetime": {"date": "2025-01-11", "day_of_week_ja": "土曜日"},
+            "weather": {"area_name": "東京地方"},
+            "datetime": {"date": "2025-01-11"},
         }
+        variables = service._build_prompt_variables(data)
 
-        prompt = service._build_user_prompt(template, data)
+        assert "東京地方" in variables["weather"]
+        assert "2025-01-11" in variables["datetime"]
+        assert variables["events"] == ""  # 欠落キーは空文字
 
-        assert "天気" in prompt
-        assert "東京地方" in prompt
-        assert "2025-01-11" in prompt
-
-    def test_build_user_prompt_escapes_template_markers(self):
-        """データ内のテンプレートマーカーは置換されない"""
+    def test_build_prompt_variables_empty_data(self):
+        """データが空の場合、変数はすべて空文字."""
         service = TalkService()
 
-        template = "{{weather}}"
-        data = {
-            "weather": {"note": "{{events}}は無視"},
-        }
+        variables = service._build_prompt_variables({})
 
-        prompt = service._build_user_prompt(template, data)
-
-        # データ内の{{events}}がそのまま残っている
-        assert "{{events}}は無視" in prompt
-
-    def test_build_user_prompt_no_data(self):
-        """データがない場合はテンプレートがそのまま返る"""
-        service = TalkService()
-
-        template = "挨拶してください"
-        data = {}
-
-        prompt = service._build_user_prompt(template, data)
-
-        assert prompt == "挨拶してください"
+        assert variables == {"weather": "", "events": "", "datetime": ""}
 
     # 並列実行テスト
 
@@ -416,7 +392,7 @@ class TestTalkService:
         mock_openai_response,
         config_all_placeholders,
     ):
-        """API呼び出しが並列で実行される"""
+        """API呼び出しが並列で実行される."""
 
         def slow_weather(*args, **kwargs):
             time.sleep(0.1)
@@ -448,16 +424,13 @@ class TestTalkService:
 
         service = TalkService()
         start = time.time()
-        result = service.synthesize(
-            config=config_all_placeholders,
-            user_prompt="{{weather}} {{events}} {{datetime}}",
-        )
+        result = service.synthesize(config=config_all_placeholders)
         elapsed = time.time() - start
 
         assert result is not None
 
         # 並列実行なら0.2秒未満（直列なら0.3秒以上）
-        assert elapsed < 0.25, f"並列実行されていません: {elapsed:.2f}秒かかりました"
+        assert elapsed < 0.25, f"並列実行されていません: {elapsed:.2f}秒"
 
     # 祝日テスト
 
@@ -470,7 +443,7 @@ class TestTalkService:
         mock_openai_response,
         config_datetime_only,
     ):
-        """祝日がある場合も正常に動作する"""
+        """祝日がある場合も正常に動作し、プロンプトに祝日名が含まれる."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = "元日"
         mock_holiday_class.return_value = mock_holiday
@@ -480,15 +453,9 @@ class TestTalkService:
         mock_openai_class.return_value = mock_openai
 
         service = TalkService()
-        result = service.synthesize(
-            config=config_datetime_only,
-            user_prompt="{{datetime}}",
-        )
+        result = service.synthesize(config=config_datetime_only)
 
         assert result is not None
-        assert "greeting_text" in result
-
-        # OpenAI APIに渡されたプロンプトに祝日情報が含まれる
         call_args = mock_openai.generate_text.call_args
         prompt_sent = call_args.kwargs["prompt"]
         assert "元日" in prompt_sent

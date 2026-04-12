@@ -10,6 +10,13 @@ from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
 
 
+@pytest.fixture(autouse=True)
+def _disable_langfuse_client():
+    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
+    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
+        yield
+
+
 @pytest.mark.integration
 class TestDetectiveAgent:
     """DetectiveAgentのテスト."""
@@ -79,7 +86,7 @@ class TestDetectiveAgent:
         return client
 
     def test_investigate_completes_and_marks_thread(
-        self, mock_llm_client, mock_hn_client, mock_tavily_client
+        self, mock_llm_client, mock_hn_client, mock_tavily_client, hn_agent_config
     ):
         """調査が完了しスレッドが調査済みになる."""
         thread = HNThread.objects.create(
@@ -106,7 +113,9 @@ class TestDetectiveAgent:
         thread.refresh_from_db()
         assert thread.is_investigated is True
 
-    def test_investigate_without_tavily(self, mock_llm_client, mock_hn_client):
+    def test_investigate_without_tavily(
+        self, mock_llm_client, mock_hn_client, hn_agent_config
+    ):
         """Tavily未設定でも調査が完了する."""
         thread = HNThread.objects.create(
             hn_id=601, title="No Tavily Thread", author="author2"
@@ -127,30 +136,44 @@ class TestDetectiveAgent:
         assert isinstance(result["analysis"], dict)
         assert result["analysis"]["title_ja"] == "テスト記事タイトル"
 
-    def test_build_analysis_prompt_includes_all_sections(
+    def test_format_background_section_with_items(
         self, mock_llm_client, mock_hn_client
     ):
-        """分析プロンプトに全セクションが含まれる."""
-        thread = HNThread.objects.create(
-            hn_id=602, title="Prompt Test", url="https://example.com", author="test"
-        )
-
+        """背景情報が存在する場合はセクションヘッダと各項目が含まれる."""
         agent = DetectiveAgent(llm_client=mock_llm_client, hn_client=mock_hn_client)
 
-        prompt = agent._build_analysis_prompt(
-            thread=thread,
-            score_info="スコア: 100, コメント数: 50",
-            comments_text="[user1]: Hello",
-            background=[
+        section = agent._format_background_section(
+            [
                 {
                     "title": "BG",
                     "url": "https://bg.com",
                     "content": "background",
                 }
-            ],
+            ]
         )
 
-        assert "Prompt Test" in prompt
-        assert "スコア: 100" in prompt
-        assert "Hello" in prompt
-        assert "BG" in prompt
+        assert "## Web上の背景情報" in section
+        assert "BG" in section
+        assert "https://bg.com" in section
+        assert "background" in section
+
+    def test_format_background_section_empty(self, mock_llm_client, mock_hn_client):
+        """背景情報が空の場合は空文字を返す."""
+        agent = DetectiveAgent(llm_client=mock_llm_client, hn_client=mock_hn_client)
+        assert agent._format_background_section([]) == ""
+
+    def test_format_comments_section_with_text(self, mock_llm_client, mock_hn_client):
+        """コメントがある場合はヘッダと内容が含まれる."""
+        agent = DetectiveAgent(llm_client=mock_llm_client, hn_client=mock_hn_client)
+
+        section = agent._format_comments_section("[user1]: Hello")
+
+        assert "## HNコメント（抜粋）" in section
+        assert "<hn_comments>" in section
+        assert "[user1]: Hello" in section
+        assert "</hn_comments>" in section
+
+    def test_format_comments_section_empty(self, mock_llm_client, mock_hn_client):
+        """コメントが空の場合は空文字を返す."""
+        agent = DetectiveAgent(llm_client=mock_llm_client, hn_client=mock_hn_client)
+        assert agent._format_comments_section("") == ""
