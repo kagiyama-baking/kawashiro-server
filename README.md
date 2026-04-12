@@ -6,8 +6,8 @@
 
 ## 概要
 
-Docker コンテナベースの Web アプリケーションです。
-React SPA フロントエンドと Django REST API バックエンドで構成されています。
+Docker コンテナベースの Web アプリケーションです。React SPA フロントエンドと Django REST API バックエンドで構成されています。
+LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測とプロンプト管理は Langfuse に集約しています。
 本番環境のデプロイとリバースプロキシ（Traefik）は [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net) リポジトリ（Ansible）が管理します。
 
 ## サービス
@@ -16,20 +16,145 @@ React SPA フロントエンドと Django REST API バックエンドで構成�
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
-        - 🤖 **LLM**: OpenAI API 設定・クライアント（チャット補完 + Embedding生成）
+        - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）
+        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk が参照）
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
-        - ☁️ **OneDrive**: Microsoft OneDrive との統合機能（ファイルアップロード・管理）
+        - ☁️ **OneDrive**: Microsoft OneDrive との統合機能
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
-        - 🔊 **TTS**: テキスト読み上げ機能（Style-BERT-VITS2 プロキシ）
-        - 🌤️ **Weather**: 気象庁天気予報 API（今日・明日・明後日の天気、気温、降水確率）
+        - 🔊 **TTS**: テキスト読み上げ（Style-BERT-VITS2 プロキシ）
+        - 🌤️ **Weather**: 気象庁天気予報 API
         - 📰 **HN**: Hacker News Algolia API クライアント
-        - 🔍 **Tavily**: Tavily Web検索 API クライアント
+        - 🔍 **Tavily**: Tavily Web 検索 API クライアント
         - 💬 **Slack**: Slack Incoming Webhook 通知クライアント
     - **features/** - ビジネス機能
-        - 🎙️ **Talk**: 会話生成 API（設定ベースの柔軟な会話生成、天気・予定・日時情報を選択可能、TTS 音声合成対応）
-        - 📁 **Media**: メディアファイル管理機能（画像フォーマット変換、ZIP→PDF変換）
-        - 🕵️ **HN Agent**: Hacker News 監視・分析エージェント（Watcher → Orchestrator → Memory/Detective/Hypothesis Agent → Slack通知）
-- 🎤 **Style-BERT-VITS2 API**: 高品質な日本語音声合成サービス（GPU対応）
+        - 🎙️ **Talk**: 会話生成 API（プリセットベース・天気/予定/日時プレースホルダー対応・TTS 統合）
+        - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
+        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective → Slack 通知）
+- 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（GPU）
+
+## LLM / LiteLLM / Langfuse の関係
+
+このプロジェクトでは LLM 周辺を 3 つのレイヤに分離しています。
+
+| レイヤ | 責務 | 管理場所 |
+|---|---|---|
+| **LLM 接続** | 「どのモデルに、どの鍵で繋ぐか」 | Django admin の「LLM設定」「LLMサービス設定」 |
+| **プロンプト管理** | 「どのテキストを渡すか」 | Django admin の「Langfuseプロンプト参照」+ Langfuse UI |
+| **機能設定** | 「いつ・どのプロンプトで呼ぶか」 | Django admin の「HackerNews Agent設定」「Talk Generator」 |
+
+### 構成要素
+
+- **LiteLLM Proxy**（外部サービス / internal.kagiyama.net 管理）
+  OpenAI 互換エンドポイントで、`model_alias`（例: `bedrock/moonshotai.kimi-k2.5`）を受けて実プロバイダーへルーティング。モデル差し替え・コスト集計・Virtual Key 発行を一元化。
+- **Langfuse**（外部サービス / SaaS or self-hosted）
+  LLM 呼び出しの観測（traces / generations / spans）と、バージョン管理付きのプロンプトテンプレート（`prompt.compile(**vars)`）を提供。
+- **`LLMProviderConfig`** / **`LLMServiceConfig`**（Django DB）
+  モデルエイリアス + Virtual Key をサービスごと（`orchestrator` / `detective` / `talk`）に割り当て。
+- **`LangfusePromptRef`**（Django DB）
+  Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。各機能（`HNAgentConfig` / `TalkConfig`）から FK で参照。
+- **`resolve_prompt(ref, **vars)`**（ユーティリティ）
+  Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換。
+
+### 設定モデルの関係
+
+```mermaid
+erDiagram
+    LangfusePromptRef {
+        string name PK "例: hn-agent-orchestrator-system"
+        string langfuse_prompt_name "Langfuse上の名前"
+        string label "production/staging"
+        text fallback_text "Langfuse不達時に使用"
+    }
+    LLMProviderConfig {
+        string name PK "例: Kimi K2.5 本番"
+        string model_alias "bedrock/moonshotai.kimi-k2.5 等"
+        string proxy_api_key "LiteLLM Virtual Key（暗号化）"
+    }
+    LLMServiceConfig {
+        string service_name PK "orchestrator / detective / talk"
+        int provider_config_id FK
+        int timeout
+    }
+    HNAgentConfig {
+        string name PK
+        int orchestrator_system_prompt_id FK
+        int orchestrator_user_prompt_id FK
+        int detective_system_prompt_id FK
+        int detective_user_prompt_id FK
+        int score_threshold
+        int front_page_limit
+    }
+    TalkConfig {
+        string name PK "morning / evening / ..."
+        int system_prompt_ref_id FK
+        int user_prompt_ref_id FK
+        bool use_weather
+        bool use_events
+        bool use_datetime
+    }
+    LLMServiceConfig ||--o{ LLMProviderConfig : "provider_config"
+    HNAgentConfig ||--o{ LangfusePromptRef : "4本のFK"
+    TalkConfig ||--o{ LangfusePromptRef : "2本のFK"
+```
+
+**読み方**: HN Agent と Talk は「LLM 接続」を `LLMServiceConfig.service_name` で共有し、「プロンプト」は独立した FK で指定する。LLM 接続とプロンプト管理が分離しているので、モデルを差し替えてもプロンプトは変わらない／プロンプトを差し替えてもモデル接続は変わらない。
+
+### ランタイム呼び出しフロー（Talk を例に）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant V as TalkSynthesizeView
+    participant S as TalkService
+    participant R as resolve_prompt
+    participant LPR as LangfusePromptRef<br/>(Django DB)
+    participant LF as Langfuse API
+    participant L as LLMClient<br/>(langfuse.openai.OpenAI)
+    participant LP as LiteLLM Proxy
+    participant P as LLM Provider<br/>(Bedrock / OpenAI / …)
+
+    C->>V: POST /talk/synthesize/ {"config_name":"morning"}
+    V->>S: synthesize(config)
+    Note over S: プレースホルダー用データを並列取得<br/>(weather / events / datetime)
+
+    S->>R: resolve_prompt(config.system_prompt_ref)
+    R->>LPR: name / label / fallback_text を参照
+    R->>LF: get_prompt(langfuse_prompt_name, label)
+    alt Langfuse 到達可
+        LF-->>R: prompt.compile() 済みテキスト
+    else 失敗 or 未インストール
+        R-->>R: fallback_text で置換
+    end
+    R-->>S: system_prompt
+
+    S->>R: resolve_prompt(config.user_prompt_ref, weather=..., events=..., datetime=...)
+    R-->>S: user_prompt
+
+    S->>L: generate_text(prompt, system_prompt)
+    Note over L: get_llm_settings("talk") で<br/>LLMServiceConfig → LLMProviderConfig を解決
+    L->>LP: POST /chat/completions<br/>(model_alias, Virtual Key)
+    LP->>P: 実プロバイダーへルーティング
+    P-->>LP: 応答
+    LP-->>L: completion
+    L-->>LF: 自動トレース送信（generation span）
+    L-->>S: 生成テキスト
+    S-->>V: {greeting_text, audio_data?}
+    V-->>C: 200 OK
+```
+
+### Langfuse プロンプトの命名規約（運用）
+
+| 用途 | Langfuse プロンプト名 |
+|---|---|
+| HN Agent Orchestrator system | `hn-agent-orchestrator` |
+| HN Agent Orchestrator user | `hn-agent-orchestrator-user` |
+| HN Agent Detective system | `hn-agent-detective` |
+| HN Agent Detective user | `hn-agent-detective-user` |
+| Talk system | `talk-{config_name}-system` |
+| Talk user | `talk-{config_name}-user` |
+
+Langfuse 未登録でも `LangfusePromptRef.fallback_text` があれば動作します。登録すると Langfuse UI 上でバージョン管理・A/B テスト・staging/production ラベル切り替えが可能になります。
 
 ## 特徴
 
@@ -39,7 +164,8 @@ React SPA フロントエンドと Django REST API バックエンドで構成�
 - 🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
 - 📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
 - 🛡️ **脆弱性スキャン**: Trivy によるイメージ検査
-- 🔒 **暗号化**: 機密情報の暗号化保存（OneDrive 設定など）
+- 🔒 **暗号化**: 機密情報の暗号化保存（MS Graph 秘密鍵、LiteLLM Virtual Key など）
+- 🔭 **LLM 観測**: Langfuse によるトレース・プロンプトバージョニング
 - ✅ **テスト**: pytest（バックエンド）+ Vitest + Playwright（フロントエンド）
 
 ## プロジェクト構成
@@ -49,53 +175,44 @@ kawashiro-server/
 ├── docker-compose.yml          # 開発用のDocker Compose設定
 ├── README.md                   # このファイル
 │
-├── .github/                    # GitHub設定
-│   └── workflows/              # GitHub Actionsワークフロー
-│       ├── build.yml           # ビルド・プッシュ（develop）
-│       ├── release.yml         # リリースタグ付け（main）
-│       ├── pr-checks.yml       # PRチェック
-│       └── cleanup-images.yml  # 古いイメージのクリーンアップ
+├── .github/workflows/          # GitHub Actionsワークフロー
+│   ├── build.yml               # ビルド・プッシュ（develop）
+│   ├── release.yml             # リリースタグ付け（main）
+│   ├── pr-checks.yml           # PRチェック
+│   └── cleanup-images.yml      # 古いイメージのクリーンアップ
 │
 ├── frontend/                   # React SPA フロントエンド
-│   ├── Dockerfile              # マルチステージビルド（node → nginx）
-│   ├── nginx.conf              # SPA配信 + APIプロキシ
-│   ├── package.json            # 依存関係（pnpm）
+│   ├── Dockerfile              # マルチステージ（node → nginx）
 │   ├── src/
 │   │   ├── components/         # UIコンポーネント
 │   │   ├── features/           # 画面（home, login, tts, talk, media）
 │   │   ├── lib/                # APIクライアント
-│   │   ├── stores/             # Zustand ストア
-│   │   └── types/              # 型定義
+│   │   └── stores/             # Zustand ストア
 │   ├── tests/                  # Vitest ユニットテスト
 │   └── e2e/                    # Playwright E2E テスト
 │
 ├── django_api/                 # Django REST API
-│   ├── Dockerfile              # Python 3.13-alpine ベース
-│   ├── pyproject.toml          # Python依存関係（uv使用）
-│   ├── django_api/             # メインプロジェクト設定
-│   ├── core/                   # コアアプリ（カスタムUserモデル、暗号化）
+│   ├── django_api/             # プロジェクト設定
+│   ├── core/                   # コアアプリ（Userモデル、暗号化、admin並び制御）
 │   ├── user/                   # ユーザー認証アプリ
-│   ├── health/                 # ヘルスチェックアプリ
-│   ├── integrations/           # 外部サービス連携
-│   │   ├── llm/                # LLM設定・クライアント（OpenAI API）
-│   │   ├── msgraph/            # Microsoft Graph API設定・クライアント
-│   │   ├── onedrive/           # OneDrive連携API
-│   │   ├── outlook/            # Outlook Calendar連携API
-│   │   ├── tts/                # TTS読み上げ（sbv2-apiプロキシ）
+│   ├── integrations/
+│   │   ├── llm/                # LLMProviderConfig / LLMServiceConfig / LLMClient
+│   │   ├── langfuse/           # LangfusePromptRef / resolve_prompt
+│   │   ├── msgraph/            # Microsoft Graph 設定・クライアント
+│   │   ├── onedrive/           # OneDrive 連携 API
+│   │   ├── outlook/            # Outlook Calendar 連携 API
+│   │   ├── tts/                # TTS 読み上げ
 │   │   ├── weather/            # 気象庁天気予報
-│   │   ├── hn/                 # Hacker News Algolia APIクライアント
-│   │   ├── tavily/             # Tavily Web検索APIクライアント
-│   │   └── slack/              # Slack Incoming Webhook通知
-│   ├── features/               # ビジネス機能
-│   │   ├── talk/               # 会話生成（LLM + 天気 + 予定 + TTS統合）
-│   │   ├── media/              # 画像処理（ZIP→PDF変換、画像形式変換）
-│   │   └── hn_agent/           # HN監視・分析エージェント
+│   │   ├── hn/                 # Hacker News Algolia クライアント
+│   │   ├── tavily/             # Tavily Web 検索クライアント
+│   │   └── slack/              # Slack Incoming Webhook
+│   ├── features/
+│   │   ├── talk/               # Talk Generator（LLM + 天気 + 予定 + TTS）
+│   │   ├── media/              # メディア変換
+│   │   └── hn_agent/           # HackerNews Agent
 │   └── tests/                  # テストコード
 │
-└── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU）
-    ├── Dockerfile              # コンテナ定義（CUDA 11.8）
-    ├── server.py               # FastAPIサーバー
-    └── config.yml              # モデル設定
+└── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU / CUDA 11.8）
 ```
 
 ## 必要な環境
@@ -103,6 +220,9 @@ kawashiro-server/
 - Docker Engine 20.10.0+
 - Docker Compose 2.0.0+
 - NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)（sbv2-api 用）
+- 外部サービス
+  - LiteLLM Proxy エンドポイント（`LITELLM_PROXY_URL`）
+  - Langfuse SaaS or self-hosted（`LANGFUSE_BASE_URL` など任意）
 
 ## インストール・セットアップ
 
@@ -124,154 +244,106 @@ nano django_api/.env
 
 ```bash
 sudo mkdir -p /opt/app/django-api/staticfiles
-sudo touch /opt/app/django-api/db.sqlite3
 sudo chown -R $USER:$USER /opt/app/
 ```
 
 ### 4. サーバーの起動
 
 ```bash
-# すべてのサービスを起動
 docker compose up -d
-
-# ログを確認
 docker compose logs -f
 ```
 
 ### 5. 動作確認
 
 ```bash
-# Django API ヘルスチェック
-curl http://localhost:8000/health/
-
-# フロントエンド（Docker）
-curl http://localhost:3000/
-
-# フロントエンド（開発サーバー）
-cd frontend && pnpm install && pnpm dev
-# http://localhost:5173/ でアクセス
+curl http://localhost:8000/health/    # Django API
+curl http://localhost:3000/           # Frontend
 ```
 
 ## 環境変数設定
 
-### Django API 設定
+`django_api/.env` に以下を設定します（`.env.sample` 参照）。
 
-`django_api/.env` ファイルに以下の環境変数を設定してください（`.env.sample` を参照）：
+| カテゴリ | 変数 | 説明 |
+|---|---|---|
+| Django | `SECRET_KEY` | 必須 |
+| Django | `DEBUG` | デフォルト `False` |
+| Django | `ALLOWED_HOSTS` | カンマ区切り、デフォルト `localhost` |
+| Django | `ENCRYPTION_KEY` | DB 内機密情報の暗号化（MS Graph 秘密鍵、LiteLLM Virtual Key 等） |
+| Django | `CSRF_TRUSTED_ORIGINS` | 本番時に Traefik 経由のドメインを指定 |
+| DB | `DB_ENGINE` / `DB_*` | PostgreSQL 接続情報 |
+| Celery | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | デフォルト `redis://redis:6379/0` |
+| TTS | `TTS_SERVICE_URL` | デフォルト `http://sbv2-api:5000` |
+| LLM | `LITELLM_PROXY_URL` | LiteLLM Proxy のベース URL（例: `http://litellm-proxy:4000/v1`） |
+| LLM | `LITELLM_MASTER_KEY` | LLMProviderConfig.proxy_api_key が未設定時のフォールバック |
+| Langfuse | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 認証（任意。未設定時はトレース・プロンプト取得を skip） |
+| Langfuse | `LANGFUSE_BASE_URL` | self-hosted 使用時のみ（未指定時はクラウド） |
+| Langfuse | `LANGFUSE_TRACING_ENVIRONMENT` | `dev` / `prd` |
 
-```bash
-# Django設定（必須）
-SECRET_KEY=YOUR_SECRET_KEY
-
-# デバッグモード（デフォルト: False）
-DEBUG=False
-
-# 許可ホスト（カンマ区切り、デフォルト: localhost）
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-# データベースに保存する機密情報の暗号化に使用
-ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY
-
-# Style-BERT-VITS2 API（デフォルト: http://sbv2-api:5000）
-TTS_SERVICE_URL=http://sbv2-api:5000
-
-# リバースプロキシ経由時のCSRF信頼済みオリジン（本番環境用）
-CSRF_TRUSTED_ORIGINS=https://api.example.com
-```
-
-その他の設定（Microsoft Graph API、OpenAI API キーなど）は Django 管理画面（`/admin/`）から設定します。
+> **Note:** OpenAI / Bedrock 等の**プロバイダー側 API キー**は LiteLLM Proxy 側で管理します。Django 側では LiteLLM Virtual Key のみを扱います（`LLMProviderConfig.proxy_api_key`）。
 
 ## 使用方法
 
 ### サービスの管理
 
 ```bash
-# サービスの起動
-docker compose up -d
-
-# サービスの停止
-docker compose down
-
-# サービスの再起動
-docker compose restart
-```
-
-### ログの確認
-
-```bash
-# 全サービスのログ
-docker compose logs -f
-
-# 特定のサービスのログ
-docker compose logs -f django-api
-docker compose logs -f frontend
+docker compose up -d                # 起動
+docker compose down                 # 停止
+docker compose restart              # 再起動
+docker compose logs -f django-api   # ログ追跡
 ```
 
 ## CI/CD
 
 ### デプロイメントパイプライン
 
-本プロジェクトでは、GitHub Actions を活用した 3 段階のデプロイメントパイプラインを構築しています。
-本番デプロイは [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net)（Ansible）が担当します。
-
-### GitHub Actions ワークフロー
+GitHub Actions による 3 段階パイプライン。本番デプロイは [internal.kagiyama.net](https://github.com/kagiyama-baking/internal.kagiyama.net)（Ansible）が担当します。
 
 ```mermaid
 flowchart LR
-
-  %% 開発フェーズ（PR → develop）
   subgraph Dev["開発フェーズ"]
     direction TB
     A[feature/* ブランチ<br/>push & PR]
     B[PR to develop]
     C[pr-checks.yml<br/>━━━━━━━━━━<br/>・Dockerfile セキュリティスキャン<br/>・Django: Ruff lint/format<br/>・Django: pytest（カバレッジ80%以上）<br/>・Frontend: ESLint/Prettier/TypeScript<br/>・Frontend: Vitest（カバレッジ80%以上）<br/>・コンテナ統合テスト]
     D[develop へマージ]
-
-    A --> B
-    B --> C
-    C --> D
+    A --> B --> C --> D
   end
-
-  %% ステージング（develop push）
   subgraph Stg["ステージング"]
     direction TB
     E[develop push]
     F[build.yml<br/>━━━━━━━━━━<br/>・Multi-arch build<br/>・GHCR へ push<br/>・タグ: staging<br/>・SBOM生成]
-
     E --> F
   end
-
-  %% リリース（main push）
   subgraph Rel["リリース"]
     direction TB
     G[develop → main]
     H[release.yml<br/>━━━━━━━━━━<br/>・イメージ確認<br/>・staging → release リタグ]
-
     G --> H
   end
-
-  %% フェーズ間の接続
   Dev -.->|develop branch| Stg
   Stg -.->|staging images| Rel
 ```
 
 ### ビルド対象サービス
 
-| サービス     | PRチェック | ビルド・プッシュ | リリース |
-| ------------ | ---------- | ---------------- | -------- |
-| django-api   | ✓          | ✓                | ✓        |
-| frontend     | ✓          | ✓                | ✓        |
-| sbv2-api     | スキャンのみ | -              | -        |
+| サービス | PR チェック | ビルド・プッシュ | リリース |
+|---|---|---|---|
+| django-api | ✓ | ✓ | ✓ |
+| frontend | ✓ | ✓ | ✓ |
+| sbv2-api | スキャンのみ | - | - |
 
-> **Note:** `sbv2-api` は NVIDIA GPU が必須のため、CI 環境ではビルド・テストを実行しません。Dockerfileのセキュリティスキャンのみ行います。
+> **Note:** `sbv2-api` は NVIDIA GPU 必須のため CI 環境ではビルドしません。Dockerfile のセキュリティスキャンのみ実施。
 
 ### コンテナイメージのタグ戦略
 
-| タグ           | 用途             | 更新タイミング                 |
-| -------------- | ---------------- | ------------------------------ |
-| `staging`      | ステージング環境 | develop ブランチへのプッシュ時 |
-| `release`      | 本番環境         | main ブランチへのマージ時      |
-| `latest`       | 最新版（互換性） | main ブランチへのマージ時      |
-| `sha-<commit>` | 特定バージョン   | 各ビルド時                     |
+| タグ | 用途 | 更新タイミング |
+|---|---|---|
+| `staging` | ステージング環境 | develop ブランチ push |
+| `release` | 本番環境 | main ブランチマージ |
+| `latest` | 最新版（互換性） | main ブランチマージ |
+| `sha-<commit>` | 特定バージョン | 各ビルド |
 
 ## テストの実行
 
@@ -289,44 +361,45 @@ uv run pytest tests/ -v --tb=short \
 ```bash
 cd frontend
 pnpm test:ci       # ユニットテスト（カバレッジ付き）
-pnpm test:e2e      # E2Eテスト（Playwright）
+pnpm test:e2e      # E2E テスト（Playwright）
 ```
 
 ## 技術スタック
 
 ### フロントエンド
 
-- **React 19**: UI ライブラリ
-- **Vite**: ビルドツール
-- **TypeScript**: 型安全な JavaScript
-- **Tailwind CSS v4**: ユーティリティファースト CSS
-- **shadcn/ui**: UI コンポーネントライブラリ
-- **Zustand**: 状態管理
-- **ky**: HTTP クライアント
+- **React 19** / **Vite** / **TypeScript**
+- **Tailwind CSS v4** / **shadcn/ui**
+- **Zustand**（状態管理） / **ky**（HTTP）
 
 ### バックエンド
 
-- **Django 6.0**: Python Web フレームワーク
-- **Django REST Framework**: REST API 構築
-- **PostgreSQL 17**: リレーショナルデータベース（pgvector拡張対応）
-- **Celery + Redis**: 非同期タスクキュー・定期タスクスケジューラ
-- **uv**: 高速 Python パッケージマネージャー
+- **Django 6.0** + **Django REST Framework**
+- **PostgreSQL 17**（pgvector 拡張対応）
+- **Celery + Redis**（非同期・定期タスク）
+- **uv**（高速 Python パッケージマネージャ）
+
+### LLMOps
+
+- **LiteLLM Proxy**（OpenAI 互換 + モデルルーティング）
+- **LangChain / LangGraph**（HN Agent Orchestrator の ReAct Agent）
+- **Langfuse**（トレース + プロンプト管理）
 
 ### インフラ・DevOps
 
-- **Docker & Docker Compose**: コンテナ化とオーケストレーション
-- **nginx**: フロントエンド配信 + API プロキシ
-- **Traefik**: リバースプロキシ（internal.kagiyama.net で管理）
-- **GitHub Actions**: CI/CD パイプライン
-- **GitHub Container Registry**: コンテナイメージレジストリ
-- **Trivy**: コンテナセキュリティスキャナー
+- **Docker & Docker Compose**
+- **nginx**（フロント配信 + API プロキシ）
+- **Traefik**（リバースプロキシ / Ansible 側管理）
+- **GitHub Actions** / **GitHub Container Registry**
+- **Trivy**（セキュリティスキャナ）
 
 ### 外部サービス連携
 
-- **Microsoft Graph API**: OneDrive/Outlook 連携
-- **OpenAI API**: チャット補完・Embedding生成
-- **気象庁天気予報 API**: 天気予報データ取得
-- **Style-BERT-VITS2**: 高品質日本語音声合成エンジン（CUDA 11.8）
-- **Hacker News Algolia API**: HNスレッド・コメント取得
-- **Tavily API**: Web検索（HN Agent背景調査）
-- **Slack Incoming Webhook**: 調査結果通知
+- **Microsoft Graph API**（OneDrive / Outlook）
+- **LiteLLM Proxy**（LLM 呼び出しの共通入口）
+- **Langfuse**（観測 / プロンプト管理）
+- **気象庁天気予報 API**
+- **Style-BERT-VITS2**（音声合成・CUDA 11.8）
+- **Hacker News Algolia API**
+- **Tavily API**（Web 検索）
+- **Slack Incoming Webhook**（通知）
