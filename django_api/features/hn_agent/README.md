@@ -36,44 +36,30 @@ flowchart TB
     Orch --> Report
 ```
 
-## 責務分離（LLM / Langfuse / 機能設定）
+## admin 項目と外部サービスのつながり
 
-Orchestrator / Detective とも、LLM 接続とプロンプト管理が分離しています。
+HN Agent が使う admin 設定と、実際に叩く外部サービスの対応関係です。
 
 ```mermaid
 flowchart LR
-    subgraph Config["Django admin（DB）"]
-        HNAgentConfig["HNAgentConfig<br/>・score_threshold<br/>・front_page_limit<br/>・reasoning_effort<br/>・4 本の LangfusePromptRef FK"]
-        ServiceO["LLMServiceConfig<br/>service_name='orchestrator'"]
-        ServiceD["LLMServiceConfig<br/>service_name='detective'"]
-        Provider["LLMProviderConfig<br/>model_alias + Virtual Key"]
-        LPR["LangfusePromptRef<br/>(4 entries)"]
+    subgraph Admin["Django admin"]
+        HN["HackerNews Agent設定<br/>・閾値 / ポーリング / 取得件数<br/>・推論深度<br/>・4本のプロンプト参照FK"]
+        Service["LLMサービス設定<br/>orchestrator / detective"]
+        Provider["LLM設定<br/>model_alias + Virtual Key"]
+        Ref["Langfuseプロンプト参照<br/>hn-agent-* 4種"]
     end
 
-    subgraph Code["ランタイム"]
-        Orchestrator
-        Detective
+    subgraph External["外部サービス"]
+        LiteLLM[("LiteLLM Proxy<br/>/v1/chat/completions")]
+        Langfuse[("Langfuse<br/>get_prompt(name, label)")]
     end
 
-    subgraph External["外部"]
-        LiteLLM[("LiteLLM Proxy")]
-        Langfuse[("Langfuse")]
-    end
+    HN -->|4本| Ref
+    HN -.->|service_name で参照| Service
+    Service -->|provider_config| Provider
 
-    HNAgentConfig -->|4 FKs| LPR
-    ServiceO --> Provider
-    ServiceD --> Provider
-
-    Orchestrator -->|get_llm_settings('orchestrator')| ServiceO
-    Detective -->|get_llm_settings('detective')| ServiceD
-    Orchestrator -->|resolve_prompt(ref, **vars)| LPR
-    Detective -->|resolve_prompt(ref, **vars)| LPR
-
-    Orchestrator -->|HTTPS| LiteLLM
-    Detective -->|HTTPS| LiteLLM
-    Orchestrator -.->|自動トレース| Langfuse
-    Detective -.->|自動トレース| Langfuse
-    LPR <-.->|get_prompt / compile| Langfuse
+    Provider ==>|Virtual Key + model_alias| LiteLLM
+    Ref ==>|名前とラベルで取得| Langfuse
 ```
 
 ## 各コンポーネント詳細

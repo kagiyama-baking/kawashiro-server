@@ -55,93 +55,36 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 - **`resolve_prompt(ref, **vars)`**（ユーティリティ）
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換。
 
-### 設定モデルの関係
+### admin 項目と外部サービスのつながり
 
 ```mermaid
-erDiagram
-    LangfusePromptRef {
-        string name PK "例: hn-agent-orchestrator-system"
-        string langfuse_prompt_name "Langfuse上の名前"
-        string label "production/staging"
-        text fallback_text "Langfuse不達時に使用"
-    }
-    LLMProviderConfig {
-        string name PK "例: Kimi K2.5 本番"
-        string model_alias "bedrock/moonshotai.kimi-k2.5 等"
-        string proxy_api_key "LiteLLM Virtual Key（暗号化）"
-    }
-    LLMServiceConfig {
-        string service_name PK "orchestrator / detective / talk"
-        int provider_config_id FK
-        int timeout
-    }
-    HNAgentConfig {
-        string name PK
-        int orchestrator_system_prompt_id FK
-        int orchestrator_user_prompt_id FK
-        int detective_system_prompt_id FK
-        int detective_user_prompt_id FK
-        int score_threshold
-        int front_page_limit
-    }
-    TalkConfig {
-        string name PK "morning / evening / ..."
-        int system_prompt_ref_id FK
-        int user_prompt_ref_id FK
-        bool use_weather
-        bool use_events
-        bool use_datetime
-    }
-    LLMServiceConfig ||--o{ LLMProviderConfig : "provider_config"
-    HNAgentConfig ||--o{ LangfusePromptRef : "4本のFK"
-    TalkConfig ||--o{ LangfusePromptRef : "2本のFK"
-```
-
-**読み方**: HN Agent と Talk は「LLM 接続」を `LLMServiceConfig.service_name` で共有し、「プロンプト」は独立した FK で指定する。LLM 接続とプロンプト管理が分離しているので、モデルを差し替えてもプロンプトは変わらない／プロンプトを差し替えてもモデル接続は変わらない。
-
-### ランタイム呼び出しフロー（Talk を例に）
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
-    participant V as TalkSynthesizeView
-    participant S as TalkService
-    participant R as resolve_prompt
-    participant LPR as LangfusePromptRef<br/>(Django DB)
-    participant LF as Langfuse API
-    participant L as LLMClient<br/>(langfuse.openai.OpenAI)
-    participant LP as LiteLLM Proxy
-    participant P as LLM Provider<br/>(Bedrock / OpenAI / …)
-
-    C->>V: POST /talk/synthesize/ {"config_name":"morning"}
-    V->>S: synthesize(config)
-    Note over S: プレースホルダー用データを並列取得<br/>(weather / events / datetime)
-
-    S->>R: resolve_prompt(config.system_prompt_ref)
-    R->>LPR: name / label / fallback_text を参照
-    R->>LF: get_prompt(langfuse_prompt_name, label)
-    alt Langfuse 到達可
-        LF-->>R: prompt.compile() 済みテキスト
-    else 失敗 or 未インストール
-        R-->>R: fallback_text で置換
+flowchart LR
+    subgraph Admin["Django admin"]
+        Provider["LLM設定<br/>model_alias + Virtual Key"]
+        Service["LLMサービス設定<br/>orchestrator / detective / talk"]
+        Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
+        HN["HackerNews Agent設定"]
+        Talk["Talk Generator"]
     end
-    R-->>S: system_prompt
 
-    S->>R: resolve_prompt(config.user_prompt_ref, weather=..., events=..., datetime=...)
-    R-->>S: user_prompt
+    subgraph External["外部サービス"]
+        LiteLLM[("LiteLLM Proxy<br/>/v1/chat/completions")]
+        Langfuse[("Langfuse<br/>get_prompt(name, label)")]
+    end
 
-    S->>L: generate_text(prompt, system_prompt)
-    Note over L: get_llm_settings("talk") で<br/>LLMServiceConfig → LLMProviderConfig を解決
-    L->>LP: POST /chat/completions<br/>(model_alias, Virtual Key)
-    LP->>P: 実プロバイダーへルーティング
-    P-->>LP: 応答
-    LP-->>L: completion
-    L-->>LF: 自動トレース送信（generation span）
-    L-->>S: 生成テキスト
-    S-->>V: {greeting_text, audio_data?}
-    V-->>C: 200 OK
+    Service -->|provider_config| Provider
+    HN -->|4本のプロンプト参照| Ref
+    HN -.->|orchestrator / detective| Service
+    Talk -->|2本のプロンプト参照| Ref
+    Talk -.->|talk| Service
+
+    Provider ==>|Virtual Key + model_alias| LiteLLM
+    Ref ==>|名前とラベルで取得| Langfuse
 ```
+
+- **実線**（admin 内）: FK 参照
+- **破線**（admin 内）: `service_name` 経由の紐付け
+- **太線**（admin → 外部）: ランタイムで実際に叩く API
 
 ### Langfuse プロンプトの命名規約（運用）
 

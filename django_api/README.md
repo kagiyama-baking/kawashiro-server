@@ -31,84 +31,31 @@ LLM 周辺を 3 レイヤに分け、それぞれ Django admin で独立して�
 
 **原則**: プロンプトとモデル接続が独立しているため、モデル差し替え（例: GPT-4o → Kimi K2.5）を行っても Langfuse 上のプロンプトは不変、プロンプト改修に Django 再デプロイは不要です。
 
-### LLM 呼び出しのデータフロー
+### admin 項目と外部サービスのつながり
 
 ```mermaid
 flowchart LR
-    subgraph Django["Django API（自前コード）"]
-        HNConfig["HNAgentConfig<br/>(4 FKs)"]
-        TalkConfig["TalkConfig<br/>(2 FKs)"]
-        Resolve["resolve_prompt()<br/>integrations/langfuse/client.py"]
-        Client["LLMClient<br/>langfuse.openai.OpenAI"]
-    end
-
-    subgraph DB["Django admin DB"]
-        LPR[("LangfusePromptRef<br/>name / label / fallback")]
-        Provider[("LLMProviderConfig<br/>model_alias / Virtual Key")]
-        Service[("LLMServiceConfig<br/>service_name → provider")]
+    subgraph Admin["Django admin"]
+        Provider["LLM設定<br/>model_alias + Virtual Key"]
+        Service["LLMサービス設定<br/>orchestrator / detective / talk"]
+        Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
+        HN["HackerNews Agent設定"]
+        Talk["Talk Generator"]
     end
 
     subgraph External["外部サービス"]
-        LF[("Langfuse<br/>プロンプト+観測")]
-        Proxy[("LiteLLM Proxy<br/>OpenAI 互換")]
-        LLM[("LLM Provider<br/>Bedrock / OpenAI …")]
+        LiteLLM[("LiteLLM Proxy<br/>/v1/chat/completions")]
+        Langfuse[("Langfuse<br/>get_prompt(name, label)")]
     end
 
-    HNConfig -->|4 FKs| LPR
-    TalkConfig -->|2 FKs| LPR
+    Service -->|provider_config| Provider
+    HN -->|4本のプロンプト参照| Ref
+    HN -.->|orchestrator / detective| Service
+    Talk -->|2本のプロンプト参照| Ref
+    Talk -.->|talk| Service
 
-    HNConfig -.->|プロンプト解決| Resolve
-    TalkConfig -.->|プロンプト解決| Resolve
-    Resolve --> LPR
-    Resolve <-->|get_prompt / compile| LF
-
-    HNConfig -.->|LLM 呼び出し| Client
-    TalkConfig -.->|LLM 呼び出し| Client
-    Client --> Service --> Provider
-    Client -->|HTTPS| Proxy
-    Proxy --> LLM
-    Client -.->|自動トレース| LF
-```
-
-### ランタイムシーケンス（Talk を例に）
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as Client
-    participant V as TalkSynthesizeView
-    participant S as TalkService
-    participant R as resolve_prompt
-    participant DB as Django DB
-    participant LF as Langfuse API
-    participant L as LLMClient
-    participant P as LiteLLM Proxy
-
-    C->>V: POST /talk/synthesize/ {"config_name":"morning"}
-    V->>S: synthesize(config)
-    Note over S: 有効プレースホルダのデータを並列取得<br/>(weather / events / datetime)
-
-    S->>R: resolve_prompt(config.system_prompt_ref)
-    R->>DB: ref.langfuse_prompt_name / label / fallback_text
-    R->>LF: get_prompt(name, label)
-    alt Langfuse 到達可
-        LF-->>R: compiled prompt
-    else 失敗
-        R-->>R: fallback_text で変数置換
-    end
-    R-->>S: system_prompt
-
-    S->>R: resolve_prompt(config.user_prompt_ref, weather=..., events=..., datetime=...)
-    R-->>S: user_prompt
-
-    S->>L: generate_text(prompt, system_prompt)
-    Note over L: get_llm_settings("talk") で<br/>LLMServiceConfig → LLMProviderConfig 解決
-    L->>P: POST /chat/completions<br/>(model_alias, Virtual Key)
-    P-->>L: completion
-    L-->>LF: generation span 自動送信
-    L-->>S: 生成テキスト
-    S-->>V: {greeting_text, audio_data?}
-    V-->>C: 200 OK
+    Provider ==>|Virtual Key + model_alias| LiteLLM
+    Ref ==>|名前とラベルで取得| Langfuse
 ```
 
 ## セットアップ
