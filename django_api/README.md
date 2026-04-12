@@ -1,37 +1,81 @@
 # Django API
 
-REST API で複数の機能を提供するバックエンドサーバです。
+REST API で複数の機能を提供するバックエンドサーバです。LLM 呼び出しは LiteLLM Proxy に集約し、観測とプロンプト管理は Langfuse に統一しています。
 
 ## 機能一覧
 
-| アプリ   | エンドポイント | 説明                                                   |
-| -------- | -------------- | ------------------------------------------------------ |
-| user     | `/user/`       | ユーザー認証・管理                                     |
-| onedrive | `/onedrive/`   | OneDrive ファイルアップロード・管理                    |
-| outlook  | `/outlook/`    | Outlook Calendar 予定取得                              |
-| media    | `/media/`      | メディアファイル管理（画像変換・ZIP→PDF）              |
-| tts      | `/tts/`        | テキスト読み上げ（Style-BERT-VITS2 プロキシ）          |
-| weather  | `/weather/`    | 気象庁天気予報                                         |
-| talk     | `/talk/`       | 会話生成（設定ベースの AI 会話生成・TTS 対応）         |
-| hn_agent | `/hn-agent/`   | HN監視・分析エージェント（Watcher・調査・結果閲覧）    |
+| アプリ | エンドポイント | 説明 |
+|---|---|---|
+| user | `/user/` | ユーザー認証・管理 |
+| onedrive | `/onedrive/` | OneDrive ファイル連携 |
+| outlook | `/outlook/` | Outlook Calendar 予定取得 |
+| media | `/media/` | 画像変換・ZIP→PDF |
+| tts | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） |
+| weather | `/weather/` | 気象庁天気予報 |
+| talk | `/talk/` | 会話生成（Talk Generator） |
+| hn-agent | `/hn-agent/` | HackerNews Agent（監視・調査） |
+
+## アーキテクチャの肝
+
+### 責務分離: LLM 接続 / プロンプト管理 / 機能設定
+
+LLM 周辺を 3 レイヤに分け、それぞれ Django admin で独立して管理します。
+
+| レイヤ | モデル | 管理画面 | 役割 |
+|---|---|---|---|
+| LLM 接続 | `LLMProviderConfig` | 「LLM設定」 | モデルエイリアス + LiteLLM Virtual Key |
+| LLM 接続 | `LLMServiceConfig` | 「LLMサービス設定」 | `orchestrator` / `detective` / `talk` にプロバイダ割り当て + タイムアウト |
+| プロンプト管理 | `LangfusePromptRef` | 「Langfuseプロンプト参照」 | Langfuse プロンプト名 + ラベル + フォールバック |
+| 機能設定 | `HNAgentConfig` | 「HackerNews Agent設定」 | 閾値、ポーリング、取得件数、使用プロンプト 4 本 |
+| 機能設定 | `TalkConfig` | 「Talk Generator」 | プリセットごとの動作パラメータ + 使用プロンプト 2 本 + TTS |
+
+**原則**: プロンプトとモデル接続が独立しているため、モデル差し替え（例: GPT-4o → Kimi K2.5）を行っても Langfuse 上のプロンプトは不変、プロンプト改修に Django 再デプロイは不要です。
+
+### admin 項目と外部サービスのつながり
+
+```mermaid
+flowchart LR
+    subgraph Admin["Django admin"]
+        Provider["LLM設定<br/>model_alias + Virtual Key"]
+        Service["LLMサービス設定<br/>orchestrator / detective / talk"]
+        Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
+        HN["HackerNews Agent設定"]
+        Talk["Talk Generator"]
+    end
+
+    subgraph External["外部サービス"]
+        LiteLLM[("LiteLLM Proxy<br/>/v1/chat/completions")]
+        Langfuse[("Langfuse<br/>get_prompt(name, label)")]
+    end
+
+    Service -->|provider_config| Provider
+    HN -->|4本のプロンプト参照| Ref
+    HN -.->|orchestrator / detective| Service
+    Talk -->|2本のプロンプト参照| Ref
+    Talk -.->|talk| Service
+
+    Provider ==>|Virtual Key + model_alias| LiteLLM
+    Ref ==>|名前とラベルで取得| Langfuse
+```
 
 ## セットアップ
 
 ### 1. 環境変数の設定
 
-`.env.sample` を参考に `.env` ファイルを作成してください：
+`.env.sample` を参考に `.env` を作成：
 
 ```bash
 cp .env.sample .env
 ```
 
 ```env
-# Django設定
+# Django
 SECRET_KEY=your-secret-key
 DEBUG=False
 ALLOWED_HOSTS=localhost,127.0.0.1
+ENCRYPTION_KEY=your-encryption-key
 
-# データベース設定（PostgreSQL）
+# DB
 DB_ENGINE=django.db.backends.postgresql
 DB_NAME=kawashiro
 DB_USER=kawashiro
@@ -39,168 +83,188 @@ DB_PASSWORD=kawashiro-dev
 DB_HOST=app-database
 DB_PORT=5432
 
-# 暗号化キー（データベースに保存する機密情報の暗号化に使用）
-ENCRYPTION_KEY=your-encryption-key
+# Celery
+CELERY_BROKER_URL=redis://redis:6379/0
 
-# Style-BERT-VITS2 API（音声合成機能）
+# TTS
 TTS_SERVICE_URL=http://sbv2-api:5000
+
+# LLM (LiteLLM Proxy)
+LITELLM_PROXY_URL=http://litellm-proxy:4000/v1
+LITELLM_MASTER_KEY=your-litellm-master-key
+
+# Langfuse (任意)
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxx
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_TRACING_ENVIRONMENT=dev
 ```
 
-> **Note:** OpenAI APIキー、Tavily APIキー、Slack Webhook URL等の機密情報はDjango管理画面（`/admin/`）から設定します。環境変数では管理しません。
+> **Note:** プロバイダ側 API キー（OpenAI / Bedrock 等）は LiteLLM Proxy 側で管理します。Django 側は LiteLLM の Virtual Key（`LLMProviderConfig.proxy_api_key`、暗号化保存）のみを持ちます。
 
-### 2. マイグレーションの実行
+### 2. マイグレーション & 管理ユーザー作成
 
 ```bash
 uv run ./manage.py migrate
-```
-
-### 3. 管理ユーザーの作成
-
-```bash
 uv run ./manage.py createsuperuser
 ```
 
-### 4. サーバーの起動
+### 3. サーバー起動
 
 ```bash
-# 開発環境
-uv run ./manage.py runserver
-
-# 本番環境（Docker）
-docker compose up -d django-api
+uv run ./manage.py runserver          # 開発
+docker compose up -d django-api        # Docker
 ```
 
 ## 管理画面での設定
 
-Django 管理画面（`http://localhost:8000/admin/`）で以下の設定を行います。
+Django 管理画面（`http://localhost:8000/admin/`）は 3 グループに整列されています。
 
-### Microsoft Graph API 設定（OneDrive/Outlook 機能）
+### 1. システム設定
 
-「MSGRAPH CONFIG」から以下を設定：
+`Core` / `認証と認可` / `認証トークン`
 
-| 項目               | 説明                                       |
-| ------------------ | ------------------------------------------ |
-| テナントID         | Azure AD テナント ID                       |
-| クライアントID     | Azure AD アプリケーション ID               |
-| 証明書サムプリント | 証明書のサムプリント                       |
-| 秘密鍵             | PEM 形式の秘密鍵（暗号化されて DB に保存） |
-| 対象ユーザー       | アクセス対象のユーザーメールアドレス       |
+### 2. 外部サービス設定
 
-### 会話生成設定（Talk 機能）
+#### Microsoft 365（OneDrive / Outlook 機能）
 
-「会話生成」→「会話生成設定」から複数の設定を登録できます：
+`Microsoft Graph API 設定` から：
 
-| 項目               | 説明                                               |
-| ------------------ | -------------------------------------------------- |
-| 設定名             | API 呼び出し時の識別子（例: `morning`, `evening`） |
-| 表示名             | 管理画面での表示名                                 |
-| 天気情報を使用     | `{{weather}}` プレースホルダーを有効化             |
-| 予定情報を使用     | `{{events}}` プレースホルダーを有効化              |
-| 日時情報を使用     | `{{datetime}}` プレースホルダーを有効化            |
-| 予報区コード       | 6 桁の数字（天気使用時のみ必須、例: `130010`）     |
-| システムプロンプト | AI のキャラクター設定                              |
-| TTS 有効           | 音声合成を有効にするか                             |
-| TTS 設定           | モデル名、スタイル、速度など                       |
+| 項目 | 説明 |
+|---|---|
+| テナント ID | Azure AD テナント ID |
+| クライアント ID | Azure AD アプリケーション ID |
+| 証明書サムプリント | 証明書のサムプリント |
+| 秘密鍵 | PEM 形式（暗号化保存） |
+| 対象ユーザー | アクセス対象のメールアドレス |
 
-#### API 呼び出し例
+#### Slack
+
+Incoming Webhook URL（暗号化保存）
+
+#### Tavily
+
+Tavily Web 検索の API キー（暗号化保存）
+
+#### Celery（Periodic Tasks）
+
+`django-celery-beat` の定期タスクスケジューラー。HN Agent のポーリングはここで有効化します。
+
+### 3. AI ツール設定
+
+#### LLM 設定（`LLMProviderConfig`）
+
+モデルエイリアス + LiteLLM Virtual Key の組み合わせを登録します。複数登録可能で、`LLMServiceConfig` から共有して参照できます。
+
+| 項目 | 説明 |
+|---|---|
+| 設定名 | 識別名（例: `Kimi K2.5 本番`, `GPT-4o テスト`） |
+| モデルエイリアス | LiteLLM Proxy の `model_name`（例: `bedrock/moonshotai.kimi-k2.5`） |
+| Virtual Key | LiteLLM Virtual Key（暗号化保存、未設定時は `LITELLM_MASTER_KEY` を使用） |
+
+#### LLM サービス設定（`LLMServiceConfig`）
+
+各サービス（`orchestrator` / `detective` / `talk`）にどの `LLMProviderConfig` を使うかを割り当てます。
+
+| 項目 | 説明 |
+|---|---|
+| サービス名 | `HN Agent Orchestrator` / `HN Agent Detective` / `Talk Generator` |
+| LLM 設定 | 使用する `LLMProviderConfig` を選択 |
+| 有効 | サービス設定を有効化 |
+| タイムアウト（秒） | API リクエストタイムアウト（デフォルト 60） |
+
+#### Langfuse プロンプト参照（`LangfusePromptRef`）
+
+Langfuse 上のプロンプトを Django 側で参照するためのマッピング。`HNAgentConfig` / `TalkConfig` から FK で選択します。
+
+| 項目 | 説明 |
+|---|---|
+| 識別名 | Django 内の unique 名（例: `talk-morning-system`） |
+| Langfuse プロンプト名 | Langfuse 上の実プロンプト名 |
+| ラベル | `production` / `staging`（Langfuse の version ラベル） |
+| フォールバックテキスト | Langfuse 不達時や未登録時に使用（`{{key}}` 変数は呼び出し側で置換） |
+
+初期データとして HN Agent 用 4 種（`hn-agent-orchestrator-system` / `-user`、`hn-agent-detective-system` / `-user`）が migration 0002 で自動投入されます。Talk 用は `TalkConfig` 作成時に自動生成されます。
+
+#### HackerNews Agent 設定（`HNAgentConfig`）
+
+| 項目 | 説明 |
+|---|---|
+| 有効 | この設定を有効化（1 つのみ） |
+| 推論深度 | Orchestrator の reasoning 量（low/medium/high/無効） |
+| スコア閾値 | 調査をトリガーするスコア（例: 100） |
+| 速度閾値 | 調査をトリガーするスコア上昇速度（ポイント/時間） |
+| ポーリング間隔（秒） | HN フロントページ取得の間隔（最低 60） |
+| フロントページ取得件数 | 1 回のポーリングで取得する件数（デフォルト 30、Algolia 経由で 90 以上も可） |
+| Orchestrator / Detective × system / user | 4 本の `LangfusePromptRef` FK |
+
+#### Talk Generator（`TalkConfig`）
+
+プリセットごとに複数登録可能（`morning` / `evening` / `welcome_home` …）。
+
+| 項目 | 説明 |
+|---|---|
+| 設定名 | API 呼び出し時の識別子（unique） |
+| 表示名 | 管理画面での表示名 |
+| 天気情報を使用 | `{{weather}}` プレースホルダーを有効化 |
+| 予定情報を使用 | `{{events}}` プレースホルダーを有効化 |
+| 日時情報を使用 | `{{datetime}}` プレースホルダーを有効化 |
+| 予報区コード | 6 桁の数字（天気使用時のみ必須、例: `130010`） |
+| TTS 設定 | 音声合成のモデル・スタイル・速度・フォーマット |
+| システムプロンプト | `system_prompt_ref` で `LangfusePromptRef` を選択 |
+| ユーザープロンプト | `user_prompt_ref` で `LangfusePromptRef` を選択 |
+
+##### API 呼び出し例
 
 ```bash
 # 設定一覧を取得
 curl http://localhost:8000/talk/configs/ \
   -H "Authorization: Token YOUR_TOKEN"
 
-# 会話生成
+# 会話生成（user_prompt はサーバー側管理のため不要）
 curl -X POST http://localhost:8000/talk/synthesize/ \
   -H "Authorization: Token YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "config_name": "morning",
-    "user_prompt": "{{datetime}}を踏まえて挨拶してください"
-  }'
+  -d '{"config_name": "morning"}'
 ```
 
-#### プレースホルダー
+##### プレースホルダー
 
-| プレースホルダー | 内容                 | 設定で有効化が必要 |
-| ---------------- | -------------------- | ------------------ |
-| `{{datetime}}`   | 日時・曜日・祝日情報 | 日時情報を使用     |
-| `{{weather}}`    | 天気予報データ       | 天気情報を使用     |
-| `{{events}}`     | 本日の予定データ     | 予定情報を使用     |
+Langfuse 上のユーザープロンプトテンプレートで以下のプレースホルダーが使用可能です（`TalkConfig` で有効化されている場合のみ値が渡される）。
 
-### OpenAI API 設定（LLM テキスト生成・Embedding）
+| プレースホルダー | 内容 | 設定 |
+|---|---|---|
+| `{{datetime}}` | 日時・曜日・祝日情報（JSON） | 日時情報を使用 |
+| `{{weather}}` | 天気予報データ（JSON） | 天気情報を使用 |
+| `{{events}}` | 本日の予定データ（JSON） | 予定情報を使用 |
 
-「OpenAI API設定」から以下を設定：
+### HackerNews Agent API
 
-| 項目              | 説明                                                    |
-| ----------------- | ------------------------------------------------------- |
-| 設定名            | この設定を識別するための名前                            |
-| 有効              | この設定を有効にする（1つだけ有効可）                   |
-| チャットモデル    | チャット補完に使用するモデル（例: `gpt-4o-mini`）       |
-| Embeddingモデル   | Embedding生成に使用するモデル（例: `text-embedding-3-small`）|
-| タイムアウト      | APIリクエストのタイムアウト秒数                          |
-| APIキー           | OpenAI APIキー（暗号化されてDBに保存）                   |
-
-### Tavily API 設定（Web検索・HN Agent背景調査）
-
-「Tavily API設定」から以下を設定：
-
-| 項目           | 説明                                   |
-| -------------- | -------------------------------------- |
-| 設定名         | この設定を識別するための名前           |
-| 有効           | この設定を有効にする（1つだけ有効可）  |
-| APIキー        | Tavily APIキー（暗号化されてDBに保存） |
-| タイムアウト   | APIリクエストのタイムアウト秒数        |
-
-### Slack 通知設定
-
-「Slack通知設定」から以下を設定：
-
-| 項目          | 説明                                          |
-| ------------- | --------------------------------------------- |
-| 設定名        | この設定を識別するための名前                  |
-| 有効          | この設定を有効にする（1つだけ有効可）         |
-| Webhook URL   | Slack Incoming Webhook URL（暗号化されてDBに保存）|
-
-### HN Agent 設定
-
-「HN Agent設定」から以下を設定：
-
-| 項目                  | 説明                                                |
-| --------------------- | --------------------------------------------------- |
-| Embedding次元数       | Embedding APIの出力次元数（small: 1536, large: 3072）|
-| スコア閾値            | 調査をトリガーするスコアの閾値                      |
-| 速度閾値              | 調査をトリガーするスコア上昇速度の閾値              |
-| 類似度閾値            | 過去スレッド検索のcosine similarity閾値（0-1）      |
-| ポーリング間隔        | HNフロントページのポーリング間隔（秒）              |
-
-### HN Agent API
-
-| メソッド | パス                              | 説明                                    |
-| -------- | --------------------------------- | --------------------------------------- |
-| `POST`   | `/hn-agent/run-all/`              | Watcher + Orchestrator一括実行          |
-| `POST`   | `/hn-agent/watcher/run/`          | Watcherのみ手動実行                     |
-| `POST`   | `/hn-agent/investigate/`          | 指定hn_idのスレッドをOrchestrator調査   |
-| `GET`    | `/hn-agent/threads/`              | 監視中スレッド一覧                      |
-| `GET`    | `/hn-agent/investigations/`       | 調査結果一覧                            |
-| `GET`    | `/hn-agent/investigations/<id>/`  | 調査結果の詳細                          |
+| メソッド | パス | 説明 |
+|---|---|---|
+| `POST` | `/hn-agent/run-all/` | Watcher + Orchestrator 一括実行 |
+| `POST` | `/hn-agent/watcher/run/` | Watcher のみ手動実行 |
+| `POST` | `/hn-agent/investigate/` | 指定 `hn_id` を Orchestrator 調査 |
+| `GET` | `/hn-agent/threads/` | 監視中スレッド一覧 |
 
 ## テストの実行
 
 ```bash
-# 全テスト実行（e2eテストを除く、カバレッジ付き）
+# 全テスト（e2e 除外、カバレッジ付き）
 uv run pytest tests/ -v --tb=short \
   --cov=user --cov=core --cov=integrations --cov=features \
   --cov-report=term-missing --cov-fail-under=80 -m "not e2e"
 
-# 特定のアプリのテスト
+# 特定のアプリのみ
 uv run pytest tests/features/talk/
-uv run pytest tests/user/
+uv run pytest tests/features/hn_agent/
+uv run pytest tests/integrations/langfuse/
 ```
 
 ## API ドキュメント
 
-Swagger UI でインタラクティブな API ドキュメントを確認できます：
-
-- **Swagger UI**: `http://localhost:8000/swagger/`
-- **ReDoc**: `http://localhost:8000/redoc/`
-- **OpenAPI スキーマ**: `http://localhost:8000/schema/`
+| UI | パス |
+|---|---|
+| Swagger UI | `http://localhost:8000/swagger/` |
+| ReDoc | `http://localhost:8000/redoc/` |
+| OpenAPI スキーマ | `http://localhost:8000/schema/` |
