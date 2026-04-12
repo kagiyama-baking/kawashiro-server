@@ -53,6 +53,13 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     readonly_fields = ("created_at", "updated_at")
 
+    autocomplete_fields = (
+        "orchestrator_system_prompt",
+        "orchestrator_user_prompt",
+        "detective_system_prompt",
+        "detective_user_prompt",
+    )
+
     fieldsets = (
         (
             "基本設定",
@@ -66,6 +73,21 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
             {
                 "fields": ("reasoning_effort",),
                 "description": "モデルやAPIキーはLLMサービス設定で管理。ここでは推論深度を設定。",
+            },
+        ),
+        (
+            "プロンプト参照（Langfuse）",
+            {
+                "fields": (
+                    "orchestrator_system_prompt",
+                    "orchestrator_user_prompt",
+                    "detective_system_prompt",
+                    "detective_user_prompt",
+                ),
+                "description": (
+                    "Orchestrator / Detective それぞれの system / user プロンプトを "
+                    "Langfuseプロンプト参照から選択します。"
+                ),
             },
         ),
         (

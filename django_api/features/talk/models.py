@@ -99,9 +99,20 @@ class TalkConfig(models.Model):
         help_text="出力音声のフォーマット（デフォルト: WAV）",
     )
 
-    # プロンプト設定
-    system_prompt = models.TextField(
+    # プロンプト参照（Langfuse 管理）
+    system_prompt_ref = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
         verbose_name="システムプロンプト",
+        help_text="システムプロンプトの Langfuse参照",
+    )
+    user_prompt_ref = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="ユーザープロンプト",
+        help_text="ユーザープロンプトテンプレートの Langfuse参照",
     )
 
     class Meta:

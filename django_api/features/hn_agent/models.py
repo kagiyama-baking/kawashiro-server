@@ -91,13 +91,20 @@ class HNAgentConfigManager(models.Manager):
     def get_active_config(self):
         """有効な設定を取得.
 
+        プロンプト参照 FK を先読みして N+1 を回避する。
+
         Returns:
             HNAgentConfigインスタンス
 
         Raises:
             HNAgentConfig.DoesNotExist: 有効な設定が存在しない場合
         """
-        return self.get(is_active=True)
+        return self.select_related(
+            "orchestrator_system_prompt",
+            "orchestrator_user_prompt",
+            "detective_system_prompt",
+            "detective_user_prompt",
+        ).get(is_active=True)
 
 
 class HNAgentConfig(models.Model):
@@ -149,6 +156,37 @@ class HNAgentConfig(models.Model):
         validators=[MinValueValidator(60)],
         help_text="HNフロントページのポーリング間隔（最低60秒）",
     )
+
+    # プロンプト参照（Langfuse 管理）
+    orchestrator_system_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Orchestrator システムプロンプト",
+        help_text="Orchestrator に与えるシステムプロンプト（Langfuse参照）",
+    )
+    orchestrator_user_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Orchestrator ユーザープロンプト",
+        help_text="Orchestrator に与えるユーザープロンプト（Langfuse参照）",
+    )
+    detective_system_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Detective システムプロンプト",
+        help_text="Detective に与えるシステムプロンプト（Langfuse参照）",
+    )
+    detective_user_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Detective ユーザープロンプト",
+        help_text="Detective に与えるユーザープロンプト（Langfuse参照）",
+    )
+
     created_at = models.DateTimeField("作成日時", auto_now_add=True)
     updated_at = models.DateTimeField("更新日時", auto_now=True)
 

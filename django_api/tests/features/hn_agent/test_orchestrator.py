@@ -10,12 +10,9 @@ from features.hn_agent.orchestrator import Orchestrator
 
 
 @pytest.fixture(autouse=True)
-def _mock_get_prompt():
-    """テスト中はLangfuseプロンプト取得をフォールバックにする."""
-    with patch(
-        "features.hn_agent.orchestrator.get_prompt",
-        side_effect=lambda name, fallback: fallback,
-    ):
+def _disable_langfuse_client():
+    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
+    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
 
 
@@ -72,6 +69,7 @@ class TestOrchestrator:
         thread,
         mock_detective_agent,
         mock_reporter,
+        hn_agent_config,
     ):
         """ツール呼び出し→結論のフローが正常に動作する."""
         mock_get_settings.return_value = Mock(
@@ -129,6 +127,7 @@ class TestOrchestrator:
         thread,
         mock_detective_agent,
         mock_reporter,
+        hn_agent_config,
     ):
         """LLMがツールを呼ばずに即座に結論を出すケース."""
         mock_get_settings.return_value = Mock(
@@ -172,6 +171,7 @@ class TestOrchestrator:
         thread,
         mock_detective_agent,
         mock_reporter,
+        hn_agent_config,
     ):
         """LLMエラー時にフォールバックメッセージを返す."""
         mock_get_settings.return_value = Mock(
@@ -207,6 +207,7 @@ class TestOrchestrator:
         thread,
         mock_detective_agent,
         mock_reporter,
+        hn_agent_config,
     ):
         """調査結果がSlack通知される."""
         mock_get_settings.return_value = Mock(
