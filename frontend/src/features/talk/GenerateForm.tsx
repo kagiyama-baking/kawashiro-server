@@ -1,4 +1,4 @@
-import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { LoadingButton } from '@/components/common/LoadingButton';
 import { Label } from '@/components/ui/label';
 import {
@@ -8,14 +8,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import type { GenerateConfig } from '@/types/talk';
 
 interface GenerateFormProps {
     readonly configs: GenerateConfig[];
     readonly selectedConfig: string;
     readonly onConfigChange: (config: string) => void;
-    readonly onSubmit: (userPrompt: string) => void;
+    readonly onSubmit: () => void;
     readonly isLoading: boolean;
 }
 
@@ -26,27 +25,17 @@ export function GenerateForm({
     onSubmit,
     isLoading,
 }: GenerateFormProps) {
-    const [userPrompt, setUserPrompt] = useState('');
-    const formRef = useRef<HTMLFormElement>(null);
-
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        if (userPrompt.trim() && selectedConfig && !isLoading) {
-            onSubmit(userPrompt);
-        }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            formRef.current?.requestSubmit();
+        if (selectedConfig && !isLoading) {
+            onSubmit();
         }
     };
 
     const selected = configs.find((c) => c.name === selectedConfig);
 
     return (
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-2">
                 <Label
                     htmlFor="preset-select"
@@ -92,34 +81,17 @@ export function GenerateForm({
                 )}
             </div>
 
-            <div className="space-y-2">
-                <Label
-                    htmlFor="user-prompt"
-                    className="text-[13px] font-medium"
-                >
-                    ユーザープロンプト
-                </Label>
-                <Textarea
-                    id="user-prompt"
-                    value={userPrompt}
-                    onChange={(e) => setUserPrompt(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="プロンプトを入力...（Ctrl+Enterで送信）"
-                    rows={5}
-                    maxLength={10000}
-                    required
-                />
-                <p className="text-muted-foreground font-mono text-[11px]">
-                    {userPrompt.length}/10000文字
-                </p>
-            </div>
+            <p className="text-muted-foreground text-[12px] leading-relaxed">
+                プロンプトはサーバー側（Langfuse）で管理されています。
+                プリセットを選んで生成ボタンを押してください。
+            </p>
 
             <LoadingButton
                 type="submit"
                 className="mt-1 w-full font-medium"
                 isLoading={isLoading}
                 loadingText="生成中..."
-                disabled={!userPrompt.trim() || !selectedConfig}
+                disabled={!selectedConfig}
             >
                 テキストを生成
             </LoadingButton>

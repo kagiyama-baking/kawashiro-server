@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     "user",  # ユーザーモデルのApp
     "integrations.msgraph",  # Microsoft Graph API設定・クライアント
     "integrations.llm",  # LLM API設定・クライアント
+    "integrations.langfuse",  # Langfuseプロンプト参照管理
     "integrations.onedrive",  # OneDrive連携機能
     "integrations.outlook",  # Outlook Calendar連携機能
     "features.media",  # 画像処理などのメディア関連機能

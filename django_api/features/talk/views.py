@@ -11,7 +11,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from integrations.llm.exceptions import OpenAIAPIError, OpenAITimeoutError
+from integrations.llm.exceptions import LLMClientError, LLMTimeoutError
 from integrations.msgraph.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -53,19 +53,19 @@ class TalkSynthesizeView(APIView):
         description="""指定した設定名に基づいて挨拶を生成します。
 
 設定はDjango管理画面で事前に登録しておく必要があります。
+システムプロンプトとユーザープロンプトは Langfuse で管理されます。
 
 ## リクエストボディ
 
 ```json
 {
-  "config_name": "morning",
-  "user_prompt": "{{weather}}の情報と{{events}}の予定を踏まえて、朝のあいさつをしてください。今日は{{datetime}}です。"
+  "config_name": "morning"
 }
 ```
 
 ## プレースホルダー
 
-ユーザープロンプトで以下のプレースホルダーが使用可能です（設定で有効化されている場合）：
+Langfuse のユーザープロンプトテンプレートで以下のプレースホルダーが使用可能です（設定で有効化されている場合）：
 
 | プレースホルダー | 内容 |
 |----------------|------|
@@ -105,11 +105,11 @@ TTS無効の場合はJSONでテキストのみ返します。
             )
 
         config_name = request_serializer.validated_data["config_name"]
-        user_prompt = request_serializer.validated_data["user_prompt"]
 
-        # 設定を取得
         try:
-            config = TalkConfig.objects.get(name=config_name)
+            config = TalkConfig.objects.select_related(
+                "system_prompt_ref", "user_prompt_ref"
+            ).get(name=config_name)
         except TalkConfig.DoesNotExist:
             return Response(
                 {"error": f"設定 '{config_name}' が見つかりません"},
@@ -118,10 +118,7 @@ TTS無効の場合はJSONでテキストのみ返します。
 
         try:
             service = TalkService()
-            result = service.synthesize(
-                config=config,
-                user_prompt=user_prompt,
-            )
+            result = service.synthesize(config=config)
 
             # 音声データがある場合はBase64エンコードしてJSONで返す
             if "audio_data" in result:
@@ -156,7 +153,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_504_GATEWAY_TIMEOUT,
             )
 
-        except (OpenAITimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
+        except (LLMTimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
             logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(e))
             return Response(
                 {"error": "サービスへのリクエストがタイムアウトしました"},
@@ -175,7 +172,7 @@ TTS無効の場合はJSONでテキストのみ返します。
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        except (OpenAIAPIError, TTSNetworkError) as e:
+        except (LLMClientError, TTSNetworkError) as e:
             logger.error("AI/TTSサービスエラー: %s", str(e))
             return Response(
                 {"error": "AI生成サービスへの接続に失敗しました"},

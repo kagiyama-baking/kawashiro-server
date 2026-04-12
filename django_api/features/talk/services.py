@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 from langfuse import observe
 
+from integrations.langfuse.client import resolve_prompt
 from integrations.llm.client import LLMClient
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
@@ -74,29 +74,28 @@ class TalkService:
     def synthesize(
         self,
         config: "TalkConfig",
-        user_prompt: str,
     ) -> dict[str, Any]:
         """会話を生成.
 
         Args:
             config: 会話生成設定
-            user_prompt: ユーザープロンプトテンプレート
 
         Returns:
             生成結果を含むdict（greeting_text, audio_data（オプション））
         """
         logger.info("会話を生成: config=%s", config.name)
 
-        # 有効なプレースホルダーに応じてデータを取得
         data = self._fetch_placeholder_data(config)
 
-        # プロンプトを構築
-        built_user_prompt = self._build_user_prompt(user_prompt, data)
+        system_prompt = resolve_prompt(config.system_prompt_ref)
+        user_prompt = resolve_prompt(
+            config.user_prompt_ref,
+            **self._build_prompt_variables(data),
+        )
 
-        # OpenAI APIで会話を生成
         greeting_text = self.llm_client.generate_text(
-            prompt=built_user_prompt,
-            system_prompt=config.system_prompt,
+            prompt=user_prompt,
+            system_prompt=system_prompt,
         )
         logger.info("会話生成完了: %d文字", len(greeting_text))
 
@@ -173,41 +172,22 @@ class TalkService:
             "holiday_name": holiday_name,
         }
 
-    def _build_user_prompt(
-        self,
-        template: str,
-        data: dict[str, Any],
-    ) -> str:
-        """ユーザープロンプトを構築.
+    def _build_prompt_variables(self, data: dict[str, Any]) -> dict[str, str]:
+        """プレースホルダーデータを LangfusePromptRef 用変数に変換する.
 
-        Args:
-            template: プロンプトテンプレート
-            data: プレースホルダーデータ（weather, events, datetime）
-
-        Returns:
-            ユーザープロンプト文字列
+        構造化データ（dict / list）は JSON 文字列化して渡す。
+        未使用のプレースホルダーは空文字にしておき、テンプレ側の
+        `{{weather}}` `{{events}}` `{{datetime}}` がそのまま残らないようにする。
         """
-        replacements: dict[str, str] = {}
-
-        if "weather" in data:
-            replacements["{{weather}}"] = json.dumps(
-                data["weather"], ensure_ascii=False, indent=2
-            )
-        if "events" in data:
-            replacements["{{events}}"] = json.dumps(
-                data["events"], ensure_ascii=False, indent=2
-            )
-        if "datetime" in data:
-            replacements["{{datetime}}"] = json.dumps(
-                data["datetime"], ensure_ascii=False, indent=2
-            )
-
-        if not replacements:
-            return template
-
-        # 一括置換（データ内のマーカーは置換対象外）
-        pattern = re.compile("|".join(re.escape(k) for k in replacements))
-        return pattern.sub(lambda m: replacements[m.group(0)], template)
+        variables: dict[str, str] = {
+            "weather": "",
+            "events": "",
+            "datetime": "",
+        }
+        for key in ("weather", "events", "datetime"):
+            if key in data:
+                variables[key] = json.dumps(data[key], ensure_ascii=False, indent=2)
+        return variables
 
     def _synthesize_audio(
         self,

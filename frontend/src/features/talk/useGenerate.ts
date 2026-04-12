@@ -22,36 +22,32 @@ export function useGenerate() {
             .catch(() => setError('設定一覧の取得に失敗しました'));
     }, []);
 
-    const handleGenerate = useCallback(
-        async (userPrompt: string) => {
-            if (!selectedConfig || !userPrompt.trim()) return;
+    const handleGenerate = useCallback(async () => {
+        if (!selectedConfig) return;
 
-            setIsLoading(true);
-            setError(null);
+        setIsLoading(true);
+        setError(null);
 
-            if (previousUrlRef.current) {
-                URL.revokeObjectURL(previousUrlRef.current);
+        if (previousUrlRef.current) {
+            URL.revokeObjectURL(previousUrlRef.current);
+        }
+
+        try {
+            const generateResult = await generateText({
+                config_name: selectedConfig,
+            });
+            if (generateResult.audioUrl) {
+                previousUrlRef.current = generateResult.audioUrl;
             }
-
-            try {
-                const generateResult = await generateText({
-                    config_name: selectedConfig,
-                    user_prompt: userPrompt,
-                });
-                if (generateResult.audioUrl) {
-                    previousUrlRef.current = generateResult.audioUrl;
-                }
-                setResult(generateResult);
-                toast.success('テキストを生成しました');
-            } catch {
-                setError('テキスト生成に失敗しました');
-                toast.error('テキスト生成に失敗しました');
-            } finally {
-                setIsLoading(false);
-            }
-        },
-        [selectedConfig],
-    );
+            setResult(generateResult);
+            toast.success('テキストを生成しました');
+        } catch {
+            setError('テキスト生成に失敗しました');
+            toast.error('テキスト生成に失敗しました');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedConfig]);
 
     useEffect(() => {
         return () => {
