@@ -39,7 +39,7 @@ export function GeneratePage() {
                         プロンプト設定
                     </CardTitle>
                     <CardDescription className="text-[13px]">
-                        プリセットを選択し、ユーザープロンプトを入力してください
+                        プリセットを選択して生成ボタンを押してください
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
