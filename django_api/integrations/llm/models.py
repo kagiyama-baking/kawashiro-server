@@ -180,7 +180,7 @@ class LLMServiceConfig(models.Model):
     SERVICE_CHOICES = [
         ("orchestrator", "HN Agent Orchestrator"),
         ("detective", "HN Agent Detective"),
-        ("talk", "Talk（会話生成）"),
+        ("talk", "Talk"),
     ]
 
     service_name = models.CharField(
