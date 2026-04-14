@@ -14,6 +14,8 @@ from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
 
 from .agents.detective import DetectiveAgent
+from .agents.devils_advocate import DevilsAdvocateAgent
+from .agents.security_responder import SecurityResponderAgent
 from .models import HNAgentConfig, HNThread
 from .reporter import Reporter
 
@@ -28,10 +30,14 @@ class Orchestrator:
     def __init__(
         self,
         detective_agent: DetectiveAgent | None = None,
+        devils_advocate_agent: DevilsAdvocateAgent | None = None,
+        security_responder_agent: SecurityResponderAgent | None = None,
         reporter: Reporter | None = None,
     ):
         """初期化."""
         self._detective_agent = detective_agent
+        self._devils_advocate_agent = devils_advocate_agent
+        self._security_responder_agent = security_responder_agent
         self._reporter = reporter
 
     @property
@@ -40,6 +46,20 @@ class Orchestrator:
         if self._detective_agent is None:
             self._detective_agent = DetectiveAgent()
         return self._detective_agent
+
+    @property
+    def devils_advocate_agent(self) -> DevilsAdvocateAgent:
+        """Devil's Advocate Agentを取得（遅延初期化）."""
+        if self._devils_advocate_agent is None:
+            self._devils_advocate_agent = DevilsAdvocateAgent()
+        return self._devils_advocate_agent
+
+    @property
+    def security_responder_agent(self) -> SecurityResponderAgent:
+        """Security Responder Agentを取得（遅延初期化）."""
+        if self._security_responder_agent is None:
+            self._security_responder_agent = SecurityResponderAgent()
+        return self._security_responder_agent
 
     @property
     def reporter(self) -> Reporter:
@@ -68,6 +88,8 @@ class Orchestrator:
             "thread_title": thread.title,
             "steps": [],
             "detective_result": None,
+            "devils_advocate_result": None,
+            "security_responder_result": None,
             "final_summary": "",
         }
 
@@ -80,6 +102,19 @@ class Orchestrator:
 
         # Langfuseに判断フローを記録
         self._finalize_trace(thread, results)
+
+        # いずれかのエージェントが結果を返した場合のみ調査済みマーク
+        # （セキュリティ単独・Detective単独・複数呼び出しすべてに対応）
+        if any(
+            results.get(key)
+            for key in (
+                "detective_result",
+                "devils_advocate_result",
+                "security_responder_result",
+            )
+        ):
+            thread.is_investigated = True
+            thread.save(update_fields=["is_investigated"])
 
         # Slack通知
         self._send_notifications(results)
@@ -110,10 +145,14 @@ class Orchestrator:
         )
 
         detective_agent = self.detective_agent
+        devils_advocate_agent = self.devils_advocate_agent
+        security_responder_agent = self.security_responder_agent
 
         @tool
         def detective_investigate() -> str:
-            """スレッドが急上昇している理由を調査する。HNコメント分析、Web検索、LLM総合分析を行う。"""
+            """スレッドが急上昇している理由を汎用的に調査する。
+            タイトル和訳、注目理由、背景情報、HNコメントのハイライトを整理する。
+            一般的なニュース・話題性のある記事で使う。"""
             try:
                 result = detective_agent.investigate(thread)
                 results["detective_result"] = result
@@ -122,7 +161,46 @@ class Orchestrator:
                 logger.exception("Detective Agent実行エラー: [%d]", thread.hn_id)
                 return json.dumps({"error": "Detective Agent実行に失敗しました"})
 
-        agent = create_react_agent(llm, [detective_investigate])
+        @tool
+        def devils_advocate_analyze() -> str:
+            """新しい技術・プロダクト発表（Show HN）、アーキテクチャ議論など、
+            新規性の高いスレッドに対して HN民の辛口・批判的な視点を抽出する。
+            懸念点・トレードオフ・過去の類似事例・批判的コメントを整理する。
+            detective_investigate と併用することが多い。"""
+            try:
+                result = devils_advocate_agent.analyze(thread)
+                results["devils_advocate_result"] = result
+                return json.dumps(result, ensure_ascii=False, default=str)
+            except Exception:
+                logger.exception("Devil's Advocate Agent実行エラー: [%d]", thread.hn_id)
+                return json.dumps({"error": "Devil's Advocate Agent実行に失敗しました"})
+
+        @tool
+        def security_responder_analyze() -> str:
+            """脆弱性・CVE・情報漏洩・ハッキング・ゼロデイなど、セキュリティ
+            インシデントのスレッドに対して、影響範囲・回避策・公式パッチ・CVE ID
+            を整理してエンジニアの対応方針を明確化する。
+            セキュリティ話題ではこのツール単独で完結させてよい（detective は不要）。"""
+            try:
+                result = security_responder_agent.analyze(thread)
+                results["security_responder_result"] = result
+                return json.dumps(result, ensure_ascii=False, default=str)
+            except Exception:
+                logger.exception(
+                    "Security Responder Agent実行エラー: [%d]", thread.hn_id
+                )
+                return json.dumps(
+                    {"error": "Security Responder Agent実行に失敗しました"}
+                )
+
+        agent = create_react_agent(
+            llm,
+            [
+                detective_investigate,
+                devils_advocate_analyze,
+                security_responder_analyze,
+            ],
+        )
 
         system_prompt = resolve_prompt(agent_config.orchestrator_system_prompt)
         user_content = resolve_prompt(
@@ -179,6 +257,8 @@ class Orchestrator:
         # ToolMessageからエージェント結果を補完
         tool_result_map = {
             "detective_investigate": "detective_result",
+            "devils_advocate_analyze": "devils_advocate_result",
+            "security_responder_analyze": "security_responder_result",
         }
         for msg in messages:
             if isinstance(msg, ToolMessage) and msg.name in tool_result_map:
@@ -257,3 +337,9 @@ class Orchestrator:
         """調査結果をSlackに通知."""
         if results.get("detective_result"):
             self.reporter.report_detective(results["detective_result"])
+        if results.get("devils_advocate_result"):
+            self.reporter.report_devils_advocate(results["devils_advocate_result"])
+        if results.get("security_responder_result"):
+            self.reporter.report_security_responder(
+                results["security_responder_result"]
+            )

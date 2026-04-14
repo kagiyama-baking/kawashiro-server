@@ -8,7 +8,7 @@ from integrations.langfuse.models import LangfusePromptRef
 
 @pytest.fixture
 def hn_prompt_refs(db):
-    """HN Agent 用の 4 種の LangfusePromptRef を用意する.
+    """HN Agent 用の LangfusePromptRef を用意する.
 
     data migration でシード済みのものを取得する（テスト DB にも適用される）。
     """
@@ -17,6 +17,10 @@ def hn_prompt_refs(db):
         "orchestrator_user": "hn-agent-orchestrator-user",
         "detective_system": "hn-agent-detective-system",
         "detective_user": "hn-agent-detective-user",
+        "devils_advocate_system": "hn-agent-devils-advocate-system",
+        "devils_advocate_user": "hn-agent-devils-advocate-user",
+        "security_responder_system": "hn-agent-security-responder-system",
+        "security_responder_user": "hn-agent-security-responder-user",
     }
     return {
         key: LangfusePromptRef.objects.get(name=name) for key, name in names.items()
@@ -37,4 +41,8 @@ def hn_agent_config(hn_prompt_refs):
         orchestrator_user_prompt=hn_prompt_refs["orchestrator_user"],
         detective_system_prompt=hn_prompt_refs["detective_system"],
         detective_user_prompt=hn_prompt_refs["detective_user"],
+        devils_advocate_system_prompt=hn_prompt_refs["devils_advocate_system"],
+        devils_advocate_user_prompt=hn_prompt_refs["devils_advocate_user"],
+        security_responder_system_prompt=hn_prompt_refs["security_responder_system"],
+        security_responder_user_prompt=hn_prompt_refs["security_responder_user"],
     )

@@ -104,6 +104,10 @@ class HNAgentConfigManager(models.Manager):
             "orchestrator_user_prompt",
             "detective_system_prompt",
             "detective_user_prompt",
+            "devils_advocate_system_prompt",
+            "devils_advocate_user_prompt",
+            "security_responder_system_prompt",
+            "security_responder_user_prompt",
         ).get(is_active=True)
 
 
@@ -194,6 +198,34 @@ class HNAgentConfig(models.Model):
         related_name="+",
         verbose_name="Detective ユーザープロンプト",
         help_text="Detective に与えるユーザープロンプト（Langfuse参照）",
+    )
+    devils_advocate_system_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Devil's Advocate システムプロンプト",
+        help_text="Devil's Advocate に与えるシステムプロンプト（Langfuse参照）",
+    )
+    devils_advocate_user_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Devil's Advocate ユーザープロンプト",
+        help_text="Devil's Advocate に与えるユーザープロンプト（Langfuse参照）",
+    )
+    security_responder_system_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Security Responder システムプロンプト",
+        help_text="Security Responder に与えるシステムプロンプト（Langfuse参照）",
+    )
+    security_responder_user_prompt = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="Security Responder ユーザープロンプト",
+        help_text="Security Responder に与えるユーザープロンプト（Langfuse参照）",
     )
 
     created_at = models.DateTimeField("作成日時", auto_now_add=True)
