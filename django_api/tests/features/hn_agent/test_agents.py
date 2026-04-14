@@ -85,10 +85,10 @@ class TestDetectiveAgent:
         ]
         return client
 
-    def test_investigate_completes_and_marks_thread(
+    def test_investigate_returns_structured_result(
         self, mock_llm_client, mock_hn_client, mock_tavily_client, hn_agent_config
     ):
-        """調査が完了しスレッドが調査済みになる."""
+        """調査が完了し構造化結果を返す（is_investigated マークは Orchestrator の責務）."""
         thread = HNThread.objects.create(
             hn_id=600,
             title="Hot Thread",
@@ -109,9 +109,6 @@ class TestDetectiveAgent:
         assert result["analysis"]["title_ja"] == "テスト記事タイトル"
         assert result["comments_analyzed"] == 2
         assert len(result["background_sources"]) == 1
-
-        thread.refresh_from_db()
-        assert thread.is_investigated is True
 
     def test_investigate_without_tavily(
         self, mock_llm_client, mock_hn_client, hn_agent_config

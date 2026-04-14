@@ -1,4 +1,4 @@
-"""Detective Agent — スレッド急上昇の原因を調査."""
+"""Security Responder Agent — 脆弱性・CVEスレッドの対応指針を整理."""
 
 import json
 import logging
@@ -19,8 +19,13 @@ logger = logging.getLogger(__name__)
 MAX_COMMENTS_FOR_ANALYSIS = 50
 
 
-class DetectiveAgent:
-    """スレッドの急上昇原因を調査するエージェント."""
+class SecurityResponderAgent:
+    """セキュリティインシデント特化のエージェント.
+
+    Orchestrator からセキュリティ話題（脆弱性・CVE・情報漏洩・ハッキング）の
+    スレッドで呼び出されることを想定。影響範囲・回避策・公式パッチ・CVE ID を
+    JSON 形式で構造化して返す。Tavily で CVE / patch 情報を補強する。
+    """
 
     def __init__(
         self,
@@ -37,7 +42,7 @@ class DetectiveAgent:
     def llm_client(self) -> LLMClient:
         """LLMクライアントを取得（遅延初期化）."""
         if self._llm_client is None:
-            self._llm_client = LLMClient(service_name="detective")
+            self._llm_client = LLMClient(service_name="security_responder")
         return self._llm_client
 
     @property
@@ -66,8 +71,10 @@ class DetectiveAgent:
             self.hn_client, thread, max_comments=MAX_COMMENTS_FOR_ANALYSIS
         )
 
-    def _search_background(self, thread: HNThread) -> list[dict[str, Any]]:
-        """Tavilyでスレッドの背景情報を検索.
+    def _search_security_context(self, thread: HNThread) -> list[dict[str, Any]]:
+        """Tavily でセキュリティ関連情報を検索.
+
+        CVE / advisory / patch / workaround を優先して取得する。
 
         Args:
             thread: 対象スレッド
@@ -80,7 +87,7 @@ class DetectiveAgent:
             return []
 
         try:
-            query = f"{thread.title} {thread.author}"
+            query = f"{thread.title} CVE advisory patch workaround"
             results = client.search_context(query, max_results=3)
             return [
                 {
@@ -91,23 +98,23 @@ class DetectiveAgent:
                 for r in results
             ]
         except TavilyError:
-            logger.warning("Tavily検索に失敗: [%d] %s", thread.hn_id, thread.title)
+            logger.warning("Tavily 検索に失敗: [%d] %s", thread.hn_id, thread.title)
             return []
 
-    @observe(name="hn-agent/detective", as_type="tool")
-    def investigate(self, thread: HNThread) -> dict:
-        """スレッドの調査を実行.
+    @observe(name="hn-agent/security-responder", as_type="tool")
+    def analyze(self, thread: HNThread) -> dict:
+        """セキュリティインシデントの整理を実行.
 
         Args:
-            thread: 調査対象スレッド
+            thread: 対象スレッド
 
         Returns:
-            調査結果
+            整理結果
         """
-        logger.info("Detective調査開始: [%d] %s", thread.hn_id, thread.title)
+        logger.info("Security Responder 分析開始: [%d] %s", thread.hn_id, thread.title)
 
         comments_text = self._fetch_comments_text(thread)
-        background = self._search_background(thread)
+        search_sources = self._search_security_context(thread)
 
         snapshot = thread.latest_snapshot
         score_info = ""
@@ -119,15 +126,15 @@ class DetectiveAgent:
         agent_config = HNAgentConfig.objects.get_active_config()
 
         user_prompt = resolve_prompt(
-            agent_config.detective_user_prompt,
+            agent_config.security_responder_user_prompt,
             title=thread.title,
             url=thread.url or "(self-post)",
             author=thread.author,
             score_info=score_info,
-            background_section=self._format_background_section(background),
             comments_section=self._format_comments_section(comments_text),
+            search_section=self._format_search_section(search_sources),
         )
-        system_prompt = resolve_prompt(agent_config.detective_system_prompt)
+        system_prompt = resolve_prompt(agent_config.security_responder_system_prompt)
 
         raw_analysis = self.llm_client.generate_text(
             prompt=user_prompt,
@@ -142,24 +149,15 @@ class DetectiveAgent:
             "thread_url": thread.url,
             "score_info": score_info,
             "analysis": analysis,
-            "background_sources": background,
+            "search_sources": search_sources,
             "comments_analyzed": min(
-                len(comments_text.split("\n\n")), MAX_COMMENTS_FOR_ANALYSIS
+                len([c for c in comments_text.split("\n\n") if c]),
+                MAX_COMMENTS_FOR_ANALYSIS,
             ),
         }
 
-        logger.info("Detective調査完了: [%d] %s", thread.hn_id, thread.title)
+        logger.info("Security Responder 分析完了: [%d] %s", thread.hn_id, thread.title)
         return result
-
-    def _format_background_section(self, background: list[dict[str, Any]]) -> str:
-        """Web 背景情報セクションの文字列を構築（空なら空文字）."""
-        if not background:
-            return ""
-        lines = ["\n## Web上の背景情報"]
-        for bg in background:
-            lines.append(f"- [{bg['title']}]({bg['url']})")
-            lines.append(f"  {bg['content']}")
-        return "\n".join(lines)
 
     def _format_comments_section(self, comments_text: str) -> str:
         """HN コメントセクションの文字列を構築（空なら空文字）."""
@@ -172,6 +170,16 @@ class DetectiveAgent:
             "</hn_comments>"
         )
 
+    def _format_search_section(self, sources: list[dict[str, Any]]) -> str:
+        """Tavily 検索結果セクションの文字列を構築（空なら空文字）."""
+        if not sources:
+            return ""
+        lines = ["\n## Web上のセキュリティ情報"]
+        for src in sources:
+            lines.append(f"- [{src['title']}]({src['url']})")
+            lines.append(f"  {src['content']}")
+        return "\n".join(lines)
+
     def _parse_analysis(self, raw: str) -> dict[str, Any]:
         """LLMのJSON応答をパース.
 
@@ -181,28 +189,29 @@ class DetectiveAgent:
         Returns:
             パース済み辞書。失敗時はフォールバック形式
         """
-        # ```json ... ``` で囲まれている場合を処理
         text = raw.strip()
         if text.startswith("```"):
             lines = text.split("\n")
-            lines = lines[1:]  # ```json 行を除去
+            lines = lines[1:]
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             text = "\n".join(lines)
 
         try:
             parsed = json.loads(text)
-            # 必須キーの存在確認
-            if "title_ja" in parsed and "comment_highlights" in parsed:
+            if "severity" in parsed and "summary" in parsed:
                 return parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
-        logger.warning("Detective分析結果のJSONパースに失敗、フォールバック形式を使用")
+        logger.warning(
+            "Security Responder 分析結果のJSONパースに失敗、フォールバック形式を使用"
+        )
         return {
-            "title_ja": "",
-            "why_trending": raw[:500],
-            "background": "",
-            "comment_highlights": [],
-            "summary": "",
+            "cve_ids": [],
+            "affected": [],
+            "workarounds": [],
+            "official_patch": {"available": False, "version": None, "url": None},
+            "severity": "unknown",
+            "summary": raw[:500],
         }

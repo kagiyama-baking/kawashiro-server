@@ -58,6 +58,10 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
         "orchestrator_user_prompt",
         "detective_system_prompt",
         "detective_user_prompt",
+        "devils_advocate_system_prompt",
+        "devils_advocate_user_prompt",
+        "security_responder_system_prompt",
+        "security_responder_user_prompt",
     )
 
     fieldsets = (
@@ -83,10 +87,14 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
                     "orchestrator_user_prompt",
                     "detective_system_prompt",
                     "detective_user_prompt",
+                    "devils_advocate_system_prompt",
+                    "devils_advocate_user_prompt",
+                    "security_responder_system_prompt",
+                    "security_responder_user_prompt",
                 ),
                 "description": (
-                    "Orchestrator / Detective それぞれの system / user プロンプトを "
-                    "Langfuseプロンプト参照から選択します。"
+                    "Orchestrator / Detective / Devil's Advocate / Security Responder "
+                    "それぞれの system / user プロンプトを Langfuseプロンプト参照から選択します。"
                 ),
             },
         ),
