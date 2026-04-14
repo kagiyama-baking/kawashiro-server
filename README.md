@@ -29,7 +29,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
     - **features/** - ビジネス機能
         - 🎙️ **Talk**: 会話生成 API（プリセットベース・天気/予定/日時プレースホルダー対応・TTS 統合）
         - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
-        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective → Slack 通知）
+        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。LangGraph ReAct Agent がスレッド性質に応じて 3 ツールを使い分け）
 - 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（GPU）
 
 ## LLM / LiteLLM / Langfuse の関係
@@ -49,7 +49,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 - **Langfuse**（外部サービス / SaaS or self-hosted）
   LLM 呼び出しの観測（traces / generations / spans）と、バージョン管理付きのプロンプトテンプレート（`prompt.compile(**vars)`）を提供。
 - **`LLMProviderConfig`** / **`LLMServiceConfig`**（Django DB）
-  モデルエイリアス + Virtual Key をサービスごと（`orchestrator` / `detective` / `talk`）に割り当て。
+  モデルエイリアス + Virtual Key をサービスごと（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk`）に割り当て。
 - **`LangfusePromptRef`**（Django DB）
   Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。各機能（`HNAgentConfig` / `TalkConfig`）から FK で参照。
 - **`resolve_prompt(ref, **vars)`**（ユーティリティ）
@@ -61,7 +61,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 flowchart LR
     subgraph Admin["Django admin"]
         Provider["LLM設定<br/>model_alias + Virtual Key"]
-        Service["LLMサービス設定<br/>orchestrator / detective / talk"]
+        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder / talk"]
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
         HN["HackerNews Agent設定"]
         Talk["Talk Generator"]
@@ -73,8 +73,8 @@ flowchart LR
     end
 
     Service -->|provider_config| Provider
-    HN -->|4本のプロンプト参照| Ref
-    HN -.->|orchestrator / detective| Service
+    HN -->|8本のプロンプト参照| Ref
+    HN -.->|orchestrator / detective /<br/>devils_advocate / security_responder| Service
     Talk -->|2本のプロンプト参照| Ref
     Talk -.->|talk| Service
 
@@ -94,6 +94,10 @@ flowchart LR
 | HN Agent Orchestrator user | `hn-agent-orchestrator-user` |
 | HN Agent Detective system | `hn-agent-detective` |
 | HN Agent Detective user | `hn-agent-detective-user` |
+| HN Agent Devil's Advocate system | `hn-agent-devils-advocate` |
+| HN Agent Devil's Advocate user | `hn-agent-devils-advocate-user` |
+| HN Agent Security Responder system | `hn-agent-security-responder` |
+| HN Agent Security Responder user | `hn-agent-security-responder-user` |
 | Talk system | `talk-{config_name}-system` |
 | Talk user | `talk-{config_name}-user` |
 
