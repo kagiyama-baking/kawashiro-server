@@ -13,7 +13,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | tts | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） |
 | weather | `/weather/` | 気象庁天気予報 |
 | talk | `/talk/` | 会話生成（Talk Generator） |
-| hn-agent | `/hn-agent/` | HackerNews Agent（監視・調査） |
+| hn-agent | `/hn-agent/` | HackerNews Agent（監視・調査・辛口分析・セキュリティ対応指針） |
 
 ## アーキテクチャの肝
 
@@ -24,9 +24,9 @@ LLM 周辺を 3 レイヤに分け、それぞれ Django admin で独立して�
 | レイヤ | モデル | 管理画面 | 役割 |
 |---|---|---|---|
 | LLM 接続 | `LLMProviderConfig` | 「LLM設定」 | モデルエイリアス + LiteLLM Virtual Key |
-| LLM 接続 | `LLMServiceConfig` | 「LLMサービス設定」 | `orchestrator` / `detective` / `talk` にプロバイダ割り当て + タイムアウト |
+| LLM 接続 | `LLMServiceConfig` | 「LLMサービス設定」 | `orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk` にプロバイダ割り当て + タイムアウト |
 | プロンプト管理 | `LangfusePromptRef` | 「Langfuseプロンプト参照」 | Langfuse プロンプト名 + ラベル + フォールバック |
-| 機能設定 | `HNAgentConfig` | 「HackerNews Agent設定」 | 閾値、ポーリング、取得件数、使用プロンプト 4 本 |
+| 機能設定 | `HNAgentConfig` | 「HackerNews Agent設定」 | 閾値、ポーリング、取得件数、使用プロンプト 8 本（Orchestrator / Detective / Devil's Advocate / Security Responder × system / user） |
 | 機能設定 | `TalkConfig` | 「Talk Generator」 | プリセットごとの動作パラメータ + 使用プロンプト 2 本 + TTS |
 
 **原則**: プロンプトとモデル接続が独立しているため、モデル差し替え（例: GPT-4o → Kimi K2.5）を行っても Langfuse 上のプロンプトは不変、プロンプト改修に Django 再デプロイは不要です。
@@ -37,7 +37,7 @@ LLM 周辺を 3 レイヤに分け、それぞれ Django admin で独立して�
 flowchart LR
     subgraph Admin["Django admin"]
         Provider["LLM設定<br/>model_alias + Virtual Key"]
-        Service["LLMサービス設定<br/>orchestrator / detective / talk"]
+        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder / talk"]
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
         HN["HackerNews Agent設定"]
         Talk["Talk Generator"]
@@ -49,8 +49,8 @@ flowchart LR
     end
 
     Service -->|provider_config| Provider
-    HN -->|4本のプロンプト参照| Ref
-    HN -.->|orchestrator / detective| Service
+    HN -->|8本のプロンプト参照| Ref
+    HN -.->|orchestrator / detective /<br/>devils_advocate / security_responder| Service
     Talk -->|2本のプロンプト参照| Ref
     Talk -.->|talk| Service
 
@@ -164,14 +164,16 @@ Tavily Web 検索の API キー（暗号化保存）
 
 #### LLM サービス設定（`LLMServiceConfig`）
 
-各サービス（`orchestrator` / `detective` / `talk`）にどの `LLMProviderConfig` を使うかを割り当てます。
+各サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk`）にどの `LLMProviderConfig` を使うかを割り当てます。
 
 | 項目 | 説明 |
 |---|---|
-| サービス名 | `HN Agent Orchestrator` / `HN Agent Detective` / `Talk Generator` |
+| サービス名 | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` |
 | LLM 設定 | 使用する `LLMProviderConfig` を選択 |
 | 有効 | サービス設定を有効化 |
 | タイムアウト（秒） | API リクエストタイムアウト（デフォルト 60） |
+
+> **Note:** `devils_advocate` / `security_responder` のサービス設定は migration 0012 で `detective` の設定を雛形として `is_active=False` で自動生成されます（detective が存在する場合）。プロバイダーを切り替えたい場合は管理画面で個別に編集してください。
 
 #### Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -184,7 +186,7 @@ Langfuse 上のプロンプトを Django 側で参照するためのマッピン
 | ラベル | `production` / `staging`（Langfuse の version ラベル） |
 | フォールバックテキスト | Langfuse 不達時や未登録時に使用（`{{key}}` 変数は呼び出し側で置換） |
 
-初期データとして HN Agent 用 4 種（`hn-agent-orchestrator-system` / `-user`、`hn-agent-detective-system` / `-user`）が migration 0002 で自動投入されます。Talk 用は `TalkConfig` 作成時に自動生成されます。
+初期データとして HN Agent 用 8 種（`hn-agent-orchestrator-system` / `-user`、`hn-agent-detective-system` / `-user`、`hn-agent-devils-advocate-system` / `-user`、`hn-agent-security-responder-system` / `-user`）が migration 0002 + 0003 で自動投入されます。Talk 用は `TalkConfig` 作成時に自動生成されます。
 
 #### HackerNews Agent 設定（`HNAgentConfig`）
 
@@ -196,7 +198,7 @@ Langfuse 上のプロンプトを Django 側で参照するためのマッピン
 | 速度閾値 | 調査をトリガーするスコア上昇速度（ポイント/時間） |
 | ポーリング間隔（秒） | HN フロントページ取得の間隔（最低 60） |
 | フロントページ取得件数 | 1 回のポーリングで取得する件数（デフォルト 30、Algolia 経由で 90 以上も可） |
-| Orchestrator / Detective × system / user | 4 本の `LangfusePromptRef` FK |
+| Orchestrator / Detective / Devil's Advocate / Security Responder × system / user | 8 本の `LangfusePromptRef` FK |
 
 #### Talk Generator（`TalkConfig`）
 
