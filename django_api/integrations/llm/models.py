@@ -60,6 +60,8 @@ class LLMServiceConfig(models.Model):
     SERVICE_CHOICES = [
         ("orchestrator", "HN Agent Orchestrator"),
         ("detective", "HN Agent Detective"),
+        ("devils_advocate", "HN Agent Devil's Advocate"),
+        ("security_responder", "HN Agent Security Responder"),
         ("talk", "Talk Generator"),
     ]
 
