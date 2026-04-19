@@ -12,12 +12,9 @@ class TalkConfigAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "display_name",
-        "use_weather",
-        "use_events",
-        "use_datetime",
         "tts_enabled",
     )
-    list_filter = ("use_weather", "use_events", "use_datetime", "tts_enabled")
+    list_filter = ("tts_enabled",)
     search_fields = ("name", "display_name")
     autocomplete_fields = ("system_prompt_ref", "user_prompt_ref")
 
@@ -29,20 +26,13 @@ class TalkConfigAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "プレースホルダー設定",
-            {
-                "fields": ("use_weather", "use_events", "use_datetime"),
-                "description": (
-                    "有効にしたプレースホルダーが Langfuse プロンプトテンプレートで使用可能になります。"
-                ),
-            },
-        ),
-        (
             "天気設定",
             {
                 "fields": ("area_code",),
                 "classes": ("collapse",),
-                "description": "「天気情報を使用」が有効な場合に必須",
+                "description": (
+                    "プロンプトに `{{weather}}` を含める場合は予報区コードが必須"
+                ),
             },
         ),
         (
@@ -68,7 +58,8 @@ class TalkConfigAdmin(admin.ModelAdmin):
                 "fields": ("system_prompt_ref", "user_prompt_ref"),
                 "description": (
                     "システムプロンプト・ユーザープロンプトの Langfuse 参照を選択。"
-                    "`{{weather}}` `{{events}}` `{{datetime}}` はテンプレート側で使用可能です。"
+                    "`{{weather}}` `{{events}}` `{{datetime}}` をテンプレートに含めると"
+                    "自動的に対応するデータが取得されます。"
                 ),
             },
         ),

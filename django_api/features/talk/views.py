@@ -26,7 +26,11 @@ from integrations.weather.exceptions import (
 )
 
 from .constants import DAY_OF_WEEK_JA
-from .exceptions import HolidayNetworkError, HolidayTimeoutError
+from .exceptions import (
+    HolidayNetworkError,
+    HolidayTimeoutError,
+    PlaceholderDataMissingError,
+)
 from .holiday_client import HolidayClient
 from .models import TalkConfig
 from .serializers import (
@@ -63,15 +67,27 @@ class TalkSynthesizeView(APIView):
 }
 ```
 
-## プレースホルダー
+`user_prompt` を指定すると Langfuse からの取得をスキップし、指定文字列を使用します:
 
-Langfuse のユーザープロンプトテンプレートで以下のプレースホルダーが使用可能です（設定で有効化されている場合）：
+```json
+{
+  "config_name": "morning",
+  "user_prompt": "今日は {{datetime}} です。一言お願いします。"
+}
+```
 
-| プレースホルダー | 内容 |
-|----------------|------|
-| `{{datetime}}` | 日時情報（日付、曜日、祝日） |
-| `{{weather}}` | 天気予報データ |
-| `{{events}}` | 本日の予定データ |
+## プレースホルダー（動的検出）
+
+プロンプト文字列（システム/ユーザー両方）に以下のプレースホルダーを含めると、
+対応するデータが自動的に取得・展開されます：
+
+| プレースホルダー | 内容 | 追加設定 |
+|----------------|------|----------|
+| `{{datetime}}` | 日時情報（日付、曜日、祝日） | なし |
+| `{{weather}}` | 天気予報データ | `config.area_code` 必須 |
+| `{{events}}` | 本日の予定データ | Outlook 連携設定 |
+
+`{{weather}}` 使用時に `area_code` が未設定の場合は 400 エラーが返ります。
 
 ## 音声合成
 
@@ -84,7 +100,12 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response=TalkResponseSerializer,
                 description="生成成功（TTS有効時はaudio_data含む）",
             ),
-            400: OpenApiResponse(description="リクエストパラメータ不正"),
+            400: OpenApiResponse(
+                description=(
+                    "リクエストパラメータ不正、またはプロンプトに含まれる "
+                    "プレースホルダーに必要な設定が不足（例: {{weather}} + area_code 空）"
+                )
+            ),
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(
                 description="設定が見つからない / 予報区コードが見つからない"
@@ -105,6 +126,7 @@ TTS無効の場合はJSONでテキストのみ返します。
             )
 
         config_name = request_serializer.validated_data["config_name"]
+        user_prompt = request_serializer.validated_data.get("user_prompt")
 
         try:
             config = TalkConfig.objects.select_related(
@@ -118,7 +140,7 @@ TTS無効の場合はJSONでテキストのみ返します。
 
         try:
             service = TalkService()
-            result = service.synthesize(config=config)
+            result = service.synthesize(config=config, user_prompt=user_prompt)
 
             # 音声データがある場合はBase64エンコードしてJSONで返す
             if "audio_data" in result:
@@ -138,6 +160,13 @@ TTS無効の場合はJSONでテキストのみ返します。
             response_serializer.is_valid(raise_exception=True)
 
             return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+        except PlaceholderDataMissingError as e:
+            logger.warning("プレースホルダー要求データ不足: %s", str(e))
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         except WeatherAreaNotFoundError as e:
             logger.warning("予報区コードが見つからない: %s", str(e))
@@ -323,9 +352,6 @@ class ConfigsListView(APIView):
                 "name",
                 "display_name",
                 "tts_enabled",
-                "use_weather",
-                "use_events",
-                "use_datetime",
             )
             serializer = ConfigListResponseSerializer(data={"configs": list(configs)})
             serializer.is_valid(raise_exception=True)

@@ -1,7 +1,11 @@
 """会話生成アプリの例外."""
 
 
-class HolidayError(Exception):
+class TalkError(Exception):
+    """Talk 機能の基底例外."""
+
+
+class HolidayError(TalkError):
     """祝日API関連の基底例外."""
 
 
@@ -11,3 +15,7 @@ class HolidayNetworkError(HolidayError):
 
 class HolidayTimeoutError(HolidayError):
     """祝日APIへのリクエストタイムアウト."""
+
+
+class PlaceholderDataMissingError(TalkError):
+    """プロンプト中のプレースホルダーに必要な設定データが不足している."""
