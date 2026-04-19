@@ -2,26 +2,35 @@
 
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import date, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
 from langfuse import observe
 
-from integrations.langfuse.client import resolve_prompt
+from integrations.langfuse.client import (
+    extract_variables,
+    get_prompt_with_variables,
+    render_template,
+)
 from integrations.llm.client import LLMClient
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
 from integrations.weather.client import WeatherClient
 
 from .constants import DAY_OF_WEEK_JA
+from .exceptions import PlaceholderDataMissingError
 from .holiday_client import HolidayClient
 
 if TYPE_CHECKING:
     from .models import TalkConfig
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
 
 
 class TalkService:
@@ -74,36 +83,44 @@ class TalkService:
     def synthesize(
         self,
         config: "TalkConfig",
+        user_prompt: str | None = None,
     ) -> dict[str, Any]:
         """会話を生成.
 
+        プロンプト（system + user）に含まれるプレースホルダー `{{weather}}` /
+        `{{events}}` / `{{datetime}}` を検出し、必要なデータのみ並列取得する。
+
         Args:
             config: 会話生成設定
+            user_prompt: 任意のユーザープロンプト。指定時は Langfuse の
+                user_prompt_ref をスキップし、この文字列に対してプレースホルダー
+                展開を行う。
 
         Returns:
             生成結果を含むdict（greeting_text, audio_data（オプション））
+
+        Raises:
+            PlaceholderDataMissingError: プロンプトが要求するデータの取得設定が
+                不足している場合（例: {{weather}} 使用時の area_code 未設定）
         """
         logger.info("会話を生成: config=%s", config.name)
 
-        data = self._fetch_placeholder_data(config)
+        system_compile, user_compile, required_keys = self._prepare_compile_context(
+            config, user_prompt
+        )
+        logger.debug("検出されたプレースホルダー: %s", required_keys)
 
-        system_prompt = resolve_prompt(config.system_prompt_ref)
-        user_prompt = resolve_prompt(
-            config.user_prompt_ref,
-            **self._build_prompt_variables(data),
+        self._validate_requirements(config, required_keys)
+
+        data = self._fetch_placeholder_data(config, required_keys)
+        variables = self._build_prompt_variables(data)
+
+        greeting_text = self._generate_greeting(
+            system_compile(**variables), user_compile(**variables)
         )
 
-        greeting_text = self.llm_client.generate_text(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-        )
-        logger.info("会話生成完了: %d文字", len(greeting_text))
+        result: dict[str, Any] = {"greeting_text": greeting_text}
 
-        result: dict[str, Any] = {
-            "greeting_text": greeting_text,
-        }
-
-        # TTS音声合成（オプション）
         tts_options = config.get_tts_options()
         if tts_options is not None:
             tts_result = self._synthesize_audio(greeting_text, tts_options)
@@ -113,46 +130,97 @@ class TalkService:
 
         return result
 
-    def _fetch_placeholder_data(self, config: "TalkConfig") -> dict[str, Any]:
-        """プレースホルダーに必要なデータを取得.
+    def _prepare_compile_context(
+        self,
+        config: "TalkConfig",
+        user_prompt: str | None,
+    ) -> tuple[Callable[..., str], Callable[..., str], set[str]]:
+        """system/user プロンプトの compile 関数と必要プレースホルダーを取得."""
+        system_compile, system_vars = get_prompt_with_variables(
+            config.system_prompt_ref
+        )
+        if user_prompt is None:
+            user_compile, user_vars = get_prompt_with_variables(config.user_prompt_ref)
+        else:
+            user_vars = extract_variables(user_prompt)
+            template = user_prompt
 
-        有効なプレースホルダーに応じて並列でデータを取得する。
+            def user_compile(**kwargs: Any) -> str:
+                return render_template(template, kwargs)
+
+        required_keys = (system_vars | user_vars) & SUPPORTED_PLACEHOLDERS
+        return system_compile, user_compile, required_keys
+
+    def _generate_greeting(self, system_prompt: str, user_prompt: str) -> str:
+        """LLM でテキスト生成."""
+        greeting_text = self.llm_client.generate_text(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+        )
+        logger.info("会話生成完了: %d文字", len(greeting_text))
+        return greeting_text
+
+    def _validate_requirements(
+        self, config: "TalkConfig", required_keys: set[str]
+    ) -> None:
+        """プレースホルダー要求に対する config 設定の事前検証.
+
+        現状は `{{weather}}` 要求時の `area_code` のみ同期検証する。
+        `{{events}}` に対する MS Graph 設定不備や `{{datetime}}` の祝日 API
+        到達性は外部 API 呼び出し時のエラー伝播に委ねる（view で 502/503/504）。
         """
-        data: dict[str, Any] = {}
-        futures: dict[str, Any] = {}
+        if "weather" in required_keys and not config.area_code:
+            raise PlaceholderDataMissingError(
+                "プロンプトに {{weather}} が含まれていますが、config.area_code "
+                "が未設定です"
+            )
 
-        # 並列実行するタスク数を計算
-        task_count = sum([config.use_weather, config.use_events, config.use_datetime])
+    def _fetch_placeholder_data(
+        self,
+        config: "TalkConfig",
+        required_keys: set[str],
+    ) -> dict[str, Any]:
+        """required_keys に含まれるプレースホルダーデータのみ並列取得する.
 
-        if task_count == 0:
-            return data
+        いずれかの future が例外を送出した場合、未完了の future は即キャンセルし、
+        最初の例外を呼び出し元へ伝播する。
+        """
+        tasks = self._build_fetch_tasks(config, required_keys)
+        if not tasks:
+            return {}
 
-        today = date.today()
-
-        with ThreadPoolExecutor(max_workers=min(task_count, 3)) as executor:
-            if config.use_weather:
-                futures["weather"] = executor.submit(
-                    self.weather_client.get_weather,
-                    config.area_code,
-                    0,
-                )
-            if config.use_events:
-                futures["events"] = executor.submit(
-                    self.outlook_client.get_calendar_events,
-                    start_date=today,
-                    end_date=today,
-                )
-            if config.use_datetime:
-                futures["datetime"] = executor.submit(
-                    self._get_datetime_info,
-                )
-
-            # 結果を取得（例外があればここで再送出される）
+        with ThreadPoolExecutor(max_workers=min(len(tasks), 3)) as executor:
+            futures = {key: executor.submit(task) for key, task in tasks.items()}
+            _, not_done = wait(futures.values(), return_when=FIRST_EXCEPTION)
+            for future in not_done:
+                future.cancel()
+            data = {}
             for key, future in futures.items():
                 data[key] = future.result()
-                logger.debug("%sデータ取得完了: %s", key, data[key])
-
+                logger.debug("%sデータ取得完了", key)
         return data
+
+    def _build_fetch_tasks(
+        self,
+        config: "TalkConfig",
+        required_keys: set[str],
+    ) -> dict[str, Callable[[], Any]]:
+        """required_keys に対応する取得タスク関数を構築."""
+        tasks: dict[str, Callable[[], Any]] = {}
+        if "weather" in required_keys:
+            tasks["weather"] = partial(
+                self.weather_client.get_weather, config.area_code, 0
+            )
+        if "events" in required_keys:
+            today = date.today()
+            tasks["events"] = partial(
+                self.outlook_client.get_calendar_events,
+                start_date=today,
+                end_date=today,
+            )
+        if "datetime" in required_keys:
+            tasks["datetime"] = self._get_datetime_info
+        return tasks
 
     def _get_datetime_info(self) -> dict[str, Any]:
         """日時情報を取得."""
@@ -179,12 +247,8 @@ class TalkService:
         未使用のプレースホルダーは空文字にしておき、テンプレ側の
         `{{weather}}` `{{events}}` `{{datetime}}` がそのまま残らないようにする。
         """
-        variables: dict[str, str] = {
-            "weather": "",
-            "events": "",
-            "datetime": "",
-        }
-        for key in ("weather", "events", "datetime"):
+        variables: dict[str, str] = dict.fromkeys(SUPPORTED_PLACEHOLDERS, "")
+        for key in SUPPORTED_PLACEHOLDERS:
             if key in data:
                 variables[key] = json.dumps(data[key], ensure_ascii=False, indent=2)
         return variables

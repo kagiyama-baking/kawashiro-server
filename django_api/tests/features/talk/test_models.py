@@ -81,56 +81,33 @@ class TestTalkConfig:
 
         assert TalkConfig.objects.count() == 2
 
-    def test_placeholder_defaults(self, prompt_refs):
-        """プレースホルダー設定のデフォルト値が正しい."""
+    def test_use_flags_removed(self, prompt_refs):
+        """use_weather / use_events / use_datetime は削除されている."""
         config = TalkConfig.objects.create(
             name="test",
             display_name="テスト",
             **_base_kwargs(prompt_refs),
         )
+        assert not hasattr(config, "use_weather")
+        assert not hasattr(config, "use_events")
+        assert not hasattr(config, "use_datetime")
 
-        assert config.use_weather is False
-        assert config.use_events is False
-        assert config.use_datetime is True
-
-    def test_create_config_with_all_placeholders(self, prompt_refs):
-        """全プレースホルダーを有効にした設定を作成できる."""
+    def test_get_enabled_placeholders_removed(self, prompt_refs):
+        """get_enabled_placeholders メソッドは削除されている."""
         config = TalkConfig.objects.create(
-            name="full",
-            display_name="フル設定",
-            use_weather=True,
-            use_events=True,
-            use_datetime=True,
-            area_code="130010",
+            name="test",
+            display_name="テスト",
             **_base_kwargs(prompt_refs),
         )
-
-        assert config.use_weather is True
-        assert config.use_events is True
-        assert config.use_datetime is True
+        assert not hasattr(config, "get_enabled_placeholders")
 
     # area_code バリデーション
 
-    def test_area_code_required_when_use_weather_true(self, prompt_refs):
-        """use_weather=True の場合、area_code は必須."""
+    def test_area_code_empty_is_valid(self, prompt_refs):
+        """area_code は空でも有効（動的化により必須条件削除）."""
         config = TalkConfig(
             name="test",
             display_name="テスト",
-            use_weather=True,
-            area_code="",
-            **_base_kwargs(prompt_refs),
-        )
-
-        with pytest.raises(ValidationError) as exc_info:
-            config.full_clean()
-        assert "area_code" in exc_info.value.message_dict
-
-    def test_area_code_not_required_when_use_weather_false(self, prompt_refs):
-        """use_weather=False の場合、area_code は不要."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            use_weather=False,
             area_code="",
             **_base_kwargs(prompt_refs),
         )
@@ -141,7 +118,6 @@ class TestTalkConfig:
         config = TalkConfig(
             name="test",
             display_name="テスト",
-            use_weather=True,
             area_code="130010",
             **_base_kwargs(prompt_refs),
         )
@@ -152,7 +128,6 @@ class TestTalkConfig:
         config = TalkConfig(
             name="test",
             display_name="テスト",
-            use_weather=True,
             area_code="13001a",
             **_base_kwargs(prompt_refs),
         )
@@ -165,7 +140,6 @@ class TestTalkConfig:
         config = TalkConfig(
             name="test",
             display_name="テスト",
-            use_weather=True,
             area_code="12345",
             **_base_kwargs(prompt_refs),
         )
@@ -307,72 +281,14 @@ class TestTalkConfig:
 
     # save() でのバリデーション
 
-    def test_save_validates_area_code_when_use_weather(self, prompt_refs):
-        """save(): use_weather=True で不正な area_code でエラー."""
+    def test_save_validates_area_code_format(self, prompt_refs):
+        """save(): area_code が不正な形式だとエラー."""
         config = TalkConfig(
             name="test",
             display_name="テスト",
-            use_weather=True,
             area_code="invalid",
             **_base_kwargs(prompt_refs),
         )
         with pytest.raises(ValidationError) as exc_info:
             config.save()
         assert "area_code" in exc_info.value.message_dict
-
-    def test_save_validates_area_code_required_when_use_weather(self, prompt_refs):
-        """save(): use_weather=True で area_code 未設定だとエラー."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            use_weather=True,
-            area_code="",
-            **_base_kwargs(prompt_refs),
-        )
-        with pytest.raises(ValidationError) as exc_info:
-            config.save()
-        assert "area_code" in exc_info.value.message_dict
-
-    # get_enabled_placeholders() メソッド
-
-    def test_get_enabled_placeholders_all_disabled(self, prompt_refs):
-        """get_enabled_placeholders(): 全て無効."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            use_weather=False,
-            use_events=False,
-            use_datetime=False,
-            **_base_kwargs(prompt_refs),
-        )
-        assert config.get_enabled_placeholders() == []
-
-    def test_get_enabled_placeholders_all_enabled(self, prompt_refs):
-        """get_enabled_placeholders(): 全て有効."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            use_weather=True,
-            use_events=True,
-            use_datetime=True,
-            area_code="130010",
-            **_base_kwargs(prompt_refs),
-        )
-        placeholders = config.get_enabled_placeholders()
-        assert placeholders == ["weather", "events", "datetime"]
-
-    def test_get_enabled_placeholders_partial(self, prompt_refs):
-        """get_enabled_placeholders(): 一部有効."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            use_weather=True,
-            use_events=False,
-            use_datetime=True,
-            area_code="130010",
-            **_base_kwargs(prompt_refs),
-        )
-        placeholders = config.get_enabled_placeholders()
-        assert "weather" in placeholders
-        assert "events" not in placeholders
-        assert "datetime" in placeholders

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from features.talk.exceptions import PlaceholderDataMissingError
 from features.talk.models import TalkConfig
 from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
@@ -18,19 +19,27 @@ def _disable_langfuse_client():
         yield
 
 
-@pytest.fixture
-def prompt_refs(db):
+def _make_refs(db, *, system_text: str, user_text: str):
     sys_ref = LangfusePromptRef.objects.create(
-        name="talk-service-system",
-        langfuse_prompt_name="talk-service-system",
-        fallback_text="system fallback",
+        name=f"talk-service-system-{id(system_text)}",
+        langfuse_prompt_name=f"talk-service-system-{id(system_text)}",
+        fallback_text=system_text,
     )
     user_ref = LangfusePromptRef.objects.create(
-        name="talk-service-user",
-        langfuse_prompt_name="talk-service-user",
-        fallback_text=("weather={{weather}} events={{events}} datetime={{datetime}}"),
+        name=f"talk-service-user-{id(user_text)}",
+        langfuse_prompt_name=f"talk-service-user-{id(user_text)}",
+        fallback_text=user_text,
     )
     return sys_ref, user_ref
+
+
+@pytest.fixture
+def prompt_refs(db):
+    return _make_refs(
+        db,
+        system_text="system fallback",
+        user_text="weather={{weather}} events={{events}} datetime={{datetime}}",
+    )
 
 
 def _refs(prompt_refs):
@@ -84,64 +93,80 @@ class TestTalkService:
         return "おはようございます、先輩。\n今日は晴れですね。最高気温は10度です。"
 
     @pytest.fixture
-    def config_datetime_only(self, prompt_refs):
+    def config_datetime_only(self, db):
+        """datetime のみ使うユーザープロンプトを持つ config."""
+        refs = _make_refs(
+            db,
+            system_text="system fallback",
+            user_text="datetime={{datetime}}",
+        )
         return TalkConfig.objects.create(
             name="datetime_only",
             display_name="日時のみテスト",
-            use_weather=False,
-            use_events=False,
-            use_datetime=True,
-            **_refs(prompt_refs),
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
         )
 
     @pytest.fixture
-    def config_with_weather(self, prompt_refs):
+    def config_with_weather(self, db):
+        refs = _make_refs(
+            db,
+            system_text="system fallback",
+            user_text="weather={{weather}} datetime={{datetime}}",
+        )
         return TalkConfig.objects.create(
             name="with_weather",
             display_name="天気テスト",
-            use_weather=True,
-            use_events=False,
-            use_datetime=True,
             area_code="130010",
-            **_refs(prompt_refs),
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
         )
 
     @pytest.fixture
-    def config_all_placeholders(self, prompt_refs):
+    def config_all_placeholders(self, db):
+        refs = _make_refs(
+            db,
+            system_text="system fallback",
+            user_text="weather={{weather}} events={{events}} datetime={{datetime}}",
+        )
         return TalkConfig.objects.create(
             name="all_placeholders",
             display_name="全プレースホルダーテスト",
-            use_weather=True,
-            use_events=True,
-            use_datetime=True,
             area_code="130010",
-            **_refs(prompt_refs),
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
         )
 
     @pytest.fixture
-    def config_with_tts(self, prompt_refs):
+    def config_with_tts(self, db):
+        refs = _make_refs(
+            db,
+            system_text="system fallback",
+            user_text="datetime={{datetime}}",
+        )
         return TalkConfig.objects.create(
             name="with_tts",
             display_name="TTSテスト",
-            use_weather=False,
-            use_events=False,
-            use_datetime=True,
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
             tts_speed=1.2,
-            **_refs(prompt_refs),
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
         )
 
     @pytest.fixture
-    def config_no_placeholders(self, prompt_refs):
+    def config_no_placeholders(self, db):
+        refs = _make_refs(
+            db,
+            system_text="system fallback",
+            user_text="プレースホルダーなし",
+        )
         return TalkConfig.objects.create(
             name="no_placeholders",
             display_name="プレースホルダー無効",
-            use_weather=False,
-            use_events=False,
-            use_datetime=False,
-            **_refs(prompt_refs),
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
         )
 
     # 正常系テスト
@@ -155,7 +180,7 @@ class TestTalkService:
         mock_openai_response,
         config_datetime_only,
     ):
-        """日時のみ使用時に挨拶が生成される."""
+        """datetime のみ使用時に挨拶が生成される."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -184,7 +209,7 @@ class TestTalkService:
         mock_openai_response,
         config_with_weather,
     ):
-        """天気使用時に天気APIが呼ばれる."""
+        """プロンプトに {{weather}} があれば天気APIが呼ばれる."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -219,7 +244,7 @@ class TestTalkService:
         mock_openai_response,
         config_all_placeholders,
     ):
-        """全プレースホルダー使用時に全APIが呼ばれる."""
+        """全プレースホルダー含むプロンプト時に全APIが呼ばれる."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -244,14 +269,20 @@ class TestTalkService:
         mock_weather.get_weather.assert_called_once()
         mock_outlook.get_calendar_events.assert_called_once()
 
+    @patch("features.talk.services.WeatherClient")
+    @patch("features.talk.services.OutlookMSGraphClient")
+    @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.LLMClient")
-    def test_synthesize_no_placeholders(
+    def test_synthesize_no_placeholders_calls_no_external_apis(
         self,
         mock_openai_class,
+        mock_holiday_class,
+        mock_outlook_class,
+        mock_weather_class,
         mock_openai_response,
         config_no_placeholders,
     ):
-        """プレースホルダー無効時はAPIを呼ばない."""
+        """プロンプトにプレースホルダーが無いときは外部APIを呼ばない."""
         mock_openai = MagicMock()
         mock_openai.generate_text.return_value = mock_openai_response
         mock_openai_class.return_value = mock_openai
@@ -261,6 +292,107 @@ class TestTalkService:
 
         assert result is not None
         assert "greeting_text" in result
+        mock_weather_class.return_value.get_weather.assert_not_called()
+        mock_outlook_class.return_value.get_calendar_events.assert_not_called()
+        mock_holiday_class.return_value.get_holiday_name.assert_not_called()
+
+    # 動的検出テスト
+
+    @patch("features.talk.services.WeatherClient")
+    @patch("features.talk.services.OutlookMSGraphClient")
+    @patch("features.talk.services.HolidayClient")
+    @patch("features.talk.services.LLMClient")
+    def test_synthesize_user_prompt_overrides_required_keys(
+        self,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_outlook_class,
+        mock_weather_class,
+        mock_openai_response,
+        config_no_placeholders,
+    ):
+        """カスタム user_prompt のプレースホルダーで取得対象が決まる."""
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        service = TalkService()
+        # config は no_placeholders だが user_prompt 側に datetime があるので取得される
+        service.synthesize(
+            config=config_no_placeholders,
+            user_prompt="今日は {{datetime}} です。",
+        )
+
+        mock_holiday.get_holiday_name.assert_called_once()
+        mock_weather_class.return_value.get_weather.assert_not_called()
+        mock_outlook_class.return_value.get_calendar_events.assert_not_called()
+
+    @patch("features.talk.services.WeatherClient")
+    @patch("features.talk.services.HolidayClient")
+    @patch("features.talk.services.LLMClient")
+    def test_synthesize_system_prompt_placeholder_triggers_fetch(
+        self,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_weather_class,
+        mock_weather_response,
+        mock_openai_response,
+        db,
+    ):
+        """system_prompt 側の {{weather}} でも天気取得がトリガーされる."""
+        refs = _make_refs(
+            db,
+            system_text="system with {{weather}}",
+            user_text="no placeholder",
+        )
+        config = TalkConfig.objects.create(
+            name="sys_with_weather",
+            display_name="System に天気",
+            area_code="130010",
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
+        )
+
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_weather = MagicMock()
+        mock_weather.get_weather.return_value = mock_weather_response
+        mock_weather_class.return_value = mock_weather
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        service = TalkService()
+        service.synthesize(config=config)
+
+        mock_weather.get_weather.assert_called_once()
+
+    def test_synthesize_weather_requires_area_code(self, db):
+        """{{weather}} 含むが area_code 空なら PlaceholderDataMissingError."""
+        refs = _make_refs(
+            db,
+            system_text="system fallback",
+            user_text="天気: {{weather}}",
+        )
+        config = TalkConfig.objects.create(
+            name="missing_area",
+            display_name="area_code 空",
+            area_code="",
+            system_prompt_ref=refs[0],
+            user_prompt_ref=refs[1],
+        )
+
+        service = TalkService()
+        with pytest.raises(PlaceholderDataMissingError) as exc_info:
+            service.synthesize(config=config)
+        assert "area_code" in str(exc_info.value)
 
     # TTS関連テスト
 
@@ -431,6 +563,39 @@ class TestTalkService:
 
         # 並列実行なら0.2秒未満（直列なら0.3秒以上）
         assert elapsed < 0.25, f"並列実行されていません: {elapsed:.2f}秒"
+
+    # user_prompt 指定テスト
+
+    @patch("features.talk.services.HolidayClient")
+    @patch("features.talk.services.LLMClient")
+    def test_synthesize_with_custom_user_prompt_expands_placeholders(
+        self,
+        mock_openai_class,
+        mock_holiday_class,
+        mock_openai_response,
+        config_datetime_only,
+    ):
+        """user_prompt 指定時: {{datetime}} 等のプレースホルダーが展開される."""
+        mock_holiday = MagicMock()
+        mock_holiday.get_holiday_name.return_value = None
+        mock_holiday_class.return_value = mock_holiday
+
+        mock_openai = MagicMock()
+        mock_openai.generate_text.return_value = mock_openai_response
+        mock_openai_class.return_value = mock_openai
+
+        service = TalkService()
+        custom_prompt = "今日は {{datetime}} です。"
+        service.synthesize(
+            config=config_datetime_only,
+            user_prompt=custom_prompt,
+        )
+
+        llm_call_kwargs = mock_openai.generate_text.call_args.kwargs
+        sent_prompt = llm_call_kwargs["prompt"]
+        # {{datetime}} は JSON 化された日時情報に置換される
+        assert "{{datetime}}" not in sent_prompt
+        assert "day_of_week" in sent_prompt
 
     # 祝日テスト
 
