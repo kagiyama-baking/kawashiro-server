@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { fetchConfigs, generateText } from '@/lib/api/talk';
-import type { GenerateConfig, GenerateResult } from '@/types/talk';
+import type {
+    GenerateConfig,
+    GenerateRequest,
+    GenerateResult,
+} from '@/types/talk';
 
 export function useGenerate() {
     const [configs, setConfigs] = useState<GenerateConfig[]>([]);
     const [selectedConfig, setSelectedConfig] = useState<string>('');
+    const [userPrompt, setUserPrompt] = useState<string>('');
     const [result, setResult] = useState<GenerateResult | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -33,9 +38,15 @@ export function useGenerate() {
         }
 
         try {
-            const generateResult = await generateText({
-                config_name: selectedConfig,
-            });
+            const trimmed = userPrompt.trim();
+            const request: GenerateRequest =
+                trimmed === ''
+                    ? { config_name: selectedConfig }
+                    : {
+                          config_name: selectedConfig,
+                          user_prompt: userPrompt,
+                      };
+            const generateResult = await generateText(request);
             if (generateResult.audioUrl) {
                 previousUrlRef.current = generateResult.audioUrl;
             }
@@ -47,7 +58,7 @@ export function useGenerate() {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedConfig]);
+    }, [selectedConfig, userPrompt]);
 
     useEffect(() => {
         return () => {
@@ -61,6 +72,8 @@ export function useGenerate() {
         configs,
         selectedConfig,
         setSelectedConfig,
+        userPrompt,
+        setUserPrompt,
         result,
         isLoading,
         error,

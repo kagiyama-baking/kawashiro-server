@@ -18,6 +18,8 @@ export function GeneratePage() {
         configs,
         selectedConfig,
         setSelectedConfig,
+        userPrompt,
+        setUserPrompt,
         result,
         isLoading,
         error,
@@ -47,6 +49,8 @@ export function GeneratePage() {
                         configs={configs}
                         selectedConfig={selectedConfig}
                         onConfigChange={setSelectedConfig}
+                        userPrompt={userPrompt}
+                        onUserPromptChange={setUserPrompt}
                         onSubmit={handleGenerate}
                         isLoading={isLoading}
                     />

@@ -10,6 +10,8 @@ import {
 } from 'vitest';
 import { fetchConfigs, generateText } from '@/lib/api/talk';
 
+let lastSynthesizeBody: Record<string, unknown> | null = null;
+
 const server = setupServer(
     http.get('*/api/talk/configs/', () => {
         return HttpResponse.json({
@@ -18,14 +20,12 @@ const server = setupServer(
                     name: 'morning',
                     display_name: '朝のあいさつ',
                     tts_enabled: true,
-                    use_weather: true,
-                    use_events: true,
-                    use_datetime: true,
                 },
             ],
         });
     }),
-    http.post('*/api/talk/synthesize/', () => {
+    http.post('*/api/talk/synthesize/', async ({ request }) => {
+        lastSynthesizeBody = (await request.json()) as Record<string, unknown>;
         // Base64エンコードされたfake audio data
         const audioData = btoa('fake-audio-data');
         return HttpResponse.json({
@@ -37,7 +37,10 @@ const server = setupServer(
 );
 
 beforeAll(() => server.listen());
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+    server.resetHandlers();
+    lastSynthesizeBody = null;
+});
 afterAll(() => server.close());
 
 describe('Generate API', () => {
@@ -55,5 +58,21 @@ describe('Generate API', () => {
         expect(result.text).toBe('おはようございます');
         expect(result.audioBlob).toBeInstanceOf(Blob);
         expect(result.audioBlob!.size).toBe('fake-audio-data'.length);
+    });
+
+    it('user_prompt 未指定時はリクエストに含まれない', async () => {
+        await generateText({ config_name: 'morning' });
+        expect(lastSynthesizeBody).toEqual({ config_name: 'morning' });
+    });
+
+    it('user_prompt 指定時はリクエストに含まれる', async () => {
+        await generateText({
+            config_name: 'morning',
+            user_prompt: '今日は {{datetime}} です',
+        });
+        expect(lastSynthesizeBody).toEqual({
+            config_name: 'morning',
+            user_prompt: '今日は {{datetime}} です',
+        });
     });
 });
