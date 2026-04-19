@@ -71,9 +71,7 @@ class TalkConfigFactory(factory.django.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f"talk-config-{n}")
     display_name = factory.LazyAttribute(lambda o: o.name)
-    use_weather = False
-    use_events = False
-    use_datetime = True
+    area_code = ""
     system_prompt_ref = factory.SubFactory(
         LangfusePromptRefFactory,
         name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),

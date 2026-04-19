@@ -152,9 +152,6 @@ class TestTalkSynthesizeView:
         return TalkConfig.objects.create(
             name="test",
             display_name="テスト設定",
-            use_weather=False,
-            use_events=False,
-            use_datetime=True,
             tts_enabled=False,
             **_refs(prompt_refs),
         )
@@ -164,9 +161,6 @@ class TestTalkSynthesizeView:
         return TalkConfig.objects.create(
             name="weather_test",
             display_name="天気テスト設定",
-            use_weather=True,
-            use_events=False,
-            use_datetime=True,
             area_code="130010",
             tts_enabled=False,
             **_refs(prompt_refs),
@@ -177,9 +171,6 @@ class TestTalkSynthesizeView:
         return TalkConfig.objects.create(
             name="tts_test",
             display_name="TTSテスト設定",
-            use_weather=False,
-            use_events=False,
-            use_datetime=True,
             tts_enabled=True,
             tts_model="test_model",
             tts_style="Happy",
@@ -253,7 +244,33 @@ class TestTalkSynthesizeView:
         mock_service.synthesize.assert_called_once()
         call_kwargs = mock_service.synthesize.call_args.kwargs
         assert call_kwargs["config"].name == greeting_config.name
-        assert "user_prompt" not in call_kwargs
+        # user_prompt 未指定時は None が渡される
+        assert call_kwargs.get("user_prompt") is None
+
+    @patch("features.talk.views.TalkService")
+    def test_greeting_with_custom_user_prompt(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        mock_greeting_response,
+    ):
+        """user_prompt 指定時: service.synthesize に user_prompt が渡される."""
+        mock_service = MagicMock()
+        mock_service.synthesize.return_value = mock_greeting_response
+        mock_service_class.return_value = mock_service
+
+        custom_prompt = "カスタムプロンプトです"
+        response = authenticated_client.post(
+            url,
+            {"config_name": greeting_config.name, "user_prompt": custom_prompt},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        call_kwargs = mock_service.synthesize.call_args.kwargs
+        assert call_kwargs["user_prompt"] == custom_prompt
 
     @patch("features.talk.views.TalkService")
     def test_greeting_with_tts_enabled(
@@ -471,6 +488,28 @@ class TestTalkSynthesizeView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
     @patch("features.talk.views.TalkService")
+    def test_greeting_placeholder_data_missing_returns_400(
+        self,
+        mock_service_class,
+        authenticated_client,
+        url,
+        greeting_config,
+        request_data,
+    ):
+        """PlaceholderDataMissingError 発生時は 400 を返す."""
+        from features.talk.exceptions import PlaceholderDataMissingError
+
+        mock_service = MagicMock()
+        mock_service.synthesize.side_effect = PlaceholderDataMissingError(
+            "area_code 未設定"
+        )
+        mock_service_class.return_value = mock_service
+
+        response = authenticated_client.post(url, request_data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in response.data
+
+    @patch("features.talk.views.TalkService")
     def test_greeting_unexpected_error(
         self,
         mock_service_class,
@@ -512,9 +551,6 @@ class TestConfigsListView:
         TalkConfig.objects.create(
             name="morning",
             display_name="朝のあいさつ",
-            use_weather=True,
-            use_events=True,
-            use_datetime=True,
             area_code="130010",
             tts_enabled=True,
             **_refs(prompt_refs),
@@ -522,9 +558,6 @@ class TestConfigsListView:
         TalkConfig.objects.create(
             name="evening",
             display_name="夕方のあいさつ",
-            use_weather=False,
-            use_events=False,
-            use_datetime=True,
             tts_enabled=False,
             **_refs(prompt_refs),
         )
@@ -540,4 +573,7 @@ class TestConfigsListView:
         morning = next(c for c in configs if c["name"] == "morning")
         assert morning["display_name"] == "朝のあいさつ"
         assert morning["tts_enabled"] is True
-        assert morning["use_weather"] is True
+        # use_* は削除済み
+        assert "use_weather" not in morning
+        assert "use_events" not in morning
+        assert "use_datetime" not in morning

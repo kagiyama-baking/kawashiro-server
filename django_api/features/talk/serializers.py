@@ -11,6 +11,16 @@ class TalkRequestSerializer(serializers.Serializer):
         max_length=50,
         help_text="設定名（管理画面で登録した name）",
     )
+    user_prompt = serializers.CharField(
+        required=False,
+        max_length=4000,
+        trim_whitespace=False,
+        help_text=(
+            "ユーザープロンプト（任意、最大 4000 文字）。"
+            "指定した場合は Langfuse から取得せず、この文字列を使用する。"
+            "`{{weather}}` `{{events}}` `{{datetime}}` のプレースホルダーは展開される。"
+        ),
+    )
 
 
 class TalkResponseSerializer(serializers.Serializer):
@@ -39,9 +49,6 @@ class ConfigItemSerializer(serializers.Serializer):
     name = serializers.CharField(help_text="設定名")
     display_name = serializers.CharField(help_text="表示名")
     tts_enabled = serializers.BooleanField(help_text="TTS有効フラグ")
-    use_weather = serializers.BooleanField(help_text="天気情報使用フラグ")
-    use_events = serializers.BooleanField(help_text="予定情報使用フラグ")
-    use_datetime = serializers.BooleanField(help_text="日時情報使用フラグ")
 
 
 class ConfigListResponseSerializer(serializers.Serializer):

@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
 
@@ -23,23 +22,6 @@ class TalkConfig(models.Model):
         help_text="管理画面での表示名",
     )
 
-    # プレースホルダー設定
-    use_weather = models.BooleanField(
-        default=False,
-        verbose_name="天気情報を使用",
-        help_text="{{weather}} プレースホルダーを有効にする",
-    )
-    use_events = models.BooleanField(
-        default=False,
-        verbose_name="予定情報を使用",
-        help_text="{{events}} プレースホルダーを有効にする",
-    )
-    use_datetime = models.BooleanField(
-        default=True,
-        verbose_name="日時情報を使用",
-        help_text="{{datetime}} プレースホルダーを有効にする",
-    )
-
     # 天気設定
     area_code = models.CharField(
         max_length=10,
@@ -52,7 +34,9 @@ class TalkConfig(models.Model):
             ),
         ],
         verbose_name="予報区コード",
-        help_text="6桁の数字（例: 130010）。天気情報を使用する場合は必須",
+        help_text=(
+            "6桁の数字（例: 130010）。プロンプトに `{{weather}}` を含める場合は必須"
+        ),
     )
 
     # TTS設定
@@ -128,16 +112,6 @@ class TalkConfig(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-    def clean(self):
-        """バリデーション."""
-        super().clean()
-
-        # use_weather=True の場合、area_code は必須
-        if self.use_weather and not self.area_code:
-            raise ValidationError(
-                {"area_code": "天気情報を使用する場合は予報区コードが必須です"}
-            )
-
     def get_tts_options(self) -> dict[str, Any] | None:
         """TTS設定を辞書で取得（無効時は None）."""
         if not self.tts_enabled:
@@ -153,14 +127,3 @@ class TalkConfig(models.Model):
             "noise_scale_w": self.tts_noise_scale_w,
             "format": self.tts_format,
         }
-
-    def get_enabled_placeholders(self) -> list[str]:
-        """有効なプレースホルダーのリストを取得."""
-        placeholders = []
-        if self.use_weather:
-            placeholders.append("weather")
-        if self.use_events:
-            placeholders.append("events")
-        if self.use_datetime:
-            placeholders.append("datetime")
-        return placeholders
