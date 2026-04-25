@@ -1,15 +1,19 @@
-import { MessagesSquare } from 'lucide-react';
+import { Loader2, MessagesSquare } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
 import type { ChatMessageResult } from '@/types/talk';
 import { ChatMessageBubble } from './ChatMessageBubble';
 
 interface ChatMessageListProps {
     readonly messages: ChatMessageResult[];
     readonly isLoading: boolean;
+    readonly onEdit?: (messageId: string, newContent: string) => void;
 }
 
-export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
+export function ChatMessageList({
+    messages,
+    isLoading,
+    onEdit,
+}: ChatMessageListProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -34,6 +38,9 @@ export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
                     key={message.id}
                     message={message}
                     index={index}
+                    isEditable={message.role === 'user'}
+                    disabled={isLoading}
+                    onEdit={onEdit}
                 />
             ))}
             {isLoading && (

@@ -1,11 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type {
-    ChatRequest,
-    ChatResponse,
-    GenerateConfig,
-    GenerateRequest,
-    GenerateResult,
-} from '@/types/talk';
+import type { ChatRequest, ChatResponse, GenerateConfig } from '@/types/talk';
 
 interface ConfigsResponse {
     readonly configs: GenerateConfig[];
@@ -44,35 +38,6 @@ function decodeAudioPayload(
     const audioBlob = new Blob([bytes], { type: mime });
     const audioUrl = URL.createObjectURL(audioBlob);
     return { audioBlob, audioUrl, audioFormat: fmt };
-}
-
-interface GenerateResponse {
-    readonly greeting_text: string;
-    readonly audio_data?: string | null;
-    readonly audio_format?: string | null;
-}
-
-export async function generateText(
-    request: GenerateRequest,
-): Promise<GenerateResult> {
-    const data = await apiClient
-        .post('talk/synthesize/', {
-            json: request,
-            timeout: 120000,
-        })
-        .json<GenerateResponse>();
-
-    const text = data.greeting_text;
-
-    if (data.audio_data) {
-        const { audioBlob, audioUrl } = decodeAudioPayload(
-            data.audio_data,
-            data.audio_format,
-        );
-        return { text, audioBlob, audioUrl };
-    }
-
-    return { text, audioBlob: null, audioUrl: null };
 }
 
 interface ChatRawResponse {

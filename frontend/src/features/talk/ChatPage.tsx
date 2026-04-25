@@ -18,6 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { AudioBundleDownload } from './AudioBundleDownload';
 import { ChatInputForm } from './ChatInputForm';
 import { ChatMessageList } from './ChatMessageList';
 import { useChat } from './useChat';
@@ -33,6 +34,7 @@ export function ChatPage() {
         isLoading,
         error,
         sendMessage,
+        editAndResend,
         clearHistory,
     } = useChat();
 
@@ -42,7 +44,7 @@ export function ChatPage() {
         <div className="mx-auto max-w-4xl space-y-6">
             <div className="animate-slide-up">
                 <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
-                    会話チャット
+                    チャット
                 </h1>
                 <TerminalText text="talk --chat" />
             </div>
@@ -58,17 +60,20 @@ export function ChatPage() {
                                 プリセットを選んで連続的に会話できます。履歴はブラウザを更新するとクリアされます。
                             </CardDescription>
                         </div>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={clearHistory}
-                            disabled={messages.length === 0}
-                            className="shrink-0"
-                        >
-                            <Trash2 className="mr-1.5 h-4 w-4" />
-                            履歴をクリア
-                        </Button>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <AudioBundleDownload messages={messages} />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={clearHistory}
+                                disabled={messages.length === 0}
+                                className="shrink-0"
+                            >
+                                <Trash2 className="mr-1.5 h-4 w-4" />
+                                履歴をクリア
+                            </Button>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -111,6 +116,7 @@ export function ChatPage() {
                     <ChatMessageList
                         messages={messages}
                         isLoading={isLoading}
+                        onEdit={editAndResend}
                     />
 
                     <ChatInputForm

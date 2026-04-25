@@ -8,9 +8,9 @@ import {
     expect,
     it,
 } from 'vitest';
-import { fetchConfigs, generateText } from '@/lib/api/talk';
+import { fetchConfigs, sendChat } from '@/lib/api/talk';
 
-let lastSynthesizeBody: Record<string, unknown> | null = null;
+let lastChatBody: Record<string, unknown> | null = null;
 
 const server = setupServer(
     http.get('*/api/talk/configs/', () => {
@@ -24,12 +24,11 @@ const server = setupServer(
             ],
         });
     }),
-    http.post('*/api/talk/synthesize/', async ({ request }) => {
-        lastSynthesizeBody = (await request.json()) as Record<string, unknown>;
-        // Base64エンコードされたfake audio data
+    http.post('*/api/talk/chat/', async ({ request }) => {
+        lastChatBody = (await request.json()) as Record<string, unknown>;
         const audioData = btoa('fake-audio-data');
         return HttpResponse.json({
-            greeting_text: 'おはようございます',
+            message: { role: 'assistant', content: 'こんにちは' },
             audio_data: audioData,
             audio_format: 'wav',
         });
@@ -39,11 +38,11 @@ const server = setupServer(
 beforeAll(() => server.listen());
 afterEach(() => {
     server.resetHandlers();
-    lastSynthesizeBody = null;
+    lastChatBody = null;
 });
 afterAll(() => server.close());
 
-describe('Generate API', () => {
+describe('Talk API', () => {
     it('設定一覧を取得できる', async () => {
         const configs = await fetchConfigs();
         expect(configs).toHaveLength(1);
@@ -51,28 +50,45 @@ describe('Generate API', () => {
         expect(configs[0].display_name).toBe('朝のあいさつ');
     });
 
-    it('テキスト生成でレスポンスが返る', async () => {
-        const result = await generateText({
+    it('チャット送信でレスポンスが返る', async () => {
+        const result = await sendChat({
             config_name: 'morning',
+            messages: [{ role: 'user', content: 'おはよう' }],
         });
-        expect(result.text).toBe('おはようございます');
+        expect(result.content).toBe('こんにちは');
         expect(result.audioBlob).toBeInstanceOf(Blob);
         expect(result.audioBlob!.size).toBe('fake-audio-data'.length);
+        expect(result.audioFormat).toBe('wav');
     });
 
-    it('user_prompt 未指定時はリクエストに含まれない', async () => {
-        await generateText({ config_name: 'morning' });
-        expect(lastSynthesizeBody).toEqual({ config_name: 'morning' });
+    it('messages 配列がそのままサーバへ送られる', async () => {
+        const messages = [
+            { role: 'user' as const, content: 'おはよう' },
+            { role: 'assistant' as const, content: 'おはようございます' },
+            { role: 'user' as const, content: '今日の予定は？' },
+        ];
+        await sendChat({ config_name: 'morning', messages });
+        expect(lastChatBody).toEqual({
+            config_name: 'morning',
+            messages,
+        });
     });
 
-    it('user_prompt 指定時はリクエストに含まれる', async () => {
-        await generateText({
+    it('音声なしレスポンスは audioBlob が null', async () => {
+        server.use(
+            http.post('*/api/talk/chat/', () => {
+                return HttpResponse.json({
+                    message: { role: 'assistant', content: '応答のみ' },
+                });
+            }),
+        );
+        const result = await sendChat({
             config_name: 'morning',
-            user_prompt: '今日は {{datetime}} です',
+            messages: [{ role: 'user', content: 'test' }],
         });
-        expect(lastSynthesizeBody).toEqual({
-            config_name: 'morning',
-            user_prompt: '今日は {{datetime}} です',
-        });
+        expect(result.content).toBe('応答のみ');
+        expect(result.audioBlob).toBeNull();
+        expect(result.audioUrl).toBeNull();
+        expect(result.audioFormat).toBeNull();
     });
 });

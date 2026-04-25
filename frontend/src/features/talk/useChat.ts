@@ -22,6 +22,7 @@ type ChatAction =
     | { type: 'SET_INPUT'; input: string }
     | { type: 'ADD_MESSAGE'; message: ChatMessageResult }
     | { type: 'SET_MESSAGE_ERROR'; id: string; errorMessage: string }
+    | { type: 'TRUNCATE_FROM'; messageId: string }
     | { type: 'CLEAR_HISTORY' }
     | { type: 'SET_LOADING'; isLoading: boolean }
     | { type: 'SET_ERROR'; error: string | null };
@@ -59,6 +60,13 @@ function reducer(state: ChatState, action: ChatAction): ChatState {
                         : m,
                 ),
             };
+        case 'TRUNCATE_FROM': {
+            const idx = state.messages.findIndex(
+                (m) => m.id === action.messageId,
+            );
+            if (idx < 0) return state;
+            return { ...state, messages: state.messages.slice(0, idx) };
+        }
         case 'CLEAR_HISTORY':
             return { ...state, messages: [], error: null };
         case 'SET_LOADING':
@@ -122,68 +130,103 @@ export function useChat() {
         dispatch({ type: 'CLEAR_HISTORY' });
     }, []);
 
+    const submitToApi = useCallback(
+        async (history: ChatMessageResult[], userContent: string) => {
+            const userMessage: ChatMessageResult = {
+                id: makeId(),
+                role: 'user',
+                content: userContent,
+                audioBlob: null,
+                audioUrl: null,
+                audioFormat: null,
+                errorMessage: null,
+            };
+            dispatch({ type: 'ADD_MESSAGE', message: userMessage });
+            dispatch({ type: 'SET_LOADING', isLoading: true });
+            dispatch({ type: 'SET_ERROR', error: null });
+
+            const apiMessages: ChatMessageRequest[] = [
+                ...history.map((m) => ({ role: m.role, content: m.content })),
+                { role: userMessage.role, content: userMessage.content },
+            ];
+
+            try {
+                const response = await sendChat({
+                    config_name: state.selectedConfig,
+                    messages: apiMessages,
+                });
+
+                if (response.audioUrl) {
+                    audioUrlsRef.current.add(response.audioUrl);
+                }
+                const assistantMessage: ChatMessageResult = {
+                    id: makeId(),
+                    role: 'assistant',
+                    content: response.content,
+                    audioBlob: response.audioBlob,
+                    audioUrl: response.audioUrl,
+                    audioFormat: response.audioFormat,
+                    errorMessage: null,
+                };
+                dispatch({ type: 'ADD_MESSAGE', message: assistantMessage });
+            } catch {
+                dispatch({
+                    type: 'SET_MESSAGE_ERROR',
+                    id: userMessage.id,
+                    errorMessage: '応答の生成に失敗しました',
+                });
+                dispatch({
+                    type: 'SET_ERROR',
+                    error: '応答の生成に失敗しました',
+                });
+                toast.error('チャット送信に失敗しました');
+            } finally {
+                dispatch({ type: 'SET_LOADING', isLoading: false });
+            }
+        },
+        [state.selectedConfig],
+    );
+
     const sendMessage = useCallback(async () => {
         if (!state.selectedConfig) return;
         const content = state.input;
         if (content.trim() === '') return;
         if (state.isLoading) return;
 
-        const userMessage: ChatMessageResult = {
-            id: makeId(),
-            role: 'user',
-            content,
-            audioBlob: null,
-            audioUrl: null,
-            audioFormat: null,
-            errorMessage: null,
-        };
-        dispatch({ type: 'ADD_MESSAGE', message: userMessage });
         dispatch({ type: 'SET_INPUT', input: '' });
-        dispatch({ type: 'SET_LOADING', isLoading: true });
-        dispatch({ type: 'SET_ERROR', error: null });
+        await submitToApi(state.messages, content);
+    }, [
+        state.selectedConfig,
+        state.input,
+        state.messages,
+        state.isLoading,
+        submitToApi,
+    ]);
 
-        const apiMessages: ChatMessageRequest[] = [
-            ...state.messages.map((m) => ({
-                role: m.role,
-                content: m.content,
-            })),
-            { role: userMessage.role, content: userMessage.content },
-        ];
+    const editAndResend = useCallback(
+        async (messageId: string, newContent: string) => {
+            if (!state.selectedConfig) return;
+            if (newContent.trim() === '') return;
+            if (state.isLoading) return;
 
-        try {
-            const response = await sendChat({
-                config_name: state.selectedConfig,
-                messages: apiMessages,
-            });
+            const idx = state.messages.findIndex((m) => m.id === messageId);
+            if (idx < 0) return;
 
-            if (response.audioUrl) {
-                audioUrlsRef.current.add(response.audioUrl);
+            // 編集対象以降のメッセージが持つ Object URL を解放
+            for (let i = idx; i < state.messages.length; i++) {
+                const url = state.messages[i].audioUrl;
+                if (url) {
+                    URL.revokeObjectURL(url);
+                    audioUrlsRef.current.delete(url);
+                }
             }
-            const assistantMessage: ChatMessageResult = {
-                id: makeId(),
-                role: 'assistant',
-                content: response.content,
-                audioBlob: response.audioBlob,
-                audioUrl: response.audioUrl,
-                audioFormat: response.audioFormat,
-                errorMessage: null,
-            };
-            dispatch({ type: 'ADD_MESSAGE', message: assistantMessage });
-        } catch {
-            dispatch({
-                type: 'SET_MESSAGE_ERROR',
-                id: userMessage.id,
-                errorMessage: '応答の生成に失敗しました',
-            });
-            dispatch({
-                type: 'SET_ERROR',
-                error: '応答の生成に失敗しました',
-            });
-            toast.error('チャット送信に失敗しました');
-        } finally {
-            dispatch({ type: 'SET_LOADING', isLoading: false });
-        }
-    }, [state.selectedConfig, state.input, state.messages, state.isLoading]);
+
+            const truncatedHistory = state.messages.slice(0, idx);
+            dispatch({ type: 'TRUNCATE_FROM', messageId });
+            await submitToApi(truncatedHistory, newContent);
+        },
+        [state.selectedConfig, state.messages, state.isLoading, submitToApi],
+    );
 
     return {
         configs: state.configs,
@@ -195,6 +238,7 @@ export function useChat() {
         isLoading: state.isLoading,
         error: state.error,
         sendMessage,
+        editAndResend,
         clearHistory,
     } as const;
 }
