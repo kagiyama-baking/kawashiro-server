@@ -275,9 +275,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    # レート制限（ブルートフォース対策）
+    # レート制限（ブルートフォース対策 + LLM コスト枯渇防止）
     "DEFAULT_THROTTLE_RATES": {
         "anon": "10/minute",
+        "talk_chat": "20/minute",
     },
 }
 
