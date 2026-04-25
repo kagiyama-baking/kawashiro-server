@@ -105,6 +105,39 @@ describe('concatWavBlobs', () => {
             /RIFF\/WAVE/,
         );
     });
+
+    it('silenceSeconds 指定時に無音 PCM バイトが間に挿入される', async () => {
+        // 16-bit mono, 16000 Hz の場合: blockAlign = 2 → 0.5 秒 = 16000 bytes
+        const a = makeWavBlob(new Uint8Array([1, 2, 3, 4]), 16000);
+        const b = makeWavBlob(new Uint8Array([5, 6, 7, 8]), 16000);
+        const result = await concatWavBlobs([a, b], 0.5);
+
+        const buf = await result.arrayBuffer();
+        const view = new DataView(buf);
+
+        // data chunk size = 4 (a) + 16000 (silence) + 4 (b) = 16008
+        expect(view.getUint32(40, true)).toBe(16008);
+
+        const data = new Uint8Array(buf, 44, 16008);
+        // 先頭 4 バイトが a の data
+        expect(Array.from(data.slice(0, 4))).toEqual([1, 2, 3, 4]);
+        // 末尾 4 バイトが b の data
+        expect(Array.from(data.slice(16004, 16008))).toEqual([5, 6, 7, 8]);
+        // 間の 16000 バイトはすべて 0（無音）
+        for (let i = 4; i < 16004; i++) {
+            if (data[i] !== 0) {
+                throw new Error(`silence byte at ${i} is not 0: ${data[i]}`);
+            }
+        }
+    });
+
+    it('silenceSeconds=0 はサイズが増えない（後方互換）', async () => {
+        const a = makeWavBlob(new Uint8Array([1, 2, 3, 4]));
+        const b = makeWavBlob(new Uint8Array([5, 6, 7, 8]));
+        const withZero = await concatWavBlobs([a, b], 0);
+        const withoutArg = await concatWavBlobs([a, b]);
+        expect(withZero.size).toBe(withoutArg.size);
+    });
 });
 
 describe('formatTimestampForFilename', () => {

@@ -8,6 +8,42 @@ interface WavDataChunkInfo {
     readonly headerEnd: number;
 }
 
+interface WavFmtInfo {
+    readonly numChannels: number;
+    readonly sampleRate: number;
+    readonly blockAlign: number;
+    readonly bitsPerSample: number;
+}
+
+/**
+ * RIFF/WAV バッファから "fmt " チャンクの主要フィールドを読み出す.
+ * 無音バイト数の算出に使う。
+ */
+function findFmtChunk(buffer: ArrayBuffer): WavFmtInfo {
+    const view = new DataView(buffer);
+    let offset = 12;
+    while (offset + 8 <= buffer.byteLength) {
+        const chunkId = String.fromCharCode(
+            view.getUint8(offset),
+            view.getUint8(offset + 1),
+            view.getUint8(offset + 2),
+            view.getUint8(offset + 3),
+        );
+        const chunkSize = view.getUint32(offset + 4, true);
+        if (chunkId === 'fmt ') {
+            // fmt 本体は offset+8 から始まる
+            return {
+                numChannels: view.getUint16(offset + 10, true),
+                sampleRate: view.getUint32(offset + 12, true),
+                blockAlign: view.getUint16(offset + 20, true),
+                bitsPerSample: view.getUint16(offset + 22, true),
+            };
+        }
+        offset += 8 + chunkSize;
+    }
+    throw new Error('WAV の fmt チャンクが見つかりません');
+}
+
 /**
  * RIFF/WAV バッファから "data" チャンクの位置とサイズを返す.
  * 同時に "data" チャンク開始位置（= ヘッダ終端）も返す。
@@ -60,8 +96,15 @@ function findDataChunk(buffer: ArrayBuffer): WavDataChunkInfo {
  * 各 WAV の data チャンクを連結し、最初の WAV の RIFF/fmt ヘッダを再利用する。
  * fmt チャンクの整合性は呼び出し側で保証すること（同じ TTS 設定で生成された
  * WAV の前提）。
+ *
+ * `silenceSeconds` を指定すると、各 WAV の間に PCM 0 埋め（無音）バイトを
+ * 挿入する。サンプルレート/チャンネル数/ビット深度は 1 つ目の WAV の fmt
+ * チャンクから読み出す。
  */
-export async function concatWavBlobs(blobs: Blob[]): Promise<Blob> {
+export async function concatWavBlobs(
+    blobs: Blob[],
+    silenceSeconds: number = 0,
+): Promise<Blob> {
     if (blobs.length === 0) {
         throw new Error('結合する WAV がありません');
     }
@@ -71,6 +114,18 @@ export async function concatWavBlobs(blobs: Blob[]): Promise<Blob> {
 
     const buffers = await Promise.all(blobs.map((b) => b.arrayBuffer()));
 
+    let silenceBytes = 0;
+    if (silenceSeconds > 0) {
+        const fmt = findFmtChunk(buffers[0]);
+        const blockAlign =
+            fmt.blockAlign || (fmt.numChannels * fmt.bitsPerSample) / 8;
+        const raw = Math.round(silenceSeconds * fmt.sampleRate * blockAlign);
+        // PCM フレーム境界を保つよう blockAlign の倍数に揃える
+        silenceBytes =
+            blockAlign > 0 ? Math.floor(raw / blockAlign) * blockAlign : 0;
+    }
+    const silenceChunk = silenceBytes > 0 ? new Uint8Array(silenceBytes) : null;
+
     const dataChunks: Uint8Array[] = [];
     let totalDataSize = 0;
     let firstHeaderEnd = 0;
@@ -79,6 +134,9 @@ export async function concatWavBlobs(blobs: Blob[]): Promise<Blob> {
         const { dataStart, dataSize, headerEnd } = findDataChunk(buffers[i]);
         if (i === 0) {
             firstHeaderEnd = headerEnd;
+        } else if (silenceChunk !== null) {
+            dataChunks.push(silenceChunk);
+            totalDataSize += silenceChunk.byteLength;
         }
         dataChunks.push(new Uint8Array(buffers[i], dataStart, dataSize));
         totalDataSize += dataSize;

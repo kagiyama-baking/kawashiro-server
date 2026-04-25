@@ -39,7 +39,7 @@ export function AudioBundleDownload({ messages }: AudioBundleDownloadProps) {
 
             const combined =
                 formats.size === 1 && ext === 'wav'
-                    ? await concatWavBlobs(blobs)
+                    ? await concatWavBlobs(blobs, 1)
                     : new Blob(blobs, { type: blobs[0].type });
 
             const filename = `chat-${formatTimestampForFilename(new Date())}.${ext}`;
