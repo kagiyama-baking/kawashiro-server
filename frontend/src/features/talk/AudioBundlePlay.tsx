@@ -8,7 +8,6 @@ import {
     loadSessionAudios,
 } from '@/lib/audio/bundleLoader';
 import { concatWavBlobs } from '@/lib/audio/concat';
-import { SILENT_WAV_DATA_URL } from '@/lib/audio/silent';
 import type { ChatSessionMessage } from '@/types/talk';
 
 interface AudioBundlePlayProps {
@@ -16,6 +15,12 @@ interface AudioBundlePlayProps {
     readonly messages: readonly ChatSessionMessage[];
     readonly disabled?: boolean;
 }
+
+// idle    : 初期 / 完全停止
+// preparing: 音声を fetch + 結合中
+// ready   : 結合完了、ユーザー操作起点での再生待ち（iOS autoplay 対策）
+// playing : 再生中
+type Phase = 'idle' | 'preparing' | 'ready' | 'playing';
 
 function formatTime(seconds: number): string {
     if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -32,8 +37,7 @@ export function AudioBundlePlay({
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const objectUrlRef = useRef<string | null>(null);
 
-    const [isPreparing, setIsPreparing] = useState(false);
-    const [isPlaying, setIsPlaying] = useState(false);
+    const [phase, setPhase] = useState<Phase>('idle');
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
 
@@ -51,9 +55,9 @@ export function AudioBundlePlay({
             URL.revokeObjectURL(objectUrlRef.current);
             objectUrlRef.current = null;
         }
-        setIsPlaying(false);
         setCurrentTime(0);
         setDuration(0);
+        setPhase('idle');
     };
 
     useEffect(() => {
@@ -62,43 +66,24 @@ export function AudioBundlePlay({
         };
     }, []);
 
-    // セッション切替時 / メッセージ件数変化時は停止
+    // セッション切替時は停止
     useEffect(() => {
         stop();
     }, [sessionId]);
 
-    const handlePlay = async () => {
-        if (audioCount === 0 || isPreparing) return;
-
-        // iOS Safari の autoplay policy 対策: ユーザー操作と同期して
-        // 先に無音 WAV を play() し audio 要素をアンロックしておく。
-        // 結合処理は時間がかかるため、await を挟むと autoplay 起点が切れる。
-        // ended/timeupdate のリスナーは「unlock 用 silent」では発火させたくない
-        // ので、本データ差し替え後に attach する。
-        const audio = new Audio(SILENT_WAV_DATA_URL);
-        audioRef.current = audio;
-
-        try {
-            await audio.play();
-            audio.pause(); // unlock 完了直後に止める（silent ended → stop の暴発防止）
-        } catch (err) {
-            console.warn('音声アンロックに失敗:', err);
-            toast.error('音声再生が許可されませんでした');
-            stop();
-            return;
-        }
-
-        setIsPreparing(true);
+    const prepare = async () => {
+        if (audioCount === 0 || phase !== 'idle') return;
+        setPhase('preparing');
         try {
             const audios = await loadSessionAudios(sessionId, messages);
             if (audios.length === 0) {
                 toast.error('再生可能な音声がありません');
-                stop();
+                setPhase('idle');
                 return;
             }
             if (!isAllWav(audios)) {
                 toast.error('一括再生は WAV のみ対応しています');
-                stop();
+                setPhase('idle');
                 return;
             }
             const merged = await concatWavBlobs(
@@ -108,8 +93,8 @@ export function AudioBundlePlay({
             const url = URL.createObjectURL(merged);
             objectUrlRef.current = url;
 
-            // 本データ差し替え後にリスナーを attach
-            audio.src = url;
+            const audio = new Audio(url);
+            audioRef.current = audio;
             audio.addEventListener('loadedmetadata', () => {
                 setDuration(audio.duration);
             });
@@ -120,31 +105,72 @@ export function AudioBundlePlay({
                 stop();
             });
             audio.load();
-            await audio.play();
-            setIsPlaying(true);
+
+            // PC ブラウザ等 autoplay policy が緩い環境ではここで再生開始。
+            // iOS Safari は await を挟むと拒否されるので catch して ready 表示
+            // へフォールバックし、ユーザーの直接タップで play() を呼ぶ。
+            try {
+                await audio.play();
+                setPhase('playing');
+            } catch (err) {
+                console.warn(
+                    '自動再生不可、ユーザー操作待ちへフォールバック:',
+                    err,
+                );
+                setPhase('ready');
+            }
         } catch (err) {
-            console.warn('音声の一括再生に失敗:', err);
-            toast.error('音声の一括再生に失敗しました');
+            console.warn('音声の準備に失敗:', err);
+            toast.error('音声の準備に失敗しました');
             stop();
-        } finally {
-            setIsPreparing(false);
         }
     };
 
-    const handleStop = () => {
-        stop();
+    const playPrepared = async () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        try {
+            await audio.play();
+            setPhase('playing');
+        } catch (err) {
+            console.warn('再生開始に失敗:', err);
+            toast.error('再生が許可されませんでした');
+        }
     };
 
-    if (isPlaying) {
+    if (phase === 'playing') {
         return (
             <Button
                 type="button"
                 variant="destructive"
                 size="sm"
-                onClick={handleStop}
+                onClick={stop}
             >
                 <Square className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
                 停止 {formatTime(currentTime)} / {formatTime(duration)}
+            </Button>
+        );
+    }
+
+    if (phase === 'ready') {
+        return (
+            <Button
+                type="button"
+                size="sm"
+                onClick={playPrepared}
+                disabled={disabled}
+            >
+                <Play className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
+                再生開始 ({formatTime(duration)})
+            </Button>
+        );
+    }
+
+    if (phase === 'preparing') {
+        return (
+            <Button type="button" variant="outline" size="sm" disabled>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                準備中…
             </Button>
         );
     }
@@ -154,14 +180,10 @@ export function AudioBundlePlay({
             type="button"
             variant="outline"
             size="sm"
-            onClick={handlePlay}
-            disabled={disabled || isPreparing || audioCount === 0}
+            onClick={prepare}
+            disabled={disabled || audioCount === 0}
         >
-            {isPreparing ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-                <Play className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
-            )}
+            <Play className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
             一括再生 ({audioCount})
         </Button>
     );
