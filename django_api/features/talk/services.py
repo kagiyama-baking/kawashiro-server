@@ -151,6 +151,96 @@ class TalkService:
         required_keys = (system_vars | user_vars) & SUPPORTED_PLACEHOLDERS
         return system_compile, user_compile, required_keys
 
+    @observe(name="talk/chat")
+    def synthesize_chat(
+        self,
+        config: "TalkConfig",
+        messages: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """過去会話履歴を引き継ぐチャット応答を生成する.
+
+        config の system_prompt のみを Langfuse から取得し、プレースホルダー
+        `{{weather}}` / `{{events}}` / `{{datetime}}` を検出して必要なデータを
+        並列取得して埋め込む。`messages` はそのまま Chat Completions API に
+        流す（user メッセージ内のプレースホルダーは展開しない）。
+
+        Args:
+            config: 会話生成設定
+            messages: 会話履歴 `[{"role": "user"|"assistant", "content": ...}]`。
+                末尾は user メッセージである必要がある（バリデーションは
+                シリアライザ側で行う）。
+
+        Returns:
+            生成結果を含む dict（message, 任意で audio_data /
+            audio_content_type / audio_format）
+
+        Raises:
+            PlaceholderDataMissingError: system_prompt が要求するデータ取得設定が
+                不足している場合（例: {{weather}} 使用時の area_code 未設定）
+        """
+        logger.info(
+            "チャット応答を生成: config=%s, messages=%d件",
+            config.name,
+            len(messages),
+        )
+
+        system_compile, required_keys = self._prepare_chat_context(config)
+        logger.debug("検出されたプレースホルダー: %s", required_keys)
+
+        self._validate_requirements(config, required_keys)
+
+        data = self._fetch_placeholder_data(config, required_keys)
+        variables = self._build_prompt_variables(data)
+        system_prompt = system_compile(**variables)
+
+        assistant_text = self._generate_chat_reply(system_prompt, messages)
+
+        result: dict[str, Any] = {
+            "message": {"role": "assistant", "content": assistant_text},
+        }
+
+        tts_options = config.get_tts_options()
+        if tts_options is not None:
+            tts_result = self._synthesize_audio(assistant_text, tts_options)
+            result["audio_data"] = tts_result.audio_data
+            result["audio_content_type"] = tts_result.content_type
+            result["audio_format"] = tts_result.format
+
+        return result
+
+    def _prepare_chat_context(
+        self,
+        config: "TalkConfig",
+    ) -> tuple[Callable[..., str], set[str]]:
+        """Chat 用に system プロンプトの compile 関数と必要プレースホルダーを取得."""
+        system_compile, system_vars = get_prompt_with_variables(
+            config.system_prompt_ref
+        )
+        required_keys = system_vars & SUPPORTED_PLACEHOLDERS
+        return system_compile, required_keys
+
+    # LLM 応答の最大トークン数。コスト/サイズの上限を強制し、
+    # クライアントから無制限に引き出されないようにする。
+    CHAT_MAX_OUTPUT_TOKENS = 1024
+
+    def _generate_chat_reply(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+    ) -> str:
+        """過去履歴を含めて LLM に問い合わせ、assistant 応答を取得する."""
+        full_messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            *messages,
+        ]
+        response = self.llm_client.chat_completion(
+            full_messages,
+            max_tokens=self.CHAT_MAX_OUTPUT_TOKENS,
+        )
+        assistant_text = response.choices[0].message.content or ""
+        logger.info("チャット応答生成完了: %d文字", len(assistant_text))
+        return assistant_text
+
     def _generate_greeting(self, system_prompt: str, user_prompt: str) -> str:
         """LLM でテキスト生成."""
         greeting_text = self.llm_client.generate_text(

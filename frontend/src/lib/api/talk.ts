@@ -1,9 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type {
-    GenerateConfig,
-    GenerateRequest,
-    GenerateResult,
-} from '@/types/talk';
+import type { ChatRequest, ChatResponse, GenerateConfig } from '@/types/talk';
 
 interface ConfigsResponse {
     readonly configs: GenerateConfig[];
@@ -16,40 +12,65 @@ export async function fetchConfigs(): Promise<GenerateConfig[]> {
     return response.configs;
 }
 
-interface GenerateResponse {
-    readonly greeting_text: string;
+const MIME_BY_FORMAT: Record<string, string> = {
+    wav: 'audio/wav',
+    mp3: 'audio/mpeg',
+    ogg: 'audio/ogg',
+};
+
+interface AudioPayload {
+    readonly audioBlob: Blob;
+    readonly audioUrl: string;
+    readonly audioFormat: string;
+}
+
+function decodeAudioPayload(
+    base64: string,
+    format: string | null | undefined,
+): AudioPayload {
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const fmt = format ?? 'wav';
+    const mime = MIME_BY_FORMAT[fmt] ?? 'audio/wav';
+    const audioBlob = new Blob([bytes], { type: mime });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    return { audioBlob, audioUrl, audioFormat: fmt };
+}
+
+interface ChatRawResponse {
+    readonly message: { readonly role: 'assistant'; readonly content: string };
     readonly audio_data?: string | null;
     readonly audio_format?: string | null;
 }
 
-export async function generateText(
-    request: GenerateRequest,
-): Promise<GenerateResult> {
+interface SendChatOptions {
+    readonly signal?: AbortSignal;
+}
+
+export async function sendChat(
+    request: ChatRequest,
+    options: SendChatOptions = {},
+): Promise<ChatResponse> {
     const data = await apiClient
-        .post('talk/synthesize/', {
+        .post('talk/chat/', {
             json: request,
             timeout: 120000,
+            signal: options.signal,
         })
-        .json<GenerateResponse>();
+        .json<ChatRawResponse>();
 
-    const text = data.greeting_text;
+    const content = data.message.content;
 
     if (data.audio_data) {
-        const binaryStr = atob(data.audio_data);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-        }
-        const mimeMap: Record<string, string> = {
-            wav: 'audio/wav',
-            mp3: 'audio/mpeg',
-            ogg: 'audio/ogg',
-        };
-        const mime = mimeMap[data.audio_format ?? 'wav'] ?? 'audio/wav';
-        const audioBlob = new Blob([bytes], { type: mime });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        return { text, audioBlob, audioUrl };
+        const { audioBlob, audioUrl, audioFormat } = decodeAudioPayload(
+            data.audio_data,
+            data.audio_format,
+        );
+        return { content, audioBlob, audioUrl, audioFormat };
     }
 
-    return { text, audioBlob: null, audioUrl: null };
+    return { content, audioBlob: null, audioUrl: null, audioFormat: null };
 }
