@@ -46,7 +46,7 @@ export function ChatPage() {
     };
 
     return (
-        <div className="flex h-[calc(100vh-4rem)] w-full">
+        <div className="flex h-[calc(100svh-6rem)] w-full lg:h-[calc(100svh-4.5rem)]">
             <SessionSidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId}
