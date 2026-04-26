@@ -2,11 +2,16 @@
 
 import base64
 import logging
+import mimetypes
 from datetime import datetime
 
+from django.db.models import Count, Sum
+from django.db.models.functions import Coalesce
+from django.http import FileResponse, Http404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import authentication, permissions, status
+from rest_framework import authentication, generics, permissions, status
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -33,11 +38,17 @@ from .exceptions import (
     PlaceholderDataMissingError,
 )
 from .holiday_client import HolidayClient
-from .models import TalkConfig
+from .models import ChatMessage, ChatSession, TalkConfig
 from .serializers import (
     ChatRequestSerializer,
     ChatResponseSerializer,
+    ChatSessionCreateSerializer,
+    ChatSessionDetailSerializer,
+    ChatSessionListItemSerializer,
+    ChatSessionUpdateSerializer,
     ConfigListResponseSerializer,
+    SessionMessageEditSerializer,
+    SessionMessageInputSerializer,
     TalkRequestSerializer,
     TalkResponseSerializer,
     TodayInfoResponseSerializer,
@@ -477,3 +488,416 @@ class ConfigsListView(APIView):
                 {"error": "設定一覧の取得中に問題が発生しました"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+# ============================================================
+# チャット履歴（ChatSession / ChatMessage）API
+# ============================================================
+
+
+class SessionPagination(LimitOffsetPagination):
+    """セッション一覧のページネーション."""
+
+    default_limit = 20
+    max_limit = 100
+
+
+class ChatSessionListCreateView(generics.GenericAPIView):
+    """セッション一覧 / 新規作成."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    pagination_class = SessionPagination
+    serializer_class = ChatSessionListItemSerializer
+    renderer_classes = [JSONRenderer]
+
+    def get_queryset(self):
+        return ChatSession.objects.filter(user=self.request.user).annotate(
+            message_count=Count("messages"),
+            total_audio_bytes=Coalesce(Sum("messages__audio_size_bytes"), 0),
+        )
+
+    @extend_schema(
+        tags=["talk"],
+        summary="チャットセッション一覧を取得",
+        responses={200: OpenApiResponse(response=ChatSessionListItemSerializer)},
+    )
+    def get(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        page = self.paginate_queryset(qs)
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        tags=["talk"],
+        summary="新しいチャットセッションを作成",
+        request=ChatSessionCreateSerializer,
+        responses={
+            201: OpenApiResponse(response=ChatSessionDetailSerializer),
+            400: OpenApiResponse(description="config_name 不正"),
+            401: OpenApiResponse(description="認証エラー"),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = ChatSessionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        session = ChatSession.objects.create(
+            user=request.user,
+            config_name=serializer.validated_data["config_name"],
+        )
+        out = ChatSessionDetailSerializer(session, context={"request": request})
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+
+class ChatSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """セッション詳細 / タイトル更新 / 削除."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    renderer_classes = [JSONRenderer]
+    lookup_url_kwarg = "session_id"
+    lookup_field = "id"
+    http_method_names = ["get", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        return ChatSession.objects.filter(user=self.request.user)
+
+    def get_serializer_class(self):
+        if self.request.method == "PATCH":
+            return ChatSessionUpdateSerializer
+        return ChatSessionDetailSerializer
+
+    @extend_schema(tags=["talk"], summary="セッション詳細（メッセージ含む）")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=["talk"],
+        summary="セッションのタイトルを更新",
+        request=ChatSessionUpdateSerializer,
+        responses={200: OpenApiResponse(response=ChatSessionDetailSerializer)},
+    )
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = ChatSessionUpdateSerializer(
+            instance, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        out = ChatSessionDetailSerializer(instance, context={"request": request})
+        return Response(out.data)
+
+    @extend_schema(tags=["talk"], summary="セッションを削除（音声ファイルも物理削除）")
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+
+
+# 1 セッションあたりのメッセージ件数上限（user + assistant 含む）。
+# LLM コスト/レイテンシを抑える目的。
+SESSION_MAX_MESSAGES = 50
+
+
+def _get_owned_session(request, session_id) -> ChatSession | None:
+    return ChatSession.objects.filter(id=session_id, user=request.user).first()
+
+
+def _persist_assistant_message(
+    session: ChatSession,
+    sequence: int,
+    text: str,
+    audio_data: bytes | None,
+    audio_format: str,
+) -> ChatMessage:
+    """assistant メッセージと音声を保存する."""
+    from django.core.files.base import ContentFile
+
+    msg = ChatMessage(
+        session=session,
+        sequence=sequence,
+        role="assistant",
+        content=text,
+    )
+    if audio_data:
+        fname = f"{sequence}.{audio_format}"
+        msg.audio_file.save(fname, ContentFile(audio_data), save=False)
+        msg.audio_format = audio_format
+        msg.audio_size_bytes = len(audio_data)
+    msg.save()
+    return msg
+
+
+class ChatSessionMessageView(APIView):
+    """セッションへのメッセージ送信（LLM 応答生成）."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    throttle_classes = (ScopedRateThrottle,)
+    throttle_scope = "talk_chat"
+    renderer_classes = [JSONRenderer]
+
+    @extend_schema(
+        tags=["talk"],
+        summary="セッションへユーザーメッセージを送信し assistant 応答を生成",
+        request=SessionMessageInputSerializer,
+        responses={
+            201: OpenApiResponse(response=ChatSessionDetailSerializer),
+            400: OpenApiResponse(description="入力不正 / メッセージ件数上限"),
+            401: OpenApiResponse(description="認証エラー"),
+            404: OpenApiResponse(description="セッションまたは設定が見つからない"),
+            502: OpenApiResponse(description="LLM/TTS 等の外部サービスエラー"),
+            504: OpenApiResponse(description="外部サービスタイムアウト"),
+        },
+    )
+    def post(self, request, session_id):
+        session = _get_owned_session(request, session_id)
+        if session is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        in_serializer = SessionMessageInputSerializer(data=request.data)
+        if not in_serializer.is_valid():
+            return Response(in_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        content = in_serializer.validated_data["content"]
+
+        try:
+            config = TalkConfig.objects.select_related("system_prompt_ref").get(
+                name=session.config_name
+            )
+        except TalkConfig.DoesNotExist:
+            return Response(
+                {"error": f"設定 '{session.config_name}' が見つかりません"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        existing = list(session.messages.values("role", "content", "sequence"))
+        if len(existing) >= SESSION_MAX_MESSAGES:
+            return Response(
+                {
+                    "error": (
+                        "1 セッションのメッセージ数上限"
+                        f"({SESSION_MAX_MESSAGES})に達しました"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        next_seq = (max((m["sequence"] for m in existing), default=-1)) + 1
+        api_messages = [
+            {"role": m["role"], "content": m["content"]} for m in existing
+        ] + [{"role": "user", "content": content}]
+
+        # まず user メッセージを保存（API 失敗時に整合を保つためトランザクション）
+        from django.db import transaction
+
+        try:
+            service = TalkService()
+            with transaction.atomic():
+                ChatMessage.objects.create(
+                    session=session,
+                    sequence=next_seq,
+                    role="user",
+                    content=content,
+                )
+                result = service.synthesize_chat(config=config, messages=api_messages)
+                _persist_assistant_message(
+                    session=session,
+                    sequence=next_seq + 1,
+                    text=result["message"]["content"],
+                    audio_data=result.get("audio_data"),
+                    audio_format=result.get("audio_format", "wav"),
+                )
+        except Exception as e:
+            return _handle_synthesis_error(
+                e,
+                fallback_message="チャット応答の生成中に問題が発生しました",
+            )
+
+        # 初回応答後、title が空ならタイトル要約（失敗しても続行）
+        if not session.title and session.messages.count() == 2:
+            try:
+                title = service.generate_session_title(
+                    [
+                        {"role": "user", "content": content},
+                        {
+                            "role": "assistant",
+                            "content": result["message"]["content"],
+                        },
+                    ]
+                )
+                if title:
+                    session.title = title
+                    session.save(update_fields=["title", "updated_at"])
+            except Exception:
+                logger.exception("セッションタイトル生成に失敗")
+
+        # updated_at を確実に進める
+        session.save(update_fields=["updated_at"])
+
+        out = ChatSessionDetailSerializer(session, context={"request": request})
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+
+class ChatSessionMessageEditView(APIView):
+    """既存ユーザーメッセージの編集再送（対象以降を全削除して再生成）."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    throttle_classes = (ScopedRateThrottle,)
+    throttle_scope = "talk_chat"
+    renderer_classes = [JSONRenderer]
+
+    @extend_schema(
+        tags=["talk"],
+        summary="メッセージを編集して再送（対象以降は破棄）",
+        request=SessionMessageEditSerializer,
+        responses={
+            200: OpenApiResponse(response=ChatSessionDetailSerializer),
+            400: OpenApiResponse(description="入力不正 / assistant 編集不可"),
+            401: OpenApiResponse(description="認証エラー"),
+            404: OpenApiResponse(description="セッション/メッセージが見つからない"),
+            502: OpenApiResponse(description="LLM/TTS 等の外部サービスエラー"),
+            504: OpenApiResponse(description="外部サービスタイムアウト"),
+        },
+    )
+    def patch(self, request, session_id, msg_id):
+        session = _get_owned_session(request, session_id)
+        if session is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        target = session.messages.filter(id=msg_id).first()
+        if target is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if target.role != "user":
+            return Response(
+                {"error": "編集できるのは user メッセージのみです"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        in_serializer = SessionMessageEditSerializer(data=request.data)
+        if not in_serializer.is_valid():
+            return Response(in_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        new_content = in_serializer.validated_data["content"]
+
+        try:
+            config = TalkConfig.objects.select_related("system_prompt_ref").get(
+                name=session.config_name
+            )
+        except TalkConfig.DoesNotExist:
+            return Response(
+                {"error": f"設定 '{session.config_name}' が見つかりません"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 対象以前の履歴のみで API を呼ぶ
+        prior = list(
+            session.messages.filter(sequence__lt=target.sequence)
+            .order_by("sequence")
+            .values("role", "content")
+        )
+        api_messages = [{"role": p["role"], "content": p["content"]} for p in prior] + [
+            {"role": "user", "content": new_content}
+        ]
+
+        from django.db import transaction
+
+        try:
+            service = TalkService()
+            with transaction.atomic():
+                # 対象以降のメッセージを物理削除（signal で音声も消える）
+                session.messages.filter(sequence__gte=target.sequence).delete()
+                # 同じ sequence で新 user を作る
+                ChatMessage.objects.create(
+                    session=session,
+                    sequence=target.sequence,
+                    role="user",
+                    content=new_content,
+                )
+                result = service.synthesize_chat(config=config, messages=api_messages)
+                _persist_assistant_message(
+                    session=session,
+                    sequence=target.sequence + 1,
+                    text=result["message"]["content"],
+                    audio_data=result.get("audio_data"),
+                    audio_format=result.get("audio_format", "wav"),
+                )
+        except Exception as e:
+            return _handle_synthesis_error(
+                e,
+                fallback_message="チャット応答の再生成中に問題が発生しました",
+            )
+
+        session.save(update_fields=["updated_at"])
+
+        out = ChatSessionDetailSerializer(session, context={"request": request})
+        return Response(out.data, status=status.HTTP_200_OK)
+
+
+_AUDIO_CONTENT_TYPE = {
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "ogg": "audio/ogg",
+}
+
+
+class ChatSessionMessageAudioView(APIView):
+    """個別メッセージの音声配信 / 削除."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    renderer_classes = [JSONRenderer]
+
+    def _get_message(self, request, session_id, msg_id) -> ChatMessage:
+        msg = ChatMessage.objects.filter(
+            id=msg_id,
+            session_id=session_id,
+            session__user=request.user,
+        ).first()
+        if msg is None:
+            raise Http404
+        return msg
+
+    @extend_schema(tags=["talk"], summary="音声ファイルを配信（認可付き）")
+    def get(self, request, session_id, msg_id):
+        msg = self._get_message(request, session_id, msg_id)
+        if not msg.audio_file:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        content_type = _AUDIO_CONTENT_TYPE.get(
+            msg.audio_format,
+            mimetypes.guess_type(msg.audio_file.name)[0] or "application/octet-stream",
+        )
+        return FileResponse(msg.audio_file.open("rb"), content_type=content_type)
+
+    @extend_schema(tags=["talk"], summary="個別メッセージの音声だけ削除")
+    def delete(self, request, session_id, msg_id):
+        msg = self._get_message(request, session_id, msg_id)
+        if msg.audio_file:
+            msg.audio_file.delete(save=False)
+            msg.audio_file = None
+        msg.audio_format = ""
+        msg.audio_size_bytes = 0
+        msg.save(update_fields=["audio_file", "audio_format", "audio_size_bytes"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChatSessionAudioBulkDeleteView(APIView):
+    """セッション内の音声をすべて削除（メッセージ本文は残す）."""
+
+    authentication_classes = (authentication.TokenAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    renderer_classes = [JSONRenderer]
+
+    @extend_schema(
+        tags=["talk"],
+        summary="セッション内の音声を一括削除（テキストは残す）",
+    )
+    def delete(self, request, session_id):
+        session = _get_owned_session(request, session_id)
+        if session is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        for msg in session.messages.exclude(audio_file=""):
+            if msg.audio_file:
+                msg.audio_file.delete(save=False)
+                msg.audio_file = None
+            msg.audio_format = ""
+            msg.audio_size_bytes = 0
+            msg.save(update_fields=["audio_file", "audio_format", "audio_size_bytes"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
