@@ -145,7 +145,7 @@ class TestSessionMessageEdit:
         )
         assert response.status_code == 400
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_edit_drops_subsequent_messages_and_audio(
         self, mock_service_class, populated_session, auth_client
     ):
@@ -175,7 +175,7 @@ class TestSessionMessageEdit:
         # 旧音声は物理削除済み
         assert not storage.exists(a1_path) and not storage.exists(a3_path)
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_edit_keeps_existing_title(
         self, mock_service_class, populated_session, auth_client
     ):
@@ -188,7 +188,7 @@ class TestSessionMessageEdit:
         # 編集再送ではタイトル再生成しない（既存維持）
         assert session.title == "既存タイトル"
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_synthesis_error_rollbacks(
         self, mock_service_class, populated_session, auth_client
     ):

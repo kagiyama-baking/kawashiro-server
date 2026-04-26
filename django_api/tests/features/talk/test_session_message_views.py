@@ -128,7 +128,7 @@ class TestSessionMessagePost:
         )
         assert response.status_code == 400
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_send_creates_user_and_assistant_messages(
         self, mock_service_class, auth_client, session
     ):
@@ -149,7 +149,7 @@ class TestSessionMessagePost:
         assert response.data["id"] == str(session.id)
         assert len(response.data["messages"]) == 2
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_send_with_tts_saves_audio_file(
         self, mock_service_class, auth_client, talk_config_tts, user
     ):
@@ -171,7 +171,7 @@ class TestSessionMessagePost:
         assert assistant.audio_format == "wav"
         assert assistant.audio_size_bytes == 200
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_first_response_sets_title(self, mock_service_class, auth_client, session):
         mock_service_class.return_value = _mock_service(
             {"message": {"role": "assistant", "content": "返信"}},
@@ -182,7 +182,7 @@ class TestSessionMessagePost:
         session.refresh_from_db()
         assert session.title == "自動タイトル"
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_does_not_overwrite_existing_title(
         self, mock_service_class, auth_client, user, talk_config
     ):
@@ -198,7 +198,7 @@ class TestSessionMessagePost:
         sess.refresh_from_db()
         assert sess.title == "既存タイトル"
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_title_generation_failure_does_not_break(
         self, mock_service_class, auth_client, session
     ):
@@ -214,7 +214,7 @@ class TestSessionMessagePost:
         session.refresh_from_db()
         assert session.title == ""  # 失敗時は空のまま
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_max_messages_per_session_returns_400(
         self, mock_service_class, auth_client, session
     ):
@@ -236,7 +236,7 @@ class TestSessionMessagePost:
         # 上限超過時は user メッセージも保存しない
         assert session.messages.count() == 50
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_synthesis_error_returns_502(
         self, mock_service_class, auth_client, session
     ):
@@ -261,7 +261,7 @@ class TestSessionMessagePost:
         "rest_framework.throttling.ScopedRateThrottle.THROTTLE_RATES",
         {"talk_chat": "1/minute"},
     )
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.messages.TalkService")
     def test_messages_endpoint_rate_limited(
         self, mock_service_class, auth_client, session
     ):
