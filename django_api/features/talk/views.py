@@ -40,8 +40,6 @@ from .exceptions import (
 from .holiday_client import HolidayClient
 from .models import ChatMessage, ChatSession, TalkConfig
 from .serializers import (
-    ChatRequestSerializer,
-    ChatResponseSerializer,
     ChatSessionCreateSerializer,
     ChatSessionDetailSerializer,
     ChatSessionListItemSerializer,
@@ -345,109 +343,6 @@ class TodayInfoView(APIView):
             return Response(
                 {"error": "日時情報の取得中に問題が発生しました"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-class TalkChatView(APIView):
-    """会話チャットAPI（過去会話履歴を引き継ぐ複数ターン対応）."""
-
-    authentication_classes = (authentication.TokenAuthentication,)
-    permission_classes = (permissions.IsAuthenticated,)
-    throttle_classes = (ScopedRateThrottle,)
-    throttle_scope = "talk_chat"
-    renderer_classes = [JSONRenderer]
-
-    @extend_schema(
-        tags=["talk"],
-        summary="過去会話履歴を引き継いだチャット応答を生成",
-        description="""指定設定の人格に対して、過去会話履歴 `messages` を渡して
-継続的なチャット応答を生成します。
-
-設定の `system_prompt_ref` のみが Langfuse から取得され、プレースホルダー
-（`{{datetime}}` / `{{weather}}` / `{{events}}`）が検出された場合は対応データを
-並列取得して埋め込みます。`user_prompt_ref` はチャットでは使用しません。
-
-`messages` は 1〜50 件、末尾は `role='user'` でなければなりません。
-
-## リクエストボディ
-
-```json
-{
-  "config_name": "morning",
-  "messages": [
-    {"role": "user", "content": "おはよう"},
-    {"role": "assistant", "content": "おはようございます、先輩"},
-    {"role": "user", "content": "今日の天気は？"}
-  ]
-}
-```
-
-## レスポンス
-
-TTS 有効時は `audio_data`（Base64）と `audio_format` を含みます。
-""",
-        request=ChatRequestSerializer,
-        responses={
-            200: OpenApiResponse(
-                response=ChatResponseSerializer,
-                description="生成成功（TTS 有効時は audio_data 含む）",
-            ),
-            400: OpenApiResponse(
-                description=(
-                    "リクエスト不正、または system_prompt のプレースホルダーに必要な"
-                    " 設定が不足（例: {{weather}} + area_code 空）"
-                )
-            ),
-            401: OpenApiResponse(description="認証エラー"),
-            404: OpenApiResponse(
-                description="設定が見つからない / 予報区コードが見つからない"
-            ),
-            502: OpenApiResponse(description="外部APIへの接続エラー"),
-            503: OpenApiResponse(description="サービス設定エラー"),
-            504: OpenApiResponse(description="外部APIタイムアウト"),
-        },
-    )
-    def post(self, request):
-        """チャット応答を生成."""
-        request_serializer = ChatRequestSerializer(data=request.data)
-        if not request_serializer.is_valid():
-            return Response(
-                request_serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        config_name = request_serializer.validated_data["config_name"]
-        messages = request_serializer.validated_data["messages"]
-
-        try:
-            config = TalkConfig.objects.select_related("system_prompt_ref").get(
-                name=config_name
-            )
-        except TalkConfig.DoesNotExist:
-            return Response(
-                {"error": f"設定 '{config_name}' が見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        try:
-            service = TalkService()
-            result = service.synthesize_chat(config=config, messages=messages)
-
-            response_data: dict = {"message": result["message"]}
-            if "audio_data" in result:
-                response_data["audio_data"] = base64.b64encode(
-                    result["audio_data"]
-                ).decode("ascii")
-                response_data["audio_format"] = result.get("audio_format", "wav")
-
-            response_serializer = ChatResponseSerializer(data=response_data)
-            response_serializer.is_valid(raise_exception=True)
-            return Response(response_serializer.data, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            return _handle_synthesis_error(
-                e,
-                fallback_message="チャット応答の生成中に問題が発生しました",
             )
 
 

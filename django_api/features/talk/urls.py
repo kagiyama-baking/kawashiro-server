@@ -8,7 +8,6 @@ app_name = "talk"
 
 urlpatterns = [
     path("synthesize/", views.TalkSynthesizeView.as_view(), name="synthesize"),
-    path("chat/", views.TalkChatView.as_view(), name="chat"),
     path("datetime/", views.TodayInfoView.as_view(), name="datetime"),
     path("configs/", views.ConfigsListView.as_view(), name="configs"),
     # チャット履歴 API

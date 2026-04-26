@@ -256,3 +256,20 @@ class TestSessionMessagePost:
         sess = ChatSession.objects.create(user=user, config_name="nope")
         response = auth_client.post(_url(sess.id), {"content": "hi"}, format="json")
         assert response.status_code == 404
+
+    @patch(
+        "rest_framework.throttling.ScopedRateThrottle.THROTTLE_RATES",
+        {"talk_chat": "1/minute"},
+    )
+    @patch("features.talk.views.TalkService")
+    def test_messages_endpoint_rate_limited(
+        self, mock_service_class, auth_client, session
+    ):
+        mock_service_class.return_value = _mock_service(
+            {"message": {"role": "assistant", "content": "ok"}}
+        )
+
+        first = auth_client.post(_url(session.id), {"content": "1"}, format="json")
+        assert first.status_code == 201
+        second = auth_client.post(_url(session.id), {"content": "2"}, format="json")
+        assert second.status_code == 429
