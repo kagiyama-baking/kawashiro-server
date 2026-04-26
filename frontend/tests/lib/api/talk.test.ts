@@ -1,13 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import {
-    afterAll,
-    afterEach,
-    beforeAll,
-    describe,
-    expect,
-    it,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { fetchConfigs, sendChat } from '@/lib/api/talk';
 
 let lastChatBody: Record<string, unknown> | null = null;
@@ -72,6 +65,29 @@ describe('Talk API', () => {
             config_name: 'morning',
             messages,
         });
+    });
+
+    it('AbortSignal で abort されたら reject される', async () => {
+        server.use(
+            http.post('*/api/talk/chat/', async () => {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                return HttpResponse.json({
+                    message: { role: 'assistant', content: 'late' },
+                });
+            }),
+        );
+
+        const controller = new AbortController();
+        const promise = sendChat(
+            {
+                config_name: 'morning',
+                messages: [{ role: 'user', content: 'おはよう' }],
+            },
+            { signal: controller.signal },
+        );
+        controller.abort();
+
+        await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
     });
 
     it('音声なしレスポンスは audioBlob が null', async () => {

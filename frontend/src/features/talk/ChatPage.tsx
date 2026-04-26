@@ -35,6 +35,7 @@ export function ChatPage() {
         error,
         sendMessage,
         editAndResend,
+        cancelMessage,
         clearHistory,
     } = useChat();
 
@@ -123,6 +124,7 @@ export function ChatPage() {
                         input={input}
                         onInputChange={setInput}
                         onSubmit={sendMessage}
+                        onCancel={cancelMessage}
                         isLoading={isLoading}
                         disabled={!selectedConfig}
                     />

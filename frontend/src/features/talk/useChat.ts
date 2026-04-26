@@ -86,6 +86,7 @@ function makeId(): string {
 export function useChat() {
     const [state, dispatch] = useReducer(reducer, initialState);
     const audioUrlsRef = useRef<Set<string>>(new Set());
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -116,6 +117,13 @@ export function useChat() {
         };
     }, []);
 
+    useEffect(() => {
+        return () => {
+            abortControllerRef.current?.abort();
+            abortControllerRef.current = null;
+        };
+    }, []);
+
     const setSelectedConfig = useCallback((config: string) => {
         dispatch({ type: 'SET_SELECTED_CONFIG', config });
     }, []);
@@ -125,9 +133,15 @@ export function useChat() {
     }, []);
 
     const clearHistory = useCallback(() => {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
         audioUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
         audioUrlsRef.current.clear();
         dispatch({ type: 'CLEAR_HISTORY' });
+    }, []);
+
+    const cancelMessage = useCallback(() => {
+        abortControllerRef.current?.abort();
     }, []);
 
     const submitToApi = useCallback(
@@ -150,11 +164,17 @@ export function useChat() {
                 { role: userMessage.role, content: userMessage.content },
             ];
 
+            const controller = new AbortController();
+            abortControllerRef.current = controller;
+
             try {
-                const response = await sendChat({
-                    config_name: state.selectedConfig,
-                    messages: apiMessages,
-                });
+                const response = await sendChat(
+                    {
+                        config_name: state.selectedConfig,
+                        messages: apiMessages,
+                    },
+                    { signal: controller.signal },
+                );
 
                 if (response.audioUrl) {
                     audioUrlsRef.current.add(response.audioUrl);
@@ -169,18 +189,32 @@ export function useChat() {
                     errorMessage: null,
                 };
                 dispatch({ type: 'ADD_MESSAGE', message: assistantMessage });
-            } catch {
-                dispatch({
-                    type: 'SET_MESSAGE_ERROR',
-                    id: userMessage.id,
-                    errorMessage: '応答の生成に失敗しました',
-                });
-                dispatch({
-                    type: 'SET_ERROR',
-                    error: '応答の生成に失敗しました',
-                });
-                toast.error('チャット送信に失敗しました');
+            } catch (err) {
+                const isAbort =
+                    controller.signal.aborted ||
+                    (err instanceof Error && err.name === 'AbortError');
+                if (isAbort) {
+                    dispatch({
+                        type: 'SET_MESSAGE_ERROR',
+                        id: userMessage.id,
+                        errorMessage: 'キャンセルしました',
+                    });
+                } else {
+                    dispatch({
+                        type: 'SET_MESSAGE_ERROR',
+                        id: userMessage.id,
+                        errorMessage: '応答の生成に失敗しました',
+                    });
+                    dispatch({
+                        type: 'SET_ERROR',
+                        error: '応答の生成に失敗しました',
+                    });
+                    toast.error('チャット送信に失敗しました');
+                }
             } finally {
+                if (abortControllerRef.current === controller) {
+                    abortControllerRef.current = null;
+                }
                 dispatch({ type: 'SET_LOADING', isLoading: false });
             }
         },
@@ -239,6 +273,7 @@ export function useChat() {
         error: state.error,
         sendMessage,
         editAndResend,
+        cancelMessage,
         clearHistory,
     } as const;
 }

@@ -46,11 +46,19 @@ interface ChatRawResponse {
     readonly audio_format?: string | null;
 }
 
-export async function sendChat(request: ChatRequest): Promise<ChatResponse> {
+interface SendChatOptions {
+    readonly signal?: AbortSignal;
+}
+
+export async function sendChat(
+    request: ChatRequest,
+    options: SendChatOptions = {},
+): Promise<ChatResponse> {
     const data = await apiClient
         .post('talk/chat/', {
             json: request,
             timeout: 120000,
+            signal: options.signal,
         })
         .json<ChatRawResponse>();
 
