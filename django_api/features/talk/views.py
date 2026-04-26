@@ -592,7 +592,11 @@ class ChatSessionMessageView(APIView):
                     role="user",
                     content=content,
                 )
-                result = service.synthesize_chat(config=config, messages=api_messages)
+                result = service.synthesize_chat(
+                    config=config,
+                    messages=api_messages,
+                    session_id=str(session.id),
+                )
                 _persist_assistant_message(
                     session=session,
                     sequence=next_seq + 1,
@@ -616,7 +620,8 @@ class ChatSessionMessageView(APIView):
                             "role": "assistant",
                             "content": result["message"]["content"],
                         },
-                    ]
+                    ],
+                    session_id=str(session.id),
                 )
                 if title:
                     session.title = title
@@ -706,7 +711,11 @@ class ChatSessionMessageEditView(APIView):
                     role="user",
                     content=new_content,
                 )
-                result = service.synthesize_chat(config=config, messages=api_messages)
+                result = service.synthesize_chat(
+                    config=config,
+                    messages=api_messages,
+                    session_id=str(session.id),
+                )
                 _persist_assistant_message(
                     session=session,
                     sequence=target.sequence + 1,

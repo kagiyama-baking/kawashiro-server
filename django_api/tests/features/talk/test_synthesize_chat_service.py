@@ -235,6 +235,44 @@ class TestTalkServiceChat:
 
 
 @pytest.mark.django_db
+class TestTalkServiceChatLangfuseSession:
+    """synthesize_chat に session_id を渡すと Langfuse トレースに反映される."""
+
+    @patch("features.talk.services.LLMClient")
+    def test_session_id_propagates_to_langfuse(self, mock_llm_class, chat_config):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
+        mock_llm_class.return_value = mock_llm
+
+        with patch("langfuse.get_client") as mock_get_client:
+            service = TalkService()
+            service.synthesize_chat(
+                config=chat_config,
+                messages=[{"role": "user", "content": "hi"}],
+                session_id="abc-123",
+            )
+            mock_get_client.return_value.update_current_trace.assert_called_with(
+                session_id="abc-123"
+            )
+
+    @patch("features.talk.services.LLMClient")
+    def test_no_session_id_does_not_set_session(self, mock_llm_class, chat_config):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
+        mock_llm_class.return_value = mock_llm
+
+        with patch("langfuse.get_client") as mock_get_client:
+            service = TalkService()
+            service.synthesize_chat(
+                config=chat_config,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            # get_client 自体はプロンプト取得などで呼ばれうるが、
+            # update_current_trace は session_id 連携時のみ呼ぶ
+            mock_get_client.return_value.update_current_trace.assert_not_called()
+
+
+@pytest.mark.django_db
 class TestTalkServiceChatMaxTokens:
     """LLM 呼び出し時に max_tokens 上限が指定されることのテスト"""
 

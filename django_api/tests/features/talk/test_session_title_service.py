@@ -65,3 +65,30 @@ class TestGenerateSessionTitle:
         service = TalkService()
         title = service.generate_session_title([{"role": "user", "content": "x"}])
         assert title == ""
+
+    @patch("features.talk.services.LLMClient")
+    def test_session_id_propagates_to_langfuse(self, mock_llm_class):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion.return_value = _mock_completion("OK")
+        mock_llm_class.return_value = mock_llm
+
+        with patch("langfuse.get_client") as mock_get_client:
+            service = TalkService()
+            service.generate_session_title(
+                [{"role": "user", "content": "x"}],
+                session_id="sess-abc",
+            )
+            mock_get_client.return_value.update_current_trace.assert_called_with(
+                session_id="sess-abc"
+            )
+
+    @patch("features.talk.services.LLMClient")
+    def test_no_session_id_does_not_set_session(self, mock_llm_class):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion.return_value = _mock_completion("OK")
+        mock_llm_class.return_value = mock_llm
+
+        with patch("langfuse.get_client") as mock_get_client:
+            service = TalkService()
+            service.generate_session_title([{"role": "user", "content": "x"}])
+            mock_get_client.return_value.update_current_trace.assert_not_called()

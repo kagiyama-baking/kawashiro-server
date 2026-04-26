@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
 
 
+def _set_langfuse_session(session_id: str | None) -> None:
+    """現在のトレースに Langfuse セッション ID を設定する.
+
+    Langfuse の Sessions 機能 (https://langfuse.com/docs/observability/features/sessions)
+    で同一チャットセッション内のトレースを集約表示するためのもの。失敗しても
+    本処理は継続する。
+    """
+    if not session_id:
+        return
+    try:
+        from langfuse import get_client
+
+        get_client().update_current_trace(session_id=str(session_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Langfuse session_id 設定失敗: %s", exc)
+
+
 class TalkService:
     """会話生成サービス."""
 
@@ -156,6 +173,8 @@ class TalkService:
         self,
         config: "TalkConfig",
         messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         """過去会話履歴を引き継ぐチャット応答を生成する.
 
@@ -183,6 +202,7 @@ class TalkService:
             config.name,
             len(messages),
         )
+        _set_langfuse_session(session_id)
 
         system_compile, required_keys = self._prepare_chat_context(config)
         logger.debug("検出されたプレースホルダー: %s", required_keys)
@@ -247,13 +267,20 @@ class TalkService:
     SESSION_TITLE_MAX_LENGTH = 50
 
     @observe(name="talk/generate_session_title")
-    def generate_session_title(self, messages: list[dict[str, str]]) -> str:
+    def generate_session_title(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> str:
         """会話履歴から短いセッションタイトルを LLM で要約生成する.
 
         失敗時は空文字を返す（呼び出し側で title 設定をスキップ）。
         """
         if not messages:
             return ""
+
+        _set_langfuse_session(session_id)
 
         system_prompt = (
             "以下の会話の内容を表す短いタイトルを、日本語で 1 行・"
