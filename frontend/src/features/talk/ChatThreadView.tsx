@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useChatStore } from '@/stores/chat-store';
 import { AudioBundleDownload } from './AudioBundleDownload';
+import { AudioBundlePlay } from './AudioBundlePlay';
 import { ChatInputForm } from './ChatInputForm';
 import { ChatMessageItem } from './ChatMessageItem';
 import { SessionTitleEditor } from './SessionTitleEditor';
@@ -70,6 +71,11 @@ export function ChatThreadView() {
                     onSave={updateActiveTitle}
                 />
                 <div className="flex items-center gap-2">
+                    <AudioBundlePlay
+                        sessionId={session.id}
+                        messages={session.messages}
+                        disabled={isSendingMessage}
+                    />
                     <AudioBundleDownload
                         sessionId={session.id}
                         messages={session.messages}

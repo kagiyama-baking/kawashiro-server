@@ -2,35 +2,18 @@ import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { fetchAudioBlob } from '@/lib/api/talk';
 import { concatWavBlobs, formatTimestampForFilename } from '@/lib/audio/concat';
+import {
+    countPlayableAudios,
+    isAllWav,
+    loadSessionAudios,
+} from '@/lib/audio/bundleLoader';
 import type { ChatSessionMessage } from '@/types/talk';
 
 interface AudioBundleDownloadProps {
     readonly sessionId: string;
     readonly messages: readonly ChatSessionMessage[];
     readonly disabled?: boolean;
-}
-
-interface FetchedAudio {
-    readonly blob: Blob;
-    readonly format: string;
-}
-
-async function loadAllAudios(
-    sessionId: string,
-    messages: readonly ChatSessionMessage[],
-): Promise<FetchedAudio[]> {
-    const targets = messages.filter(
-        (m) => m.audio_url !== null && m.audio_size_bytes > 0,
-    );
-    const blobs = await Promise.all(
-        targets.map(async (m) => ({
-            blob: await fetchAudioBlob(sessionId, m.id),
-            format: m.audio_format || 'wav',
-        })),
-    );
-    return blobs;
 }
 
 export function AudioBundleDownload({
@@ -40,18 +23,16 @@ export function AudioBundleDownload({
 }: AudioBundleDownloadProps) {
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const audioCount = messages.filter(
-        (m) => m.audio_url !== null && m.audio_size_bytes > 0,
-    ).length;
+    const audioCount = countPlayableAudios(messages);
     const isDisabled = disabled || isProcessing || audioCount === 0;
 
     const handleClick = async () => {
         setIsProcessing(true);
         try {
-            const audios = await loadAllAudios(sessionId, messages);
+            const audios = await loadSessionAudios(sessionId, messages);
             if (audios.length === 0) return;
 
-            const allWav = audios.every((a) => a.format === 'wav');
+            const allWav = isAllWav(audios);
             const ext = allWav ? 'wav' : audios[0].format || 'bin';
             const merged = allWav
                 ? await concatWavBlobs(
