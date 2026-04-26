@@ -407,9 +407,15 @@ class ChatSessionListCreateView(generics.GenericAPIView):
     renderer_classes = [JSONRenderer]
 
     def get_queryset(self):
-        return ChatSession.objects.filter(user=self.request.user).annotate(
-            message_count=Count("messages"),
-            total_audio_bytes=Coalesce(Sum("messages__audio_size_bytes"), 0),
+        # annotate(Count/Sum) で GROUP BY が入ると Meta.ordering が効かなく
+        # なる場合があるため、最新更新降順を明示する。
+        return (
+            ChatSession.objects.filter(user=self.request.user)
+            .annotate(
+                message_count=Count("messages"),
+                total_audio_bytes=Coalesce(Sum("messages__audio_size_bytes"), 0),
+            )
+            .order_by("-updated_at", "-created_at")
         )
 
     @extend_schema(

@@ -86,6 +86,28 @@ class TestSessionListCreate:
         assert item["message_count"] == 2
         assert item["total_audio_bytes"] == 12345
 
+    def test_list_orders_by_updated_at_desc(self, auth_client, user):
+        """一覧は updated_at 降順（最新更新が先頭）であること."""
+        from django.utils import timezone
+
+        old = ChatSession.objects.create(user=user, config_name="m", title="古い")
+        mid = ChatSession.objects.create(user=user, config_name="m", title="中")
+        new = ChatSession.objects.create(user=user, config_name="m", title="新しい")
+
+        # 明示的に updated_at を逆順にずらす（auto_now を回避するため update を使用）
+        now = timezone.now()
+        ChatSession.objects.filter(id=old.id).update(
+            updated_at=now - timezone.timedelta(hours=2)
+        )
+        ChatSession.objects.filter(id=mid.id).update(
+            updated_at=now - timezone.timedelta(hours=1)
+        )
+        ChatSession.objects.filter(id=new.id).update(updated_at=now)
+
+        response = auth_client.get(self.URL)
+        titles = [item["title"] for item in response.data["results"]]
+        assert titles == ["新しい", "中", "古い"]
+
     def test_list_pagination_default_limit_is_20(self, auth_client, user):
         for i in range(25):
             ChatSession.objects.create(user=user, config_name="m", title=f"#{i}")
