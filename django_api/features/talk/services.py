@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
 
 
+def _set_langfuse_session(session_id: str | None) -> None:
+    """現在のトレースに Langfuse セッション ID を設定する.
+
+    Langfuse の Sessions 機能 (https://langfuse.com/docs/observability/features/sessions)
+    で同一チャットセッション内のトレースを集約表示するためのもの。失敗しても
+    本処理は継続する。
+    """
+    if not session_id:
+        return
+    try:
+        from langfuse import get_client
+
+        get_client().update_current_trace(session_id=str(session_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Langfuse session_id 設定失敗: %s", exc)
+
+
 class TalkService:
     """会話生成サービス."""
 
@@ -156,6 +173,8 @@ class TalkService:
         self,
         config: "TalkConfig",
         messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         """過去会話履歴を引き継ぐチャット応答を生成する.
 
@@ -183,6 +202,7 @@ class TalkService:
             config.name,
             len(messages),
         )
+        _set_langfuse_session(session_id)
 
         system_compile, required_keys = self._prepare_chat_context(config)
         logger.debug("検出されたプレースホルダー: %s", required_keys)
@@ -240,6 +260,57 @@ class TalkService:
         assistant_text = response.choices[0].message.content or ""
         logger.info("チャット応答生成完了: %d文字", len(assistant_text))
         return assistant_text
+
+    # セッションタイトル要約用の出力上限。20 文字程度に収める想定だが
+    # 余裕を持って 60 トークン。
+    SESSION_TITLE_MAX_OUTPUT_TOKENS = 60
+    SESSION_TITLE_MAX_LENGTH = 50
+
+    @observe(name="talk/generate_session_title")
+    def generate_session_title(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> str:
+        """会話履歴から短いセッションタイトルを LLM で要約生成する.
+
+        失敗時は空文字を返す（呼び出し側で title 設定をスキップ）。
+        """
+        if not messages:
+            return ""
+
+        _set_langfuse_session(session_id)
+
+        system_prompt = (
+            "以下の会話の内容を表す短いタイトルを、日本語で 1 行・"
+            "20 文字以内で 1 つだけ出力してください。"
+            "出力はタイトル本文のみとし、引用符・記号・前置きは含めないでください。"
+        )
+        # 履歴が長い場合でもトークンを節約するため先頭 4 件まで利用
+        sample = messages[:4]
+        joined = "\n".join(f"{m['role']}: {m['content']}" for m in sample)
+        full_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": joined},
+        ]
+
+        try:
+            response = self.llm_client.chat_completion(
+                full_messages,
+                max_tokens=self.SESSION_TITLE_MAX_OUTPUT_TOKENS,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("セッションタイトル生成失敗: %s", exc)
+            return ""
+
+        title = (response.choices[0].message.content or "").strip()
+        # 改行・引用符などを軽く正規化、長すぎる場合は丸める
+        title = title.splitlines()[0] if title else ""
+        title = title.strip("「」\"' 　")
+        if len(title) > self.SESSION_TITLE_MAX_LENGTH:
+            title = title[: self.SESSION_TITLE_MAX_LENGTH]
+        return title
 
     def _generate_greeting(self, system_prompt: str, user_prompt: str) -> str:
         """LLM でテキスト生成."""

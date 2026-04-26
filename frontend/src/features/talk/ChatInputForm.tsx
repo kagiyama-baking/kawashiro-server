@@ -33,7 +33,6 @@ export function ChatInputForm({
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-        // IME 変換中の Enter は送信しない
         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             if (!cannotSubmit) onSubmit();
@@ -54,7 +53,7 @@ export function ChatInputForm({
             <div className="text-muted-foreground flex items-center justify-between text-[12px]">
                 <span>
                     {disabled
-                        ? 'プリセットを選択してください'
+                        ? 'チャットを選んでください'
                         : isLoading
                           ? '生成中… 停止ボタンで中断できます'
                           : 'Enter で送信、Shift+Enter で改行'}
