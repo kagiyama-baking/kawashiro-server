@@ -8,6 +8,7 @@ import {
     loadSessionAudios,
 } from '@/lib/audio/bundleLoader';
 import { concatWavBlobs } from '@/lib/audio/concat';
+import { SILENT_WAV_DATA_URL } from '@/lib/audio/silent';
 import type { ChatSessionMessage } from '@/types/talk';
 
 interface AudioBundlePlayProps {
@@ -68,15 +69,43 @@ export function AudioBundlePlay({
 
     const handlePlay = async () => {
         if (audioCount === 0 || isPreparing) return;
+
+        // iOS Safari の autoplay policy 対策: ユーザー操作と同期して
+        // 先に無音 WAV を play() し audio 要素をアンロックしておく。
+        // 結合処理は時間がかかるため、await を挟むと autoplay 起点が切れる。
+        const audio = new Audio(SILENT_WAV_DATA_URL);
+        audioRef.current = audio;
+        audio.addEventListener('loadedmetadata', () => {
+            // 本データ読み込み後の duration を反映する
+            setDuration(audio.duration);
+        });
+        audio.addEventListener('timeupdate', () => {
+            setCurrentTime(audio.currentTime);
+        });
+        audio.addEventListener('ended', () => {
+            stop();
+        });
+
+        try {
+            await audio.play();
+        } catch (err) {
+            console.warn('音声アンロックに失敗:', err);
+            toast.error('音声再生が許可されませんでした');
+            stop();
+            return;
+        }
+
         setIsPreparing(true);
         try {
             const audios = await loadSessionAudios(sessionId, messages);
             if (audios.length === 0) {
                 toast.error('再生可能な音声がありません');
+                stop();
                 return;
             }
             if (!isAllWav(audios)) {
                 toast.error('一括再生は WAV のみ対応しています');
+                stop();
                 return;
             }
             const merged = await concatWavBlobs(
@@ -86,20 +115,13 @@ export function AudioBundlePlay({
             const url = URL.createObjectURL(merged);
             objectUrlRef.current = url;
 
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.addEventListener('loadedmetadata', () => {
-                setDuration(audio.duration);
-            });
-            audio.addEventListener('timeupdate', () => {
-                setCurrentTime(audio.currentTime);
-            });
-            audio.addEventListener('ended', () => {
-                stop();
-            });
+            // アンロック済みの audio に src を差し替えて再生する
+            audio.src = url;
+            audio.load();
             await audio.play();
             setIsPlaying(true);
-        } catch {
+        } catch (err) {
+            console.warn('音声の一括再生に失敗:', err);
             toast.error('音声の一括再生に失敗しました');
             stop();
         } finally {
