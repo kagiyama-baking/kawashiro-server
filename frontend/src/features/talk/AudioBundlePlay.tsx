@@ -1,5 +1,5 @@
 import { Loader2, Play, Square } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,7 +43,9 @@ export function AudioBundlePlay({
 
     const audioCount = countPlayableAudios(messages);
 
-    const stop = () => {
+    // setState 関数 (setCurrentTime / setDuration / setPhase) は React により
+    // 安定参照が保証されるため、useCallback の依存配列は空でよい。
+    const stop = useCallback(() => {
         const audio = audioRef.current;
         if (audio) {
             audio.pause();
@@ -58,18 +60,16 @@ export function AudioBundlePlay({
         setCurrentTime(0);
         setDuration(0);
         setPhase('idle');
-    };
-
-    useEffect(() => {
-        return () => {
-            stop();
-        };
     }, []);
 
-    // セッション切替時は停止
+    // unmount およびセッション切替時に進行中の再生を停止
     useEffect(() => {
-        stop();
-    }, [sessionId]);
+        return () => stop();
+    }, [stop]);
+
+    useEffect(() => {
+        return () => stop();
+    }, [sessionId, stop]);
 
     const prepare = async () => {
         if (audioCount === 0 || phase !== 'idle') return;

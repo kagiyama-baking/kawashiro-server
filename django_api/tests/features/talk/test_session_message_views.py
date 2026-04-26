@@ -265,6 +265,11 @@ class TestSessionMessagePost:
     def test_messages_endpoint_rate_limited(
         self, mock_service_class, auth_client, session
     ):
+        # 直前のテストの talk_chat キャッシュが残ると 1 回目から 429 になる
+        from django.core.cache import cache
+
+        cache.clear()
+
         mock_service_class.return_value = _mock_service(
             {"message": {"role": "assistant", "content": "ok"}}
         )
