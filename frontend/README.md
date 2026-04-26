@@ -24,7 +24,7 @@
 | `/login`    | ログイン           | メールアドレス + パスワードでToken認証     |
 | `/`         | ホーム             | バナー + メニューカード                    |
 | `/tts`      | テキスト読み上げ   | テキスト入力 → 音声合成 → 再生/ダウンロード |
-| `/talk`     | 会話生成読み上げ     | プリセット選択 → LLM生成 → TTS再生        |
+| `/talk`     | チャット（履歴あり）| 2 ペイン UI（左 = セッション一覧、右 = メッセージ）。プリセット選択して新規セッション作成、過去会話を引き継いだ複数ターン会話、編集再送、音声個別/一括 再生・DL・削除、LLM タイトル自動生成。モバイルではドロワー化、iOS Safari の autoplay にも対応 |
 | `/media`    | メディア変換       | 画像フォーマット変換 / ZIP→PDF変換         |
 
 ## セットアップ
@@ -111,12 +111,24 @@ frontend/
 │   │   ├── home/                # ホーム画面
 │   │   ├── login/               # ログイン画面
 │   │   ├── tts/                 # テキスト読み上げ
-│   │   ├── talk/                # 会話生成読み上げ
+│   │   ├── talk/                # チャット履歴 UI
+│   │   │   ├── ChatPage.tsx              # 2 ペイン構成（sidebar + main）
+│   │   │   ├── SessionSidebar.tsx        # 履歴一覧 + モバイルドロワー
+│   │   │   ├── SessionListItem.tsx       # タイトル / 日時 / サイズ / 削除
+│   │   │   ├── NewSessionDialog.tsx      # プリセット選択モーダル
+│   │   │   ├── SessionTitleEditor.tsx    # タイトルのインライン編集
+│   │   │   ├── ChatThreadView.tsx        # メッセージ一覧 + 入力欄 + ツールバー
+│   │   │   ├── ChatMessageItem.tsx       # メッセージ + 編集再送 + 音声 UI
+│   │   │   ├── ChatInputForm.tsx         # 送信 / 停止 (キャンセル) ボタン
+│   │   │   ├── AudioBundlePlay.tsx       # 一括再生（4 状態, iOS Safari 対応）
+│   │   │   └── AudioBundleDownload.tsx   # 一括 DL（WAV を 1 秒無音入りで結合）
 │   │   └── media/               # メディア変換
 │   ├── lib/
 │   │   ├── api-client.ts        # ky インスタンス（Auth自動付与）
-│   │   └── api/                 # API 関数（auth, tts, talk, media）
-│   ├── stores/                  # Zustand ストア（auth, tts）
+│   │   ├── api/                 # API 関数（auth, tts, talk, media）
+│   │   ├── audio/               # concat / bundleLoader（音声結合・取得）
+│   │   └── format/              # bytes ヘルパ
+│   ├── stores/                  # Zustand ストア（auth, tts, chat）
 │   └── types/                   # TypeScript 型定義
 ├── tests/                       # Vitest ユニットテスト
 ├── e2e/                         # Playwright E2E テスト

@@ -12,7 +12,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | media | `/media/` | 画像変換・ZIP→PDF |
 | tts | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） |
 | weather | `/weather/` | 気象庁天気予報 |
-| talk | `/talk/` | 会話生成（Talk Generator） |
+| talk | `/talk/` | 会話生成（Talk Generator）+ チャット履歴セッション API |
 | hn-agent | `/hn-agent/` | HackerNews Agent（監視・調査・辛口分析・セキュリティ対応指針） |
 
 ## アーキテクチャの肝
@@ -239,6 +239,56 @@ Langfuse 上のユーザープロンプトテンプレートで以下のプレ�
 | `{{datetime}}` | 日時・曜日・祝日情報（JSON） | 日時情報を使用 |
 | `{{weather}}` | 天気予報データ（JSON） | 天気情報を使用 |
 | `{{events}}` | 本日の予定データ（JSON） | 予定情報を使用 |
+
+#### チャット履歴セッション API
+
+`TalkConfig` の人格を使い回しつつ、ChatGPT 風に過去発話を引き継いだ複数ターンの会話を行う API 群。データは PostgreSQL に永続化、TTS 音声は `MEDIA_ROOT` 配下にファイルとして保存し、Django ビュー経由で認可付き配信されます。
+
+| メソッド | パス | 用途 |
+|---|---|---|
+| `GET`     | `/talk/sessions/`                                    | セッション一覧（LimitOffsetPagination, default_limit=20） |
+| `POST`    | `/talk/sessions/`                                    | セッション新規作成（`config_name` を作成時に固定） |
+| `GET`     | `/talk/sessions/<uuid>/`                             | 詳細（messages 含む。音声は `audio_url` 経由） |
+| `PATCH`   | `/talk/sessions/<uuid>/`                             | タイトル更新 |
+| `DELETE`  | `/talk/sessions/<uuid>/`                             | セッション削除（音声ファイルも cascade で物理削除） |
+| `POST`    | `/talk/sessions/<uuid>/messages/`                    | ユーザー発話を送信し assistant 応答を生成（throttle: `talk_chat` 20/min） |
+| `PATCH`   | `/talk/sessions/<uuid>/messages/<int>/`              | 編集再送（対象 user メッセージ以降を物理削除し再生成） |
+| `GET`     | `/talk/sessions/<uuid>/audio/<int>/`                 | 認可付き音声 `FileResponse` |
+| `DELETE`  | `/talk/sessions/<uuid>/audio/<int>/`                 | 個別メッセージの音声だけ削除（テキストは残す） |
+| `DELETE`  | `/talk/sessions/<uuid>/audio/`                       | セッション内の音声を一括削除 |
+
+主な特徴:
+
+- **モデル**: `ChatSession`(UUID 主キー / user FK / config_name 固定 / title 自動生成) と `ChatMessage`(`(session, sequence)` UniqueConstraint / FileField)
+- **タイトル LLM 自動生成**: 初回 assistant 応答後に `TalkService.generate_session_title` が 20 文字程度で要約。手動編集も可能
+- **同時 POST 安全**: `select_for_update` で 50 件上限のレース防止
+- **オーファン対策**: `transaction.atomic` の commit 後にファイル書き込み、シグナルで削除時の物理削除
+- **Langfuse Sessions 連携**: 各 LLM 呼び出しトレースに `session_id`（UUID）を付与し、Langfuse UI のセッション機能で同一会話を集約観測
+
+##### API 呼び出し例（チャット履歴）
+
+```bash
+# セッションを新規作成（プリセット = morning に固定）
+curl -X POST http://localhost:8000/talk/sessions/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config_name": "morning"}'
+
+# 発話を送信して assistant 応答（音声付き）を取得
+curl -X POST http://localhost:8000/talk/sessions/<uuid>/messages/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "おはよう"}'
+
+# 音声ファイルを取得（streaming）
+curl http://localhost:8000/talk/sessions/<uuid>/audio/<msg_id>/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  --output reply.wav
+
+# セッション内の音声を一括削除（テキストは残す）
+curl -X DELETE http://localhost:8000/talk/sessions/<uuid>/audio/ \
+  -H "Authorization: Token YOUR_TOKEN"
+```
 
 ### HackerNews Agent API
 

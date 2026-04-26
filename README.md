@@ -1,5 +1,17 @@
 # 鍵山製パン社内 Web アプリケーション
 
+> **Docker × Django REST × React SPA で構築する社内ツール基盤。**
+> LiteLLM Proxy + Langfuse で LLMOps を一元化し、ChatGPT 風の **チャット履歴付き音声会話**、テキスト読み上げ、OneDrive / Outlook 連携、HackerNews 監視エージェントなどを統合。
+
+[![Python](https://img.shields.io/badge/Python_3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django_6-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![pnpm](https://img.shields.io/badge/pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white)](https://pnpm.io/)
+
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
@@ -12,12 +24,12 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 
 ## サービス
 
-- 🌐 **Frontend**: React SPA（テキスト読み上げ・会話生成・メディア変換の操作画面）
+- 🌐 **Frontend**: React SPA（テキスト読み上げ・チャット履歴・メディア変換の操作画面、モバイル対応 2 ペイン UI）
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
         - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）
-        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk が参照）
+        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk が参照）+ Sessions 機能でチャット会話を集約観測
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
@@ -27,7 +39,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
         - 🔍 **Tavily**: Tavily Web 検索 API クライアント
         - 💬 **Slack**: Slack Incoming Webhook 通知クライアント
     - **features/** - ビジネス機能
-        - 🎙️ **Talk**: 会話生成 API（プリセットベース・天気/予定/日時プレースホルダー対応・TTS 統合）
+        - 🎙️ **Talk**: 会話生成 API + **チャット履歴セッション**（DB + ファイル永続化、編集再送、音声配信/個別 & 一括削除、LLM タイトル要約、Langfuse Session 連携）
         - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
         - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。LangGraph ReAct Agent がスレッド性質に応じて 3 ツールを使い分け）
 - 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（GPU）
@@ -106,13 +118,14 @@ Langfuse 未登録でも `LangfusePromptRef.fallback_text` があれば動作し
 ## 特徴
 
 - 🌐 **モダン SPA**: React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui
+- 💬 **チャット履歴永続化**: ChatGPT 風の 2 ペイン UI、編集再送、音声一括再生 / DL（iOS Safari の autoplay にも対応）、モバイルドロワー
 - 🚀 **CI/CD**: GitHub Actions による自動ビルド・テスト・リリース
 - 📦 **コンテナレジストリ**: GitHub Container Registry へのイメージ公開
 - 🔐 **ビルド証明**: SLSA Build Provenance による信頼性の担保
 - 📋 **SBOM**: ソフトウェア部品表（CycloneDX）の自動生成
 - 🛡️ **脆弱性スキャン**: Trivy によるイメージ検査
 - 🔒 **暗号化**: 機密情報の暗号化保存（MS Graph 秘密鍵、LiteLLM Virtual Key など）
-- 🔭 **LLM 観測**: Langfuse によるトレース・プロンプトバージョニング
+- 🔭 **LLM 観測**: Langfuse によるトレース・プロンプトバージョニング・**Sessions** によるチャット集約
 - ✅ **テスト**: pytest（バックエンド）+ Vitest + Playwright（フロントエンド）
 
 ## プロジェクト構成
@@ -133,8 +146,8 @@ kawashiro-server/
 │   ├── src/
 │   │   ├── components/         # UIコンポーネント
 │   │   ├── features/           # 画面（home, login, tts, talk, media）
-│   │   ├── lib/                # APIクライアント
-│   │   └── stores/             # Zustand ストア
+│   │   ├── lib/                # APIクライアント / format / audio 結合
+│   │   └── stores/             # Zustand ストア（auth, tts, chat）
 │   ├── tests/                  # Vitest ユニットテスト
 │   └── e2e/                    # Playwright E2E テスト
 │
@@ -154,10 +167,17 @@ kawashiro-server/
 │   │   ├── tavily/             # Tavily Web 検索クライアント
 │   │   └── slack/              # Slack Incoming Webhook
 │   ├── features/
-│   │   ├── talk/               # Talk Generator（LLM + 天気 + 予定 + TTS）
+│   │   ├── talk/               # Talk Generator + チャット履歴セッション
+│   │   │   ├── views/          # synthesize / sessions / messages / audio に分割
+│   │   │   ├── models.py       # TalkConfig / ChatSession / ChatMessage
+│   │   │   ├── services.py     # synthesize_chat / generate_session_title
+│   │   │   └── signals.py      # post_delete で音声ファイル物理削除
 │   │   ├── media/              # メディア変換
 │   │   └── hn_agent/           # HackerNews Agent
 │   └── tests/                  # テストコード
+│
+├── volumes/
+│   └── media/                  # チャット履歴の TTS 音声永続化先（ホストマウント）
 │
 └── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU / CUDA 11.8）
 ```
