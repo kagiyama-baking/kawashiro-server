@@ -10,3 +10,6 @@ class TalkAppConfig(AppConfig):
     name = "features.talk"
     label = "talk"
     verbose_name = "Talk Generator"
+
+    def ready(self) -> None:
+        from . import signals  # noqa: F401

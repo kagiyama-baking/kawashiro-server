@@ -235,6 +235,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 #     BASE_DIR / 'static',
 # ]
 
+# メディアファイル（ユーザーアップロード / 生成バイナリ）の保存先
+# チャット履歴の TTS 音声などはここに保存される。
+# 直接配信は行わず、Django ビュー経由で認可付きで配信する。
+MEDIA_ROOT = BASE_DIR / "media"
+
 # WhiteNoise設定
 # 静的ファイルの圧縮とキャッシュを有効化
 STORAGES = {
@@ -275,9 +280,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
-    # レート制限（ブルートフォース対策）
+    # レート制限（ブルートフォース対策 + LLM コスト枯渇防止）
     "DEFAULT_THROTTLE_RATES": {
         "anon": "10/minute",
+        "talk_chat": "20/minute",
     },
 }
 

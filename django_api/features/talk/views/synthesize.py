@@ -1,4 +1,4 @@
-"""会話生成ビュー."""
+"""挨拶生成 / 設定一覧 / 日時情報 ビュー（既存 talk/synthesize 系）."""
 
 import base64
 import logging
@@ -11,35 +11,18 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from integrations.llm.exceptions import LLMClientError, LLMTimeoutError
-from integrations.msgraph.exceptions import (
-    AuthenticationError,
-    ConfigurationError,
-    NetworkError,
-)
-from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
-from integrations.weather.exceptions import (
-    WeatherAreaNotFoundError,
-    WeatherNetworkError,
-    WeatherParseError,
-    WeatherTimeoutError,
-)
-
-from .constants import DAY_OF_WEEK_JA
-from .exceptions import (
-    HolidayNetworkError,
-    HolidayTimeoutError,
-    PlaceholderDataMissingError,
-)
-from .holiday_client import HolidayClient
-from .models import TalkConfig
-from .serializers import (
+from ..constants import DAY_OF_WEEK_JA
+from ..exceptions import HolidayNetworkError, HolidayTimeoutError
+from ..holiday_client import HolidayClient
+from ..models import TalkConfig
+from ..serializers import (
     ConfigListResponseSerializer,
     TalkRequestSerializer,
     TalkResponseSerializer,
     TodayInfoResponseSerializer,
 )
-from .services import TalkService
+from ..services import TalkService
+from ._common import handle_synthesis_error
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +100,6 @@ TTS無効の場合はJSONでテキストのみ返します。
     )
     def post(self, request):
         """会話を生成."""
-        # リクエストをバリデーション
         request_serializer = TalkRequestSerializer(data=request.data)
         if not request_serializer.is_valid():
             return Response(
@@ -142,7 +124,6 @@ TTS無効の場合はJSONでテキストのみ返します。
             service = TalkService()
             result = service.synthesize(config=config, user_prompt=user_prompt)
 
-            # 音声データがある場合はBase64エンコードしてJSONで返す
             if "audio_data" in result:
                 response_data = {
                     "greeting_text": result["greeting_text"],
@@ -155,78 +136,14 @@ TTS無効の場合はJSONでテキストのみ返します。
                 response_serializer.is_valid(raise_exception=True)
                 return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-            # 音声なしの場合はJSONを返す
             response_serializer = TalkResponseSerializer(data=result)
             response_serializer.is_valid(raise_exception=True)
-
             return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-        except PlaceholderDataMissingError as e:
-            logger.warning("プレースホルダー要求データ不足: %s", str(e))
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        except WeatherAreaNotFoundError as e:
-            logger.warning("予報区コードが見つからない: %s", str(e))
-            return Response(
-                {"error": "指定された予報区コードが見つかりません"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        except WeatherTimeoutError as e:
-            logger.error("外部APIタイムアウト: %s", str(e))
-            return Response(
-                {"error": "外部サービスへのリクエストがタイムアウトしました"},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-
-        except (LLMTimeoutError, TTSTimeoutError, HolidayTimeoutError) as e:
-            logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(e))
-            return Response(
-                {"error": "サービスへのリクエストがタイムアウトしました"},
-                status=status.HTTP_504_GATEWAY_TIMEOUT,
-            )
-
-        except (
-            WeatherNetworkError,
-            WeatherParseError,
-            NetworkError,
-            HolidayNetworkError,
-        ) as e:
-            logger.error("外部API接続エラー: %s", str(e))
-            return Response(
-                {"error": "外部サービスへの接続に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        except (LLMClientError, TTSNetworkError) as e:
-            logger.error("AI/TTSサービスエラー: %s", str(e))
-            return Response(
-                {"error": "AI生成サービスへの接続に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        except ConfigurationError as e:
-            logger.error("サービス設定エラー: %s", str(e))
-            return Response(
-                {"error": "サービスの設定に問題があります"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        except AuthenticationError as e:
-            logger.error("外部サービス認証エラー: %s", str(e))
-            return Response(
-                {"error": "外部サービスへの認証に失敗しました"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
         except Exception as e:
-            logger.exception("予期しないエラー: %s", str(e))
-            return Response(
-                {"error": "あいさつの生成中に問題が発生しました"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            return handle_synthesis_error(
+                e,
+                fallback_message="あいさつの生成中に問題が発生しました",
             )
 
 
@@ -243,30 +160,6 @@ class TodayInfoView(APIView):
         description="""本日の日時情報を取得します。
 
 日本時間での日付、時刻、曜日、祝日情報を返します。
-
-## レスポンス例
-
-```json
-{
-    "date": "2025-01-11",
-    "time": "09:30:00",
-    "day_of_week": "Saturday",
-    "day_of_week_ja": "土曜日",
-    "holiday_name": null
-}
-```
-
-祝日の場合:
-
-```json
-{
-    "date": "2025-01-01",
-    "time": "08:00:00",
-    "day_of_week": "Wednesday",
-    "day_of_week_ja": "水曜日",
-    "holiday_name": "元日"
-}
-```
 """,
         responses={
             200: OpenApiResponse(
@@ -287,7 +180,6 @@ class TodayInfoView(APIView):
             day_of_week = now.strftime("%A")
             day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
 
-            # 祝日を取得
             holiday_client = HolidayClient()
             holiday_name = holiday_client.get_holiday_name(date_str)
 
@@ -301,7 +193,6 @@ class TodayInfoView(APIView):
 
             serializer = TodayInfoResponseSerializer(data=data)
             serializer.is_valid(raise_exception=True)
-
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except HolidayTimeoutError as e:

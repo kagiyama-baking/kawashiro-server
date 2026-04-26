@@ -1,9 +1,17 @@
 """会話生成設定モデル"""
 
+import uuid
 from typing import Any
 
+from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
+
+
+def chat_audio_upload_path(instance: "ChatMessage", filename: str) -> str:
+    """ChatMessage の audio_file 保存先パス."""
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else "wav"
+    return f"talk_audio/{instance.session_id}/{instance.sequence}.{ext}"
 
 
 class TalkConfig(models.Model):
@@ -127,3 +135,86 @@ class TalkConfig(models.Model):
             "noise_scale_w": self.tts_noise_scale_w,
             "format": self.tts_format,
         }
+
+
+class ChatSession(models.Model):
+    """チャットセッション（履歴）."""
+
+    ROLE_USER = "user"
+    ROLE_ASSISTANT = "assistant"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+        verbose_name="ユーザー",
+    )
+    title = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        verbose_name="タイトル",
+        help_text="初回応答後に LLM で要約生成。手動編集も可能",
+    )
+    config_name = models.CharField(
+        max_length=50,
+        verbose_name="プリセット名",
+        help_text="セッション作成時に固定。途中変更不可",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "talk_chatsession"
+        ordering = ["-updated_at"]
+        verbose_name = "チャットセッション"
+        verbose_name_plural = "チャットセッション"
+        indexes = [
+            models.Index(fields=["user", "-updated_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.title or f"ChatSession({self.id})"
+
+
+class ChatMessage(models.Model):
+    """チャットメッセージ（user / assistant）."""
+
+    ROLE_CHOICES = [
+        (ChatSession.ROLE_USER, "user"),
+        (ChatSession.ROLE_ASSISTANT, "assistant"),
+    ]
+
+    session = models.ForeignKey(
+        ChatSession,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    sequence = models.PositiveIntegerField(verbose_name="セッション内の連番")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    content = models.TextField()
+    audio_file = models.FileField(
+        upload_to=chat_audio_upload_path,
+        null=True,
+        blank=True,
+        verbose_name="音声ファイル",
+    )
+    audio_format = models.CharField(max_length=10, blank=True, default="")
+    audio_size_bytes = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "talk_chatmessage"
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "sequence"],
+                name="uniq_chatmessage_session_sequence",
+            ),
+        ]
+        verbose_name = "チャットメッセージ"
+        verbose_name_plural = "チャットメッセージ"
+
+    def __str__(self) -> str:
+        return f"{self.role}#{self.sequence} ({self.session_id})"

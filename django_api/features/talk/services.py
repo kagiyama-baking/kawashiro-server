@@ -33,6 +33,23 @@ logger = logging.getLogger(__name__)
 SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
 
 
+def _set_langfuse_session(session_id: str | None) -> None:
+    """現在のトレースに Langfuse セッション ID を設定する.
+
+    Langfuse の Sessions 機能 (https://langfuse.com/docs/observability/features/sessions)
+    で同一チャットセッション内のトレースを集約表示するためのもの。失敗しても
+    本処理は継続する。
+    """
+    if not session_id:
+        return
+    try:
+        from langfuse import get_client
+
+        get_client().update_current_trace(session_id=str(session_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Langfuse session_id 設定失敗: %s", exc)
+
+
 class TalkService:
     """会話生成サービス."""
 
@@ -150,6 +167,150 @@ class TalkService:
 
         required_keys = (system_vars | user_vars) & SUPPORTED_PLACEHOLDERS
         return system_compile, user_compile, required_keys
+
+    @observe(name="talk/chat")
+    def synthesize_chat(
+        self,
+        config: "TalkConfig",
+        messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """過去会話履歴を引き継ぐチャット応答を生成する.
+
+        config の system_prompt のみを Langfuse から取得し、プレースホルダー
+        `{{weather}}` / `{{events}}` / `{{datetime}}` を検出して必要なデータを
+        並列取得して埋め込む。`messages` はそのまま Chat Completions API に
+        流す（user メッセージ内のプレースホルダーは展開しない）。
+
+        Args:
+            config: 会話生成設定
+            messages: 会話履歴 `[{"role": "user"|"assistant", "content": ...}]`。
+                末尾は user メッセージである必要がある（バリデーションは
+                シリアライザ側で行う）。
+
+        Returns:
+            生成結果を含む dict（message, 任意で audio_data /
+            audio_content_type / audio_format）
+
+        Raises:
+            PlaceholderDataMissingError: system_prompt が要求するデータ取得設定が
+                不足している場合（例: {{weather}} 使用時の area_code 未設定）
+        """
+        logger.info(
+            "チャット応答を生成: config=%s, messages=%d件",
+            config.name,
+            len(messages),
+        )
+        _set_langfuse_session(session_id)
+
+        system_compile, required_keys = self._prepare_chat_context(config)
+        logger.debug("検出されたプレースホルダー: %s", required_keys)
+
+        self._validate_requirements(config, required_keys)
+
+        data = self._fetch_placeholder_data(config, required_keys)
+        variables = self._build_prompt_variables(data)
+        system_prompt = system_compile(**variables)
+
+        assistant_text = self._generate_chat_reply(system_prompt, messages)
+
+        result: dict[str, Any] = {
+            "message": {"role": "assistant", "content": assistant_text},
+        }
+
+        tts_options = config.get_tts_options()
+        if tts_options is not None:
+            tts_result = self._synthesize_audio(assistant_text, tts_options)
+            result["audio_data"] = tts_result.audio_data
+            result["audio_content_type"] = tts_result.content_type
+            result["audio_format"] = tts_result.format
+
+        return result
+
+    def _prepare_chat_context(
+        self,
+        config: "TalkConfig",
+    ) -> tuple[Callable[..., str], set[str]]:
+        """Chat 用に system プロンプトの compile 関数と必要プレースホルダーを取得."""
+        system_compile, system_vars = get_prompt_with_variables(
+            config.system_prompt_ref
+        )
+        required_keys = system_vars & SUPPORTED_PLACEHOLDERS
+        return system_compile, required_keys
+
+    # LLM 応答の最大トークン数。コスト/サイズの上限を強制し、
+    # クライアントから無制限に引き出されないようにする。
+    CHAT_MAX_OUTPUT_TOKENS = 1024
+
+    def _generate_chat_reply(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+    ) -> str:
+        """過去履歴を含めて LLM に問い合わせ、assistant 応答を取得する."""
+        full_messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            *messages,
+        ]
+        response = self.llm_client.chat_completion(
+            full_messages,
+            max_tokens=self.CHAT_MAX_OUTPUT_TOKENS,
+        )
+        assistant_text = response.choices[0].message.content or ""
+        logger.info("チャット応答生成完了: %d文字", len(assistant_text))
+        return assistant_text
+
+    # セッションタイトル要約用の出力上限。20 文字程度に収める想定だが
+    # 余裕を持って 60 トークン。
+    SESSION_TITLE_MAX_OUTPUT_TOKENS = 60
+    SESSION_TITLE_MAX_LENGTH = 50
+
+    @observe(name="talk/generate_session_title")
+    def generate_session_title(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> str:
+        """会話履歴から短いセッションタイトルを LLM で要約生成する.
+
+        失敗時は空文字を返す（呼び出し側で title 設定をスキップ）。
+        """
+        if not messages:
+            return ""
+
+        _set_langfuse_session(session_id)
+
+        system_prompt = (
+            "以下の会話の内容を表す短いタイトルを、日本語で 1 行・"
+            "20 文字以内で 1 つだけ出力してください。"
+            "出力はタイトル本文のみとし、引用符・記号・前置きは含めないでください。"
+        )
+        # 履歴が長い場合でもトークンを節約するため先頭 4 件まで利用
+        sample = messages[:4]
+        joined = "\n".join(f"{m['role']}: {m['content']}" for m in sample)
+        full_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": joined},
+        ]
+
+        try:
+            response = self.llm_client.chat_completion(
+                full_messages,
+                max_tokens=self.SESSION_TITLE_MAX_OUTPUT_TOKENS,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("セッションタイトル生成失敗: %s", exc)
+            return ""
+
+        title = (response.choices[0].message.content or "").strip()
+        # 改行・引用符などを軽く正規化、長すぎる場合は丸める
+        title = title.splitlines()[0] if title else ""
+        title = title.strip("「」\"' 　")
+        if len(title) > self.SESSION_TITLE_MAX_LENGTH:
+            title = title[: self.SESSION_TITLE_MAX_LENGTH]
+        return title
 
     def _generate_greeting(self, system_prompt: str, user_prompt: str) -> str:
         """LLM でテキスト生成."""

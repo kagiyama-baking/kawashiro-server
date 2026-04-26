@@ -46,8 +46,8 @@ class TestTodayInfoView:
         response = api_client.get(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @patch("features.talk.views.HolidayClient")
-    @patch("features.talk.views.datetime")
+    @patch("features.talk.views.synthesize.HolidayClient")
+    @patch("features.talk.views.synthesize.datetime")
     def test_today_info_success_weekday(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -68,8 +68,8 @@ class TestTodayInfoView:
         assert response.data["day_of_week_ja"] == "火曜日"
         assert response.data["holiday_name"] is None
 
-    @patch("features.talk.views.HolidayClient")
-    @patch("features.talk.views.datetime")
+    @patch("features.talk.views.synthesize.HolidayClient")
+    @patch("features.talk.views.synthesize.datetime")
     def test_today_info_success_holiday(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -86,8 +86,8 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["holiday_name"] == "元日"
 
-    @patch("features.talk.views.HolidayClient")
-    @patch("features.talk.views.datetime")
+    @patch("features.talk.views.synthesize.HolidayClient")
+    @patch("features.talk.views.synthesize.datetime")
     def test_today_info_holiday_api_network_error(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -104,8 +104,8 @@ class TestTodayInfoView:
         response = authenticated_client.get(url)
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
-    @patch("features.talk.views.HolidayClient")
-    @patch("features.talk.views.datetime")
+    @patch("features.talk.views.synthesize.HolidayClient")
+    @patch("features.talk.views.synthesize.datetime")
     def test_today_info_holiday_api_timeout(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -122,8 +122,8 @@ class TestTodayInfoView:
         response = authenticated_client.get(url)
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
-    @patch("features.talk.views.HolidayClient")
-    @patch("features.talk.views.datetime")
+    @patch("features.talk.views.synthesize.HolidayClient")
+    @patch("features.talk.views.synthesize.datetime")
     def test_today_info_unexpected_error(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -221,7 +221,7 @@ class TestTalkSynthesizeView:
         response = authenticated_client.post(url, {}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_success(
         self,
         mock_service_class,
@@ -247,7 +247,7 @@ class TestTalkSynthesizeView:
         # user_prompt 未指定時は None が渡される
         assert call_kwargs.get("user_prompt") is None
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_with_custom_user_prompt(
         self,
         mock_service_class,
@@ -272,7 +272,7 @@ class TestTalkSynthesizeView:
         call_kwargs = mock_service.synthesize.call_args.kwargs
         assert call_kwargs["user_prompt"] == custom_prompt
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_with_tts_enabled(
         self,
         mock_service_class,
@@ -297,7 +297,7 @@ class TestTalkSynthesizeView:
         assert response.data["audio_data"] is not None
         assert response.data["audio_format"] == "wav"
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_weather_api_error(
         self,
         mock_service_class,
@@ -320,7 +320,7 @@ class TestTalkSynthesizeView:
 
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_openai_timeout(
         self,
         mock_service_class,
@@ -339,7 +339,7 @@ class TestTalkSynthesizeView:
         response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_area_not_found(
         self,
         mock_service_class,
@@ -361,7 +361,7 @@ class TestTalkSynthesizeView:
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_with_tts_long_text_not_truncated(
         self,
         mock_service_class,
@@ -389,7 +389,7 @@ class TestTalkSynthesizeView:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data["greeting_text"]) == 500
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_weather_timeout(
         self,
         mock_service_class,
@@ -411,7 +411,7 @@ class TestTalkSynthesizeView:
         )
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_openai_api_error(
         self,
         mock_service_class,
@@ -430,7 +430,7 @@ class TestTalkSynthesizeView:
         response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_tts_network_error(
         self,
         mock_service_class,
@@ -449,7 +449,7 @@ class TestTalkSynthesizeView:
         response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_configuration_error(
         self,
         mock_service_class,
@@ -468,7 +468,7 @@ class TestTalkSynthesizeView:
         response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_authentication_error(
         self,
         mock_service_class,
@@ -487,7 +487,7 @@ class TestTalkSynthesizeView:
         response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_placeholder_data_missing_returns_400(
         self,
         mock_service_class,
@@ -509,7 +509,7 @@ class TestTalkSynthesizeView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "error" in response.data
 
-    @patch("features.talk.views.TalkService")
+    @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_unexpected_error(
         self,
         mock_service_class,
