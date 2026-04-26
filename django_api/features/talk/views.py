@@ -5,6 +5,8 @@ import logging
 import mimetypes
 from datetime import datetime
 
+from django.core.files.base import ContentFile
+from django.db import transaction
 from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404
@@ -502,29 +504,41 @@ def _get_owned_session(request, session_id) -> ChatSession | None:
     return ChatSession.objects.filter(id=session_id, user=request.user).first()
 
 
-def _persist_assistant_message(
+def _create_assistant_message(
     session: ChatSession,
     sequence: int,
     text: str,
-    audio_data: bytes | None,
-    audio_format: str,
 ) -> ChatMessage:
-    """assistant メッセージと音声を保存する."""
-    from django.core.files.base import ContentFile
-
-    msg = ChatMessage(
+    """assistant メッセージを DB に作成する（音声は別途）."""
+    return ChatMessage.objects.create(
         session=session,
         sequence=sequence,
         role="assistant",
         content=text,
     )
-    if audio_data:
-        fname = f"{sequence}.{audio_format}"
-        msg.audio_file.save(fname, ContentFile(audio_data), save=False)
+
+
+def _attach_audio_to_message(
+    msg: ChatMessage,
+    audio_data: bytes,
+    audio_format: str,
+) -> None:
+    """生成済み ChatMessage に音声ファイルを保存する.
+
+    DB トランザクション commit 後に呼ぶことを想定。失敗してもテキスト応答
+    自体は残し、音声フィールドだけ未設定とする（オーファンファイル防止）。
+    """
+    try:
+        msg.audio_file.save(
+            f"{msg.sequence}.{audio_format}",
+            ContentFile(audio_data),
+            save=False,
+        )
         msg.audio_format = audio_format
         msg.audio_size_bytes = len(audio_data)
-    msg.save()
-    return msg
+        msg.save(update_fields=["audio_file", "audio_format", "audio_size_bytes"])
+    except Exception:
+        logger.exception("音声ファイル保存に失敗（テキスト応答は維持）")
 
 
 class ChatSessionMessageView(APIView):
@@ -569,52 +583,61 @@ class ChatSessionMessageView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        existing = list(session.messages.values("role", "content", "sequence"))
-        if len(existing) >= SESSION_MAX_MESSAGES:
-            return Response(
-                {
-                    "error": (
-                        "1 セッションのメッセージ数上限"
-                        f"({SESSION_MAX_MESSAGES})に達しました"
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        next_seq = (max((m["sequence"] for m in existing), default=-1)) + 1
-        api_messages = [
-            {"role": m["role"], "content": m["content"]} for m in existing
-        ] + [{"role": "user", "content": content}]
-
-        # まず user メッセージを保存（API 失敗時に整合を保つためトランザクション）
-        from django.db import transaction
-
+        # DB 書き込みは atomic + select_for_update で同時 POST のレースを防ぐ。
+        # ファイル書き込みは atomic 外に出して DB ロールバック時のオーファン
+        # ファイルを発生させない（M-1 対策）。
         try:
             service = TalkService()
+            assistant: ChatMessage | None = None
+            audio_data: bytes | None = None
+            audio_format: str = "wav"
+            response_payload: dict
             with transaction.atomic():
+                ChatSession.objects.select_for_update().get(id=session.id)
+                existing = list(session.messages.values("role", "content", "sequence"))
+                if len(existing) >= SESSION_MAX_MESSAGES:
+                    return Response(
+                        {
+                            "error": (
+                                "1 セッションのメッセージ数上限"
+                                f"({SESSION_MAX_MESSAGES})に達しました"
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                next_seq = (max((m["sequence"] for m in existing), default=-1)) + 1
+                api_messages = [
+                    {"role": m["role"], "content": m["content"]} for m in existing
+                ] + [{"role": "user", "content": content}]
+
                 ChatMessage.objects.create(
                     session=session,
                     sequence=next_seq,
                     role="user",
                     content=content,
                 )
-                result = service.synthesize_chat(
+                response_payload = service.synthesize_chat(
                     config=config,
                     messages=api_messages,
                     session_id=str(session.id),
                 )
-                _persist_assistant_message(
+                assistant = _create_assistant_message(
                     session=session,
                     sequence=next_seq + 1,
-                    text=result["message"]["content"],
-                    audio_data=result.get("audio_data"),
-                    audio_format=result.get("audio_format", "wav"),
+                    text=response_payload["message"]["content"],
                 )
+                audio_data = response_payload.get("audio_data")
+                audio_format = response_payload.get("audio_format", "wav")
         except Exception as e:
             return _handle_synthesis_error(
                 e,
                 fallback_message="チャット応答の生成中に問題が発生しました",
             )
+
+        # commit 後にファイル書き込み（途中で失敗してもテキスト応答は残る）
+        if audio_data and assistant is not None:
+            _attach_audio_to_message(assistant, audio_data, audio_format)
+        result = response_payload
 
         # 初回応答後、title が空ならタイトル要約（失敗しても続行）
         if not session.title and session.messages.count() == 2:
@@ -669,7 +692,14 @@ class ChatSessionMessageEditView(APIView):
         if session is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        target = session.messages.filter(id=msg_id).first()
+        # IDOR 二重チェック: msg_id 単独でも所有権を確認する。
+        # ChatMessage.id はグローバル連番のため、URL で他人/他 session の
+        # msg_id を渡されても 404 にする。
+        target = ChatMessage.objects.filter(
+            id=msg_id,
+            session_id=session.id,
+            session__user=request.user,
+        ).first()
         if target is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
         if target.role != "user":
@@ -703,13 +733,19 @@ class ChatSessionMessageEditView(APIView):
             {"role": "user", "content": new_content}
         ]
 
-        from django.db import transaction
-
         try:
             service = TalkService()
+            assistant: ChatMessage | None = None
+            audio_data: bytes | None = None
+            audio_format: str = "wav"
             with transaction.atomic():
-                # 対象以降のメッセージを物理削除（signal で音声も消える）
-                session.messages.filter(sequence__gte=target.sequence).delete()
+                ChatSession.objects.select_for_update().get(id=session.id)
+                # 対象以降のメッセージは個別 delete でシグナルを確実に発火
+                # （bulk delete でも現状シグナルは走るが将来の最適化に備える）
+                for old in session.messages.filter(
+                    sequence__gte=target.sequence
+                ).order_by("-sequence"):
+                    old.delete()
                 # 同じ sequence で新 user を作る
                 ChatMessage.objects.create(
                     session=session,
@@ -722,18 +758,21 @@ class ChatSessionMessageEditView(APIView):
                     messages=api_messages,
                     session_id=str(session.id),
                 )
-                _persist_assistant_message(
+                assistant = _create_assistant_message(
                     session=session,
                     sequence=target.sequence + 1,
                     text=result["message"]["content"],
-                    audio_data=result.get("audio_data"),
-                    audio_format=result.get("audio_format", "wav"),
                 )
+                audio_data = result.get("audio_data")
+                audio_format = result.get("audio_format", "wav")
         except Exception as e:
             return _handle_synthesis_error(
                 e,
                 fallback_message="チャット応答の再生成中に問題が発生しました",
             )
+
+        if audio_data and assistant is not None:
+            _attach_audio_to_message(assistant, audio_data, audio_format)
 
         session.save(update_fields=["updated_at"])
 

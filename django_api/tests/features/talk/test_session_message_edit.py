@@ -227,3 +227,22 @@ class TestSessionMessageEdit:
             _url(session.id, other_msg.id), {"content": "x"}, format="json"
         )
         assert response.status_code == 404
+
+    def test_other_user_msg_id_returns_404(
+        self, populated_session, auth_client, other_user
+    ):
+        """他ユーザーの msg_id を URL に混ぜても 404 になる（IDOR 防御）."""
+        session, _ = populated_session
+        other_session = ChatSession.objects.create(
+            user=other_user, config_name=session.config_name
+        )
+        other_msg = ChatMessage.objects.create(
+            session=other_session, sequence=0, role="user", content="他人の発言"
+        )
+        # URL の session_id は自分のもの、msg_id は他人のもの
+        response = auth_client.patch(
+            _url(session.id, other_msg.id), {"content": "x"}, format="json"
+        )
+        assert response.status_code == 404
+        # 他人のメッセージが消されていないこと
+        assert ChatMessage.objects.filter(id=other_msg.id).exists()
