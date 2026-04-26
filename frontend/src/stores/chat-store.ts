@@ -26,7 +26,10 @@ interface ChatStoreState {
     readonly isLoadingDetail: boolean;
     readonly isSendingMessage: boolean;
     readonly error: string | null;
+    // 音声 Blob と Object URL のキャッシュ（msgId 単位）。
+    // 同一音声は 1 回だけ fetch し、UI 側はこの両方を参照する。
     readonly audioObjectUrls: Map<number, string>;
+    readonly audioBlobs: Map<number, Blob>;
 }
 
 interface ChatStoreActions {
@@ -62,6 +65,7 @@ const initialState: ChatStoreState = {
     isSendingMessage: false,
     error: null,
     audioObjectUrls: new Map(),
+    audioBlobs: new Map(),
 };
 
 // 進行中の AbortController（モジュールスコープでのみ持ち、state は不変に保つ）
@@ -127,6 +131,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             isLoadingDetail: true,
             error: null,
             audioObjectUrls: new Map(),
+            audioBlobs: new Map(),
         });
         try {
             const detail = await apiGetSession(id);
@@ -144,6 +149,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             activeSession: null,
             activeSessionId: null,
             audioObjectUrls: new Map(),
+            audioBlobs: new Map(),
         });
     },
 
@@ -157,6 +163,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             activeSession: detail,
             activeSessionId: detail.id,
             audioObjectUrls: new Map(),
+            audioBlobs: new Map(),
         });
         return detail.id;
     },
@@ -184,6 +191,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 activeSession: isActive ? null : state.activeSession,
                 activeSessionId: isActive ? null : state.activeSessionId,
                 audioObjectUrls: isActive ? new Map() : state.audioObjectUrls,
+                audioBlobs: isActive ? new Map() : state.audioBlobs,
             };
         });
     },
@@ -224,14 +232,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const sessionId = get().activeSessionId;
         if (!sessionId || get().isSendingMessage) return;
 
-        // 編集対象以降の Object URL を解放
+        // 編集対象以降の Object URL / Blob キャッシュを解放
         const session = get().activeSession;
         if (session) {
             const target = session.messages.find((m) => m.id === msgId);
             if (target) {
                 const targetSeq = target.sequence;
-                const urls = get().audioObjectUrls;
-                const newUrls = new Map(urls);
+                const newUrls = new Map(get().audioObjectUrls);
+                const newBlobs = new Map(get().audioBlobs);
                 session.messages.forEach((m) => {
                     if (m.sequence >= targetSeq) {
                         const url = newUrls.get(m.id);
@@ -239,9 +247,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                             URL.revokeObjectURL(url);
                             newUrls.delete(m.id);
                         }
+                        newBlobs.delete(m.id);
                     }
                 });
-                set({ audioObjectUrls: newUrls });
+                set({ audioObjectUrls: newUrls, audioBlobs: newBlobs });
             }
         }
 
@@ -285,9 +294,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const url = urls.get(msgId);
         if (url) {
             URL.revokeObjectURL(url);
-            const next = new Map(urls);
-            next.delete(msgId);
-            set({ audioObjectUrls: next });
+            const nextUrls = new Map(urls);
+            nextUrls.delete(msgId);
+            const nextBlobs = new Map(get().audioBlobs);
+            nextBlobs.delete(msgId);
+            set({ audioObjectUrls: nextUrls, audioBlobs: nextBlobs });
         }
         // active session を更新
         const detail = get().activeSession;
@@ -319,7 +330,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (!sessionId) return;
         await apiBulkDeleteAudio(sessionId);
         revokeAllAudioUrls(get().audioObjectUrls);
-        set({ audioObjectUrls: new Map() });
+        set({ audioObjectUrls: new Map(), audioBlobs: new Map() });
         const detail = get().activeSession;
         if (detail) {
             const updated: ChatSessionDetail = {
@@ -347,9 +358,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (cached) return cached;
         const blob = await apiFetchAudioBlob(sessionId, msgId);
         const url = URL.createObjectURL(blob);
-        const next = new Map(get().audioObjectUrls);
-        next.set(msgId, url);
-        set({ audioObjectUrls: next });
+        const nextUrls = new Map(get().audioObjectUrls);
+        nextUrls.set(msgId, url);
+        const nextBlobs = new Map(get().audioBlobs);
+        nextBlobs.set(msgId, blob);
+        set({ audioObjectUrls: nextUrls, audioBlobs: nextBlobs });
         return url;
     },
 
@@ -359,6 +372,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         revokeAllAudioUrls(get().audioObjectUrls);
         currentAbortController?.abort();
         currentAbortController = null;
-        set({ ...initialState, audioObjectUrls: new Map() });
+        set({
+            ...initialState,
+            audioObjectUrls: new Map(),
+            audioBlobs: new Map(),
+        });
     },
 }));

@@ -4,21 +4,18 @@ import { AudioDownload } from '@/components/audio/AudioDownload';
 import { AudioPlayer } from '@/components/audio/AudioPlayer';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { fetchAudioBlob } from '@/lib/api/talk';
 import { formatBytes } from '@/lib/format/bytes';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/stores/chat-store';
 import { CHAT_MESSAGE_MAX_LENGTH, type ChatSessionMessage } from '@/types/talk';
 
 interface ChatMessageItemProps {
-    readonly sessionId: string;
     readonly message: ChatSessionMessage;
     readonly disabled: boolean;
     readonly onEdit: (msgId: number, newContent: string) => void;
 }
 
 export function ChatMessageItem({
-    sessionId,
     message,
     disabled,
     onEdit,
@@ -26,32 +23,26 @@ export function ChatMessageItem({
     const isUser = message.role === 'user';
     const ensureAudioObjectUrl = useChatStore((s) => s.ensureAudioObjectUrl);
     const cachedUrl = useChatStore((s) => s.audioObjectUrls.get(message.id));
+    const cachedBlob = useChatStore((s) => s.audioBlobs.get(message.id));
     const deleteMessageAudio = useChatStore((s) => s.deleteMessageAudio);
 
     // ChatThreadView 側で key={message.id} を指定しているため
     // メッセージ切替時にコンポーネントが再マウントされ初期値が更新される
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(message.content);
-    const [downloadBlob, setDownloadBlob] = useState<Blob | null>(null);
     const [audioError, setAudioError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!message.audio_url) return;
         let cancelled = false;
-        fetchAudioBlob(sessionId, message.id)
-            .then((blob) => {
-                if (!cancelled) setDownloadBlob(blob);
-            })
-            .catch(() => {
-                if (!cancelled) setAudioError('音声の取得に失敗しました');
-            });
+        // store 側で Blob と Object URL を 1 度だけ fetch してキャッシュする
         ensureAudioObjectUrl(message.id).catch(() => {
             if (!cancelled) setAudioError('音声の取得に失敗しました');
         });
         return () => {
             cancelled = true;
         };
-    }, [sessionId, message.id, message.audio_url, ensureAudioObjectUrl]);
+    }, [message.id, message.audio_url, ensureAudioObjectUrl]);
 
     const draftTrimmed = draft.trim();
     const isOverLimit = draft.length > CHAT_MESSAGE_MAX_LENGTH;
@@ -76,7 +67,6 @@ export function ChatMessageItem({
     const handleDeleteAudio = async () => {
         if (!confirm('この音声を削除しますか？')) return;
         await deleteMessageAudio(message.id);
-        setDownloadBlob(null);
     };
 
     const filename = `chat-${message.sequence + 1}.${message.audio_format || 'wav'}`;
@@ -180,7 +170,7 @@ export function ChatMessageItem({
                                     </span>
                                     <div className="flex items-center gap-1">
                                         <AudioDownload
-                                            blob={downloadBlob}
+                                            blob={cachedBlob ?? null}
                                             filename={filename}
                                         />
                                         <Button

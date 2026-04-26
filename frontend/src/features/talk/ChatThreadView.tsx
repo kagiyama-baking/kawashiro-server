@@ -111,7 +111,6 @@ export function ChatThreadView() {
                 {session.messages.map((m) => (
                     <ChatMessageItem
                         key={m.id}
-                        sessionId={session.id}
                         message={m}
                         disabled={isSendingMessage}
                         onEdit={editAndResend}
