@@ -16,18 +16,14 @@ const server = setupServer(
     ),
     http.post('*/api/talk/chat/', async ({ request }) => {
         // request.signal で abort 検知
-        try {
-            await new Promise((resolve, reject) => {
-                const t = setTimeout(resolve, 1000);
-                request.signal.addEventListener('abort', () => {
-                    clearTimeout(t);
-                    abortHits += 1;
-                    reject(new DOMException('aborted', 'AbortError'));
-                });
+        await new Promise((resolve, reject) => {
+            const t = setTimeout(resolve, 1000);
+            request.signal.addEventListener('abort', () => {
+                clearTimeout(t);
+                abortHits += 1;
+                reject(new DOMException('aborted', 'AbortError'));
             });
-        } catch (e) {
-            throw e;
-        }
+        });
         return HttpResponse.json({
             message: { role: 'assistant', content: '遅延応答' },
         });
