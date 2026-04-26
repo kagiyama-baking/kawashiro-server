@@ -1,8 +1,9 @@
 """会話生成設定 admin"""
 
 from django.contrib import admin
+from django.db.models import Sum
 
-from .models import TalkConfig
+from .models import ChatMessage, ChatSession, TalkConfig
 
 
 @admin.register(TalkConfig)
@@ -64,3 +65,65 @@ class TalkConfigAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+class ChatMessageInline(admin.TabularInline):
+    """ChatSession 内のメッセージインライン表示."""
+
+    model = ChatMessage
+    extra = 0
+    readonly_fields = (
+        "sequence",
+        "role",
+        "content",
+        "audio_format",
+        "audio_size_bytes",
+        "created_at",
+    )
+    fields = readonly_fields
+    can_delete = True
+    show_change_link = False
+
+
+@admin.register(ChatSession)
+class ChatSessionAdmin(admin.ModelAdmin):
+    """チャットセッション Admin."""
+
+    list_display = (
+        "id",
+        "user",
+        "title",
+        "config_name",
+        "message_count",
+        "total_audio_bytes",
+        "updated_at",
+    )
+    list_filter = ("config_name", "created_at")
+    search_fields = ("title", "user__email")
+    readonly_fields = ("id", "created_at", "updated_at")
+    inlines = (ChatMessageInline,)
+
+    @admin.display(description="メッセージ数")
+    def message_count(self, obj: ChatSession) -> int:
+        return obj.messages.count()
+
+    @admin.display(description="音声合計 (bytes)")
+    def total_audio_bytes(self, obj: ChatSession) -> int:
+        return obj.messages.aggregate(total=Sum("audio_size_bytes"))["total"] or 0
+
+
+@admin.register(ChatMessage)
+class ChatMessageAdmin(admin.ModelAdmin):
+    """チャットメッセージ Admin."""
+
+    list_display = (
+        "session",
+        "sequence",
+        "role",
+        "audio_format",
+        "audio_size_bytes",
+        "created_at",
+    )
+    list_filter = ("role", "audio_format")
+    search_fields = ("content", "session__title")
+    readonly_fields = ("created_at",)
