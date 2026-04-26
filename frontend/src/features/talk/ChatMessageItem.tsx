@@ -164,9 +164,15 @@ export function ChatMessageItem({
                             </Button>
                         )}
 
-                        {message.audio_url && cachedUrl && (
+                        {message.audio_url && (
                             <div className="flex w-full flex-col gap-2 sm:w-[420px]">
-                                <AudioPlayer src={cachedUrl} />
+                                {cachedUrl ? (
+                                    <AudioPlayer src={cachedUrl} />
+                                ) : (
+                                    <div className="text-muted-foreground glass rounded-xl p-3 text-[12px]">
+                                        音声を読み込み中…
+                                    </div>
+                                )}
                                 <div className="flex items-center justify-between gap-2">
                                     <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px]">
                                         <Volume2 className="h-3 w-3" />

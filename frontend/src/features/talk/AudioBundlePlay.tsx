@@ -73,21 +73,14 @@ export function AudioBundlePlay({
         // iOS Safari の autoplay policy 対策: ユーザー操作と同期して
         // 先に無音 WAV を play() し audio 要素をアンロックしておく。
         // 結合処理は時間がかかるため、await を挟むと autoplay 起点が切れる。
+        // ended/timeupdate のリスナーは「unlock 用 silent」では発火させたくない
+        // ので、本データ差し替え後に attach する。
         const audio = new Audio(SILENT_WAV_DATA_URL);
         audioRef.current = audio;
-        audio.addEventListener('loadedmetadata', () => {
-            // 本データ読み込み後の duration を反映する
-            setDuration(audio.duration);
-        });
-        audio.addEventListener('timeupdate', () => {
-            setCurrentTime(audio.currentTime);
-        });
-        audio.addEventListener('ended', () => {
-            stop();
-        });
 
         try {
             await audio.play();
+            audio.pause(); // unlock 完了直後に止める（silent ended → stop の暴発防止）
         } catch (err) {
             console.warn('音声アンロックに失敗:', err);
             toast.error('音声再生が許可されませんでした');
@@ -115,8 +108,17 @@ export function AudioBundlePlay({
             const url = URL.createObjectURL(merged);
             objectUrlRef.current = url;
 
-            // アンロック済みの audio に src を差し替えて再生する
+            // 本データ差し替え後にリスナーを attach
             audio.src = url;
+            audio.addEventListener('loadedmetadata', () => {
+                setDuration(audio.duration);
+            });
+            audio.addEventListener('timeupdate', () => {
+                setCurrentTime(audio.currentTime);
+            });
+            audio.addEventListener('ended', () => {
+                stop();
+            });
             audio.load();
             await audio.play();
             setIsPlaying(true);
