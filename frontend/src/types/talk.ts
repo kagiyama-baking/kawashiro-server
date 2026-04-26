@@ -6,32 +6,42 @@ export interface GenerateConfig {
 
 export type ChatRole = 'user' | 'assistant';
 
-export interface ChatMessageRequest {
+// サーバから返るセッション詳細内のメッセージ
+export interface ChatSessionMessage {
+    readonly id: number;
+    readonly sequence: number;
     readonly role: ChatRole;
     readonly content: string;
+    readonly audio_url: string | null;
+    readonly audio_format: string;
+    readonly audio_size_bytes: number;
+    readonly created_at: string;
 }
 
-export interface ChatRequest {
-    readonly config_name: string;
-    readonly messages: readonly ChatMessageRequest[];
-}
-
-export interface ChatMessageResult {
+// セッション一覧の 1 項目
+export interface ChatSessionListItem {
     readonly id: string;
-    readonly role: ChatRole;
-    readonly content: string;
-    readonly audioBlob: Blob | null;
-    readonly audioUrl: string | null;
-    readonly audioFormat: string | null;
-    readonly errorMessage: string | null;
+    readonly title: string;
+    readonly config_name: string;
+    readonly message_count: number;
+    readonly total_audio_bytes: number;
+    readonly created_at: string;
+    readonly updated_at: string;
 }
 
-export interface ChatResponse {
-    readonly content: string;
-    readonly audioBlob: Blob | null;
-    readonly audioUrl: string | null;
-    readonly audioFormat: string | null;
+// セッション詳細（messages 含む）
+export interface ChatSessionDetail extends ChatSessionListItem {
+    readonly messages: readonly ChatSessionMessage[];
+}
+
+// 一覧 API のレスポンス（DRF LimitOffsetPagination）
+export interface ChatSessionListResponse {
+    readonly count: number;
+    readonly next: string | null;
+    readonly previous: string | null;
+    readonly results: readonly ChatSessionListItem[];
 }
 
 export const CHAT_MESSAGE_MAX_LENGTH = 4000;
 export const CHAT_HISTORY_MAX_COUNT = 50;
+export const SESSION_LIST_DEFAULT_LIMIT = 20;

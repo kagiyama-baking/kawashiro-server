@@ -1,137 +1,91 @@
-import { Trash2 } from 'lucide-react';
-import { ErrorMessage } from '@/components/common/ErrorMessage';
-import { TerminalText } from '@/components/common/TerminalText';
+import { Menu } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { AudioBundleDownload } from './AudioBundleDownload';
-import { ChatInputForm } from './ChatInputForm';
-import { ChatMessageList } from './ChatMessageList';
-import { useChat } from './useChat';
+import { fetchConfigs } from '@/lib/api/talk';
+import { useChatStore } from '@/stores/chat-store';
+import type { GenerateConfig } from '@/types/talk';
+import { ChatThreadView } from './ChatThreadView';
+import { NewSessionDialog } from './NewSessionDialog';
+import { SessionSidebar } from './SessionSidebar';
 
 export function ChatPage() {
-    const {
-        configs,
-        selectedConfig,
-        setSelectedConfig,
-        input,
-        setInput,
-        messages,
-        isLoading,
-        error,
-        sendMessage,
-        editAndResend,
-        cancelMessage,
-        clearHistory,
-    } = useChat();
+    const sessions = useChatStore((s) => s.sessions);
+    const activeSessionId = useChatStore((s) => s.activeSessionId);
+    const hasMore = useChatStore((s) => s.hasMoreSessions);
+    const isLoadingList = useChatStore((s) => s.isLoadingList);
+    const loadSessions = useChatStore((s) => s.loadSessions);
+    const loadMoreSessions = useChatStore((s) => s.loadMoreSessions);
+    const selectSession = useChatStore((s) => s.selectSession);
+    const removeSession = useChatStore((s) => s.removeSession);
+    const createNewSession = useChatStore((s) => s.createNewSession);
+    const reset = useChatStore((s) => s.reset);
 
-    const selected = configs.find((c) => c.name === selectedConfig);
+    const [configs, setConfigs] = useState<GenerateConfig[]>([]);
+    const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [isNewOpen, setIsNewOpen] = useState(false);
+
+    useEffect(() => {
+        loadSessions(true);
+        fetchConfigs()
+            .then(setConfigs)
+            .catch(() => {});
+        return () => {
+            // ページ離脱時に store をクリア
+            reset();
+        };
+    }, [loadSessions, reset]);
+
+    const handleDeleteSession = async (id: string) => {
+        if (!confirm('このチャットを削除します。よろしいですか？')) return;
+        await removeSession(id);
+    };
+
+    const handleCreate = async (configName: string) => {
+        await createNewSession(configName);
+        setIsMobileOpen(false);
+    };
 
     return (
-        <div className="mx-auto max-w-4xl space-y-6">
-            <div className="animate-slide-up">
-                <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
-                    チャット
-                </h1>
-                <TerminalText text="talk --chat" />
-            </div>
+        <div className="flex h-[calc(100vh-4rem)] w-full">
+            <SessionSidebar
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                hasMore={hasMore}
+                isLoading={isLoadingList}
+                onSelect={selectSession}
+                onDelete={handleDeleteSession}
+                onLoadMore={loadMoreSessions}
+                onNew={() => setIsNewOpen(true)}
+                isOpen={isMobileOpen}
+                onClose={() => setIsMobileOpen(false)}
+            />
 
-            <Card className="animate-slide-up neon-border">
-                <CardHeader>
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                            <CardTitle className="font-heading font-semibold">
-                                セッション設定
-                            </CardTitle>
-                            <CardDescription className="text-[13px]">
-                                プリセットを選んで連続的に会話できます。履歴はブラウザを更新するとクリアされます。
-                            </CardDescription>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                            <AudioBundleDownload messages={messages} />
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={clearHistory}
-                                disabled={messages.length === 0}
-                                className="shrink-0"
-                            >
-                                <Trash2 className="mr-1.5 h-4 w-4" />
-                                履歴をクリア
-                            </Button>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label
-                            htmlFor="chat-preset-select"
-                            className="text-[13px] font-medium"
-                        >
-                            プリセット
-                        </Label>
-                        <Select
-                            value={selectedConfig}
-                            onValueChange={setSelectedConfig}
-                        >
-                            <SelectTrigger id="chat-preset-select">
-                                <SelectValue placeholder="設定を選択" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {configs.map((config) => (
-                                    <SelectItem
-                                        key={config.name}
-                                        value={config.name}
-                                    >
-                                        {config.display_name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {selected?.tts_enabled && (
-                            <div className="flex flex-wrap gap-2 text-xs">
-                                <span className="rounded-md border border-[oklch(0.72_0.20_155/0.2)] bg-[oklch(0.72_0.20_155/0.1)] px-1.5 py-0.5 text-[oklch(0.72_0.20_155)]">
-                                    TTS有効
-                                </span>
-                            </div>
-                        )}
-                    </div>
+            <main className="bg-background flex min-w-0 flex-1 flex-col">
+                <div className="flex items-center gap-2 border-b border-[oklch(0.95_0_0/0.06)] px-3 py-2 md:hidden">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsMobileOpen(true)}
+                        aria-label="サイドバーを開く"
+                    >
+                        <Menu className="h-5 w-5" />
+                    </Button>
+                    <span className="font-heading text-[14px] font-semibold">
+                        チャット
+                    </span>
+                </div>
+                <div className="min-h-0 flex-1">
+                    <ChatThreadView />
+                </div>
+            </main>
 
-                    <Separator className="opacity-30" />
-
-                    <ChatMessageList
-                        messages={messages}
-                        isLoading={isLoading}
-                        onEdit={editAndResend}
-                    />
-
-                    <ChatInputForm
-                        input={input}
-                        onInputChange={setInput}
-                        onSubmit={sendMessage}
-                        onCancel={cancelMessage}
-                        isLoading={isLoading}
-                        disabled={!selectedConfig}
-                    />
-
-                    <ErrorMessage message={error} />
-                </CardContent>
-            </Card>
+            <NewSessionDialog
+                configs={configs}
+                open={isNewOpen}
+                onClose={() => setIsNewOpen(false)}
+                onCreate={handleCreate}
+            />
         </div>
     );
 }

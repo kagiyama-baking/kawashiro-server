@@ -2,59 +2,74 @@ import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { fetchAudioBlob } from '@/lib/api/talk';
 import { concatWavBlobs, formatTimestampForFilename } from '@/lib/audio/concat';
-import type { ChatMessageResult } from '@/types/talk';
+import type { ChatSessionMessage } from '@/types/talk';
 
 interface AudioBundleDownloadProps {
-    readonly messages: ChatMessageResult[];
+    readonly sessionId: string;
+    readonly messages: readonly ChatSessionMessage[];
+    readonly disabled?: boolean;
 }
 
-interface AudioMessage {
-    readonly audioBlob: Blob;
-    readonly audioFormat: string;
+interface FetchedAudio {
+    readonly blob: Blob;
+    readonly format: string;
 }
 
-function pickAudioMessages(messages: ChatMessageResult[]): AudioMessage[] {
-    const result: AudioMessage[] = [];
-    for (const m of messages) {
-        if (m.audioBlob !== null && m.audioFormat !== null) {
-            result.push({ audioBlob: m.audioBlob, audioFormat: m.audioFormat });
-        }
-    }
-    return result;
+async function loadAllAudios(
+    sessionId: string,
+    messages: readonly ChatSessionMessage[],
+): Promise<FetchedAudio[]> {
+    const targets = messages.filter(
+        (m) => m.audio_url !== null && m.audio_size_bytes > 0,
+    );
+    const blobs = await Promise.all(
+        targets.map(async (m) => ({
+            blob: await fetchAudioBlob(sessionId, m.id),
+            format: m.audio_format || 'wav',
+        })),
+    );
+    return blobs;
 }
 
-export function AudioBundleDownload({ messages }: AudioBundleDownloadProps) {
+export function AudioBundleDownload({
+    sessionId,
+    messages,
+    disabled = false,
+}: AudioBundleDownloadProps) {
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const audioMessages = pickAudioMessages(messages);
-    if (audioMessages.length === 0) return null;
+    const audioCount = messages.filter(
+        (m) => m.audio_url !== null && m.audio_size_bytes > 0,
+    ).length;
+    const isDisabled = disabled || isProcessing || audioCount === 0;
 
-    const handleDownload = async () => {
+    const handleClick = async () => {
         setIsProcessing(true);
         try {
-            const blobs = audioMessages.map((m) => m.audioBlob);
-            const formats = new Set(audioMessages.map((m) => m.audioFormat));
-            const ext = audioMessages[0].audioFormat;
+            const audios = await loadAllAudios(sessionId, messages);
+            if (audios.length === 0) return;
 
-            const combined =
-                formats.size === 1 && ext === 'wav'
-                    ? await concatWavBlobs(blobs, 1)
-                    : new Blob(blobs, { type: blobs[0].type });
+            const allWav = audios.every((a) => a.format === 'wav');
+            const ext = allWav ? 'wav' : audios[0].format || 'bin';
+            const merged = allWav
+                ? await concatWavBlobs(
+                      audios.map((a) => a.blob),
+                      1,
+                  )
+                : new Blob(audios.map((a) => a.blob));
 
-            const filename = `chat-${formatTimestampForFilename(new Date())}.${ext}`;
-            const url = URL.createObjectURL(combined);
-            try {
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                a.click();
-            } finally {
-                URL.revokeObjectURL(url);
-            }
-        } catch (err) {
-            console.error('音声結合に失敗:', err);
-            toast.error('音声の結合に失敗しました');
+            const url = URL.createObjectURL(merged);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `chat-${formatTimestampForFilename(new Date())}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch {
+            toast.error('音声の一括ダウンロードに失敗しました');
         } finally {
             setIsProcessing(false);
         }
@@ -65,12 +80,11 @@ export function AudioBundleDownload({ messages }: AudioBundleDownloadProps) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={handleDownload}
-            disabled={isProcessing}
-            className="shrink-0"
+            onClick={handleClick}
+            disabled={isDisabled}
         >
             <Download className="mr-1.5 h-4 w-4" />
-            音声を一括ダウンロード ({audioMessages.length})
+            一括 DL ({audioCount})
         </Button>
     );
 }

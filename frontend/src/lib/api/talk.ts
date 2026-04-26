@@ -1,5 +1,9 @@
 import { apiClient } from '@/lib/api-client';
-import type { ChatRequest, ChatResponse, GenerateConfig } from '@/types/talk';
+import type {
+    ChatSessionDetail,
+    ChatSessionListResponse,
+    GenerateConfig,
+} from '@/types/talk';
 
 interface ConfigsResponse {
     readonly configs: GenerateConfig[];
@@ -12,65 +16,97 @@ export async function fetchConfigs(): Promise<GenerateConfig[]> {
     return response.configs;
 }
 
-const MIME_BY_FORMAT: Record<string, string> = {
-    wav: 'audio/wav',
-    mp3: 'audio/mpeg',
-    ogg: 'audio/ogg',
-};
-
-interface AudioPayload {
-    readonly audioBlob: Blob;
-    readonly audioUrl: string;
-    readonly audioFormat: string;
+interface ListSessionsParams {
+    readonly limit?: number;
+    readonly offset?: number;
 }
 
-function decodeAudioPayload(
-    base64: string,
-    format: string | null | undefined,
-): AudioPayload {
-    const binaryStr = atob(base64);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-    }
-    const fmt = format ?? 'wav';
-    const mime = MIME_BY_FORMAT[fmt] ?? 'audio/wav';
-    const audioBlob = new Blob([bytes], { type: mime });
-    const audioUrl = URL.createObjectURL(audioBlob);
-    return { audioBlob, audioUrl, audioFormat: fmt };
+export async function listSessions(
+    params: ListSessionsParams = {},
+): Promise<ChatSessionListResponse> {
+    const search: Record<string, string> = {};
+    if (params.limit !== undefined) search.limit = String(params.limit);
+    if (params.offset !== undefined) search.offset = String(params.offset);
+    return apiClient
+        .get('talk/sessions/', { searchParams: search })
+        .json<ChatSessionListResponse>();
 }
 
-interface ChatRawResponse {
-    readonly message: { readonly role: 'assistant'; readonly content: string };
-    readonly audio_data?: string | null;
-    readonly audio_format?: string | null;
+export async function createSession(
+    configName: string,
+): Promise<ChatSessionDetail> {
+    return apiClient
+        .post('talk/sessions/', { json: { config_name: configName } })
+        .json<ChatSessionDetail>();
 }
 
-interface SendChatOptions {
+export async function getSession(id: string): Promise<ChatSessionDetail> {
+    return apiClient.get(`talk/sessions/${id}/`).json<ChatSessionDetail>();
+}
+
+export async function updateSessionTitle(
+    id: string,
+    title: string,
+): Promise<ChatSessionDetail> {
+    return apiClient
+        .patch(`talk/sessions/${id}/`, { json: { title } })
+        .json<ChatSessionDetail>();
+}
+
+export async function deleteSession(id: string): Promise<void> {
+    await apiClient.delete(`talk/sessions/${id}/`);
+}
+
+interface SendOptions {
     readonly signal?: AbortSignal;
 }
 
-export async function sendChat(
-    request: ChatRequest,
-    options: SendChatOptions = {},
-): Promise<ChatResponse> {
-    const data = await apiClient
-        .post('talk/chat/', {
-            json: request,
+export async function postMessage(
+    sessionId: string,
+    content: string,
+    options: SendOptions = {},
+): Promise<ChatSessionDetail> {
+    return apiClient
+        .post(`talk/sessions/${sessionId}/messages/`, {
+            json: { content },
             timeout: 120000,
             signal: options.signal,
         })
-        .json<ChatRawResponse>();
+        .json<ChatSessionDetail>();
+}
 
-    const content = data.message.content;
+export async function editMessage(
+    sessionId: string,
+    msgId: number,
+    content: string,
+    options: SendOptions = {},
+): Promise<ChatSessionDetail> {
+    return apiClient
+        .patch(`talk/sessions/${sessionId}/messages/${msgId}/`, {
+            json: { content },
+            timeout: 120000,
+            signal: options.signal,
+        })
+        .json<ChatSessionDetail>();
+}
 
-    if (data.audio_data) {
-        const { audioBlob, audioUrl, audioFormat } = decodeAudioPayload(
-            data.audio_data,
-            data.audio_format,
-        );
-        return { content, audioBlob, audioUrl, audioFormat };
-    }
+export async function fetchAudioBlob(
+    sessionId: string,
+    msgId: number,
+): Promise<Blob> {
+    const response = await apiClient.get(
+        `talk/sessions/${sessionId}/audio/${msgId}/`,
+    );
+    return response.blob();
+}
 
-    return { content, audioBlob: null, audioUrl: null, audioFormat: null };
+export async function deleteAudio(
+    sessionId: string,
+    msgId: number,
+): Promise<void> {
+    await apiClient.delete(`talk/sessions/${sessionId}/audio/${msgId}/`);
+}
+
+export async function bulkDeleteAudio(sessionId: string): Promise<void> {
+    await apiClient.delete(`talk/sessions/${sessionId}/audio/`);
 }
