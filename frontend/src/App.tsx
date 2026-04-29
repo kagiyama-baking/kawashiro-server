@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { Toaster } from '@/components/ui/sonner';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -9,6 +9,14 @@ import { LoginPage } from '@/features/login/LoginPage';
 import { MediaPage } from '@/features/media/MediaPage';
 import { TtsPage } from '@/features/tts/TtsPage';
 import { useAuthStore } from '@/stores/auth-store';
+
+// PDF編集ページは pdf.js / pdf-lib / dnd-kit / react-image-crop を含み
+// 初期ロードに不要なため、別チャンクに分離して遅延ロードする。
+const PdfEditPage = lazy(() =>
+    import('@/features/pdf-edit/PdfEditPage').then((m) => ({
+        default: m.PdfEditPage,
+    })),
+);
 
 function App() {
     const loadAuth = useAuthStore((s) => s.loadAuth);
@@ -38,6 +46,14 @@ function App() {
                     <Route path="/tts" element={<TtsPage />} />
                     <Route path="/talk" element={<ChatPage />} />
                     <Route path="/media" element={<MediaPage />} />
+                    <Route
+                        path="/pdf-edit"
+                        element={
+                            <Suspense fallback={null}>
+                                <PdfEditPage />
+                            </Suspense>
+                        }
+                    />
                 </Route>
             </Routes>
             <Toaster />
