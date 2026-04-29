@@ -325,18 +325,18 @@ class TestZipToPdfView:
         assert ".." not in disposition
         assert "/" not in disposition.split("filename=", 1)[1].split(";", 1)[0]
 
-    def test_zip_to_pdf_returns_413_when_total_megapixels_exceed_limit(
+    def test_zip_to_pdf_returns_413_when_single_image_exceeds_megapixel_limit(
         self, authenticated_client, create_zip_file, monkeypatch
     ):
-        """ZIP内画像の合計メガピクセル数がハードリミットを超える場合は413を返す。
+        """ZIP内に1枚あたりの上限を超える画像が含まれる場合は413を返す。
 
-        本番のメモリ枠（512MiB）を守るため、展開後の概算メモリを事前に算出し
-        危険なリクエストは即座に拒否する。
+        合計ではなく単一画像のメガピクセルでガードする（img2pdf は JPEG を
+        そのまま埋め込むため、合計で縛ると本来通せる多枚数スキャンを弾く）。
         """
         from features.media.views import ZipToPdfView
 
-        # 上限を 0.5 メガピクセルまで一時的に下げる
-        monkeypatch.setattr(ZipToPdfView, "MAX_TOTAL_MEGAPIXELS", 0.5)
+        # 1 枚あたりの上限を 0.5 メガピクセルまで一時的に下げる
+        monkeypatch.setattr(ZipToPdfView, "MAX_PER_IMAGE_MEGAPIXELS", 0.5)
 
         # 1000x1000 = 1.0 メガピクセル → 上限超過
         zip_file = create_zip_file(
@@ -356,12 +356,43 @@ class TestZipToPdfView:
 
         assert response.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
         assert "error" in response.data
-        # 原因が利用者に伝わるメッセージであること
+        # 原因が利用者に伝わるメッセージであり、対象ファイル名も含むこと
+        assert "big.jpg" in response.data["error"]
         assert (
             "解像度" in response.data["error"]
             or "メガピクセル" in response.data["error"]
-            or "サイズ" in response.data["error"]
         )
+
+    def test_zip_to_pdf_passes_when_total_megapixels_high_but_each_image_small(
+        self, authenticated_client, create_zip_file, monkeypatch
+    ):
+        """合計メガピクセル数が大きくても、1枚ずつが上限以下なら通ること。
+
+        漫画スキャン等の「数十枚×中解像度」ユースケースを誤って弾かないことを保証する。
+        """
+        from features.media.views import ZipToPdfView
+
+        # 1 枚あたり 1.5MP まで許容（500x500 = 0.25MP * 6 枚 = 1.5MP 合計）
+        monkeypatch.setattr(ZipToPdfView, "MAX_PER_IMAGE_MEGAPIXELS", 1.5)
+
+        zip_file = create_zip_file(
+            [
+                {
+                    "name": f"page_{i:02d}.jpg",
+                    "format": "JPEG",
+                    "color": "red",
+                    "size": (500, 500),
+                }
+                for i in range(6)
+            ]
+        )
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "application/pdf"
 
     def test_zip_to_pdf_returns_503_on_memory_error(
         self, authenticated_client, create_zip_file, mocker
@@ -372,9 +403,7 @@ class TestZipToPdfView:
         本番OOMを切り分けできなかった。
         """
         # img2pdf 経由の変換中に MemoryError を発生させる
-        mocker.patch(
-            "features.media.views.img2pdf.convert", side_effect=MemoryError()
-        )
+        mocker.patch("features.media.views.img2pdf.convert", side_effect=MemoryError())
 
         zip_file = create_zip_file(
             [{"name": "image.jpg", "format": "JPEG", "color": "red"}]

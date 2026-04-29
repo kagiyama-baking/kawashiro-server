@@ -102,9 +102,11 @@ class ZipToPdfView(APIView):
     # ZIPボム対策の制限値
     MAX_TOTAL_SIZE = 1 * 1024 * 1024 * 1024  # 1GB（展開後の合計サイズ）
     MAX_FILES = 1000
-    # PDF化時の合計メガピクセル数の上限（本番のメモリ枠 512MiB を守るための事前ガード）
-    # 1MP の RGB 画像 ≈ 3MB。200MP で約 600MB の理論ピーク相当。
-    MAX_TOTAL_MEGAPIXELS = 200.0
+    # 1 枚あたりのメガピクセル上限。
+    # img2pdf は JPEG をそのまま埋め込むため合計サイズで縛る必要はないが、
+    # PNG/WEBP は 1 枚ずつ Pillow で RGB に展開するため、その瞬間のメモリピークを
+    # 本番 mem_limit (512MiB) に収めるためのガード。100MP ≈ 300MB の RGB バッファ。
+    MAX_PER_IMAGE_MEGAPIXELS = 100.0
 
     # img2pdf にそのまま埋め込める拡張子（再エンコード不要）
     NATIVE_PDF_EMBED_EXTENSIONS = (".jpg", ".jpeg")
@@ -212,22 +214,23 @@ class ZipToPdfView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                # 事前バリデーション: 合計メガピクセル数の概算で本番OOMを防ぐ
-                total_megapixels = self._estimate_total_megapixels(
-                    zip_ref, image_files
-                )
-                if total_megapixels > self.MAX_TOTAL_MEGAPIXELS:
+                # 事前バリデーション: 1 枚あたりのメガピクセル数で本番OOMを防ぐ
+                # （合計ではなく単一画像の上限。img2pdf は JPEG をそのまま埋め込むため
+                #  合計で縛ると本来通せる漫画スキャン等を弾いてしまう）
+                oversized = self._find_oversized_image(zip_ref, image_files)
+                if oversized is not None:
+                    name, megapixels = oversized
                     logger.warning(
-                        "ZIP→PDF: 合計メガピクセル数が上限超過 "
-                        f"({total_megapixels:.1f}MP > {self.MAX_TOTAL_MEGAPIXELS}MP)"
+                        "ZIP→PDF: 単一画像のメガピクセル数が上限超過 "
+                        f"({name}: {megapixels:.1f}MP > {self.MAX_PER_IMAGE_MEGAPIXELS}MP)"
                     )
                     return Response(
                         {
                             "error": (
-                                "ZIP内画像の合計解像度が大きすぎます "
-                                f"（{total_megapixels:.1f}メガピクセル, "
-                                f"上限 {self.MAX_TOTAL_MEGAPIXELS:.0f}メガピクセル）。"
-                                "枚数を減らすか、各画像のサイズを小さくしてください。"
+                                f"ZIP内の画像 '{name}' の解像度が大きすぎます "
+                                f"（{megapixels:.1f}メガピクセル, "
+                                f"1枚あたり上限 {self.MAX_PER_IMAGE_MEGAPIXELS:.0f}メガピクセル）。"
+                                "サイズを小さくしてから再試行してください。"
                             )
                         },
                         status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -288,21 +291,24 @@ class ZipToPdfView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    def _estimate_total_megapixels(
+    def _find_oversized_image(
         self, zip_ref: zipfile.ZipFile, image_files: list[str]
-    ) -> float:
-        """ZIP内画像の合計メガピクセル数を概算する。
+    ) -> tuple[str, float] | None:
+        """ZIP 内に MAX_PER_IMAGE_MEGAPIXELS を超える画像があれば最初の 1 件を返す。
 
         Pillow は画像ヘッダだけ読めば size を返すため、ピクセルデータ全体を
         メモリにロードせずに済む。
         """
-        total = 0
         for name in image_files:
-            with zip_ref.open(name) as img_file:
-                with Image.open(img_file) as img:
-                    width, height = img.size
-                    total += width * height
-        return total / 1_000_000
+            with (
+                zip_ref.open(name) as img_file,
+                Image.open(img_file) as img,
+            ):
+                width, height = img.size
+                megapixels = (width * height) / 1_000_000
+                if megapixels > self.MAX_PER_IMAGE_MEGAPIXELS:
+                    return name, megapixels
+        return None
 
     def _collect_pdf_inputs(
         self, zip_ref: zipfile.ZipFile, image_files: list[str]
