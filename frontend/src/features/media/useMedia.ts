@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { convertImage, zipToPdf } from '@/lib/api/media';
+import {
+    convertImage,
+    extractApiErrorMessage,
+    zipToPdf,
+} from '@/lib/api/media';
 import type { OutputFormat } from '@/types/media';
 
 interface MediaResult {
@@ -35,9 +39,13 @@ export function useMedia() {
                 previousUrlRef.current = url;
                 setResult({ blob: res.blob, filename: res.filename, url });
                 toast.success('画像を変換しました');
-            } catch {
-                setError('画像変換に失敗しました');
-                toast.error('画像変換に失敗しました');
+            } catch (e) {
+                const msg = await extractApiErrorMessage(
+                    e,
+                    '画像変換に失敗しました',
+                );
+                setError(msg);
+                toast.error(msg);
             } finally {
                 setIsLoading(false);
             }
@@ -60,9 +68,13 @@ export function useMedia() {
             previousUrlRef.current = url;
             setResult({ blob: res.blob, filename: res.filename, url });
             toast.success('PDFに変換しました');
-        } catch {
-            setError('ZIP→PDF変換に失敗しました');
-            toast.error('ZIP→PDF変換に失敗しました');
+        } catch (e) {
+            const msg = await extractApiErrorMessage(
+                e,
+                'ZIP→PDF変換に失敗しました',
+            );
+            setError(msg);
+            toast.error(msg);
         } finally {
             setIsLoading(false);
         }
