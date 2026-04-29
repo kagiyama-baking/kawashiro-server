@@ -44,14 +44,8 @@ class TestWeatherClient:
                         "wave": None,
                     },
                     "temperature": {
-                        "min": {
-                            "celsius": "2",
-                            "fahrenheit": "35.6",
-                        },
-                        "max": {
-                            "celsius": "12",
-                            "fahrenheit": "53.6",
-                        },
+                        "min": {"celsius": "2", "fahrenheit": "35.6"},
+                        "max": {"celsius": "12", "fahrenheit": "53.6"},
                     },
                     "chanceOfRain": {
                         "T00_06": "10%",
@@ -76,14 +70,8 @@ class TestWeatherClient:
                         "wave": None,
                     },
                     "temperature": {
-                        "min": {
-                            "celsius": "8",
-                            "fahrenheit": "46.4",
-                        },
-                        "max": {
-                            "celsius": "15",
-                            "fahrenheit": "59.0",
-                        },
+                        "min": {"celsius": "8", "fahrenheit": "46.4"},
+                        "max": {"celsius": "15", "fahrenheit": "59.0"},
                     },
                     "chanceOfRain": {
                         "T00_06": "20%",
@@ -102,20 +90,10 @@ class TestWeatherClient:
                     "date": "2025-12-26",
                     "dateLabel": "明後日",
                     "telop": "晴のち曇",
-                    "detail": {
-                        "weather": None,
-                        "wind": None,
-                        "wave": None,
-                    },
+                    "detail": {"weather": None, "wind": None, "wave": None},
                     "temperature": {
-                        "min": {
-                            "celsius": "5",
-                            "fahrenheit": "41.0",
-                        },
-                        "max": {
-                            "celsius": "10",
-                            "fahrenheit": "50.0",
-                        },
+                        "min": {"celsius": "5", "fahrenheit": "41.0"},
+                        "max": {"celsius": "10", "fahrenheit": "50.0"},
                     },
                     "chanceOfRain": {
                         "T00_06": "10%",
@@ -145,7 +123,9 @@ class TestWeatherClient:
             },
         }
 
+    # ============================================================
     # fetch_forecast テスト
+    # ============================================================
 
     @patch("integrations.weather.client.requests.get")
     def test_fetch_forecast_success(self, mock_get, sample_tsukumijima_response):
@@ -164,24 +144,30 @@ class TestWeatherClient:
             timeout=10,
         )
 
+    @pytest.mark.parametrize(
+        "side_effect_factory, expected_exc",
+        [
+            pytest.param(
+                lambda: requests.ConnectionError("Connection failed"),
+                WeatherNetworkError,
+                id="connection_error",
+            ),
+            pytest.param(
+                lambda: requests.Timeout("Request timed out"),
+                WeatherTimeoutError,
+                id="timeout",
+            ),
+        ],
+    )
     @patch("integrations.weather.client.requests.get")
-    def test_fetch_forecast_network_error(self, mock_get):
-        """ネットワークエラー時にWeatherNetworkErrorを発生させる"""
-        mock_get.side_effect = requests.ConnectionError("Connection failed")
+    def test_fetch_forecast_network_errors(
+        self, mock_get, side_effect_factory, expected_exc
+    ):
+        """ネットワーク系エラー時に対応する例外を発生させる"""
+        mock_get.side_effect = side_effect_factory()
 
         client = WeatherClient()
-
-        with pytest.raises(WeatherNetworkError):
-            client.fetch_forecast("130010")
-
-    @patch("integrations.weather.client.requests.get")
-    def test_fetch_forecast_timeout_error(self, mock_get):
-        """タイムアウト時にWeatherTimeoutErrorを発生させる"""
-        mock_get.side_effect = requests.Timeout("Request timed out")
-
-        client = WeatherClient()
-
-        with pytest.raises(WeatherTimeoutError):
+        with pytest.raises(expected_exc):
             client.fetch_forecast("130010")
 
     @patch("integrations.weather.client.requests.get")
@@ -193,127 +179,101 @@ class TestWeatherClient:
         mock_get.return_value = mock_response
 
         client = WeatherClient()
-
         with pytest.raises(WeatherParseError):
             client.fetch_forecast("130010")
 
+    @pytest.mark.parametrize(
+        "status_code, expected_exc",
+        [
+            (404, WeatherAreaNotFoundError),
+            (500, WeatherNetworkError),
+        ],
+        ids=["404_area_not_found", "500_server_error"],
+    )
     @patch("integrations.weather.client.requests.get")
-    def test_fetch_forecast_http_404_error(self, mock_get):
-        """存在しない地域コードの場合（HTTP 404）にWeatherAreaNotFoundErrorを発生させる"""
+    def test_fetch_forecast_http_errors(self, mock_get, status_code, expected_exc):
+        """HTTPエラー時に対応する例外を発生させる"""
         mock_response = Mock()
-        mock_response.status_code = 404
-        http_error = requests.HTTPError("404 Client Error: Not Found")
+        mock_response.status_code = status_code
+        http_error = requests.HTTPError(f"{status_code} HTTP Error")
         http_error.response = mock_response
         mock_response.raise_for_status.side_effect = http_error
         mock_get.return_value = mock_response
 
         client = WeatherClient()
-
-        with pytest.raises(WeatherAreaNotFoundError):
-            client.fetch_forecast("999999")
-
-    @patch("integrations.weather.client.requests.get")
-    def test_fetch_forecast_http_500_error(self, mock_get):
-        """サーバーエラー（HTTP 500）の場合にWeatherNetworkErrorを発生させる"""
-        mock_response = Mock()
-        mock_response.status_code = 500
-        http_error = requests.HTTPError("500 Server Error")
-        http_error.response = mock_response
-        mock_response.raise_for_status.side_effect = http_error
-        mock_get.return_value = mock_response
-
-        client = WeatherClient()
-
-        with pytest.raises(WeatherNetworkError):
+        with pytest.raises(expected_exc):
             client.fetch_forecast("130010")
 
+    # ============================================================
     # get_weather テスト
+    # ============================================================
 
+    @pytest.mark.parametrize(
+        "day, expected",
+        [
+            pytest.param(
+                0,
+                {
+                    "date": "2025-12-24",
+                    "weather": "晴れ　昼過ぎ　から　くもり",
+                    "weather_code": "101",
+                    "temp_min": 2,
+                    "temp_max": 12,
+                    "pop": (10, 0, 20, 30),
+                },
+                id="today",
+            ),
+            pytest.param(
+                1,
+                {
+                    "date": "2025-12-25",
+                    "weather": "くもり　時々　雨",
+                    "weather_code": "202",
+                    "temp_min": 8,
+                    "temp_max": 15,
+                    "pop": (20, 40, 60, 50),
+                },
+                id="tomorrow",
+            ),
+            pytest.param(
+                2,
+                {
+                    # detail.weather が null の場合、telop にフォールバック
+                    "date": "2025-12-26",
+                    "weather": "晴のち曇",
+                    "weather_code": "110",
+                    "temp_min": 5,
+                    "temp_max": 10,
+                    "pop": (10, 10, 20, 20),
+                },
+                id="day_after_tomorrow_with_weather_fallback",
+            ),
+        ],
+    )
     @patch("integrations.weather.client.requests.get")
-    def test_get_weather_today(self, mock_get, sample_tsukumijima_response):
-        """今日の天気を全フィールド正しく取得できる"""
-        mock_response = Mock()
-        mock_response.json.return_value = sample_tsukumijima_response
-        mock_response.raise_for_status = Mock()
-        mock_get.return_value = mock_response
-
-        client = WeatherClient()
-        result = client.get_weather("130010", day=0)
-
-        assert result["area_name"] == "東京都 東京地方"
-        assert result["area_code"] == "130010"
-        assert result["date"] == "2025-12-24"
-        assert result["weather"] == "晴れ　昼過ぎ　から　くもり"
-        assert result["weather_code"] == "101"
-        assert result["temp_min"] == 2
-        assert result["temp_max"] == 12
-        assert result["pop_00_06"] == 10
-        assert result["pop_06_12"] == 0
-        assert result["pop_12_18"] == 20
-        assert result["pop_18_24"] == 30
-
-    @patch("integrations.weather.client.requests.get")
-    def test_get_weather_tomorrow(self, mock_get, sample_tsukumijima_response):
-        """明日の天気を取得できる"""
-        mock_response = Mock()
-        mock_response.json.return_value = sample_tsukumijima_response
-        mock_response.raise_for_status = Mock()
-        mock_get.return_value = mock_response
-
-        client = WeatherClient()
-        result = client.get_weather("130010", day=1)
-
-        assert result["area_name"] == "東京都 東京地方"
-        assert result["area_code"] == "130010"
-        assert result["date"] == "2025-12-25"
-        assert result["weather"] == "くもり　時々　雨"
-        assert result["weather_code"] == "202"
-        assert result["temp_min"] == 8
-        assert result["temp_max"] == 15
-        assert result["pop_00_06"] == 20
-        assert result["pop_06_12"] == 40
-        assert result["pop_12_18"] == 60
-        assert result["pop_18_24"] == 50
-
-    @patch("integrations.weather.client.requests.get")
-    def test_get_weather_day_after_tomorrow(
-        self, mock_get, sample_tsukumijima_response
+    def test_get_weather_per_day(
+        self, mock_get, sample_tsukumijima_response, day, expected
     ):
-        """明後日の天気を取得できる"""
+        """各日の天気を全フィールド正しく取得できること"""
         mock_response = Mock()
         mock_response.json.return_value = sample_tsukumijima_response
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         client = WeatherClient()
-        result = client.get_weather("130010", day=2)
+        result = client.get_weather("130010", day=day)
 
         assert result["area_name"] == "東京都 東京地方"
         assert result["area_code"] == "130010"
-        assert result["date"] == "2025-12-26"
-        assert result["weather_code"] == "110"
-        assert result["temp_min"] == 5
-        assert result["temp_max"] == 10
-        assert result["pop_00_06"] == 10
-        assert result["pop_06_12"] == 10
-        assert result["pop_12_18"] == 20
-        assert result["pop_18_24"] == 20
-
-    @patch("integrations.weather.client.requests.get")
-    def test_get_weather_weather_fallback_to_telop(
-        self, mock_get, sample_tsukumijima_response
-    ):
-        """detail.weatherがnullの場合、telopにフォールバックする"""
-        mock_response = Mock()
-        mock_response.json.return_value = sample_tsukumijima_response
-        mock_response.raise_for_status = Mock()
-        mock_get.return_value = mock_response
-
-        client = WeatherClient()
-        # 明後日のdetail.weatherはnull
-        result = client.get_weather("130010", day=2)
-
-        assert result["weather"] == "晴のち曇"
+        assert result["date"] == expected["date"]
+        assert result["weather"] == expected["weather"]
+        assert result["weather_code"] == expected["weather_code"]
+        assert result["temp_min"] == expected["temp_min"]
+        assert result["temp_max"] == expected["temp_max"]
+        assert result["pop_00_06"] == expected["pop"][0]
+        assert result["pop_06_12"] == expected["pop"][1]
+        assert result["pop_12_18"] == expected["pop"][2]
+        assert result["pop_18_24"] == expected["pop"][3]
 
     @patch("integrations.weather.client.requests.get")
     def test_get_weather_pop_unavailable(self, mock_get, sample_tsukumijima_response):
@@ -356,28 +316,6 @@ class TestWeatherClient:
         assert result["temp_max"] is None
 
     @patch("integrations.weather.client.requests.get")
-    def test_get_weather_code_extraction(self, mock_get, sample_tsukumijima_response):
-        """image URLからweather_codeを正しく抽出する"""
-        mock_response = Mock()
-        mock_response.json.return_value = sample_tsukumijima_response
-        mock_response.raise_for_status = Mock()
-        mock_get.return_value = mock_response
-
-        client = WeatherClient()
-
-        # day=0: 101.svg → "101"
-        result_today = client.get_weather("130010", day=0)
-        assert result_today["weather_code"] == "101"
-
-        # day=1: 202.svg → "202"
-        result_tomorrow = client.get_weather("130010", day=1)
-        assert result_tomorrow["weather_code"] == "202"
-
-        # day=2: 110.svg → "110"
-        result_after = client.get_weather("130010", day=2)
-        assert result_after["weather_code"] == "110"
-
-    @patch("integrations.weather.client.requests.get")
     def test_get_weather_area_not_found(self, mock_get):
         """存在しない地域コードの場合はWeatherAreaNotFoundError"""
         mock_response = Mock()
@@ -388,7 +326,6 @@ class TestWeatherClient:
         mock_get.return_value = mock_response
 
         client = WeatherClient()
-
         with pytest.raises(WeatherAreaNotFoundError):
             client.get_weather("999999", day=0)
 
@@ -401,7 +338,6 @@ class TestWeatherClient:
         mock_get.return_value = mock_response
 
         client = WeatherClient()
-
         with pytest.raises(WeatherParseError):
             client.get_weather("130010", day=3)
 
@@ -421,62 +357,52 @@ class TestWeatherClient:
             timeout=30,
         )
 
+    # ============================================================
     # パース用ヘルパーメソッドのテスト
+    # ============================================================
 
-    def test_parse_pop_normal(self):
-        """正常な降水確率文字列をパースできる"""
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("30%", 30),
+            ("0%", 0),
+            ("100%", 100),
+            ("--%", None),
+            ("", None),
+            (None, None),
+        ],
+    )
+    def test_parse_pop(self, value, expected):
+        """降水確率文字列のパース"""
         client = WeatherClient()
-        assert client._parse_pop("30%") == 30
-        assert client._parse_pop("0%") == 0
-        assert client._parse_pop("100%") == 100
+        assert client._parse_pop(value) == expected
 
-    def test_parse_pop_unavailable(self):
-        """「--%」はNoneを返す"""
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("19", 19),
+            ("0", 0),
+            ("-3", -3),
+            (None, None),
+            ("", None),
+        ],
+    )
+    def test_parse_temp(self, value, expected):
+        """気温文字列のパース"""
         client = WeatherClient()
-        assert client._parse_pop("--%") is None
+        assert client._parse_temp(value) == expected
 
-    def test_parse_pop_empty(self):
-        """空文字列はNoneを返す"""
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            ("https://www.jma.go.jp/bosai/forecast/img/101.svg", "101"),
+            ("https://www.jma.go.jp/bosai/forecast/img/202.svg", "202"),
+            ("https://example.com/invalid", ""),
+            ("", ""),
+            (None, ""),
+        ],
+    )
+    def test_extract_weather_code(self, url, expected):
+        """image URLからweather codeを抽出"""
         client = WeatherClient()
-        assert client._parse_pop("") is None
-        assert client._parse_pop(None) is None
-
-    def test_parse_temp_normal(self):
-        """正常な気温文字列をパースできる"""
-        client = WeatherClient()
-        assert client._parse_temp("19") == 19
-        assert client._parse_temp("0") == 0
-        assert client._parse_temp("-3") == -3
-
-    def test_parse_temp_null(self):
-        """NoneはNoneを返す"""
-        client = WeatherClient()
-        assert client._parse_temp(None) is None
-
-    def test_parse_temp_empty(self):
-        """空文字列はNoneを返す"""
-        client = WeatherClient()
-        assert client._parse_temp("") is None
-
-    def test_extract_weather_code(self):
-        """image URLからweather codeを抽出できる"""
-        client = WeatherClient()
-        assert (
-            client._extract_weather_code(
-                "https://www.jma.go.jp/bosai/forecast/img/101.svg"
-            )
-            == "101"
-        )
-        assert (
-            client._extract_weather_code(
-                "https://www.jma.go.jp/bosai/forecast/img/202.svg"
-            )
-            == "202"
-        )
-
-    def test_extract_weather_code_no_match(self):
-        """URLからコードを抽出できない場合は空文字列を返す"""
-        client = WeatherClient()
-        assert client._extract_weather_code("https://example.com/invalid") == ""
-        assert client._extract_weather_code("") == ""
-        assert client._extract_weather_code(None) == ""
+        assert client._extract_weather_code(url) == expected
