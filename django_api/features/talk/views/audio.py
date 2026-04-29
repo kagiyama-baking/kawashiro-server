@@ -41,9 +41,14 @@ class ChatSessionMessageAudioView(APIView):
         msg = self._get_message(request, session_id, msg_id)
         if not msg.audio_file:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        # ボリューム喪失等で DB 行は残っているが実体が消えているケースを 404 化
+        # （素直に open すると FileNotFoundError → 500 になる）
+        name = msg.audio_file.name
+        if not name or not msg.audio_file.storage.exists(name):
+            return Response(status=status.HTTP_404_NOT_FOUND)
         content_type = _AUDIO_CONTENT_TYPE.get(
             msg.audio_format,
-            mimetypes.guess_type(msg.audio_file.name)[0] or "application/octet-stream",
+            mimetypes.guess_type(name)[0] or "application/octet-stream",
         )
         return FileResponse(msg.audio_file.open("rb"), content_type=content_type)
 
