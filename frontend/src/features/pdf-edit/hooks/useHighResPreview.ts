@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-    loadPdfDocument,
-    renderPageThumbnail,
-} from '@/lib/pdf/pdf-render';
+import { loadPdfDocument, renderPageThumbnail } from '@/lib/pdf/pdf-render';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 interface PreviewState {

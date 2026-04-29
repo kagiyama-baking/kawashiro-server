@@ -115,7 +115,7 @@ export function PageThumbnailItem({
                     'absolute top-2.5 left-2.5 z-10 transition-opacity duration-150',
                     isSelected
                         ? 'opacity-100'
-                        : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                        : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
                 )}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
