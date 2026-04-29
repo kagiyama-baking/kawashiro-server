@@ -1,9 +1,32 @@
+import { HTTPError } from 'ky';
 import { apiClient } from '@/lib/api-client';
 import type { ConvertImageParams } from '@/types/media';
 
 interface MediaResult {
     readonly blob: Blob;
     readonly filename: string;
+}
+
+export async function extractApiErrorMessage(
+    error: unknown,
+    fallback: string,
+): Promise<string> {
+    if (!(error instanceof HTTPError)) return fallback;
+    try {
+        const body = (await error.response.json()) as unknown;
+        if (
+            body !== null &&
+            typeof body === 'object' &&
+            'error' in body &&
+            typeof (body as { error: unknown }).error === 'string'
+        ) {
+            const message = (body as { error: string }).error.trim();
+            if (message !== '') return message;
+        }
+    } catch {
+        // JSON でないレスポンスや response body を二重消費した場合は fallback
+    }
+    return fallback;
 }
 
 function extractFilename(

@@ -8,7 +8,7 @@ import {
     expect,
     it,
 } from 'vitest';
-import { convertImage, zipToPdf } from '@/lib/api/media';
+import { convertImage, extractApiErrorMessage, zipToPdf } from '@/lib/api/media';
 
 const server = setupServer(
     http.post('*/api/media/convert-image/', () => {
@@ -102,5 +102,60 @@ describe('Media API', () => {
         const result = await zipToPdf(file);
 
         expect(result.filename).toBe('あいうえお.pdf');
+    });
+
+    it('extractApiErrorMessage は ky の HTTPError から error フィールドを取り出す', async () => {
+        server.use(
+            http.post('*/api/media/zip-to-pdf/', () => {
+                return HttpResponse.json(
+                    {
+                        error: 'サーバーのメモリが不足しました。画像の枚数を減らすか、解像度を下げて再試行してください',
+                    },
+                    { status: 503 },
+                );
+            }),
+        );
+
+        const file = new File(['test'], 'big.zip', {
+            type: 'application/zip',
+        });
+        let caught: unknown = null;
+        try {
+            await zipToPdf(file);
+        } catch (e) {
+            caught = e;
+        }
+
+        const msg = await extractApiErrorMessage(caught, 'fallback');
+        expect(msg).toContain('メモリ');
+    });
+
+    it('extractApiErrorMessage はJSONでないボディの場合はfallbackを返す', async () => {
+        server.use(
+            http.post('*/api/media/zip-to-pdf/', () => {
+                return new HttpResponse('not json', { status: 500 });
+            }),
+        );
+
+        const file = new File(['test'], 't.zip', {
+            type: 'application/zip',
+        });
+        let caught: unknown = null;
+        try {
+            await zipToPdf(file);
+        } catch (e) {
+            caught = e;
+        }
+
+        const msg = await extractApiErrorMessage(caught, 'fallback文言');
+        expect(msg).toBe('fallback文言');
+    });
+
+    it('extractApiErrorMessage は HTTPError でない例外の場合は fallback を返す', async () => {
+        const msg = await extractApiErrorMessage(
+            new Error('network down'),
+            'fallback文言',
+        );
+        expect(msg).toBe('fallback文言');
     });
 });

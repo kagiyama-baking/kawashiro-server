@@ -60,6 +60,7 @@ def create_zip_file(create_test_image):
         Args:
             files: ファイルのリスト [{'name': 'file.jpg', 'format': 'JPEG', 'color': 'red'}, ...]
                    または [{'name': 'file.txt', 'content': b'text content'}, ...]
+                   画像エントリは任意で size=(width, height) を指定できる。
             zip_name: アップロードファイル名（デフォルト: "test.zip"）
 
         Returns:
@@ -72,6 +73,7 @@ def create_zip_file(create_test_image):
                     # 画像ファイル
                     content = create_test_image(
                         format=file_info.get("format", "JPEG"),
+                        size=file_info.get("size", (100, 100)),
                         color=file_info.get("color", "red"),
                     )
                 else:
@@ -322,6 +324,69 @@ class TestZipToPdfView:
         # パス成分が漏れていないこと
         assert ".." not in disposition
         assert "/" not in disposition.split("filename=", 1)[1].split(";", 1)[0]
+
+    def test_zip_to_pdf_returns_413_when_total_megapixels_exceed_limit(
+        self, authenticated_client, create_zip_file, monkeypatch
+    ):
+        """ZIP内画像の合計メガピクセル数がハードリミットを超える場合は413を返す。
+
+        本番のメモリ枠（512MiB）を守るため、展開後の概算メモリを事前に算出し
+        危険なリクエストは即座に拒否する。
+        """
+        from features.media.views import ZipToPdfView
+
+        # 上限を 0.5 メガピクセルまで一時的に下げる
+        monkeypatch.setattr(ZipToPdfView, "MAX_TOTAL_MEGAPIXELS", 0.5)
+
+        # 1000x1000 = 1.0 メガピクセル → 上限超過
+        zip_file = create_zip_file(
+            [
+                {
+                    "name": "big.jpg",
+                    "format": "JPEG",
+                    "color": "red",
+                    "size": (1000, 1000),
+                }
+            ]
+        )
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+        assert "error" in response.data
+        # 原因が利用者に伝わるメッセージであること
+        assert (
+            "解像度" in response.data["error"]
+            or "メガピクセル" in response.data["error"]
+            or "サイズ" in response.data["error"]
+        )
+
+    def test_zip_to_pdf_returns_503_on_memory_error(
+        self, authenticated_client, create_zip_file, mocker
+    ):
+        """変換中にMemoryErrorが発生した場合は503と原因が分かるメッセージを返す。
+
+        従来は汎用エラー「画像の処理中にエラーが発生しました」に潰れて
+        本番OOMを切り分けできなかった。
+        """
+        # img2pdf 経由の変換中に MemoryError を発生させる
+        mocker.patch(
+            "features.media.views.img2pdf.convert", side_effect=MemoryError()
+        )
+
+        zip_file = create_zip_file(
+            [{"name": "image.jpg", "format": "JPEG", "color": "red"}]
+        )
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "error" in response.data
+        assert "メモリ" in response.data["error"]
 
 
 @pytest.mark.api

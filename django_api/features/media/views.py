@@ -10,6 +10,7 @@ from pathlib import PurePosixPath
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+import img2pdf
 from django.conf import settings
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
@@ -101,6 +102,12 @@ class ZipToPdfView(APIView):
     # ZIPボム対策の制限値
     MAX_TOTAL_SIZE = 1 * 1024 * 1024 * 1024  # 1GB（展開後の合計サイズ）
     MAX_FILES = 1000
+    # PDF化時の合計メガピクセル数の上限（本番のメモリ枠 512MiB を守るための事前ガード）
+    # 1MP の RGB 画像 ≈ 3MB。200MP で約 600MB の理論ピーク相当。
+    MAX_TOTAL_MEGAPIXELS = 200.0
+
+    # img2pdf にそのまま埋め込める拡張子（再エンコード不要）
+    NATIVE_PDF_EMBED_EXTENSIONS = (".jpg", ".jpeg")
 
     # 対応する画像拡張子
     IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
@@ -205,34 +212,35 @@ class ZipToPdfView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                # 画像をPIL Imageオブジェクトに変換
-                # コンテキストマネージャーを使用してメモリリークを防ぐ
-                images = []
-                for image_file in image_files:
-                    with zip_ref.open(image_file) as img_file:
-                        img_data = img_file.read()
-                        with Image.open(io.BytesIO(img_data)) as img:
-                            # RGBモードに変換（PDFにする際に必要）
-                            if img.mode != "RGB":
-                                img = img.convert("RGB")
-                            # 画像をコピーしてから追加（元の画像はwith句を抜けた時点でclose）
-                            images.append(img.copy())
-
-                # PDFに変換
-                pdf_buffer = io.BytesIO()
-                # 最初の画像をベースにして、残りを追加
-                images[0].save(
-                    pdf_buffer,
-                    format="PDF",
-                    save_all=True,
-                    append_images=images[1:] if len(images) > 1 else [],
+                # 事前バリデーション: 合計メガピクセル数の概算で本番OOMを防ぐ
+                total_megapixels = self._estimate_total_megapixels(
+                    zip_ref, image_files
                 )
-                pdf_buffer.seek(0)
+                if total_megapixels > self.MAX_TOTAL_MEGAPIXELS:
+                    logger.warning(
+                        "ZIP→PDF: 合計メガピクセル数が上限超過 "
+                        f"({total_megapixels:.1f}MP > {self.MAX_TOTAL_MEGAPIXELS}MP)"
+                    )
+                    return Response(
+                        {
+                            "error": (
+                                "ZIP内画像の合計解像度が大きすぎます "
+                                f"（{total_megapixels:.1f}メガピクセル, "
+                                f"上限 {self.MAX_TOTAL_MEGAPIXELS:.0f}メガピクセル）。"
+                                "枚数を減らすか、各画像のサイズを小さくしてください。"
+                            )
+                        },
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    )
 
-                # PDFファイルとしてレスポンスを返す
-                response = HttpResponse(
-                    pdf_buffer.getvalue(), content_type="application/pdf"
-                )
+                # 各画像を 1 枚ずつ処理し、img2pdf に渡せる bytes リストを構築
+                # （PIL Image オブジェクトを画像枚数ぶん同時に保持しない）
+                pdf_inputs = self._collect_pdf_inputs(zip_ref, image_files)
+
+                # img2pdf でストリーミング書き出し（JPEGは無圧縮埋め込み）
+                pdf_bytes = img2pdf.convert(pdf_inputs)
+
+                response = HttpResponse(pdf_bytes, content_type="application/pdf")
                 pdf_filename = build_pdf_filename(uploaded_file.name)
                 response["Content-Disposition"] = build_attachment_disposition(
                     pdf_filename
@@ -245,6 +253,24 @@ class ZipToPdfView(APIView):
                     "error": "アップロードされたファイルは有効なZIPファイルではありません"
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Image.DecompressionBombError as e:
+            logger.warning(f"ZIP→PDF: Decompression Bomb 検出: {str(e)}")
+            return Response(
+                {
+                    "error": "ZIP内に解像度が大きすぎる画像が含まれています（Decompression Bomb 対策）"
+                },
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        except MemoryError:
+            # 本番の mem_limit (512MiB) で発生するケース。
+            # 汎用エラーに潰さず原因が分かるメッセージを返す。
+            logger.error("ZIP→PDF: 変換中にメモリ不足が発生", exc_info=True)
+            return Response(
+                {
+                    "error": "サーバーのメモリが不足しました。画像の枚数を減らすか、解像度を下げて再試行してください"
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except (OSError, Image.UnidentifiedImageError) as e:
             # 画像形式エラー
@@ -261,6 +287,53 @@ class ZipToPdfView(APIView):
                 {"error": "画像の処理中にエラーが発生しました"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    def _estimate_total_megapixels(
+        self, zip_ref: zipfile.ZipFile, image_files: list[str]
+    ) -> float:
+        """ZIP内画像の合計メガピクセル数を概算する。
+
+        Pillow は画像ヘッダだけ読めば size を返すため、ピクセルデータ全体を
+        メモリにロードせずに済む。
+        """
+        total = 0
+        for name in image_files:
+            with zip_ref.open(name) as img_file:
+                with Image.open(img_file) as img:
+                    width, height = img.size
+                    total += width * height
+        return total / 1_000_000
+
+    def _collect_pdf_inputs(
+        self, zip_ref: zipfile.ZipFile, image_files: list[str]
+    ) -> list[bytes]:
+        """img2pdf に渡す画像 bytes のリストを 1 枚ずつ構築する。
+
+        - JPEG はそのまま埋め込み（再エンコード不要・メモリ効率最大）
+        - PNG/WEBP は Pillow で 1 枚ずつ JPEG に変換し、その bytes だけ保持する
+          （PIL Image オブジェクトを画像枚数ぶん同時に保持しない）
+        """
+        pdf_inputs: list[bytes] = []
+        for name in image_files:
+            with zip_ref.open(name) as img_file:
+                raw = img_file.read()
+            if name.lower().endswith(self.NATIVE_PDF_EMBED_EXTENSIONS):
+                pdf_inputs.append(raw)
+                continue
+            # PNG/WEBP 等は JPEG にエンコードし直す（透過は白背景で合成）
+            with Image.open(io.BytesIO(raw)) as img:
+                if img.mode in ("RGBA", "LA"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[-1])
+                    converted = background
+                elif img.mode != "RGB":
+                    converted = img.convert("RGB")
+                else:
+                    converted = img
+                buf = io.BytesIO()
+                converted.save(buf, format="JPEG", quality=90)
+                pdf_inputs.append(buf.getvalue())
+        return pdf_inputs
 
 
 class ImageConvertView(APIView):
