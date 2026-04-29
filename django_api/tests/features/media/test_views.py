@@ -300,9 +300,7 @@ class TestZipToPdfView:
         # ASCIIフォールバックには元の文字（スペース・括弧含む）がそのまま入る
         assert 'filename="my-file_v2 (final) [draft].pdf"' in disposition
         # RFC 5987 はパーセントエンコード済み
-        assert (
-            "my-file_v2%20%28final%29%20%5Bdraft%5D.pdf" in disposition
-        )
+        assert "my-file_v2%20%28final%29%20%5Bdraft%5D.pdf" in disposition
 
     def test_pdf_filename_strips_path_traversal(
         self, authenticated_client, create_zip_file
