@@ -11,6 +11,17 @@ function extractFilename(
     fallback: string,
 ): string {
     if (!contentDisposition) return fallback;
+    // RFC 5987: filename*=UTF-8''<percent-encoded> を ASCII フォールバックより優先
+    const utf8Match = contentDisposition.match(
+        /filename\*\s*=\s*UTF-8''([^;]+)/i,
+    );
+    if (utf8Match) {
+        try {
+            return decodeURIComponent(utf8Match[1].trim());
+        } catch {
+            // 不正なパーセントエンコードの場合は ASCII フォールバックへ
+        }
+    }
     const match = contentDisposition.match(/filename="?([^";\s]+)"?/);
     return match ? match[1] : fallback;
 }

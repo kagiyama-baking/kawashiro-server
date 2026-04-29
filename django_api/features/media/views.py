@@ -2,8 +2,12 @@
 
 import io
 import logging
+import os
+import re
 import zipfile
 from datetime import datetime
+from pathlib import PurePosixPath
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -25,6 +29,40 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+def build_pdf_filename(uploaded_name: str | None) -> str:
+    """
+    アップロードファイル名から安全なPDFファイル名を生成
+
+    パス区切り、制御文字、ダブルクォート、バックスラッシュなどHTTPヘッダ
+    インジェクションに繋がりうる文字を除去した上で、拡張子を .pdf に置換する。
+    """
+    fallback = "converted.pdf"
+    if not uploaded_name:
+        return fallback
+    # Windows / POSIX どちらの区切りも除去（パストラバーサル対策）
+    base = os.path.basename(uploaded_name.replace("\\", "/"))
+    stem = PurePosixPath(base).stem
+    # 制御文字・改行・ダブルクォート・バックスラッシュを除去
+    stem = re.sub(r'[\r\n"\\\x00-\x1f\x7f]', "", stem).strip()
+    if not stem:
+        return fallback
+    return f"{stem}.pdf"
+
+
+def build_attachment_disposition(filename: str) -> str:
+    """
+    Content-Disposition ヘッダ値を生成（RFC 6266 / RFC 5987 準拠）
+
+    ASCII フォールバック（filename）と UTF-8 エンコード版（filename*）の
+    両方を含めることで、日本語ファイル名でも対応ブラウザで正しく扱える。
+    """
+    ascii_fallback = (
+        filename.encode("ascii", errors="replace").decode("ascii").replace("?", "_")
+    )
+    encoded = quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
 
 
 def is_safe_image_file(filename: str, image_extensions: tuple) -> bool:
@@ -195,7 +233,10 @@ class ZipToPdfView(APIView):
                 response = HttpResponse(
                     pdf_buffer.getvalue(), content_type="application/pdf"
                 )
-                response["Content-Disposition"] = 'attachment; filename="converted.pdf"'
+                pdf_filename = build_pdf_filename(uploaded_file.name)
+                response["Content-Disposition"] = build_attachment_disposition(
+                    pdf_filename
+                )
                 return response
 
         except zipfile.BadZipFile:
