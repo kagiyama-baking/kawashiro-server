@@ -59,4 +59,48 @@ describe('Media API', () => {
         expect(result.blob.size).toBeGreaterThan(0);
         expect(result.filename).toBe('converted.pdf');
     });
+
+    it('半角スペース・括弧・記号を含むファイル名も filename* からデコードできる', async () => {
+        server.use(
+            http.post('*/api/media/zip-to-pdf/', () => {
+                return new HttpResponse('fake-pdf-data', {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/pdf',
+                        'Content-Disposition':
+                            "attachment; filename=\"my-file_v2 (final) [draft].pdf\"; filename*=UTF-8''my-file_v2%20%28final%29%20%5Bdraft%5D.pdf",
+                    },
+                });
+            }),
+        );
+
+        const file = new File(['test'], 'my-file_v2 (final) [draft].zip', {
+            type: 'application/zip',
+        });
+        const result = await zipToPdf(file);
+
+        expect(result.filename).toBe('my-file_v2 (final) [draft].pdf');
+    });
+
+    it('ZIP→PDFのファイル名は RFC 5987 (filename*=UTF-8\'\'…) を優先して日本語をデコードする', async () => {
+        server.use(
+            http.post('*/api/media/zip-to-pdf/', () => {
+                return new HttpResponse('fake-pdf-data', {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/pdf',
+                        'Content-Disposition':
+                            "attachment; filename=\"_____.pdf\"; filename*=UTF-8''%E3%81%82%E3%81%84%E3%81%86%E3%81%88%E3%81%8A.pdf",
+                    },
+                });
+            }),
+        );
+
+        const file = new File(['test'], 'あいうえお.zip', {
+            type: 'application/zip',
+        });
+        const result = await zipToPdf(file);
+
+        expect(result.filename).toBe('あいうえお.pdf');
+    });
 });
