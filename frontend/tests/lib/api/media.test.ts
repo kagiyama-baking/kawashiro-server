@@ -158,4 +158,29 @@ describe('Media API', () => {
         );
         expect(msg).toBe('fallback文言');
     });
+
+    it('改行や パス区切りを含むファイル名は _ にサニタイズされる', async () => {
+        // RFC 5987 経路: \r\n / \\ がサーバー or MITM で混入したケース
+        server.use(
+            http.post('*/api/media/zip-to-pdf/', () => {
+                return new HttpResponse('fake-pdf-data', {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/pdf',
+                        'Content-Disposition':
+                            "attachment; filename=\"x.pdf\"; filename*=UTF-8''bad%0D%0Aname%2F%5C.pdf",
+                    },
+                });
+            }),
+        );
+
+        const file = new File(['test'], 'in.zip', {
+            type: 'application/zip',
+        });
+        const result = await zipToPdf(file);
+
+        // 改行・/ ・\ は すべて _ に置換されること
+        expect(result.filename).toBe('bad__name__.pdf');
+        expect(result.filename).not.toMatch(/[\r\n\\/]/);
+    });
 });

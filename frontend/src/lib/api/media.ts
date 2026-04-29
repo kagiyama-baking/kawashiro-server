@@ -29,6 +29,12 @@ export async function extractApiErrorMessage(
     return fallback;
 }
 
+function sanitizeDownloadFilename(name: string): string {
+    // 改行・パス区切り・制御文字を除去（不正サーバー / MITM の改ざん対策の2段防御）
+    // eslint-disable-next-line no-control-regex -- 制御文字の除去自体が目的
+    return name.replace(/[\r\n\\/\x00-\x1f\x7f]/g, '_');
+}
+
 function extractFilename(
     contentDisposition: string | null,
     fallback: string,
@@ -40,13 +46,15 @@ function extractFilename(
     );
     if (utf8Match) {
         try {
-            return decodeURIComponent(utf8Match[1].trim());
+            return sanitizeDownloadFilename(
+                decodeURIComponent(utf8Match[1].trim()),
+            );
         } catch {
             // 不正なパーセントエンコードの場合は ASCII フォールバックへ
         }
     }
     const match = contentDisposition.match(/filename="?([^";\s]+)"?/);
-    return match ? match[1] : fallback;
+    return match ? sanitizeDownloadFilename(match[1]) : fallback;
 }
 
 export async function convertImage(
