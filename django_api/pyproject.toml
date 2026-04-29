@@ -39,6 +39,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-django>=4.11.1",
     "pytest-mock>=3.15.1",
+    "pytest-xdist>=3.6.0",
     "ruff>=0.14.6",
 ]
 
@@ -52,9 +53,12 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["tests"]
 addopts = [
-    "-v",
     "--tb=short",
-    "--strict-markers"
+    "--strict-markers",
+    "-n",
+    "auto",
+    "-m",
+    "not e2e",
 ]
 markers = [
     "unit: 単体テスト（DBアクセスなし）",

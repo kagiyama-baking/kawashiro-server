@@ -8,6 +8,8 @@ from rest_framework import serializers
 
 from user.serializers import AuthTokenSerializer, UserSerializer
 
+pytestmark = pytest.mark.django_db
+
 User = get_user_model()
 
 

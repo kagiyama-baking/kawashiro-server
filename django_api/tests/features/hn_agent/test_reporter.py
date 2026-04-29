@@ -12,6 +12,8 @@ from features.hn_agent.reporter import (
 )
 from integrations.slack.exceptions import SlackError
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.mark.unit
 class TestReporter:

@@ -8,6 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from features.hn_agent.orchestrator import Orchestrator
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture(autouse=True)
 def _disable_langfuse_client():

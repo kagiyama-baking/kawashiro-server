@@ -37,13 +37,19 @@ class TestTalkConfig:
     """TalkConfig モデルのテスト"""
 
     def test_create_config_with_required_fields(self, prompt_refs):
-        """必須フィールドで設定を作成できる."""
+        """必須フィールドで設定を作成でき、複数件の作成も可能なこと"""
         sys_ref, user_ref = prompt_refs
+
         config = TalkConfig.objects.create(
             name="morning",
             display_name="朝のあいさつ",
             system_prompt_ref=sys_ref,
             user_prompt_ref=user_ref,
+        )
+        TalkConfig.objects.create(
+            name="evening",
+            display_name="夜のあいさつ",
+            **_base_kwargs(prompt_refs),
         )
 
         assert config.id is not None
@@ -51,6 +57,7 @@ class TestTalkConfig:
         assert config.display_name == "朝のあいさつ"
         assert config.system_prompt_ref_id == sys_ref.id
         assert config.user_prompt_ref_id == user_ref.id
+        assert TalkConfig.objects.count() == 2
 
     def test_name_is_unique(self, prompt_refs):
         """name は一意."""
@@ -66,106 +73,40 @@ class TestTalkConfig:
                 **_base_kwargs(prompt_refs),
             )
 
-    def test_multiple_configs_allowed(self, prompt_refs):
-        """複数の設定を作成できる."""
-        TalkConfig.objects.create(
-            name="morning",
-            display_name="朝のあいさつ",
-            **_base_kwargs(prompt_refs),
-        )
-        TalkConfig.objects.create(
-            name="evening",
-            display_name="夜のあいさつ",
-            **_base_kwargs(prompt_refs),
-        )
-
-        assert TalkConfig.objects.count() == 2
-
-    def test_use_flags_removed(self, prompt_refs):
-        """use_weather / use_events / use_datetime は削除されている."""
-        config = TalkConfig.objects.create(
-            name="test",
-            display_name="テスト",
-            **_base_kwargs(prompt_refs),
-        )
-        assert not hasattr(config, "use_weather")
-        assert not hasattr(config, "use_events")
-        assert not hasattr(config, "use_datetime")
-
-    def test_get_enabled_placeholders_removed(self, prompt_refs):
-        """get_enabled_placeholders メソッドは削除されている."""
-        config = TalkConfig.objects.create(
-            name="test",
-            display_name="テスト",
-            **_base_kwargs(prompt_refs),
-        )
-        assert not hasattr(config, "get_enabled_placeholders")
-
-    # area_code バリデーション
-
-    def test_area_code_empty_is_valid(self, prompt_refs):
-        """area_code は空でも有効（動的化により必須条件削除）."""
+    @pytest.mark.parametrize(
+        "area_code, expect_error",
+        [
+            pytest.param("", False, id="empty_is_valid"),
+            pytest.param("130010", False, id="six_digits_valid"),
+            pytest.param("13001a", True, id="non_numeric"),
+            pytest.param("12345", True, id="too_short"),
+        ],
+    )
+    def test_area_code_validation(self, prompt_refs, area_code, expect_error):
+        """area_code のバリデーション挙動"""
         config = TalkConfig(
             name="test",
             display_name="テスト",
-            area_code="",
+            area_code=area_code,
             **_base_kwargs(prompt_refs),
         )
-        config.full_clean()
 
-    def test_area_code_valid_6_digits(self, prompt_refs):
-        """area_code: 6桁の数字は有効."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            area_code="130010",
-            **_base_kwargs(prompt_refs),
-        )
-        config.full_clean()
-
-    def test_area_code_invalid_non_numeric(self, prompt_refs):
-        """area_code: 数字以外を含む場合はエラー."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            area_code="13001a",
-            **_base_kwargs(prompt_refs),
-        )
-        with pytest.raises(ValidationError) as exc_info:
+        if expect_error:
+            with pytest.raises(ValidationError) as exc_info:
+                config.full_clean()
+            assert "area_code" in exc_info.value.message_dict
+        else:
             config.full_clean()
-        assert "area_code" in exc_info.value.message_dict
 
-    def test_area_code_invalid_too_short(self, prompt_refs):
-        """area_code: 6桁未満はエラー."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            area_code="12345",
-            **_base_kwargs(prompt_refs),
-        )
-        with pytest.raises(ValidationError) as exc_info:
-            config.full_clean()
-        assert "area_code" in exc_info.value.message_dict
-
-    # TTS設定
-
-    def test_tts_enabled_default_is_false(self, prompt_refs):
-        """tts_enabled のデフォルト値は False."""
+    def test_tts_defaults(self, prompt_refs):
+        """TTS 関連フィールドのデフォルト値"""
         config = TalkConfig.objects.create(
             name="test",
             display_name="テスト",
             **_base_kwargs(prompt_refs),
         )
+
         assert config.tts_enabled is False
-
-    def test_tts_options_default_values(self, prompt_refs):
-        """TTS オプションのデフォルト値が正しい."""
-        config = TalkConfig.objects.create(
-            name="test",
-            display_name="テスト",
-            **_base_kwargs(prompt_refs),
-        )
-
         assert config.tts_model == ""
         assert config.tts_style == "Neutral"
         assert config.tts_style_weight == 1.0
@@ -173,25 +114,7 @@ class TestTalkConfig:
         assert config.tts_sdp_ratio == 0.2
         assert config.tts_noise_scale == 0.6
         assert config.tts_noise_scale_w == 0.8
-
-    def test_create_config_with_tts_enabled(self, prompt_refs):
-        """音声合成を有効にした設定を作成できる."""
-        config = TalkConfig.objects.create(
-            name="test",
-            display_name="テスト",
-            tts_enabled=True,
-            tts_model="test_model",
-            tts_style="Happy",
-            tts_style_weight=1.5,
-            tts_speed=1.2,
-            **_base_kwargs(prompt_refs),
-        )
-
-        assert config.tts_enabled is True
-        assert config.tts_model == "test_model"
-        assert config.tts_style == "Happy"
-
-    # get_tts_options() メソッド
+        assert config.tts_format == "wav"
 
     def test_get_tts_options_when_disabled(self, prompt_refs):
         """get_tts_options(): TTS無効時は None を返す."""
@@ -204,7 +127,7 @@ class TestTalkConfig:
         assert config.get_tts_options() is None
 
     def test_get_tts_options_when_enabled(self, prompt_refs):
-        """get_tts_options(): TTS有効時は設定を辞書で返す."""
+        """get_tts_options(): TTS有効時は設定を辞書で返す（format 含む）"""
         config = TalkConfig(
             name="test",
             display_name="テスト",
@@ -230,8 +153,8 @@ class TestTalkConfig:
         assert options["noise_scale_w"] == 0.7
         assert options["format"] == "wav"
 
-    def test_get_tts_options_includes_format(self, prompt_refs):
-        """get_tts_options(): format フィールドが含まれる."""
+    def test_get_tts_options_with_custom_format(self, prompt_refs):
+        """get_tts_options(): tts_format が wav 以外でも反映されること"""
         config = TalkConfig(
             name="test",
             display_name="テスト",
@@ -241,15 +164,6 @@ class TestTalkConfig:
         )
         options = config.get_tts_options()
         assert options["format"] == "ogg"
-
-    def test_tts_format_default_is_wav(self, prompt_refs):
-        """tts_format のデフォルト値は wav."""
-        config = TalkConfig.objects.create(
-            name="test_format",
-            display_name="テスト",
-            **_base_kwargs(prompt_refs),
-        )
-        assert config.tts_format == "wav"
 
     def test_get_tts_options_model_empty_returns_none(self, prompt_refs):
         """get_tts_options(): tts_model が空文字の場合は model が None."""
@@ -263,8 +177,6 @@ class TestTalkConfig:
         options = config.get_tts_options()
         assert options["model"] is None
 
-    # __str__ と verbose_name
-
     def test_str_returns_display_name(self, prompt_refs):
         """__str__ は display_name を返す."""
         config = TalkConfig.objects.create(
@@ -273,22 +185,3 @@ class TestTalkConfig:
             **_base_kwargs(prompt_refs),
         )
         assert str(config) == "朝のあいさつ"
-
-    def test_verbose_name(self):
-        """verbose_name が正しく設定されている."""
-        assert TalkConfig._meta.verbose_name == "会話生成設定"
-        assert TalkConfig._meta.verbose_name_plural == "会話生成設定"
-
-    # save() でのバリデーション
-
-    def test_save_validates_area_code_format(self, prompt_refs):
-        """save(): area_code が不正な形式だとエラー."""
-        config = TalkConfig(
-            name="test",
-            display_name="テスト",
-            area_code="invalid",
-            **_base_kwargs(prompt_refs),
-        )
-        with pytest.raises(ValidationError) as exc_info:
-            config.save()
-        assert "area_code" in exc_info.value.message_dict

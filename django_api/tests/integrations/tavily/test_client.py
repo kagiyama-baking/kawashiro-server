@@ -9,6 +9,8 @@ from integrations.tavily.client import TavilyClient, TavilySearchResult
 from integrations.tavily.config import TavilySettings
 from integrations.tavily.exceptions import TavilyAPIError, TavilyConfigurationError
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def mock_tavily_settings():

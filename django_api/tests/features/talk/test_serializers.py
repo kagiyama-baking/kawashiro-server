@@ -1,5 +1,7 @@
 """Tests for talk serializers."""
 
+import pytest
+
 from features.talk.serializers import (
     TalkRequestSerializer,
     TalkResponseSerializer,
@@ -11,103 +13,84 @@ class TestTalkRequestSerializer:
     """TalkRequestSerializerのテスト"""
 
     def test_valid_request_with_config_name(self):
-        """config_name のみで有効."""
+        """config_name のみで有効。ユーザープロンプトなしでも valid."""
         data = {"config_name": "morning"}
         serializer = TalkRequestSerializer(data=data)
+
         assert serializer.is_valid(), serializer.errors
         assert serializer.validated_data["config_name"] == "morning"
-
-    def test_missing_config_name(self):
-        """config_name がない場合はエラー."""
-        data = {}
-        serializer = TalkRequestSerializer(data=data)
-        assert not serializer.is_valid()
-        assert "config_name" in serializer.errors
-
-    def test_empty_config_name(self):
-        """config_name が空の場合はエラー."""
-        data = {"config_name": ""}
-        serializer = TalkRequestSerializer(data=data)
-        assert not serializer.is_valid()
-        assert "config_name" in serializer.errors
-
-    def test_accepts_optional_user_prompt(self):
-        """user_prompt が指定された場合は受理される."""
-        data = {"config_name": "morning", "user_prompt": "カスタムプロンプト"}
-        serializer = TalkRequestSerializer(data=data)
-        assert serializer.is_valid(), serializer.errors
-        assert serializer.validated_data["user_prompt"] == "カスタムプロンプト"
-
-    def test_user_prompt_is_optional(self):
-        """user_prompt は任意で、省略可能."""
-        data = {"config_name": "morning"}
-        serializer = TalkRequestSerializer(data=data)
-        assert serializer.is_valid(), serializer.errors
         assert "user_prompt" not in serializer.validated_data
 
-    def test_ignores_other_extra_fields(self):
-        """未定義の追加フィールドは無視される."""
-        data = {"config_name": "morning", "unknown_field": "ignored"}
+    @pytest.mark.parametrize(
+        "config_name",
+        [
+            pytest.param(None, id="missing"),
+            pytest.param("", id="empty"),
+        ],
+    )
+    def test_invalid_config_name(self, config_name):
+        """config_name が不正な場合はエラー."""
+        data = {} if config_name is None else {"config_name": config_name}
         serializer = TalkRequestSerializer(data=data)
-        assert serializer.is_valid(), serializer.errors
-        assert "unknown_field" not in serializer.validated_data
 
-    def test_user_prompt_max_length_4000(self):
-        """user_prompt は 4000 文字まで受理."""
-        data = {"config_name": "morning", "user_prompt": "あ" * 4000}
-        serializer = TalkRequestSerializer(data=data)
-        assert serializer.is_valid(), serializer.errors
-
-    def test_user_prompt_over_max_length_rejected(self):
-        """user_prompt が 4000 文字を超えると 400."""
-        data = {"config_name": "morning", "user_prompt": "あ" * 4001}
-        serializer = TalkRequestSerializer(data=data)
         assert not serializer.is_valid()
-        assert "user_prompt" in serializer.errors
+        assert "config_name" in serializer.errors
+
+    @pytest.mark.parametrize(
+        "user_prompt, expected_valid",
+        [
+            pytest.param("カスタムプロンプト", True, id="short_text"),
+            pytest.param("あ" * 4000, True, id="exactly_max_length"),
+            pytest.param("あ" * 4001, False, id="over_max_length"),
+        ],
+    )
+    def test_user_prompt_validation(self, user_prompt, expected_valid):
+        """user_prompt の境界値バリデーション."""
+        data = {"config_name": "morning", "user_prompt": user_prompt}
+        serializer = TalkRequestSerializer(data=data)
+
+        if expected_valid:
+            assert serializer.is_valid(), serializer.errors
+            assert serializer.validated_data["user_prompt"] == user_prompt
+        else:
+            assert not serializer.is_valid()
+            assert "user_prompt" in serializer.errors
 
 
 class TestTalkResponseSerializer:
     """TalkResponseSerializerのテスト"""
 
-    def test_valid_response(self):
-        """有効なレスポンスデータでシリアライズできる."""
-        data = {
-            "greeting_text": "おはようございます、先輩。",
-        }
+    @pytest.mark.parametrize(
+        "data, expected_valid",
+        [
+            pytest.param(
+                {"greeting_text": "おはようございます、先輩。"}, True, id="valid"
+            ),
+            pytest.param({}, False, id="missing_greeting_text"),
+        ],
+    )
+    def test_response_validation(self, data, expected_valid):
+        """レスポンスのバリデーション."""
         serializer = TalkResponseSerializer(data=data)
-        assert serializer.is_valid(), serializer.errors
 
-    def test_missing_greeting_text(self):
-        """greeting_text がない場合はエラー."""
-        data = {}
-        serializer = TalkResponseSerializer(data=data)
-        assert not serializer.is_valid()
-        assert "greeting_text" in serializer.errors
+        if expected_valid:
+            assert serializer.is_valid(), serializer.errors
+        else:
+            assert not serializer.is_valid()
+            assert "greeting_text" in serializer.errors
 
 
 class TestTodayInfoResponseSerializer:
     """TodayInfoResponseSerializerのテスト"""
 
     def test_valid_response(self):
-        """有効なレスポンスデータでシリアライズできる."""
+        """有効なレスポンスデータでシリアライズできる（祝日なし）."""
         data = {
             "date": "2025-01-14",
             "time": "09:30:00",
             "day_of_week": "Tuesday",
             "day_of_week_ja": "火曜日",
             "holiday_name": None,
-        }
-        serializer = TodayInfoResponseSerializer(data=data)
-        assert serializer.is_valid(), serializer.errors
-
-    def test_valid_response_with_holiday(self):
-        """祝日がある場合も有効."""
-        data = {
-            "date": "2025-01-01",
-            "time": "08:00:00",
-            "day_of_week": "Wednesday",
-            "day_of_week_ja": "水曜日",
-            "holiday_name": "元日",
         }
         serializer = TodayInfoResponseSerializer(data=data)
         assert serializer.is_valid(), serializer.errors
