@@ -53,13 +53,14 @@ def setup_heif_support():
 def create_zip_file(create_test_image):
     """テスト用のZIPファイルを作成するヘルパー関数"""
 
-    def _create_zip(files):
+    def _create_zip(files, zip_name="test.zip"):
         """
         ファイルを含むZIPファイルを作成
 
         Args:
             files: ファイルのリスト [{'name': 'file.jpg', 'format': 'JPEG', 'color': 'red'}, ...]
                    または [{'name': 'file.txt', 'content': b'text content'}, ...]
+            zip_name: アップロードファイル名（デフォルト: "test.zip"）
 
         Returns:
             SimpleUploadedFile: ZIPファイルオブジェクト
@@ -80,7 +81,7 @@ def create_zip_file(create_test_image):
 
         zip_io.seek(0)
         return SimpleUploadedFile(
-            name="test.zip", content=zip_io.read(), content_type="application/zip"
+            name=zip_name, content=zip_io.read(), content_type="application/zip"
         )
 
     return _create_zip
@@ -225,6 +226,102 @@ class TestZipToPdfView:
 
         assert response.status_code == status.HTTP_200_OK
         assert response["Content-Type"] == "application/pdf"
+
+    def test_pdf_filename_matches_uploaded_zip(
+        self, authenticated_client, create_zip_file
+    ):
+        """変換後のPDFファイル名がアップロードされたZIPの名前（拡張子.pdf）になること"""
+        zip_file = create_zip_file(
+            [{"name": "image.jpg", "format": "JPEG", "color": "red"}],
+            zip_name="aaa.zip",
+        )
+
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert 'filename="aaa.pdf"' in response["Content-Disposition"]
+
+    def test_pdf_filename_preserves_inner_dots(
+        self, authenticated_client, create_zip_file
+    ):
+        """ドットを複数含むZIP名は最後の拡張子のみ.pdfに置換されること"""
+        zip_file = create_zip_file(
+            [{"name": "image.jpg", "format": "JPEG", "color": "red"}],
+            zip_name="my.archive.v2.zip",
+        )
+
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert 'filename="my.archive.v2.pdf"' in response["Content-Disposition"]
+
+    def test_pdf_filename_with_japanese_uses_rfc5987(
+        self, authenticated_client, create_zip_file
+    ):
+        """日本語ZIP名の場合、RFC 5987形式（filename*=UTF-8''...）が含まれること"""
+        zip_file = create_zip_file(
+            [{"name": "image.jpg", "format": "JPEG", "color": "red"}],
+            zip_name="あいうえお.zip",
+        )
+
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        disposition = response["Content-Disposition"]
+        # RFC 5987 形式のパーセントエンコードされたファイル名
+        assert "filename*=UTF-8''" in disposition
+        assert "%E3%81%82%E3%81%84%E3%81%86%E3%81%88%E3%81%8A.pdf" in disposition
+
+    def test_pdf_filename_preserves_spaces_and_symbols(
+        self, authenticated_client, create_zip_file
+    ):
+        """半角スペース・括弧・ハイフン等の記号を含むZIP名がそのまま保持されること"""
+        zip_file = create_zip_file(
+            [{"name": "image.jpg", "format": "JPEG", "color": "red"}],
+            zip_name="my-file_v2 (final) [draft].zip",
+        )
+
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        disposition = response["Content-Disposition"]
+        # ASCIIフォールバックには元の文字（スペース・括弧含む）がそのまま入る
+        assert 'filename="my-file_v2 (final) [draft].pdf"' in disposition
+        # RFC 5987 はパーセントエンコード済み
+        assert "my-file_v2%20%28final%29%20%5Bdraft%5D.pdf" in disposition
+
+    def test_pdf_filename_strips_path_traversal(
+        self, authenticated_client, create_zip_file
+    ):
+        """ZIP名にパス区切りが含まれてもbasenameのみが使われること"""
+        zip_file = create_zip_file(
+            [{"name": "image.jpg", "format": "JPEG", "color": "red"}],
+            zip_name="../../etc/passwd.zip",
+        )
+
+        payload = {"file": zip_file}
+        response = authenticated_client.post(
+            "/media/zip-to-pdf/", payload, format="multipart"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        disposition = response["Content-Disposition"]
+        assert 'filename="passwd.pdf"' in disposition
+        # パス成分が漏れていないこと
+        assert ".." not in disposition
+        assert "/" not in disposition.split("filename=", 1)[1].split(";", 1)[0]
 
 
 @pytest.mark.api
