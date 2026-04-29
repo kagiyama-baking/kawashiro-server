@@ -68,6 +68,8 @@ export function HomePage() {
                                                 '設定に基づき会話テキスト生成＋読み上げ'}
                                             {to === '/media' &&
                                                 '画像変換・ZIP→PDF変換'}
+                                            {to === '/pdf-edit' &&
+                                                'PDFのページを並び替え・削除・分割・トリミング'}
                                         </p>
                                     </div>
                                     <ChevronRight className="text-muted-foreground h-4 w-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-[oklch(0.75_0.20_155)]" />
