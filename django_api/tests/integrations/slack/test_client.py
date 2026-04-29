@@ -8,6 +8,8 @@ from integrations.slack.client import SlackClient
 from integrations.slack.config import SlackSettings
 from integrations.slack.exceptions import SlackConfigurationError, SlackSendError
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def mock_slack_settings():

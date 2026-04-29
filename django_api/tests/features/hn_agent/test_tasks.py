@@ -15,6 +15,8 @@ from features.hn_agent.tasks import (
 )
 from integrations.hn.client import HNStory
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def sample_stories():

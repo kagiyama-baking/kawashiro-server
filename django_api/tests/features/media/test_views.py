@@ -9,6 +9,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 from rest_framework import status
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def create_test_image():

@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 
+pytestmark = pytest.mark.django_db
+
 User = get_user_model()
 
 

@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock, patch
 
+import pytest
 from rest_framework import status
 
 from integrations.weather.exceptions import (
@@ -10,6 +11,8 @@ from integrations.weather.exceptions import (
     WeatherParseError,
     WeatherTimeoutError,
 )
+
+pytestmark = pytest.mark.django_db
 
 
 class TestWeatherForecastView:
