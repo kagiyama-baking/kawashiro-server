@@ -1,8 +1,3 @@
-# 永続化ボリューム（ディレクトリ構造は.gitkeepで維持）
-/volumes/**/*
-!/volumes/**/
-!/volumes/**/.gitkeep
-
 # OS関連
 .DS_Store
 Thumbs.db

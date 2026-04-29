@@ -92,6 +92,16 @@ class TestAudioGet:
         response = auth_client.get(_audio_url(session.id, msg.id))
         assert response.status_code == 404
 
+    def test_storage_missing_returns_404(self, session_with_audio, auth_client):
+        """DB には audio_file パスが残るが実体ファイルが消えていれば 404."""
+        session, msg = session_with_audio
+        # ボリューム喪失等で実体だけ消えた状況を再現（DB 行はそのまま）
+        msg.audio_file.storage.delete(msg.audio_file.name)
+
+        response = auth_client.get(_audio_url(session.id, msg.id))
+
+        assert response.status_code == 404
+
 
 @pytest.mark.django_db
 class TestAudioDeleteIndividual:
