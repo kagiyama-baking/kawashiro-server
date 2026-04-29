@@ -150,29 +150,12 @@ jobs:
                   no-cache-filters: base
                   provenance: false # 後で別ジョブで付与
 
-            # ビルド結果の確認
-            - name: Build summary
-              if: always()
-              run: |
-                  if [ "${{ steps.build.outcome }}" = "success" ]; then
-                    echo "✅ ${{ matrix.service.name }}のビルド・プッシュ: 成功"
-                    echo "📦 ダイジェスト: ${{ steps.build.outputs.digest }}"
-                  else
-                    echo "❌ ${{ matrix.service.name }}のビルド・プッシュ: 失敗"
-                  fi
-
             # SBOMの生成（ソフトウェア部品表）
             - name: Generate SBOM (CycloneDX)
               uses: anchore/sbom-action@v0
               with:
                   image: ${{ matrix.service.image }}@${{ steps.build.outputs.digest }}
                   artifact-name: sbom-${{ matrix.service.name }}.spdx.json
-
-            # SBOM生成結果の確認
-            - name: SBOM generation summary
-              if: always()
-              run: |
-                  echo "📋 ${{ matrix.service.name }}のSBOM生成完了"
 
             # ビルド証明の生成
             - name: Attest build provenance
@@ -184,17 +167,17 @@ jobs:
                   subject-digest: ${{ steps.build.outputs.digest }}
                   push-to-registry: true
 
-            # Provenance生成結果の確認
-            - name: Provenance attestation summary
-              if: always()
+            # ダイジェストの保存とサマリー
+            - name: Save digest and summary
               run: |
-                  echo "🔐 ${{ matrix.service.name }}のビルド証明生成完了"
-
-            # ビルドダイジェストの出力
-            - name: Output digest
-              run: |
-                  echo "📦 ${{ matrix.service.name }}のダイジェスト: ${{ steps.build.outputs.digest }}"
                   echo '${{ steps.build.outputs.digest }}' > digest.txt
+                  {
+                    echo "## ${{ matrix.service.name }}"
+                    echo "- イメージ: ${{ matrix.service.image }}"
+                    echo "- タグ: ${{ steps.meta.outputs.tags }}"
+                    echo "- ダイジェスト: ${{ steps.build.outputs.digest }}"
+                    echo "- SBOM: sbom-${{ matrix.service.name }}.spdx.json"
+                  } >> "$GITHUB_STEP_SUMMARY"
 
             # ダイジェストアーティファクトのアップロード
             - name: Upload digest artifact
@@ -202,13 +185,3 @@ jobs:
               with:
                   name: digest-${{ matrix.service.name }}
                   path: digest.txt
-
-            # 最終サマリー
-            - name: Final summary
-              if: always()
-              run: |
-                  echo "🎉 ${{ matrix.service.name }}の処理完了"
-                  echo "   イメージ: ${{ matrix.service.image }}"
-                  echo "   タグ: ${{ steps.meta.outputs.tags }}"
-                  echo "   ダイジェスト: ${{ steps.build.outputs.digest }}"
-                  echo "   SBOM: sbom-${{ matrix.service.name }}.spdx.json"

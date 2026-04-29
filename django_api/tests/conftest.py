@@ -84,14 +84,6 @@ def mock_pdf_file():
     )
 
 
-@pytest.fixture(autouse=True)
-def enable_db_access_for_all_tests(db):
-    """
-    すべてのテストでデータベースアクセスを有効にする
-    @pytest.mark.djangodbが不要になる
-    """
-
-
 @pytest.fixture
 def mock_ms_graph_settings():
     """MSGraphSettings用のモックフィクスチャ"""

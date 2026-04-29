@@ -7,6 +7,8 @@ import pytest
 from integrations.langfuse.client import get_prompt_with_variables, resolve_prompt
 from integrations.langfuse.models import LangfusePromptRef
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def ref(db):

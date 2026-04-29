@@ -9,6 +9,8 @@ from features.hn_agent.agents.security_responder import SecurityResponderAgent
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture(autouse=True)
 def _disable_langfuse_client():
