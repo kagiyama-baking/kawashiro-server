@@ -28,7 +28,7 @@ services:
             # 静的ファイルの永続化
             - /opt/app/django-api/staticfiles:/django_api/staticfiles
             # メディアファイル（チャット履歴の TTS 音声など）の永続化
-            - ./volumes/media:/django_api/media
+            - /opt/app/django-api/media:/django_api/media
         restart: unless-stopped
         networks:
             - container-network
