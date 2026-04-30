@@ -74,16 +74,30 @@ jobs:
                   IMAGE="${{ env.IMAGE_BASE }}/${{ matrix.service }}"
                   echo "🏷️ ${{ matrix.service }}: staging → release, latest"
 
-                  # stagingイメージをpull
-                  docker pull "${IMAGE}:staging"
+                  # GHCR 上の manifest list をそのまま複製する。
+                  # 旧来の `docker pull && docker tag && docker push` だと、ランナー(amd64)
+                  # 用の単一アーキ image だけが pull され、push 時に Docker v2 single image
+                  # manifest として登録されるため manifest list 構造が崩れ、
+                  # multi-arch (amd64+arm64) や OCI 互換が失われていた。
+                  # `buildx imagetools create` は GHCR 内で manifest list を
+                  # server-side でコピーするため、digest が完全保持される。
+                  docker buildx imagetools create \
+                      --tag "${IMAGE}:release" \
+                      --tag "${IMAGE}:latest" \
+                      "${IMAGE}:staging"
 
-                  # release/latestタグを付与してpush
-                  docker tag "${IMAGE}:staging" "${IMAGE}:release"
-                  docker tag "${IMAGE}:staging" "${IMAGE}:latest"
-                  docker push "${IMAGE}:release"
-                  docker push "${IMAGE}:latest"
+                  echo "✅ ${{ matrix.service }}のリタグ完了（manifest list 維持）"
 
-                  echo "✅ ${{ matrix.service }}のリタグ完了"
+                  # 検証: staging と release の manifest digest が一致することを確認
+                  STAGING_DIGEST=$(docker buildx imagetools inspect "${IMAGE}:staging" --format '{{.Manifest.Digest}}')
+                  RELEASE_DIGEST=$(docker buildx imagetools inspect "${IMAGE}:release" --format '{{.Manifest.Digest}}')
+                  echo "  staging: ${STAGING_DIGEST}"
+                  echo "  release: ${RELEASE_DIGEST}"
+                  if [ "${STAGING_DIGEST}" != "${RELEASE_DIGEST}" ]; then
+                      echo "❌ digest 不一致: リタグが正しく行われていません" >&2
+                      exit 1
+                  fi
+                  echo "✅ digest 一致を確認"
 
     # 本番サーバーへデプロイ
     deploy:
