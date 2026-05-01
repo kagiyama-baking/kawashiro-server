@@ -1,0 +1,70 @@
+{
+    "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+    "release-type": "simple",
+    "include-component-in-tag": false,
+    "include-v-in-tag": true,
+    "tag-separator": "-",
+    "draft": false,
+    "prerelease": false,
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": false,
+    "pull-request-title-pattern": "chore: リリース ${version}",
+    "pull-request-header": "## このPRをマージするとリリースが実行されます\n\n下記の変更内容を含むリリース ${version} を発行します。マージすると以下が自動実行されます:\n\n1. タグ `v${version}` を main に付与\n2. GitHub Release を作成（変更履歴付き）\n3. `Release (main)` ワークフローが本番デプロイを実行",
+    "changelog-sections": [
+        {
+            "type": "feat",
+            "section": "新機能",
+            "hidden": false
+        },
+        {
+            "type": "fix",
+            "section": "バグ修正",
+            "hidden": false
+        },
+        {
+            "type": "perf",
+            "section": "パフォーマンス改善",
+            "hidden": false
+        },
+        {
+            "type": "refactor",
+            "section": "リファクタリング",
+            "hidden": false
+        },
+        {
+            "type": "docs",
+            "section": "ドキュメント",
+            "hidden": true
+        },
+        {
+            "type": "chore",
+            "section": "雑務",
+            "hidden": true
+        },
+        {
+            "type": "test",
+            "section": "テスト",
+            "hidden": true
+        },
+        {
+            "type": "ci",
+            "section": "CI/CD",
+            "hidden": true
+        },
+        {
+            "type": "style",
+            "section": "コードスタイル",
+            "hidden": true
+        },
+        {
+            "type": "build",
+            "section": "ビルド",
+            "hidden": true
+        }
+    ],
+    "packages": {
+        ".": {
+            "package-name": "kawashiro-server"
+        }
+    }
+}
