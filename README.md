@@ -42,7 +42,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
         - 🎙️ **Talk**: 会話生成 API + **チャット履歴セッション**（DB + ファイル永続化、編集再送、音声配信/個別 & 一括削除、LLM タイトル要約、Langfuse Session 連携）
         - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
         - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。LangGraph ReAct Agent がスレッド性質に応じて 3 ツールを使い分け）
-- 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（GPU）
+- 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（CPU 推論・NVIDIA GPU はオプション）
 
 ## LLM / LiteLLM / Langfuse の関係
 
@@ -179,14 +179,16 @@ kawashiro-server/
 ├── volumes/
 │   └── media/                  # チャット履歴の TTS 音声永続化先（ホストマウント）
 │
-└── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（GPU / CUDA 11.8）
+└── sbv2_api/                   # Style-BERT-VITS2 APIサーバー（CPU推論 / オプションでCUDA 11.8）
 ```
 
 ## 必要な環境
 
 - Docker Engine 20.10.0+
 - Docker Compose 2.0.0+
-- NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)（sbv2-api 用）
+- （オプション）NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+  - sbv2-api はデフォルトで CPU 推論のため GPU なしのホスト（Intel Mac mini 等）でも動作します
+  - GPU で推論する場合は `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d` を使用
 - 外部サービス
   - LiteLLM Proxy エンドポイント（`LITELLM_PROXY_URL`）
   - Langfuse SaaS or self-hosted（`LANGFUSE_BASE_URL` など任意）
@@ -301,7 +303,7 @@ flowchart LR
 | frontend | ✓ | ✓ | ✓ |
 | sbv2-api | スキャンのみ | - | - |
 
-> **Note:** `sbv2-api` は NVIDIA GPU 必須のため CI 環境ではビルドしません。Dockerfile のセキュリティスキャンのみ実施。
+> **Note:** `sbv2-api` は BERT モデル同梱でイメージが巨大なため CI 環境ではビルドしません。pytest によるユニットテストと Dockerfile のセキュリティスキャンを実施。
 
 ### コンテナイメージのタグ戦略
 
@@ -366,7 +368,7 @@ pnpm test:e2e      # E2E テスト（Playwright）
 - **LiteLLM Proxy**（LLM 呼び出しの共通入口）
 - **Langfuse**（観測 / プロンプト管理）
 - **気象庁天気予報 API**
-- **Style-BERT-VITS2**（音声合成・CUDA 11.8）
+- **Style-BERT-VITS2**（音声合成・CPU / オプションで CUDA 11.8）
 - **Hacker News Algolia API**
 - **Tavily API**（Web 検索）
 - **Slack Incoming Webhook**（通知）

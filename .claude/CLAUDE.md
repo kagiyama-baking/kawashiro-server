@@ -34,9 +34,17 @@ kawashiro-server/
 │   │   └── health/          # ヘルスチェックテスト
 │   ├── pyproject.toml       # Python依存関係・ツール設定
 │   └── Dockerfile           # Python 3.13-alpine ベース
-├── sbv2_api/                # Style-BERT-VITS2 音声合成サーバー（FastAPI）
+├── sbv2_api/                # Style-BERT-VITS2 音声合成サーバー（FastAPI、CPU推論）
+│   ├── server.py            # APIサーバー本体
+│   ├── tests/               # テスト（style_bert_vits2/torchはスタブ化）
+│   ├── pyproject.toml       # テスト用依存・ツール設定
+│   └── Dockerfile           # Python 3.10ベース（TORCH_VARIANTビルド引数でCPU/CUDA切替）
+├── frontend/                # React SPA フロントエンド（Vite + TypeScript + Tailwind）
+│   ├── src/                 # ソースコード（features/, components/, lib/ 等）
+│   └── Dockerfile           # ビルド + nginx 配信
 ├── volumes/                 # 永続化データ（.gitkeepのみ管理）
 ├── docker-compose.yml       # 開発環境用
+├── docker-compose.gpu.yml   # NVIDIA GPUホスト用オーバーライド（sbv2-api をCUDA化）
 └── .github/workflows/       # CI/CDワークフロー
 ```
 
@@ -327,7 +335,28 @@ Django API に必要な環境変数（`django_api/.env`）：
 | `celery-beat`   | —            | Celery Beatスケジューラ       |
 | `redis`         | 6379（内部） | Celeryブローカー              |
 | `app-database`  | 5432（内部） | PostgreSQL 17（pgvector）     |
-| `sbv2-api`      | 5000（内部） | Style-BERT-VITS2 音声合成     |
+| `sbv2-api`      | 5000（内部） | Style-BERT-VITS2 音声合成（CPU推論）|
+| `frontend`      | 3000         | React SPA（nginx 配信）       |
+
+### sbv2-api の CPU / GPU 切替
+
+- デフォルトは **CPU 推論**（PyTorch CPU版 wheel）。GPU 非搭載ホスト（Intel Mac mini 等）でもそのまま動作する
+- NVIDIA GPU ホストでは `docker-compose.gpu.yml` を重ねて起動する（`TORCH_VARIANT=cu118` ビルド + `SBV2_DEVICE=cuda`）
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+- `sbv2_api/server.py` は環境変数 `SBV2_DEVICE`（デフォルト: cpu）、`SBV2_CONFIG_PATH`、`SBV2_MODEL_ASSETS_PATH`、`SBV2_BERT_MODEL_PATH` で設定可能
+
+### sbv2-api のテスト
+
+```bash
+cd sbv2_api
+uv sync                # 軽量依存のみ（style_bert_vits2/torch はテスト内でスタブ化）
+uv run pytest tests/ -v
+uv run ruff check . && uv run ruff format --check .
+```
 
 ## CI/CD ワークフロー
 
@@ -338,7 +367,8 @@ Django API に必要な環境変数（`django_api/.env`）：
 1. **変更検出**: `dorny/paths-filter` で変更されたサービスを検出
 2. **Dockerfile セキュリティスキャン**: Trivy による設定スキャン（CRITICAL/HIGH）
 3. **Django API テスト**: Ruff リンター/フォーマッター → pytest（カバレッジ 80%以上必須）
-4. **コンテナ統合テスト**: Docker Compose ビルド → マイグレーション → 起動 → Django API 機能テスト
+4. **SBV2 API テスト**: Ruff リンター/フォーマッター → pytest（依存スタブによる軽量テスト）
+5. **コンテナ統合テスト**: Docker Compose ビルド → マイグレーション → 起動 → Django API 機能テスト
 
 ### Build & Push（`build.yml`）
 
