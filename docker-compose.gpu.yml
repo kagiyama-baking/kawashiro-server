@@ -1,0 +1,24 @@
+# NVIDIA GPU搭載ホスト用オーバーライド
+# 使い方:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build sbv2-api
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+services:
+    sbv2-api:
+        build:
+            context: ./sbv2_api
+            dockerfile: Dockerfile
+            args:
+                # CUDA 11.8版 PyTorch をインストール
+                TORCH_VARIANT: cu118
+        environment:
+            - TZ=Asia/Tokyo
+            - NVIDIA_VISIBLE_DEVICES=all
+            # GPUで推論する
+            - SBV2_DEVICE=cuda
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]

@@ -135,7 +135,10 @@ services:
             - SETGID
             - SETUID
 
-    # Style-BERT-VITS2 読み上げAPI（GPU版）
+    # Style-BERT-VITS2 読み上げAPI（CPU推論）
+    # GPU非搭載ホスト（Intel Mac mini等）でもそのまま動作する。
+    # NVIDIA GPUホストで使う場合は docker-compose.gpu.yml を重ねて起動:
+    #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
     sbv2-api:
         build:
             context: ./sbv2_api
@@ -154,17 +157,9 @@ services:
             - /opt/app/sbv2-api/model_assets:/app/model_assets:ro
         environment:
             - TZ=Asia/Tokyo
-            - NVIDIA_VISIBLE_DEVICES=all
         restart: unless-stopped
         networks:
             - container-network
-        deploy:
-            resources:
-                reservations:
-                    devices:
-                        - driver: nvidia
-                          count: 1
-                          capabilities: [gpu]
 
     # フロントエンド（React SPA）
     frontend:
