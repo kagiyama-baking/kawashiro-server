@@ -133,6 +133,42 @@ jobs:
                     --cov-report=term-missing \
                     --cov-fail-under=80
 
+    # SBV2 APIテストジョブ（sbv2_apiに変更がある場合のみ実行）
+    # style_bert_vits2 / torch はテスト内でスタブ化されるため軽量依存のみで実行可能
+    sbv2-api-test:
+        needs: detect-changes
+        if: needs.detect-changes.outputs.sbv2-api == 'true' || github.event_name == 'workflow_dispatch'
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: '3.10'
+
+            - name: Install uv
+              run: |
+                  pip install --upgrade pip
+                  pip install uv
+
+            - name: Install dependencies
+              working-directory: ./sbv2_api
+              run: uv sync --frozen
+
+            - name: Run ruff (lint + format check)
+              working-directory: ./sbv2_api
+              run: |
+                  uv run ruff check .
+                  uv run ruff format --check .
+
+            - name: Run tests
+              working-directory: ./sbv2_api
+              run: uv run pytest tests/ -v --tb=short
+
     # フロントエンド静的チェック（lint/format/type-check を並列実行）
     frontend-static-checks:
         needs: detect-changes
