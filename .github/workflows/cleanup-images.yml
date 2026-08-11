@@ -4,6 +4,11 @@ on:
     schedule:
         - cron: '0 0 * * 0' # 毎週日曜0時 (UTC)
     workflow_dispatch: # 手動実行用
+        inputs:
+            dry_run:
+                description: '削除せず、対象になるイメージの一覧だけを出力する'
+                type: boolean
+                default: true
 
 permissions:
     packages: write
@@ -13,9 +18,11 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 10
         strategy:
+            fail-fast: false
             matrix:
                 image:
                     - django-api
+                    - frontend
         steps:
             # v3.1.0 で「保持対象の multi-arch イメージに属する子 manifest を自動除外する」
             # 機能が入っている。v3.0.0 では image-tags の除外指定が *タグを持つ*
@@ -33,4 +40,7 @@ jobs:
                   cut-off: 2w # 2週間以上前のイメージを対象
                   keep-n-most-recent: 5 # 最新5つは保持
                   image-tags: '!latest !release !staging' # 重要タグは除外（タグ付きのみに作用）
-                  dry-run: false
+                  # schedule 実行時は inputs が空になるため false（= 実際に削除）になる。
+                  # 手動実行では既定で dry-run になるので、設定を変えた時はまず
+                  # 手動実行して削除対象を確認してから schedule に任せること。
+                  dry-run: ${{ inputs.dry_run || false }}
