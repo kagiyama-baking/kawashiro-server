@@ -17,13 +17,20 @@ jobs:
                 image:
                     - django-api
         steps:
+            # v3.1.0 で「保持対象の multi-arch イメージに属する子 manifest を自動除外する」
+            # 機能が入っている。v3.0.0 では image-tags の除外指定が *タグを持つ*
+            # バージョンにしか作用せず、manifest list（release/latest/staging）が参照する
+            # untagged な子 manifest が削除対象になっていた。その結果
+            # 「タグは残っているが pull すると manifest unknown」という状態を招く。
+            # 実際 2026-05-17 の実行で untagged 23 件が消え、django-api:release が
+            # pull 不能になった（Security Scan が同日以降ずっと失敗）。
             - name: Delete old images (${{ matrix.image }})
-              uses: snok/container-retention-policy@v3.0.0
+              uses: snok/container-retention-policy@v3.1.0
               with:
                   account: user
                   token: ${{ secrets.GHCR_CLEANUP_TOKEN }}
                   image-names: 'kawashiro-server/${{ matrix.image }}'
                   cut-off: 2w # 2週間以上前のイメージを対象
                   keep-n-most-recent: 5 # 最新5つは保持
-                  image-tags: '!latest !release !staging' # 重要タグは除外
+                  image-tags: '!latest !release !staging' # 重要タグは除外（タグ付きのみに作用）
                   dry-run: false

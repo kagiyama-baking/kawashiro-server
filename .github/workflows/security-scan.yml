@@ -33,6 +33,7 @@ jobs:
                   password: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Pull image
+              id: pull
               run: |
                   docker pull ghcr.io/${{ github.repository }}/${{ matrix.image }}:release
 
@@ -47,8 +48,11 @@ jobs:
 
             # SARIF生成: MEDIUM以上の脆弱性をSecurityタブに報告
             # exit-code: '0' でワークフローの成否判定には影響させない
+            # pull 自体が失敗した場合はスキャン対象が存在しないためスキップする。
+            # （always() だけだと SARIF 未生成のまま Upload に進み、
+            #   「Path does not exist」という真因を覆い隠すエラーが追加で出る）
             - name: Generate SARIF for Security tab
-              if: always()
+              if: always() && steps.pull.outcome == 'success'
               uses: aquasecurity/trivy-action@0.35.0
               with:
                   image-ref: 'ghcr.io/${{ github.repository }}/${{ matrix.image }}:release'
@@ -59,7 +63,7 @@ jobs:
                   exit-code: '0'
 
             - name: Upload to Security tab
-              if: always()
+              if: always() && steps.pull.outcome == 'success'
               uses: github/codeql-action/upload-sarif@v4
               with:
                   sarif_file: 'trivy-${{ matrix.image }}.sarif'
