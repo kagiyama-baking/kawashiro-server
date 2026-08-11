@@ -9,8 +9,6 @@ on:
             - '.claude/**'
             - '.gitignore'
             - '**/*.md'
-            - '.github/workflows/!(build).yml'
-            - 'scripts/**'
             - 'docs/**'
     workflow_dispatch: # テスト用の手動実行
 
