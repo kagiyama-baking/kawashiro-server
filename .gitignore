@@ -5,8 +5,18 @@ Thumbs.db
 # 環境変数ファイル
 .env
 
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Django静的ファイル
 django_api/staticfiles/
+
+# Djangoメディアファイル（テスト実行時に生成される）
+django_api/media/
 
 # フロントエンド
 frontend/node_modules/

@@ -5,17 +5,17 @@ Kawashiro Server 内部サービス用
 
 import io
 import logging
+import os
 import re
 import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 import scipy.io.wavfile as wavfile
 import yaml
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-
 from style_bert_vits2.constants import Languages
 from style_bert_vits2.nlp import bert_models
 from style_bert_vits2.tts_model import TTSModel
@@ -26,10 +26,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 設定
-CONFIG_PATH = Path("/app/config.yml")
-MODEL_ASSETS_PATH = Path("/app/model_assets")
-BERT_MODEL_PATH = Path("/app/bert/deberta-v2-large-japanese-char-wwm")
+# 設定（環境変数で上書き可能）
+CONFIG_PATH = Path(os.environ.get("SBV2_CONFIG_PATH", "/app/config.yml"))
+MODEL_ASSETS_PATH = Path(os.environ.get("SBV2_MODEL_ASSETS_PATH", "/app/model_assets"))
+BERT_MODEL_PATH = Path(
+    os.environ.get(
+        "SBV2_BERT_MODEL_PATH", "/app/bert/deberta-v2-large-japanese-char-wwm"
+    )
+)
+# 推論デバイス（cpu / cuda / mps 等）。GPUなし環境（Intel Mac mini等）はcpuのまま
+DEVICE = os.environ.get("SBV2_DEVICE", "cpu")
 
 
 def load_config() -> dict:
@@ -50,41 +56,6 @@ FORMAT_MEDIA_TYPES = {
     "mp3": "audio/mpeg",
     "ogg": "audio/ogg",
 }
-
-# FastAPIアプリ（内部サービスのためCORS不要）
-app = FastAPI(
-    title="Style-BERT-VITS2 TTS API",
-    description="Kawashiro Server 内部TTSサービス",
-    version="1.0.0",
-)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """起動時にBERTモデルをロード"""
-    logger.info("Loading BERT models...")
-    bert_model = bert_models.load_model(Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH))
-    bert_models.load_tokenizer(Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH))
-    # BERTモデルをfloat32に変換（CPU環境対応）
-    if bert_model is not None:
-        bert_model.float()
-        logger.info("Converted BERT model to float32")
-    logger.info("BERT models loaded")
-
-    # TTSモデルのプリロード（初回リクエストのレイテンシを排除）
-    models = list_available_models()
-    logger.info("Available TTS models: %s", models)
-    for model_name in models:
-        logger.info("Preloading TTS model: %s", model_name)
-        try:
-            get_model(model_name)
-        except Exception as e:
-            logger.warning("Failed to preload model %s: %s", model_name, e)
-    logger.info(
-        "TTS model preloading complete: %d/%d models loaded",
-        len(_models), len(models),
-    )
-
 
 # モデルキャッシュ
 _models: dict[str, TTSModel] = {}
@@ -110,7 +81,9 @@ def get_model(model_name: str) -> TTSModel:
         model_path = MODEL_ASSETS_PATH / model_name
 
         if not model_path.exists():
-            raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Model '{model_name}' not found"
+            )
 
         config_file = model_path / "config.json"
         style_vec_file = model_path / "style_vectors.npy"
@@ -124,29 +97,36 @@ def get_model(model_name: str) -> TTSModel:
             raise HTTPException(status_code=404, detail="style_vectors.npy not found")
 
         model_file = max(safetensors_files, key=lambda p: p.stat().st_mtime)
-        logger.info("Loading model: %s", model_name)
+        logger.info("Loading model: %s (device=%s)", model_name, DEVICE)
 
         tts_model = TTSModel(
             model_path=model_file,
             config_path=config_file,
             style_vec_path=style_vec_file,
-            device="cpu",
+            device=DEVICE,
         )
         # 明示的にモデルをロード（遅延ロードのため）
         tts_model.load()
-        # float16モデルをfloat32に変換（CPU環境対応）
-        # プライベート属性__net_gは_TTSModel__net_gでアクセス
-        net_g = getattr(tts_model, "_TTSModel__net_g", None)
-        if net_g is not None:
-            # 全パラメータとバッファを明示的にfloat32に変換
-            for param in net_g.parameters():
-                param.data = param.data.float()
-            for buf in net_g.buffers():
-                buf.data = buf.data.float()
-            logger.info("Converted model %s to float32", model_name)
+        if DEVICE == "cpu":
+            _convert_model_to_float32(tts_model, model_name)
         _models[model_name] = tts_model
 
     return _models[model_name]
+
+
+def _convert_model_to_float32(tts_model: TTSModel, model_name: str) -> None:
+    """float16モデルをfloat32に変換（CPU環境対応）.
+
+    プライベート属性__net_gは_TTSModel__net_gでアクセスする。
+    """
+    net_g = getattr(tts_model, "_TTSModel__net_g", None)
+    if net_g is not None:
+        # 全パラメータとバッファを明示的にfloat32に変換
+        for param in net_g.parameters():
+            param.data = param.data.float()
+        for buf in net_g.buffers():
+            buf.data = buf.data.float()
+        logger.info("Converted model %s to float32", model_name)
 
 
 def get_default_model() -> str:
@@ -160,10 +140,52 @@ def get_default_model() -> str:
     return models[0]
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """起動時にBERTモデルとTTSモデルをロードする"""
+    logger.info("Loading BERT models...")
+    bert_model = bert_models.load_model(
+        Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH)
+    )
+    bert_models.load_tokenizer(
+        Languages.JP, pretrained_model_name_or_path=str(BERT_MODEL_PATH)
+    )
+    # BERTモデルをfloat32に変換（CPU環境対応）
+    if DEVICE == "cpu" and bert_model is not None:
+        bert_model.float()
+        logger.info("Converted BERT model to float32")
+    logger.info("BERT models loaded")
+
+    # TTSモデルのプリロード（初回リクエストのレイテンシを排除）
+    models = list_available_models()
+    logger.info("Available TTS models: %s", models)
+    for model_name in models:
+        logger.info("Preloading TTS model: %s", model_name)
+        try:
+            get_model(model_name)
+        except Exception as e:
+            logger.warning("Failed to preload model %s: %s", model_name, e)
+    logger.info(
+        "TTS model preloading complete: %d/%d models loaded",
+        len(_models),
+        len(models),
+    )
+    yield
+
+
+# FastAPIアプリ（内部サービスのためCORS不要）
+app = FastAPI(
+    title="Style-BERT-VITS2 TTS API",
+    description="Kawashiro Server 内部TTSサービス",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
 # リクエストモデル
 class SynthesizeRequest(BaseModel):
     text: str = Field(...)
-    model: Optional[str] = None
+    model: str | None = None
     style: str = "Neutral"
     style_weight: float = Field(1.0, ge=0.0, le=10.0)
     speed: float = Field(1.0, ge=0.5, le=2.0)
@@ -183,9 +205,13 @@ def _convert_audio(wav_data: bytes, output_format: str) -> bytes:
         raise ValueError(f"サポートされていない出力フォーマット: {output_format}")
 
     ffmpeg_args = [
-        "ffmpeg", "-loglevel", "error",
-        "-i", "pipe:0",
-        "-f", output_format,
+        "ffmpeg",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-f",
+        output_format,
     ]
     # MP3の場合はビットレートを指定
     if output_format == "mp3":
@@ -202,7 +228,8 @@ def _convert_audio(wav_data: bytes, output_format: str) -> bytes:
     except subprocess.TimeoutExpired as e:
         logger.error(
             "ffmpeg変換タイムアウト: format=%s, input_size=%d",
-            output_format, len(wav_data),
+            output_format,
+            len(wav_data),
         )
         raise RuntimeError("音声フォーマット変換がタイムアウトしました") from e
 
@@ -236,7 +263,7 @@ async def get_model_styles(model_name: str):
 @app.get("/synthesize")
 async def synthesize_get(
     text: str = Query(...),
-    model: Optional[str] = None,
+    model: str | None = None,
     style: str = "Neutral",
     style_weight: float = Query(1.0, ge=0.0, le=10.0),
     speed: float = Query(1.0, ge=0.5, le=2.0),
@@ -246,7 +273,14 @@ async def synthesize_get(
     format: str = Query("wav", pattern=r"^(wav|mp3|ogg)$"),
 ):
     return await _synthesize(
-        text, model, style, style_weight, speed, sdp_ratio, noise_scale, noise_scale_w,
+        text,
+        model,
+        style,
+        style_weight,
+        speed,
+        sdp_ratio,
+        noise_scale,
+        noise_scale_w,
         format,
     )
 
@@ -268,7 +302,7 @@ async def synthesize_post(request: SynthesizeRequest):
 
 async def _synthesize(
     text: str,
-    model: Optional[str],
+    model: str | None,
     style: str,
     style_weight: float,
     speed: float,
@@ -298,7 +332,10 @@ async def _synthesize(
         text_preview = text[:50] + "..." if len(text) > 50 else text
         logger.info(
             "Synthesizing: model=%s, text_length=%d, format=%s, preview=%s",
-            model_name, len(text), format, text_preview,
+            model_name,
+            len(text),
+            format,
+            text_preview,
         )
 
         sr, audio = tts_model.infer(
@@ -316,10 +353,7 @@ async def _synthesize(
         wav_data = wav_buffer.getvalue()
 
         # フォーマット変換
-        if format == "wav":
-            content = wav_data
-        else:
-            content = _convert_audio(wav_data, format)
+        content = wav_data if format == "wav" else _convert_audio(wav_data, format)
 
         media_type = FORMAT_MEDIA_TYPES[format]
         return Response(
@@ -334,4 +368,4 @@ async def _synthesize(
         logger.error("Synthesis error: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500, detail="Internal server error occurred during synthesis."
-        )
+        ) from e

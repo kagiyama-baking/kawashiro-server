@@ -1,0 +1,28 @@
+# NVIDIA GPU搭載ホスト用オーバーライド
+# 使い方:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build sbv2-api
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+services:
+    sbv2-api:
+        build:
+            context: ./sbv2_api
+            dockerfile: Dockerfile
+            args:
+                # CUDA 12.1版 PyTorch をインストール
+                TORCH_VARIANT: cu121
+                # style-bert-vits2 の公式推奨は <2.4 だが、RTX 4080 + 2.5.1 で
+                # 動作・音質・速度（cu118/2.3.1 比で短文 -28%）を実測検証済み。
+                # 問題発生時はこの行を削除すれば 2.3.1 に戻る
+                TORCH_VERSION: "2.5.1"
+        environment:
+            - TZ=Asia/Tokyo
+            - NVIDIA_VISIBLE_DEVICES=all
+            # GPUで推論する
+            - SBV2_DEVICE=cuda
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
