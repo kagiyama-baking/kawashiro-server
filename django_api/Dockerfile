@@ -49,13 +49,22 @@ RUN pip install --no-cache-dir --upgrade pip setuptools 'wheel>=0.46.2' && \
 # Python依存関係をインストール（pyproject.tomlから）
 # uv pip installでシステムPythonに直接インストール
 # パッケージディレクトリが必要なため、先に作成
+#
+# 依存の導入が終わったら pip 自体も削除する。ランタイムに pip は不要な一方で、
+# pip は _vendor に setuptools と msgpack を同梱しており（pip/_vendor/vendor.txt）、
+# それが Trivy に CVE-2025-47273 / GHSA-6v7p-g79w-8964 として検出されてしまう。
+# pip はすでに最新版のためアップグレードでは解消できず、削除が唯一の根本対処になる。
 COPY pyproject.toml ./
 RUN mkdir -p django_api core user integrations features health && \
     touch django_api/__init__.py core/__init__.py user/__init__.py integrations/__init__.py features/__init__.py health/__init__.py && \
     uv pip install --system --no-cache . && \
     uv pip install --system --no-cache pytest pytest-django pytest-cov pytest-mock && \
     pip uninstall -y uv && \
-    rm -rf django_api core user integrations features health
+    rm -rf django_api core user integrations features health && \
+    python -m pip uninstall -y pip && \
+    rm -rf /usr/local/lib/python3.13/site-packages/pip \
+           /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 # アプリケーションを実行するためのユーザを作成する（先に作成）
 RUN adduser -D -g django django && \
