@@ -1,3 +1,29 @@
+# Django系サービス共通定義（django-api / celery-worker / celery-beat）
+x-django-common: &django-common
+    build:
+        context: ./django_api
+        dockerfile: Dockerfile
+    image: django-api
+    restart: unless-stopped
+    networks:
+        - container-network
+    depends_on:
+        app-database:
+            condition: service_healthy
+        redis:
+            condition: service_healthy
+
+# ソースコードのマウント（開発環境用）+ 環境変数ファイル
+x-django-volumes: &django-volumes
+    - ./django_api/manage.py:/django_api/manage.py
+    - ./django_api/django_api:/django_api/django_api
+    - ./django_api/core:/django_api/core
+    - ./django_api/user:/django_api/user
+    - ./django_api/integrations:/django_api/integrations
+    - ./django_api/features:/django_api/features
+    - ./django_api/health:/django_api/health
+    - ./django_api/.env:/django_api/.env
+
 services:
     # ============================================================
     # アプリケーションサービス
@@ -5,17 +31,15 @@ services:
 
     # Django APIサーバー
     django-api:
-        build:
-            context: ./django_api
-            dockerfile: Dockerfile
-        image: django-api
+        <<: *django-common
         container_name: django
         hostname: django-api
         ports:
             # 開発環境用：直接アクセス
             - '8000:8000'
         volumes:
-            # ソースコードのマウント（開発環境用）
+            # ソースコードのマウント（開発環境用）+ 環境変数ファイル
+            # （YAMLはシーケンスのマージ不可のため x-django-volumes と同内容を明示）
             - ./django_api/manage.py:/django_api/manage.py
             - ./django_api/django_api:/django_api/django_api
             - ./django_api/core:/django_api/core
@@ -23,80 +47,32 @@ services:
             - ./django_api/integrations:/django_api/integrations
             - ./django_api/features:/django_api/features
             - ./django_api/health:/django_api/health
-            # 環境変数ファイル
             - ./django_api/.env:/django_api/.env
             # 静的ファイルの永続化
             - /opt/app/django-api/staticfiles:/django_api/staticfiles
             # メディアファイル（チャット履歴の TTS 音声など）の永続化
             - /opt/app/django-api/media:/django_api/media
-        restart: unless-stopped
-        networks:
-            - container-network
-        depends_on:
-            app-database:
-                condition: service_healthy
-            redis:
-                condition: service_healthy
         command: >
-            sh -c "python manage.py rename_app_migrations generate talk &&
-                   python manage.py migrate &&
+            sh -c "python manage.py migrate &&
                    python manage.py collectstatic --noinput &&
                    python manage.py runserver 0.0.0.0:8000"
 
     # Celery ワーカー（バックグラウンドタスク実行）
     celery-worker:
-        build:
-            context: ./django_api
-            dockerfile: Dockerfile
-        image: django-api
+        <<: *django-common
         container_name: celery-worker
         hostname: celery-worker
-        volumes:
-            - ./django_api/manage.py:/django_api/manage.py
-            - ./django_api/django_api:/django_api/django_api
-            - ./django_api/core:/django_api/core
-            - ./django_api/user:/django_api/user
-            - ./django_api/integrations:/django_api/integrations
-            - ./django_api/features:/django_api/features
-            - ./django_api/health:/django_api/health
-            - ./django_api/.env:/django_api/.env
-        restart: unless-stopped
-        networks:
-            - container-network
-        depends_on:
-            app-database:
-                condition: service_healthy
-            redis:
-                condition: service_healthy
+        volumes: *django-volumes
         command: celery -A django_api worker -l info
         security_opt:
             - no-new-privileges:true
 
     # Celery Beat（定期タスクスケジューラ）
     celery-beat:
-        build:
-            context: ./django_api
-            dockerfile: Dockerfile
-        image: django-api
+        <<: *django-common
         container_name: celery-beat
         hostname: celery-beat
-        volumes:
-            - ./django_api/manage.py:/django_api/manage.py
-            - ./django_api/django_api:/django_api/django_api
-            - ./django_api/core:/django_api/core
-            - ./django_api/user:/django_api/user
-            - ./django_api/integrations:/django_api/integrations
-            - ./django_api/features:/django_api/features
-            - ./django_api/health:/django_api/health
-            - ./django_api/.env:/django_api/.env
-        restart: unless-stopped
-        networks:
-            - container-network
-        depends_on:
-            app-database:
-                condition: service_healthy
-            redis:
-                condition: service_healthy
+        volumes: *django-volumes
         command: celery -A django_api beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
         security_opt:
             - no-new-privileges:true
@@ -159,7 +135,10 @@ services:
             - SETGID
             - SETUID
 
-    # Style-BERT-VITS2 読み上げAPI（GPU版）
+    # Style-BERT-VITS2 読み上げAPI（CPU推論）
+    # GPU非搭載ホスト（Intel Mac mini等）でもそのまま動作する。
+    # NVIDIA GPUホストで使う場合は docker-compose.gpu.yml を重ねて起動:
+    #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
     sbv2-api:
         build:
             context: ./sbv2_api
@@ -178,17 +157,9 @@ services:
             - /opt/app/sbv2-api/model_assets:/app/model_assets:ro
         environment:
             - TZ=Asia/Tokyo
-            - NVIDIA_VISIBLE_DEVICES=all
         restart: unless-stopped
         networks:
             - container-network
-        deploy:
-            resources:
-                reservations:
-                    devices:
-                        - driver: nvidia
-                          count: 1
-                          capabilities: [gpu]
 
     # フロントエンド（React SPA）
     frontend:
