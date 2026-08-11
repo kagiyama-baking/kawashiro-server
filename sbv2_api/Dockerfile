@@ -24,12 +24,15 @@ RUN uv venv /app/venv --python 3.10
 ENV PATH="/app/venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/venv"
 
-# PyTorch のバリアント選択（style-bert-vits2はtorch<2.4が必要）
-# - cpu  : CPUのみ（デフォルト）。Intel Mac mini等のGPU非搭載環境向け。イメージも大幅に小さい
-# - cu118: CUDA 11.8。NVIDIA GPU搭載ホスト向け（--build-arg TORCH_VARIANT=cu118）
-#   ※ GPU推論を使う場合は実行時に SBV2_DEVICE=cuda も指定すること
+# PyTorch のバリアント/バージョン選択
+# - TORCH_VARIANT
+#   - cpu   : CPUのみ（デフォルト）。Intel Mac mini等のGPU非搭載環境向け。イメージも大幅に小さい
+#   - cu118/cu121 等: CUDA 版。NVIDIA GPU搭載ホスト向け（--build-arg TORCH_VARIANT=cu121）
+#     ※ GPU推論を使う場合は実行時に SBV2_DEVICE=cuda も指定すること
+# - TORCH_VERSION: style-bert-vits2 の公式推奨は <2.4（pip メタデータ上の制約は >=2.1 のみ）
 ARG TORCH_VARIANT=cpu
-RUN uv pip install "torch==2.3.1+${TORCH_VARIANT}" "torchaudio==2.3.1+${TORCH_VARIANT}" \
+ARG TORCH_VERSION=2.3.1
+RUN uv pip install "torch==${TORCH_VERSION}+${TORCH_VARIANT}" "torchaudio==${TORCH_VERSION}+${TORCH_VARIANT}" \
     --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}"
 
 # Style-Bert-VITS2 ライブラリ（推論のみ）

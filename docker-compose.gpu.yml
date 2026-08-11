@@ -8,8 +8,12 @@ services:
             context: ./sbv2_api
             dockerfile: Dockerfile
             args:
-                # CUDA 11.8版 PyTorch をインストール
-                TORCH_VARIANT: cu118
+                # CUDA 12.1版 PyTorch をインストール
+                TORCH_VARIANT: cu121
+                # style-bert-vits2 の公式推奨は <2.4 だが、RTX 4080 + 2.5.1 で
+                # 動作・音質・速度（cu118/2.3.1 比で短文 -28%）を実測検証済み。
+                # 問題発生時はこの行を削除すれば 2.3.1 に戻る
+                TORCH_VERSION: "2.5.1"
         environment:
             - TZ=Asia/Tokyo
             - NVIDIA_VISIBLE_DEVICES=all
