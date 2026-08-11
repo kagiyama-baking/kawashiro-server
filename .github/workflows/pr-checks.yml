@@ -155,6 +155,8 @@ jobs:
             #   読まれなくなって onlyBuiltDependencies が無視される）
             - name: Install pnpm
               uses: pnpm/action-setup@v4
+              with:
+                  package_json_file: frontend/package.json
 
             - name: Set up Node.js
               uses: actions/setup-node@v6
@@ -187,6 +189,8 @@ jobs:
             #   読まれなくなって onlyBuiltDependencies が無視される）
             - name: Install pnpm
               uses: pnpm/action-setup@v4
+              with:
+                  package_json_file: frontend/package.json
 
             - name: Set up Node.js
               uses: actions/setup-node@v6
