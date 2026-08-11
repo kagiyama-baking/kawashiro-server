@@ -7,14 +7,13 @@
     "prettier.tabWidth": 4,
     "prettier.useTabs": false,
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
         }
     },
-    "black-formatter.args": ["--line-length=88", "--skip-string-normalization"],
-    "isort.args": ["--profile=black"],
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
     "python.testing.pytestArgs": ["django_api"],
