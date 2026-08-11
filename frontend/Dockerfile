@@ -1,8 +1,12 @@
 FROM node:22-alpine AS build
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# pnpm のバージョンは package.json の packageManager で固定する。
+# 以前は pnpm@latest だったが、pnpm 11 から package.json の "pnpm" フィールドが
+# 読まれなくなり onlyBuiltDependencies が無視され、msw のビルドスクリプトが
+# 実行されないまま ERR_PNPM_IGNORED_BUILDS でビルドが落ちるようになった。
+RUN corepack install && pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 

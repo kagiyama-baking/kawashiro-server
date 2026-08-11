@@ -150,10 +150,13 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v6
 
+            # バージョンは frontend/package.json の packageManager に従わせる
+            # （latest だと pnpm 11 が入り、package.json の "pnpm" フィールドが
+            #   読まれなくなって onlyBuiltDependencies が無視される）
             - name: Install pnpm
               uses: pnpm/action-setup@v4
               with:
-                  version: latest
+                  package_json_file: frontend/package.json
 
             - name: Set up Node.js
               uses: actions/setup-node@v6
@@ -181,10 +184,13 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v6
 
+            # バージョンは frontend/package.json の packageManager に従わせる
+            # （latest だと pnpm 11 が入り、package.json の "pnpm" フィールドが
+            #   読まれなくなって onlyBuiltDependencies が無視される）
             - name: Install pnpm
               uses: pnpm/action-setup@v4
               with:
-                  version: latest
+                  package_json_file: frontend/package.json
 
             - name: Set up Node.js
               uses: actions/setup-node@v6
