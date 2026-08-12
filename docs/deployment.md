@@ -19,7 +19,7 @@ kawashiro-server の CI/CD・デプロイ・リリースに関する唯一の正
 | 脆弱性の継続監視 | GitHub Actions | `security-scan.yml`（毎日） |
 | GHCR の容量管理 | GitHub Actions | `cleanup-images.yml`（毎週） |
 
-> 補足: ルート `README.md` には「本番デプロイは internal.kagiyama.net（Ansible）が担当」とありますが、これは `release.yml` に `deploy` ジョブが追加される前の記述です。現在は上表のとおり、compose ファイルの配布までが Ansible、コンテナの入れ替えは Actions です。
+> 補足: `release.yml` に `deploy` ジョブが追加される以前は「本番デプロイは Ansible が担当」でした。古い記述を見かけたら上表が正です。
 
 ## 2. パイプライン全体像
 
