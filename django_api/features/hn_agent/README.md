@@ -52,29 +52,8 @@ flowchart TB
 
 ## admin 項目と外部サービスのつながり
 
-HN Agent が使う admin 設定と、実際に叩く外部サービスの対応関係です。
-
-```mermaid
-flowchart LR
-    subgraph Admin["Django admin"]
-        HN["HackerNews Agent設定<br/>・閾値 / ポーリング / 取得件数<br/>・推論深度<br/>・8本のプロンプト参照FK"]
-        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder"]
-        Provider["LLM設定<br/>model_alias + Virtual Key"]
-        Ref["Langfuseプロンプト参照<br/>hn-agent-* 8種"]
-    end
-
-    subgraph External["外部サービス"]
-        LiteLLM[("LiteLLM Proxy<br/>/v1/chat/completions")]
-        Langfuse[("Langfuse<br/>get_prompt(name, label)")]
-    end
-
-    HN -->|8本| Ref
-    HN -.->|service_name で参照| Service
-    Service -->|provider_config| Provider
-
-    Provider ==>|Virtual Key + model_alias| LiteLLM
-    Ref ==>|名前とラベルで取得| Langfuse
-```
+HN Agent は「HackerNews Agent設定」からプロンプト参照 8 本を FK で、LLM サービス設定 4 種（orchestrator / detective / devils_advocate / security_responder）を `service_name` 経由で参照します。
+admin 設定と LiteLLM Proxy / Langfuse の対応図は [../../integrations/llm/README.md](../../integrations/llm/README.md) を参照してください。
 
 ## 各コンポーネント詳細
 
@@ -201,8 +180,31 @@ Django 管理画面から（表示順は「AI ツール設定」グループ）:
 | **Slack 通知設定** | Webhook URL（暗号化保存） |
 | **Tavily** | API キー（Web 検索、Detective・Security Responder で使用、任意） |
 | **HackerNews Agent 設定**（`HNAgentConfig`） | 推論深度、スコア閾値、速度閾値、ポーリング間隔、フロントページ取得件数、プロンプト 8 本 |
+| **Celery → 定期タスク**（django-celery-beat） | 定期実行スケジュールの登録・有効化（登録手順は [docs/initial-setup.md](../../../docs/initial-setup.md)） |
 
 > **Note:** `devils_advocate` / `security_responder` の `LLMServiceConfig` は、`detective` の設定が存在する状態で migration 0012 を適用すると、同じ `LLMProviderConfig` を共有する形で **`is_active=False` の雛形**として自動生成されます。管理画面から個別のプロバイダーへ切り替え可能です。
+
+> **Note（罠）:** `HNAgentConfig.poll_interval_seconds`（ポーリング間隔）は**実行スケジュールを制御しません**。実際のトリガーは django-celery-beat の定期タスクだけです。間隔を変えたいときは管理画面「Celery → 定期タスク」側のインターバル / Cron を変更してください。
+
+## 定期実行と手動実行
+
+Celery タスクとして次の 3 本が登録されています（`tasks.py` の `name=`）。
+
+| タスク名 | 引数（既定） | 用途 |
+|---|---|---|
+| `hn_agent.poll_front_page` | `auto_investigate=True` | フロントページ取得 → 閾値超過スレッドを調査 |
+| `hn_agent.run_orchestrator` | `hn_id` | 指定スレッドを Orchestrator 調査 |
+| `hn_agent.cleanup_old_snapshots` | `days=90` | 未調査スレッドの古いスナップショットと孤児スレッドを削除 |
+
+コンテナ内から管理コマンドでも手動実行できます。
+
+```bash
+# Watcher（--sync でトリガーされた調査も同期実行）
+docker compose exec django-api python manage.py run_hn_watcher --sync
+
+# 指定スレッドの調査（--skip-notify で Slack 通知を抑止）
+docker compose exec django-api python manage.py run_hn_investigation --hn-id 12345678 --skip-notify
+```
 
 ## API エンドポイント
 
@@ -263,11 +265,7 @@ Langfuse 未登録でも `LangfusePromptRef.fallback_text` で動作します。
 
 ### 環境変数
 
-| 変数 | 説明 |
-|---|---|
-| `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY` | Langfuse 認証 |
-| `LANGFUSE_BASE_URL` | self-hosted 使用時のみ |
-| `LANGFUSE_TRACING_ENVIRONMENT` | `dev` / `prd` |
+`LANGFUSE_*` の一覧と説明はルート [README.md](../../../README.md) の「環境変数設定」を参照してください。
 
 ## 依存する外部サービス
 

@@ -2,19 +2,22 @@
 
 ## プロジェクト概要
 
-**kawashiro-server** は、Docker Compose で構成されたアプリケーションサーバーシステムです。Django REST Framework ベースの API サーバーを中心に、音声合成（Style-BERT-VITS2）などのサービスを統合しています。本番環境のデプロイとリバースプロキシ（Traefik）は internal.kagiyama.net リポジトリ（Ansible）が管理します。
+**kawashiro-server** は、Docker Compose で構成されたアプリケーションサーバーシステムです。Django REST Framework ベースの API サーバーを中心に、音声合成（Style-BERT-VITS2）、React SPA フロントエンドを統合しています。LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測とプロンプト管理は Langfuse に集約しています。
+
+本番運用の分担: ホスト構築・Traefik・本番 compose/.env の配置は internal.kagiyama.net（Ansible）、イメージビルドと本番コンテナの入れ替えは GitHub Actions（詳細は `docs/deployment.md`）。
 
 ## リポジトリ構造
 
 ```
 kawashiro-server/
 ├── django_api/              # Django REST Framework API サーバー（メインサービス）
-│   ├── core/                # ユーザー認証・コアモデル（カスタムUserモデル）
+│   ├── core/                # カスタムUserモデル・Fernet暗号化・admin並び順制御
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
-│   ├── health/              # ヘルスチェック
+│   ├── health/              # ヘルスチェック（ミドルウェア方式、ALLOWED_HOSTS検証前に応答）
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LLM設定・クライアント（OpenAI API: チャット + Embedding）
-│   │   ├── msgraph/         # Microsoft Graph API設定・クライアント
+│   │   ├── llm/             # LiteLLM Proxy経由のLLMクライアント・接続設定
+│   │   ├── langfuse/        # Langfuseプロンプト参照（LangfusePromptRef / resolve_prompt）
+│   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
 │   │   ├── outlook/         # Outlook Calendar連携API
 │   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
@@ -23,49 +26,73 @@ kawashiro-server/
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/            # 会話生成API（LLM + 天気 + 予定 + TTS統合）
-│   │   ├── media/           # 画像処理API
-│   │   └── hn_agent/        # HN監視・分析エージェント
-│   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py）
+│   │   ├── talk/            # 会話生成API + チャット履歴セッション
+│   │   ├── media/           # 画像変換・ZIP→PDF
+│   │   └── hn_agent/        # HN監視・分析エージェント（LangGraph ReAct）
+│   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
-│   │   ├── integrations/    # 外部サービス連携テスト
-│   │   ├── features/        # ビジネス機能テスト
-│   │   ├── user/            # ユーザーテスト
-│   │   └── health/          # ヘルスチェックテスト
 │   ├── pyproject.toml       # Python依存関係・ツール設定
 │   └── Dockerfile           # Python 3.13-alpine ベース
-├── sbv2_api/                # Style-BERT-VITS2 音声合成サーバー（FastAPI、CPU推論）
-│   ├── server.py            # APIサーバー本体
-│   ├── tests/               # テスト（style_bert_vits2/torchはスタブ化）
-│   ├── pyproject.toml       # テスト用依存・ツール設定
-│   └── Dockerfile           # Python 3.10ベース（TORCH_VARIANTビルド引数でCPU/CUDA切替）
-├── frontend/                # React SPA フロントエンド（Vite + TypeScript + Tailwind）
-│   ├── src/                 # ソースコード（features/, components/, lib/ 等）
-│   └── Dockerfile           # ビルド + nginx 配信
-├── volumes/                 # 永続化データ（.gitkeepのみ管理）
+├── sbv2_api/                # Style-BERT-VITS2 音声合成サーバー（FastAPI）
+├── frontend/                # React SPA（Vite + TypeScript + Tailwind、nginx配信）
+├── docs/                    # 横断運用ガイド（development / deployment / initial-setup）
 ├── docker-compose.yml       # 開発環境用
-├── docker-compose.gpu.yml   # NVIDIA GPUホスト用オーバーライド（sbv2-api をCUDA化）
-└── .github/workflows/       # CI/CDワークフロー
+├── docker-compose.gpu.yml   # NVIDIA GPUホスト用オーバーレイ（sbv2-api をCUDA化）
+├── secrets/                 # ローカル専用の鍵置き場（Git追跡外・compose未マウント）
+└── .github/workflows/       # CI/CD（build / release / pr-checks / security-scan / cleanup-images）
 ```
+
+ホスト側の永続ディレクトリは `/opt/app/django-api/{staticfiles,media}` と `/opt/app/sbv2-api/model_assets` の 3 つ（ルート README 参照）。
+
+## ドキュメントマップとドキュメント更新規約
+
+### 単一ソース原則（SSOT）
+
+同じ事実を複数のドキュメントに書かない。各事実には「正」となるファイルが 1 つだけあり、他のファイルからは相対リンクで参照する。既存の記述を見つけたらコピーせずリンクすること。唯一の例外はテスト・リントの最短コマンド（本ファイルと `docs/development.md` の 2 面持ち。変更時は両方を更新する）。
+
+### ドキュメントマップ（何がどこに書いてあるか）
+
+| 知りたいこと | 正となるファイル |
+|---|---|
+| 全体概要・クイックスタート・環境変数表・コンテナ/ポート表・永続ディレクトリ | `README.md` |
+| ローカル開発・テスト実行・SQLite フォールバック等の落とし穴 | `docs/development.md` |
+| CI/CD 詳細・デプロイ・Secrets・タグ運用・ロールバック | `docs/deployment.md` |
+| 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
+| API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
+| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
+| Talk・チャットセッション仕様・プレースホルダー | `django_api/features/talk/README.md` |
+| メディア変換の制限値 | `django_api/features/media/README.md` |
+| HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
+| 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
+| 音声合成 API・モデル配置・CPU/GPU 切替 | `sbv2_api/README.md` |
+| フロントエンド画面・開発コマンド | `frontend/README.md` |
+| テスト規約（マーカー・フィクスチャ・命名） | 本ファイル |
+
+### 更新ルール
+
+- コード変更をコミットする前に **docs-sync スキル**（`.claude/skills/docs-sync/`）の対応マップで更新要否を確認する
+- ドキュメント更新は対応するコード変更と同じブランチ（可能なら同じコミット）に含める
+- 新しい Django アプリ・画面・ワークフロー・環境変数を追加したら、上のマップ・該当 README・`django_api/.env.sample` を同時に更新する
+- ドキュメントを新設・移動したら、上のマップ／ルート README のドキュメントマップ／docs-sync の対応マップも更新する
 
 ## 技術スタック
 
 | カテゴリ                | 技術                                              |
 | ----------------------- | ------------------------------------------------- |
 | 言語                    | Python 3.13                                       |
-| フレームワーク          | Django 6.0 + Django REST Framework 3.16           |
+| フレームワーク          | Django 6 + Django REST Framework 3.16             |
 | API ドキュメント        | drf-spectacular（OpenAPI/Swagger）                |
-| データベース            | PostgreSQL 17（pgvector拡張対応）                 |
+| データベース            | PostgreSQL 17                                     |
 | タスクキュー            | Celery + Redis（定期タスク: django-celery-beat）  |
+| LLM ゲートウェイ        | LiteLLM Proxy（OpenAI 互換・プロバイダー非依存）  |
+| LLMOps                  | Langfuse（トレース・プロンプト管理）+ LangGraph   |
 | 認証                    | Token認証（rest_framework.authtoken）             |
-| テスト                  | pytest + pytest-django + pytest-cov + pytest-mock |
+| テスト                  | pytest + pytest-django + pytest-cov + pytest-mock + pytest-xdist |
 | テストデータ            | factory-boy + Faker（日本語ロケール）             |
 | リンター/フォーマッター | Ruff                                              |
-| パッケージ管理          | uv（pip互換、高速）                               |
+| パッケージ管理          | uv（Python）/ pnpm（frontend、corepack 固定）     |
 | コンテナ                | Docker Compose                                    |
-| CI/CD                   | GitHub Actions                                    |
-| セキュリティスキャン    | Trivy                                             |
-| コンテナレジストリ      | GitHub Container Registry（GHCR）                 |
+| CI/CD                   | GitHub Actions + Trivy + GHCR                     |
 
 ## 開発方針
 
@@ -91,20 +118,6 @@ kawashiro-server/
 - 重複を排除し、可読性を向上させる
 - リファクタリング後も全テストがパスすることを確認する
 
-### 実装手順
-
-```
-1. 要件を理解する
-2. テストファイルを作成/編集する
-3. 失敗するテストを書く
-4. テストを実行して失敗を確認する（Red）
-5. テストを通す最小限のコードを書く
-6. テストを実行して成功を確認する（Green）
-7. コードをリファクタリングする
-8. テストを実行して成功を維持する（Refactor）
-9. 次の機能へ進む（1に戻る）
-```
-
 ### 禁止事項
 
 - テストなしで実装コードを書くこと
@@ -114,66 +127,38 @@ kawashiro-server/
 
 ## コマンドリファレンス
 
-### Django API テスト
+### Django API テスト（`django_api/` で実行）
 
 ```bash
-# テスト実行（django_api/ ディレクトリで実行）
-cd django_api
+# 通常実行（--tb=short / -n auto / -m "not e2e" は addopts で設定済み）
+uv run pytest tests/
 
-# 全テスト実行（e2eテストを除く、カバレッジ付き）
-uv run pytest tests/ -v --tb=short \
+# CI 相当（カバレッジ 80% 必須）
+uv run pytest tests/ \
   --cov=user --cov=core --cov=integrations --cov=features \
-  --cov-report=term-missing -m "not e2e"
+  --cov-report=term-missing --cov-fail-under=80
 
-# 特定アプリのテストのみ実行
+# 個別実行
 uv run pytest tests/features/talk/ -v
-uv run pytest tests/integrations/weather/ -v
-uv run pytest tests/user/ -v
-
-# 特定テスト関数を実行
 uv run pytest tests/features/talk/test_services.py::test_関数名 -v
-
-# カバレッジレポート付き（CI相当）
-uv run pytest tests/ -v --tb=short \
-  --cov=user --cov=core --cov=integrations --cov=features \
-  --cov-report=term-missing --cov-report=html \
-  --cov-fail-under=80 -m "not e2e"
 ```
 
-### リンター・フォーマッター（Ruff）
+ホストから実行する場合は `.env` の `DB_ENGINE` を無効化して SQLite フォールバックを使う（詳細・落とし穴は `docs/development.md`）。
 
-```bash
-# django_api/ ディレクトリで実行
-cd django_api
+### リンター・フォーマッター
 
-# フォーマット適用
-uv run ruff format .
-
-# フォーマット確認のみ（CI相当）
-uv run ruff format --check .
-
-# リンタ実行
-uv run ruff check .
-
-# リンタ + 自動修正
-uv run ruff check --fix .
-```
+Ruff を使用。ワークフローは `ruff-linter` スキルに従うこと（`uv run ruff format .` → `uv run ruff check --fix .` → `uv run ruff check .`）。
 
 ### Docker
 
 ```bash
-# 開発環境の起動
-docker compose up -d
-
-# Django APIのみ再ビルド
-docker compose build django-api
-
-# マイグレーション実行
-docker compose exec django-api python manage.py migrate
-
-# ログ確認
-docker compose logs -f django-api
+docker compose up -d django-api frontend   # 軽量起動（推奨。sbv2 込みのフル起動は重い）
+docker compose build django-api            # 再ビルド
+docker compose logs -f django-api          # ログ確認
+docker compose exec django-api python manage.py migrate   # 手動マイグレーション（通常は起動時に自動実行）
 ```
+
+サービス一覧・ポートはルート `README.md`、sbv2 の CPU/GPU 切替は `sbv2_api/README.md` を参照。
 
 ## テスト構成
 
@@ -184,20 +169,12 @@ django_api/tests/
 ├── conftest.py              # 共通フィクスチャ（APIClient, User, Token等）
 ├── fixtures/
 │   └── factories.py         # factory-boy ファクトリ（UserFactory等）
+├── core/                    # admin並び順等のコアテスト
 ├── integrations/            # 外部サービス連携テスト
-│   ├── llm/                 # LLM設定・クライアントテスト
-│   ├── msgraph/             # MS Graph設定・クライアントテスト
-│   ├── onedrive/            # OneDriveテスト
-│   ├── outlook/             # Outlookテスト
-│   ├── tts/                 # TTSテスト
-│   ├── weather/             # 天気予報テスト
-│   ├── hn/                  # HN Algolia APIテスト
-│   ├── tavily/              # Tavily APIテスト
-│   └── slack/               # Slack通知テスト
+│   ├── llm/ langfuse/ msgraph/ onedrive/ outlook/ tts/
+│   └── weather/ hn/ tavily/ slack/
 ├── features/                # ビジネス機能テスト
-│   ├── talk/                # 会話生成テスト
-│   ├── media/               # メディア処理テスト
-│   └── hn_agent/            # HN Agentテスト（タスク・Agent・Orchestrator・Reporter）
+│   ├── talk/ media/ hn_agent/
 ├── user/                    # ユーザー管理テスト
 └── health/                  # ヘルスチェックテスト
 ```
@@ -208,9 +185,11 @@ django_api/tests/
 @pytest.mark.unit         # 単体テスト（DBアクセスなし）
 @pytest.mark.integration  # 統合テスト（DBアクセスあり）
 @pytest.mark.api          # APIエンドポイントテスト
-@pytest.mark.slow         # 実行が遅いテスト
-@pytest.mark.e2e          # E2Eテスト（外部サービスアクセス、デフォルト除外）
+@pytest.mark.slow         # 実行が遅いテスト（現在使用 0 件）
+@pytest.mark.e2e          # E2Eテスト（現在使用 0 件。addopts で常時除外）
 ```
+
+`--strict-markers` が有効。マーカーを追加する場合は `pyproject.toml` の `markers` にも登録すること。
 
 ### テスト命名規則
 
@@ -291,119 +270,40 @@ app_name/
 
 - コメントとドキュメントは**日本語**で記述
 - Django モデルの `verbose_name` は日本語
-- コミットメッセージは**日本語**（Conventional Commits形式: `feat:`, `fix:`, `refactor:` 等）
+- コミットメッセージは**日本語**（Conventional Commits形式。`commit-message-rules` スキル参照）
 - `save()` メソッドでは `self.full_clean()` を呼び出してからスーパークラスの `save()` を呼ぶ
 
-### 環境変数
+### 環境変数・機密情報
 
-Django API に必要な環境変数（`django_api/.env`）：
+環境変数の一覧と説明はルート `README.md` の「環境変数設定」が正（サンプルは `django_api/.env.sample`）。
 
-| 変数名            | 必須 | 説明                                               |
-| ----------------- | ---- | -------------------------------------------------- |
-| `SECRET_KEY`      | 必須 | Django SECRET_KEY                                  |
-| `DEBUG`           | 任意 | デバッグモード（デフォルト: False）                |
-| `ALLOWED_HOSTS`   | 任意 | 許可ホスト（カンマ区切り、デフォルト: localhost）  |
-| `ENCRYPTION_KEY`  | 任意 | DB保存用暗号化キー                                 |
-| `TTS_SERVICE_URL` | 任意 | TTSサービスURL（デフォルト: http://sbv2-api:5000） |
-| `CELERY_BROKER_URL` | 任意 | Celeryブローカー（デフォルト: redis://redis:6379/0）|
-
-> **Note:** OpenAI APIキー、Tavily APIキー、Slack Webhook URL等の機密情報はDjango管理画面（`/admin/`）からDB設定として管理。環境変数では管理しない。
+> **Note:** OpenAI / Bedrock 等のプロバイダー側 API キーは LiteLLM Proxy 側で管理する。Django が持つのは LiteLLM Virtual Key（admin で DB 暗号化保存）と、そのフォールバックの `LITELLM_MASTER_KEY`（環境変数）のみ。Slack Webhook・Tavily キー・MS Graph 秘密鍵は admin から DB 暗号化保存で管理する（環境変数では管理しない）。
 
 ## API エンドポイント
 
-| パス           | アプリ          | 説明                                    |
-| -------------- | --------------- | --------------------------------------- |
-| `/admin/`      | Django Admin    | 管理画面                                |
-| `/schema/`     | drf-spectacular | OpenAPIスキーマ                         |
-| `/swagger/`    | drf-spectacular | Swagger UI                              |
-| `/redoc/`      | drf-spectacular | ReDoc UI                                |
-| `/user/`       | user            | ユーザー管理（作成/トークン/更新）      |
-| `/onedrive/`   | onedrive        | OneDrive連携                            |
-| `/outlook/`    | outlook         | Outlook Calendar連携                    |
-| `/media/`      | media           | 画像処理                                |
-| `/tts/`        | tts             | 音声合成                                |
-| `/weather/`    | weather         | 気象庁天気予報                          |
-| `/talk/`       | talk            | 会話生成（LLM + 天気 + 予定 + TTS統合） |
-| `/hn-agent/`   | hn_agent        | HN監視・分析エージェント                |
+アプリ × エンドポイントの一覧は `django_api/README.md` の「機能一覧」が正。API 仕様の確認は `http://localhost:8000/swagger/` を参照。
 
-## Docker サービス構成
+## CI/CD ワークフロー（5本）
 
-| サービス        | ポート       | 説明                          |
-| --------------- | ------------ | ----------------------------- |
-| `django-api`    | 8000         | Django REST API               |
-| `celery-worker` | —            | Celeryワーカー（バックグラウンドタスク）|
-| `celery-beat`   | —            | Celery Beatスケジューラ       |
-| `redis`         | 6379（内部） | Celeryブローカー              |
-| `app-database`  | 5432（内部） | PostgreSQL 17（pgvector）     |
-| `sbv2-api`      | 5000（内部） | Style-BERT-VITS2 音声合成（CPU推論）|
-| `frontend`      | 3000         | React SPA（nginx 配信）       |
+| ワークフロー | トリガー | 内容 |
+|---|---|---|
+| `pr-checks.yml` | develop 宛 PR | 変更検出 → Dockerfile Trivy / Django テスト / SBV2 テスト / frontend 静的チェック+テスト / コンテナ統合テスト の 7 ジョブ |
+| `build.yml` | develop push | django-api + frontend をビルド → Trivy → multi-arch で GHCR push（`sha-<short>` + `staging`）→ SBOM/provenance |
+| `release.yml` | main push | `staging` の検証 → `release`/`latest` リタグ → **Tailscale+SSH で本番コンテナ入れ替え** |
+| `security-scan.yml` | 毎日 JST 0:00 | `:release` イメージを Trivy スキャン → Security タブへ SARIF |
+| `cleanup-images.yml` | 毎週日曜 | 2 週間超の古いイメージを削除（最新 5 件と latest/release/staging は保持） |
 
-### sbv2-api の CPU / GPU 切替
-
-- デフォルトは **CPU 推論**（PyTorch CPU版 wheel）。GPU 非搭載ホスト（Intel Mac mini 等）でもそのまま動作する
-- NVIDIA GPU ホストでは `docker-compose.gpu.yml` を重ねて起動する（`TORCH_VARIANT=cu118` ビルド + `SBV2_DEVICE=cuda`）
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-```
-
-- `sbv2_api/server.py` は環境変数 `SBV2_DEVICE`（デフォルト: cpu）、`SBV2_CONFIG_PATH`、`SBV2_MODEL_ASSETS_PATH`、`SBV2_BERT_MODEL_PATH` で設定可能
-
-### sbv2-api のテスト
-
-```bash
-cd sbv2_api
-uv sync                # 軽量依存のみ（style_bert_vits2/torch はテスト内でスタブ化）
-uv run pytest tests/ -v
-uv run ruff check . && uv run ruff format --check .
-```
-
-## CI/CD ワークフロー
-
-### PR Checks（`pr-checks.yml`）
-
-`develop` ブランチへの PR 時に実行：
-
-1. **変更検出**: `dorny/paths-filter` で変更されたサービスを検出
-2. **Dockerfile セキュリティスキャン**: Trivy による設定スキャン（CRITICAL/HIGH）
-3. **Django API テスト**: Ruff リンター/フォーマッター → pytest（カバレッジ 80%以上必須）
-4. **SBV2 API テスト**: Ruff リンター/フォーマッター → pytest（依存スタブによる軽量テスト）
-5. **コンテナ統合テスト**: Docker Compose ビルド → マイグレーション → 起動 → Django API 機能テスト
-
-### Build & Push（`build.yml`）
-
-`develop` ブランチへの push 時に実行：
-
-1. 変更検出 → 対象サービスのマトリクスビルド（django-api）
-2. amd64 でビルド → Trivy 脆弱性スキャン
-3. マルチプラットフォーム（amd64/arm64）でビルド＆GHCR へプッシュ
-4. SBOM 生成 + ビルド証明（provenance）の付与
-
-### Release（`release.yml`）
-
-`main` ブランチへの push 時に実行：
-
-1. GHCR 上の staging イメージ検証
-2. staging → release/latest リタグ
-3. 本番サーバーへのデプロイ
-4. リリースサマリー出力
-
-本番デプロイは internal.kagiyama.net（Ansible）が担当。
-
-### Cleanup Images（`cleanup-images.yml`）
-
-毎週日曜 UTC 0:00 に実行。2週間以上前の古いイメージを削除（最新5つは保持）。
+各ジョブの詳細・必要な Secrets・タグ運用・ロールバック手順は `docs/deployment.md` が正。
 
 ## Git ブランチ戦略
 
 ```
-main（本番）← develop（開発）← feature/xxx, hotfix/xxx
+main（本番）← develop（開発）← feature/xxx, bugfix/xxx, hotfix/xxx
 ```
 
-- `feature/*`: 機能開発ブランチ（develop へ PR）
-- `hotfix/*`: 緊急修正ブランチ（develop へ PR）
+- `feature/*` / `bugfix/*` / `hotfix/*`: 作業ブランチ（develop へ PR）
 - `develop`: 開発統合ブランチ（main へ PR でリリース）
-- `main`: 本番ブランチ（push でリリースタグ付け、デプロイは Ansible が担当）
+- `main`: 本番ブランチ（push で release リタグ + 自動デプロイ）
 
 ## レビュー規約
 
@@ -428,3 +328,4 @@ main（本番）← develop（開発）← feature/xxx, hotfix/xxx
 - [ ] テストコードも適切にリファクタリングされている
 - [ ] Ruff リンター/フォーマッターがパスしている
 - [ ] コミットメッセージが日本語で Conventional Commits 形式に従っている
+- [ ] **docs-sync スキルでドキュメント更新の要否を確認した**
