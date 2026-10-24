@@ -63,9 +63,9 @@ flowchart TD
 トリガ: `develop` への push（`paths-ignore` は pr-checks と同一）、および `workflow_dispatch`。
 
 1. `detect-changes`: `django_api/**` / `frontend/**` の変更からビルド対象マトリクスを組み立て（手動実行時は両方を強制的に対象化）
-2. **amd64 のみでビルド**して `:scan` タグでランナーにロード（GitHub Actions cache を使用、`no-cache-filters: base`）
+2. **amd64 のみでビルド**して `:scan` タグでランナーにロード（GitHub Actions cache を使用）。`pull: true` でベースイメージを更新し、`no-cache-filters: base` で両サービスの `base` ステージの OS パッケージ更新を毎回実行する。frontend の Node ビルドステージは `$BUILDPLATFORM` で実行し、静的ファイルを両 CPU 向けの nginx イメージへコピーする（QEMU 上での Node.js 実行を避け、Node ビルドステージはキャッシュ可能）
 3. **Trivy スキャン**: CRITICAL/HIGH が 1 件でもあれば `exit-code: 1` で失敗（`ignore-unfixed: true` のため修正版のない脆弱性は除外）
-4. スキャン通過後にのみ **amd64 + arm64 のマルチプラットフォームビルド**を実行し GHCR へ push（タグは `sha-<short>` と `staging`、`provenance: false`）
+4. スキャン通過後にのみ **amd64 + arm64 のマルチプラットフォームビルド**を実行し GHCR へ push（タグは `sha-<short>` と `staging`、`provenance: false`）。こちらも `pull: true` と `no-cache-filters: base` を適用する
 5. `anchore/sbom-action@v0` で SBOM をアーティファクト化（`sbom-<service>.spdx.json`）
 6. `actions/attest-build-provenance@v4` でビルド証明を GHCR に付与（`workflow_dispatch` 時はスキップ、`continue-on-error: true`）
 7. digest をアーティファクトとして保存し、ジョブサマリーへ出力
@@ -88,10 +88,13 @@ flowchart TD
 ### 3.4 `security-scan.yml` — Security Scan
 
 - スケジュール: `0 15 * * *`（UTC 15:00 = **JST 0:00、毎日**）。`workflow_dispatch` でも実行可能
+- ランナーは `ubuntu-24.04` に固定。Trivy Action は他のスキャンと共通の `v0.36.0` を使用し、内部キャッシュ Action も Node.js 24 対応版を使用する
 - `django-api` / `frontend` の **`:release`**（＝本番が動かしているイメージ）を pull して Trivy スキャン
 - CRITICAL/HIGH が存在すればワークフローは失敗する。`ignore-unfixed: false` のため、**修正版のない脆弱性も検出対象**（`build.yml` より厳しい基準）
 - 別ステップで MEDIUM 以上を SARIF 出力し、`github/codeql-action/upload-sarif@v4` で **GitHub の Security タブ**へ報告（`exit-code: '0'` なので成否判定には影響しない）
 - SARIF 生成/アップロードは `steps.pull.outcome == 'success'` を条件にしています。pull 失敗時に「Path does not exist」という真因を覆い隠すエラーが出るのを避けるためです
+
+修正版のある脆弱性が検出された場合は、Python 依存の下限と `uv.lock` を更新し、OS パッケージは上記のキャッシュ無効化付きビルドで更新します。`develop` の Build & Push が成功した後、通常のリリース手順で `main` に反映し、`:release` 更新後に Security Scan を再実行してください。Security Scan 自体は公開済みイメージを変更しないため、再実行だけでは古いイメージの脆弱性は解消しません。
 
 ### 3.5 `cleanup-images.yml` — Cleanup old container images
 
