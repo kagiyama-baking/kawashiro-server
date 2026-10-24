@@ -288,7 +288,7 @@ app_name/
 | ワークフロー | トリガー | 内容 |
 |---|---|---|
 | `pr-checks.yml` | develop 宛 PR | 変更検出 → Dockerfile Trivy / Django テスト / SBV2 テスト / frontend 静的チェック+テスト / コンテナ統合テスト の 7 ジョブ |
-| `build.yml` | develop push | django-api + frontend をビルド → Trivy → multi-arch で GHCR push（`sha-<short>` + `staging`）→ SBOM/provenance |
+| `build.yml` | develop push | django-api + frontend のベースイメージ・OS パッケージを更新してビルド → Trivy → multi-arch で GHCR push（`sha-<short>` + `staging`）→ SBOM/provenance |
 | `release.yml` | main push | `staging` の検証 → `release`/`latest` リタグ → **Tailscale+SSH で本番コンテナ入れ替え** |
 | `security-scan.yml` | 毎日 JST 0:00 | `:release` イメージを Trivy スキャン → Security タブへ SARIF |
 | `cleanup-images.yml` | 毎週日曜 | 2 週間超の古いイメージを削除（最新 5 件と latest/release/staging は保持） |

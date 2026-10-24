@@ -13,7 +13,7 @@ permissions:
 jobs:
     # GHCRにプッシュしているカスタムイメージのスキャン
     scan-custom:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 15
         strategy:
             fail-fast: false
@@ -38,7 +38,7 @@ jobs:
                   docker pull ghcr.io/${{ github.repository }}/${{ matrix.image }}:release
 
             - name: Scan image
-              uses: aquasecurity/trivy-action@0.35.0
+              uses: aquasecurity/trivy-action@v0.36.0
               with:
                   image-ref: 'ghcr.io/${{ github.repository }}/${{ matrix.image }}:release'
                   format: 'table'
@@ -53,7 +53,7 @@ jobs:
             #   「Path does not exist」という真因を覆い隠すエラーが追加で出る）
             - name: Generate SARIF for Security tab
               if: always() && steps.pull.outcome == 'success'
-              uses: aquasecurity/trivy-action@0.35.0
+              uses: aquasecurity/trivy-action@v0.36.0
               with:
                   image-ref: 'ghcr.io/${{ github.repository }}/${{ matrix.image }}:release'
                   format: 'sarif'

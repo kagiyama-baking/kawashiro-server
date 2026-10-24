@@ -120,10 +120,11 @@ jobs:
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
                   no-cache-filters: base
+                  pull: true
 
             # Step 2: 脆弱性スキャン
             - name: Scan for vulnerabilities
-              uses: aquasecurity/trivy-action@0.35.0
+              uses: aquasecurity/trivy-action@v0.36.0
               with:
                   image-ref: '${{ matrix.service.image }}:scan'
                   format: 'table'
@@ -146,6 +147,7 @@ jobs:
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
                   no-cache-filters: base
+                  pull: true
                   provenance: false # 後で別ジョブで付与
 
             # SBOMの生成（ソフトウェア部品表）
