@@ -10,7 +10,8 @@ RUN corepack install && pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
 
-FROM nginx:alpine
+FROM nginx:alpine AS base
+# build.yml の no-cache-filters: base で OS パッケージの更新を毎回実行する。
 RUN apk upgrade --no-cache
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
