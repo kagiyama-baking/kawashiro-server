@@ -63,7 +63,7 @@ flowchart TD
 トリガ: `develop` への push（`paths-ignore` は pr-checks と同一）、および `workflow_dispatch`。
 
 1. `detect-changes`: `django_api/**` / `frontend/**` の変更からビルド対象マトリクスを組み立て（手動実行時は両方を強制的に対象化）
-2. **amd64 のみでビルド**して `:scan` タグでランナーにロード（GitHub Actions cache を使用）。`pull: true` でベースイメージを更新し、`no-cache-filters: base` で両サービスの `base` ステージの OS パッケージ更新を毎回実行する（frontend の Node ビルドステージはキャッシュ可能）
+2. **amd64 のみでビルド**して `:scan` タグでランナーにロード（GitHub Actions cache を使用）。`pull: true` でベースイメージを更新し、`no-cache-filters: base` で両サービスの `base` ステージの OS パッケージ更新を毎回実行する。frontend の Node ビルドステージは `$BUILDPLATFORM` で実行し、静的ファイルを両 CPU 向けの nginx イメージへコピーする（QEMU 上での Node.js 実行を避け、Node ビルドステージはキャッシュ可能）
 3. **Trivy スキャン**: CRITICAL/HIGH が 1 件でもあれば `exit-code: 1` で失敗（`ignore-unfixed: true` のため修正版のない脆弱性は除外）
 4. スキャン通過後にのみ **amd64 + arm64 のマルチプラットフォームビルド**を実行し GHCR へ push（タグは `sha-<short>` と `staging`、`provenance: false`）。こちらも `pull: true` と `no-cache-filters: base` を適用する
 5. `anchore/sbom-action@v0` で SBOM をアーティファクト化（`sbom-<service>.spdx.json`）

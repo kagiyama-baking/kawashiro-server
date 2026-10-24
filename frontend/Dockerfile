@@ -1,4 +1,6 @@
-FROM node:22-alpine AS build
+# 静的ファイルは CPU に依存しないため、Node.js はビルドホスト上で実行する。
+# ARM64 向けイメージでも QEMU による Node.js 実行を避ける。
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
