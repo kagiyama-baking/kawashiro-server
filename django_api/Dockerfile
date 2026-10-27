@@ -8,13 +8,15 @@ ENV PYTHONUNBUFFERED=1
 # libheifも追加（HEIF/HEIC画像形式サポート用）
 # OpenSSLパッケージを明示的にアップグレード（CVE-2025-15467, CVE-2025-69419対応）
 # zlibを明示的にアップグレード（CVE-2026-22184対応）
+# curl/libcurlは修正版以上を必須にする（CVE-2026-92392対応。未提供ならビルドを失敗させる）
 # ビルド時に --no-cache-filter=base を指定すると常に最新パッケージを取得
 RUN apk update && \
     apk upgrade --no-cache && \
     apk add --no-cache \
         ca-certificates \
         tzdata \
-        curl \
+        'curl>=8.23.0-r0' \
+        'libcurl>=8.23.0-r0' \
         libheif \
         libpq \
         libcrypto3 \
