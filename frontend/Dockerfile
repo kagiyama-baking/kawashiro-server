@@ -14,7 +14,10 @@ RUN pnpm build
 
 FROM nginx:alpine AS base
 # build.yml の no-cache-filters: base で OS パッケージの更新を毎回実行する。
-RUN apk upgrade --no-cache
+# nginx:alpine 同梱の curl/libcurl は修正版以上を必須にする
+# （CVE-2026-92392 対応。リポジトリに未提供ならビルドを失敗させる）。
+RUN apk upgrade --no-cache && \
+    apk add --no-cache 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0'
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
