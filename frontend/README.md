@@ -9,6 +9,7 @@
 | フレームワーク   | React 19 + Vite                     |
 | 言語             | TypeScript                          |
 | スタイリング     | Tailwind CSS v4 + shadcn/ui         |
+| 書体             | Murecho + IBM Plex Sans（fontsource で同梱）|
 | 状態管理         | Zustand                             |
 | HTTP クライアント | ky                                  |
 | ルーティング     | React Router v7                     |
@@ -27,7 +28,7 @@
 | パス        | 画面               | 説明                                       |
 | ----------- | ------------------ | ------------------------------------------ |
 | `/login`    | ログイン           | メールアドレス + パスワードでToken認証     |
-| `/`         | ホーム             | バナー + メニューカード                    |
+| `/`         | ホーム             | 各機能へのメニューカード                   |
 | `/tts`      | テキスト読み上げ   | テキスト入力 → 音声合成 → 再生/ダウンロード |
 | `/talk`     | チャット（履歴あり）| 2 ペイン UI（左 = セッション一覧、右 = メッセージ）。プリセット選択して新規セッション作成、過去会話を引き継いだ複数ターン会話、編集再送、音声個別/一括 再生・DL・削除、LLM タイトル自動生成。モバイルではドロワー化、iOS Safari の autoplay にも対応 |
 | `/media`    | メディア変換       | 画像フォーマット変換 / ZIP→PDF変換         |
@@ -93,6 +94,8 @@ pnpm test:e2e:ui   # UI モード
 - **Playwright**: `e2e/` に 4 本（login / media / navigation / tts）。
   API は `page.route` でモックするためバックエンド起動は不要。**CI では実行されない**
   （手動実行のみ）。実行前に `pnpm exec playwright install chromium` が必要。
+  `reuseExistingServer: true` なので、5173 番で別のチェックアウトの dev サーバーが
+  動いていると、そちらのコードに対してテストが走る点に注意。
 
 ## API 接続
 
@@ -108,9 +111,25 @@ nginx 側は大容量 ZIP アップロードに対応するため `client_max_bo
 
 ## テーマ
 
-- プライマリカラー: `#316745`（ダークグリーン）
-- 常時ダークモード
-- タイトルフォント: Kaisei Opti（Google Fonts）
+kagiyama.net の暗色テーマに揃えた**ダーク固定**のデザインです。部品の寸法とアプリの骨組みは
+kagiyama.net の管理ツールに合わせています。
+
+| 項目         | 内容                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| 色           | `src/styles/tokens.css` で shadcn のセマンティックトークン（`--background` など）に値を割り当てる |
+| ユーティリティ | `src/index.css` の `@theme inline` でトークンを Tailwind に公開する（`bg-background` など）   |
+| 書体         | 和文は Murecho、欧文は IBM Plex Sans を `main.tsx` で読み込む。等幅は OS の `ui-monospace` 系 |
+| 角丸         | ボタン・入力 2px、カード 4px。ピルと円だけ `rounded-full`                                     |
+| 動き         | `transition-*` の既定は 300ms + `--ease`。`transition-all` は使わない                         |
+
+変更するときの注意:
+
+- 色はトークン経由で指定し、コンポーネントに直書きしない。
+- 文字色は地（`--background`）と面（`--card`）の上で 4.5:1 以上にする。`--primary` に白文字は
+  コントラストが足りないので、`--primary-foreground` は暗い色にしている。
+- Tailwind v4 は `@theme` を含むファイルの素の `:root` を出力から落とす。トークンは `@theme` の
+  ない `tokens.css` の `@layer base` に置き、`getComputedStyle` で実際に解決されることを確かめる。
+- `<html class="dark">` は `dark:` バリアントを持つ shadcn 部品のために残している。
 
 ## ディレクトリ構成
 
@@ -118,12 +137,16 @@ nginx 側は大容量 ZIP アップロードに対応するため `client_max_bo
 frontend/
 ├── src/
 │   ├── App.tsx                  # ルーティング定義
+│   ├── index.css                # Tailwind の読み込み・@theme・ベーススタイル
+│   ├── styles/
+│   │   └── tokens.css           # 色・寸法のトークン
+│   ├── assets/                  # ブランド資産（渦マーク）
 │   ├── components/
 │   │   ├── ui/                  # shadcn/ui コンポーネント
-│   │   ├── layout/              # AppLayout, Sidebar
+│   │   ├── layout/              # AppLayout, Sidebar, nav-items
 │   │   ├── audio/               # AudioPlayer, AudioDownload
 │   │   ├── auth/                # ProtectedRoute
-│   │   └── common/              # LoadingButton, ErrorMessage
+│   │   └── common/              # PageHeader, ConfirmDialog, LoadingButton, ErrorMessage
 │   ├── features/
 │   │   ├── home/                # ホーム画面
 │   │   ├── login/               # ログイン画面
@@ -160,10 +183,5 @@ frontend/
 ├── Dockerfile                   # マルチステージビルド（node → nginx）
 ├── nginx.conf                   # SPA + API プロキシ設定
 └── public/
-    └── banner.jpg               # ホームバナー画像（.gitignore済み）
+    └── favicon.svg              # ファビコン
 ```
-
-## バナー画像の差し替え
-
-`public/banner.jpg` に画像を配置するとホーム画面のバナーに表示されます。
-このファイルは `.gitignore` で除外されているため、各環境で個別に設定してください。
