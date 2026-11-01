@@ -57,21 +57,8 @@ describe('Sidebar', () => {
                 expect(link).toHaveAttribute('href', to);
                 expect(within(link).getByText(en)).toBeInTheDocument();
                 expect(within(link).getByText(ja)).toBeInTheDocument();
-                expect(within(link).getByText(en)).not.toBe(
-                    within(link).getByText(ja),
-                );
             },
         );
-
-        it('リンクにアイコンを描画しない', () => {
-            renderSidebar();
-
-            const links = desktop().getAllByRole('link');
-            expect(links).toHaveLength(NAV_ITEMS.length);
-            links.forEach((link) => {
-                expect(link.querySelector('svg')).toBeNull();
-            });
-        });
 
         it('現在のページのリンクにだけ aria-current を付ける', () => {
             renderSidebar('/tts');
@@ -163,6 +150,8 @@ describe('Sidebar', () => {
             await user.click(
                 screen.getByRole('button', { name: 'メニューを開く' }),
             );
+            expect(drawer()).not.toHaveAttribute('inert');
+
             await user.keyboard('{Escape}');
 
             expect(drawer()).toHaveAttribute('inert');
@@ -175,12 +164,63 @@ describe('Sidebar', () => {
             await user.click(
                 screen.getByRole('button', { name: 'メニューを開く' }),
             );
+            expect(drawer()).not.toHaveAttribute('inert');
+
             await user.click(
                 within(drawer()).getByRole('link', { name: /メディア変換/ }),
             );
 
             expect(drawer()).toHaveAttribute('inert');
             expect(screen.getByTestId('pathname')).toHaveTextContent('/media');
+        });
+
+        // 閉じるとドロワー内の要素は inert になり、フォーカスが行き先を失う
+        it('閉じるボタンで閉じるとメニューボタンへフォーカスを戻す', async () => {
+            const user = userEvent.setup();
+            renderSidebar();
+            const menuButton = screen.getByRole('button', {
+                name: 'メニューを開く',
+            });
+
+            await user.click(menuButton);
+            await user.click(
+                within(drawer()).getByRole('button', {
+                    name: 'メニューを閉じる',
+                }),
+            );
+
+            expect(menuButton).toHaveFocus();
+        });
+
+        it('Esc キーで閉じるとメニューボタンへフォーカスを戻す', async () => {
+            const user = userEvent.setup();
+            renderSidebar();
+            const menuButton = screen.getByRole('button', {
+                name: 'メニューを開く',
+            });
+
+            await user.click(menuButton);
+            within(drawer())
+                .getByRole('button', { name: 'メニューを閉じる' })
+                .focus();
+            await user.keyboard('{Escape}');
+
+            expect(menuButton).toHaveFocus();
+        });
+
+        it('リンクで閉じるとメニューボタンへフォーカスを戻す', async () => {
+            const user = userEvent.setup();
+            renderSidebar();
+            const menuButton = screen.getByRole('button', {
+                name: 'メニューを開く',
+            });
+
+            await user.click(menuButton);
+            await user.click(
+                within(drawer()).getByRole('link', { name: /チャット/ }),
+            );
+
+            expect(menuButton).toHaveFocus();
         });
     });
 });

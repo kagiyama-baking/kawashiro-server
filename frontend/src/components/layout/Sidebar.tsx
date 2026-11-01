@@ -1,5 +1,5 @@
 import { LogOut, Menu, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import swirlMark from '@/assets/swirl.webp';
 import { Button } from '@/components/ui/button';
@@ -57,7 +57,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                         className={GHOST_ON_SURFACE}
                         aria-label="メニューを閉じる"
                     >
-                        <X className="h-5 w-5" />
+                        <X className="size-5" />
                     </Button>
                 )}
             </div>
@@ -70,7 +70,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                                 to={to}
                                 end={to === '/'}
                                 onClick={onClose}
-                                className="text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full flex-col items-start gap-[3px] rounded-md py-[0.7rem] pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] before:content-[''] aria-[current=page]:before:h-[62%]"
+                                className="text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full flex-col items-start gap-[3px] rounded-md py-[0.7rem] pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] aria-[current=page]:before:h-[62%]"
                             >
                                 <span className="font-latin text-[0.76rem] tracking-[0.22em] uppercase">
                                     {en}
@@ -107,15 +107,22 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
 
 export function Sidebar() {
     const [mobileOpen, setMobileOpen] = useState(false);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+    // 閉じるとドロワーの中は inert になりフォーカスが行き先を失うので、メニューボタンへ戻す
+    const closeDrawer = useCallback(() => {
+        setMobileOpen(false);
+        menuButtonRef.current?.focus();
+    }, []);
 
     useEffect(() => {
         if (!mobileOpen) return;
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setMobileOpen(false);
+            if (e.key === 'Escape') closeDrawer();
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [mobileOpen]);
+    }, [mobileOpen, closeDrawer]);
 
     return (
         <>
@@ -127,13 +134,14 @@ export function Sidebar() {
                 )}
             >
                 <Button
+                    ref={menuButtonRef}
                     variant="ghost"
                     size="icon"
                     className={GHOST_ON_SURFACE}
                     onClick={() => setMobileOpen(true)}
                     aria-label="メニューを開く"
                 >
-                    <Menu className="h-5 w-5" />
+                    <Menu className="size-5" />
                 </Button>
                 <Brand />
             </header>
@@ -142,7 +150,7 @@ export function Sidebar() {
             {mobileOpen && (
                 <div
                     className="bg-overlay fixed inset-0 z-40 backdrop-blur-[4px] lg:hidden"
-                    onClick={() => setMobileOpen(false)}
+                    onClick={closeDrawer}
                     role="presentation"
                 />
             )}
@@ -156,7 +164,7 @@ export function Sidebar() {
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
                 )}
             >
-                <SidebarContent onClose={() => setMobileOpen(false)} />
+                <SidebarContent onClose={closeDrawer} />
             </aside>
 
             {/* デスクトップサイドバー */}
