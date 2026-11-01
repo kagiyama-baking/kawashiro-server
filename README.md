@@ -45,7 +45,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
     - **features/** - ビジネス機能
         - 🎙️ **Talk**: 会話生成 API + **チャット履歴セッション**（DB + ファイル永続化、編集再送、音声配信/個別 & 一括削除、LLM タイトル要約、Langfuse Session 連携）
         - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
-        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。LangGraph ReAct Agent がスレッド性質に応じて 3 ツールを使い分け）
+        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。PydanticAI のエージェントがスレッド性質に応じて 3 ツールを使い分け）
 - 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（CPU 推論・NVIDIA GPU はオプション）
 
 ## LLM / LiteLLM / Langfuse
@@ -201,7 +201,7 @@ Playwright E2E などの詳細は [docs/development.md](docs/development.md) を
 ### LLMOps
 
 - **LiteLLM Proxy**（OpenAI 互換 + モデルルーティング）
-- **LangChain / LangGraph**（HN Agent Orchestrator の ReAct Agent）
+- **PydanticAI**（全 LLM 呼び出しのエージェント実行）
 - **Langfuse**（トレース + プロンプト管理）
 
 ### インフラ・DevOps
