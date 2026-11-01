@@ -6,7 +6,8 @@ import { usePdfEditStore } from '@/stores/pdf-edit-store';
  *
  * - Ctrl/Cmd + Z      → Undo
  * - Ctrl/Cmd + Shift + Z または Ctrl/Cmd + Y → Redo
- * - input/textarea/contenteditable にフォーカスがあるときは無視（CropDialogなど）
+ * - input/textarea/contenteditable にフォーカスがあるときは無視
+ * - ダイアログの中でも無視（確認やトリミングの背後で編集が変わらないように）
  */
 export function useEditorKeybindings() {
     const undo = usePdfEditStore((s) => s.undo);
@@ -20,7 +21,8 @@ export function useEditorKeybindings() {
                 if (
                     tag === 'input' ||
                     tag === 'textarea' ||
-                    target.isContentEditable
+                    target.isContentEditable ||
+                    target.closest?.('[role="dialog"],[role="alertdialog"]')
                 ) {
                     return;
                 }

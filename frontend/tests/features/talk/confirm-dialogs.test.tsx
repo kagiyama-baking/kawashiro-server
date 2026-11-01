@@ -45,8 +45,10 @@ async function answer(user: ReturnType<typeof userEvent.setup>, name: string) {
     await user.click(
         within(screen.getByRole('alertdialog')).getByRole('button', { name }),
     );
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 }
 
+// 続けて押したときの二重実行は jsdom では再現しないので、e2e/talk.spec.ts で確かめる
 describe('Talk の確認ダイアログ', () => {
     const initialState = useChatStore.getState();
 
@@ -90,7 +92,7 @@ describe('Talk の確認ダイアログ', () => {
             expect(deleteMessageAudio).not.toHaveBeenCalled();
         });
 
-        it('確定すると 1 度だけ削除する', async () => {
+        it('確定すると削除する', async () => {
             const { deleteMessageAudio, user } = setup();
 
             await user.click(
@@ -122,7 +124,7 @@ describe('Talk の確認ダイアログ', () => {
             expect(deleteAllAudio).not.toHaveBeenCalled();
         });
 
-        it('確定すると 1 度だけ削除する', async () => {
+        it('確定すると削除する', async () => {
             const { deleteAllAudio, user } = setup();
 
             await user.click(
@@ -160,7 +162,7 @@ describe('Talk の確認ダイアログ', () => {
             expect(removeSession).not.toHaveBeenCalled();
         });
 
-        it('確定すると対象のセッションを 1 度だけ削除する', async () => {
+        it('確定すると対象のセッションを削除する', async () => {
             const { removeSession, user } = setup();
 
             await user.click(

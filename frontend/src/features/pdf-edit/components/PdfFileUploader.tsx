@@ -10,11 +10,6 @@ interface PdfFileUploaderProps {
     readonly disabled?: boolean;
 }
 
-interface OversizedFile {
-    readonly file: File;
-    readonly isConfirming: boolean;
-}
-
 // クライアント完結のため大きすぎるPDFはブラウザがハングする可能性あり。
 // 警告のみで処理は試みる。
 const SOFT_LIMIT_BYTES = 200 * 1024 * 1024; // 200MB
@@ -24,38 +19,32 @@ export function PdfFileUploader({
     disabled,
 }: PdfFileUploaderProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    // 閉じるアニメーションの間も文面が変わらないよう、確認を終えてもファイルは保持する
-    const [oversized, setOversized] = useState<OversizedFile | null>(null);
+    // 上限を超えたファイルは、続行の確認が取れるまでここで保留する
+    const [oversizedFile, setOversizedFile] = useState<File | null>(null);
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         if (file.size > SOFT_LIMIT_BYTES) {
-            setOversized({ file, isConfirming: true });
+            setOversizedFile(file);
             return;
         }
         onFileSelected(file);
     };
 
     const handleProceed = () => {
-        if (!oversized) return;
-        setOversized({ ...oversized, isConfirming: false });
-        onFileSelected(oversized.file);
+        if (oversizedFile) onFileSelected(oversizedFile);
+        setOversizedFile(null);
     };
 
     const handleAbort = () => {
-        if (!oversized) return;
-        setOversized({ ...oversized, isConfirming: false });
         if (fileInputRef.current) fileInputRef.current.value = '';
+        setOversizedFile(null);
     };
 
     const handleClick = () => {
         fileInputRef.current?.click();
     };
-
-    const oversizedMb = oversized
-        ? Math.round(oversized.file.size / (1024 * 1024))
-        : 0;
 
     return (
         <div className="space-y-2">
@@ -85,13 +74,17 @@ export function PdfFileUploader({
             </div>
 
             <ConfirmDialog
-                open={oversized?.isConfirming ?? false}
+                open={oversizedFile !== null}
                 title="大きなファイルです"
                 confirmLabel="続行"
                 onConfirm={handleProceed}
                 onCancel={handleAbort}
             >
-                ファイルサイズが{oversizedMb}MBあります（推奨:
+                ファイルサイズが
+                {oversizedFile
+                    ? Math.round(oversizedFile.size / (1024 * 1024))
+                    : 0}
+                MBあります（推奨:
                 200MB以下）。処理は試みますが、ブラウザが重くなる可能性があります。続行しますか？
             </ConfirmDialog>
         </div>

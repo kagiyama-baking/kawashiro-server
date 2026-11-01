@@ -36,7 +36,7 @@ function DialogOverlay({
         <DialogPrimitive.Overlay
             data-slot="dialog-overlay"
             className={cn(
-                'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 bg-overlay fixed inset-0 z-50 backdrop-blur-[4px]',
+                'data-[state=open]:animate-in data-[state=open]:fade-in-0 bg-overlay fixed inset-0 z-50 backdrop-blur-[4px]',
                 className,
             )}
             {...props}
@@ -52,13 +52,14 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
     showCloseButton?: boolean;
 }) {
+    // 閉じるアニメーションは付けない。その間もボタンを押せるので、続けて押すと確定処理が 2 回走る
     return (
         <DialogPortal>
             <DialogOverlay />
             <DialogPrimitive.Content
                 data-slot="dialog-content"
                 className={cn(
-                    'bg-popover text-popover-foreground border-border shadow-lift data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-[34rem] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 duration-200',
+                    'bg-popover text-popover-foreground border-border shadow-lift data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-[34rem] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 duration-200',
                     className,
                 )}
                 {...props}
