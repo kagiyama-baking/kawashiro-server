@@ -24,6 +24,10 @@ test.describe('テキスト読み上げ画面', () => {
         await page.goto('/tts');
     });
 
+    test('取得した先頭のモデルが選択された状態で表示される', async ({ page }) => {
+        await expect(page.locator('#model-select')).toHaveText('test-model');
+    });
+
     test('テキスト入力フォームが表示される', async ({ page }) => {
         await expect(page.getByLabel('テキスト')).toBeVisible();
         await expect(

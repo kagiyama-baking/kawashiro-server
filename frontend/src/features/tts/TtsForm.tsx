@@ -69,7 +69,14 @@ export function TtsForm({
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                     <Label htmlFor="model-select">モデル</Label>
-                    <Select value={selectedModel} onValueChange={onModelChange}>
+                    <Select
+                        value={selectedModel}
+                        onValueChange={(value) => {
+                            // フォーム内の Select は、選択肢が揃う前に値を受けると隠し select が
+                            // 空値を返してくる。これを採ると自動選択したモデルが消える
+                            if (value) onModelChange(value);
+                        }}
+                    >
                         <SelectTrigger id="model-select">
                             <SelectValue placeholder="モデルを選択" />
                         </SelectTrigger>
