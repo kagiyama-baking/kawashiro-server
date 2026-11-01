@@ -91,7 +91,7 @@ pnpm test:e2e:ui   # UI モード
 
 - **Vitest**: カバレッジ計測対象は `src/stores/**`・`src/lib/**`・`src/components/auth/**` に限定
   （`chat-store.ts` と `lib/pdf/pdf-worker.ts` は除外）。閾値は lines 80%。
-- **Playwright**: `e2e/` に 4 本（login / media / navigation / tts）。
+- **Playwright**: `e2e/` に 5 本（login / media / navigation / talk / tts）。
   API は `page.route` でモックするためバックエンド起動は不要。**CI では実行されない**
   （手動実行のみ）。実行前に `pnpm exec playwright install chromium` が必要。
   `reuseExistingServer: true` なので、5173 番で別のチェックアウトの dev サーバーが
@@ -111,8 +111,7 @@ nginx 側は大容量 ZIP アップロードに対応するため `client_max_bo
 
 ## テーマ
 
-kagiyama.net の暗色テーマに揃えた**ダーク固定**のデザインです。部品の寸法とアプリの骨組みは
-kagiyama.net の管理ツールに合わせています。
+kagiyama.net の暗色テーマに揃えた**ダーク固定**のデザインです。
 
 | 項目         | 内容                                                                                         |
 | ------------ | -------------------------------------------------------------------------------------------- |
@@ -127,9 +126,13 @@ kagiyama.net の管理ツールに合わせています。
 - 色はトークン経由で指定し、コンポーネントに直書きしない。
 - 文字色は地（`--background`）と面（`--card`）の上で 4.5:1 以上にする。`--primary` に白文字は
   コントラストが足りないので、`--primary-foreground` は暗い色にしている。
-- Tailwind v4 は `@theme` を含むファイルの素の `:root` を出力から落とす。トークンは `@theme` の
-  ない `tokens.css` の `@layer base` に置き、`getComputedStyle` で実際に解決されることを確かめる。
-- `<html class="dark">` は `dark:` バリアントを持つ shadcn 部品のために残している。
+- トークンは `@theme` のない `tokens.css` の `@layer base` に置く。Tailwind v4 で `@theme` と同じ
+  ファイルの素の `:root` が出力から落ちた事例があるため（4.2.2 では再現しない）。CSS を変えたら
+  ビルドが通るだけで済ませず、`getComputedStyle` で実際に解決されることを確かめる。
+- ダイアログに閉じるアニメーションを付けない。その間もボタンを押せるので、続けて押すと確定処理が
+  2 回走る（E2E の `talk.spec.ts` で確かめている）。
+- `<html class="dark">` は、shadcn のレジストリから足す部品の `dark:` バリアントを効かせるために
+  残している（既存の部品には `dark:` はない）。
 
 ## ディレクトリ構成
 
