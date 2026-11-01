@@ -120,7 +120,7 @@ export function EditToolbar({
                 Redo
             </Button>
 
-            <div className="text-ink-subtle ml-auto text-xs tabular-nums">
+            <div className="font-latin text-ink-subtle ml-auto text-xs tabular-nums">
                 {selection.size} / {pages.length} ページ選択中
             </div>
 

@@ -6,7 +6,7 @@ interface PageHeaderProps {
     readonly lead?: ReactNode;
 }
 
-/** ページ見出し。kagiyama.net の様式（欧文の eyebrow ＋ 和文の見出し ＋ リード）。 */
+/** ページ見出し（欧文の eyebrow ＋ 和文の見出し ＋ リード）。 */
 export function PageHeader({ eyebrow, title, lead }: PageHeaderProps) {
     return (
         <header className="mb-[clamp(1.8rem,3.5vw,2.6rem)]">

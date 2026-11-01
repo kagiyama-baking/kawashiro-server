@@ -86,7 +86,7 @@ export function PageThumbnailItem({
                 <div className="absolute top-1 right-1 flex gap-1">
                     {page.splitHalf && (
                         <span
-                            className="bg-background/80 text-foreground block rounded-sm px-1 py-0.5"
+                            className="bg-background/80 text-foreground rounded-sm px-1 py-0.5"
                             title={
                                 page.splitHalf === 'left' ? '左半分' : '右半分'
                             }
@@ -96,7 +96,7 @@ export function PageThumbnailItem({
                     )}
                     {page.crop && (
                         <span
-                            className="bg-background/80 text-foreground block rounded-sm px-1 py-0.5"
+                            className="bg-background/80 text-foreground rounded-sm px-1 py-0.5"
                             title="トリミング適用済み"
                         >
                             <Crop className="h-3 w-3" />

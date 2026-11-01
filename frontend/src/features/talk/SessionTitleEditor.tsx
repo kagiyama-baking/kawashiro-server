@@ -84,7 +84,7 @@ export function SessionTitleEditor({ title, onSave }: SessionTitleEditorProps) {
                 onClick={start}
                 aria-label="タイトルを編集"
             >
-                <Pencil className="h-3.5 w-3.5" />
+                <Pencil />
             </Button>
         </div>
     );

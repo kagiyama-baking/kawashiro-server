@@ -3,7 +3,10 @@ import { Link } from 'react-router';
 import { PageHeader } from '@/components/common/PageHeader';
 import { navItems } from '@/components/layout/nav-items';
 
-const MENU_DESCRIPTIONS: Readonly<Record<string, string>> = {
+// ナビに項目を足すと、説明の書き忘れは型エラーになる
+type MenuPath = Exclude<(typeof navItems)[number]['to'], '/'>;
+
+const MENU_DESCRIPTIONS: Readonly<Record<MenuPath, string>> = {
     '/tts': 'テキストを入力して音声を生成',
     '/talk': '設定に基づき会話テキスト生成＋読み上げ',
     '/media': '画像変換・ZIP→PDF変換',

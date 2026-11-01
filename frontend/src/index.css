@@ -8,10 +8,11 @@
 @theme inline {
     --font-sans: 'Murecho Variable', system-ui, sans-serif;
     --font-heading: 'Murecho Variable', system-ui, sans-serif;
-    --font-latin: 'IBM Plex Sans', system-ui, sans-serif;
+    /* IBM Plex Sans は欧文のみ同梱なので、和文を含む文字列（「14/500文字」など）は Murecho に落とす */
+    --font-latin: 'IBM Plex Sans', 'Murecho Variable', system-ui, sans-serif;
     --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
-    /* transition-* の既定を kagiyama.net の速度とイージングに揃える */
+    /* transition-* の既定の速度とイージングを揃える */
     --default-transition-duration: 300ms;
     --default-transition-timing-function: var(--ease);
 

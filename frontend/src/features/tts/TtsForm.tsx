@@ -61,7 +61,7 @@ export function TtsForm({
                     maxLength={500}
                     required
                 />
-                <p className="text-ink-subtle text-xs tabular-nums">
+                <p className="font-latin text-ink-subtle text-xs tabular-nums">
                     {text.length}/500文字
                 </p>
             </div>

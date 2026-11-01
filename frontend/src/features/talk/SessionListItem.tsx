@@ -60,7 +60,7 @@ export function SessionListItem({
                     className="opacity-0 transition-[opacity,color,background-color] group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label="セッションを削除"
                 >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="size-3.5" />
                 </Button>
             </div>
         </button>

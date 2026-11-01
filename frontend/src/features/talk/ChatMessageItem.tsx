@@ -101,7 +101,7 @@ export function ChatMessageItem({
                             </span>
                             <span
                                 className={cn(
-                                    'tabular-nums',
+                                    'font-latin tabular-nums',
                                     isOverLimit &&
                                         'text-destructive font-medium',
                                 )}
@@ -183,7 +183,7 @@ export function ChatMessageItem({
                                             disabled={disabled}
                                             aria-label="音声を削除"
                                         >
-                                            <Trash2 className="h-3.5 w-3.5" />
+                                            <Trash2 />
                                         </Button>
                                     </div>
                                 </div>

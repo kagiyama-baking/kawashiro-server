@@ -61,7 +61,7 @@ export function ChatInputForm({
                 </span>
                 <span
                     className={cn(
-                        'tabular-nums',
+                        'font-latin tabular-nums',
                         isOverLimit && 'text-destructive font-medium',
                     )}
                 >

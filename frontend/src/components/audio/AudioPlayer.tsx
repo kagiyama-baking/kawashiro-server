@@ -72,9 +72,9 @@ function AudioPlayerInner({
                 aria-label={isPlaying ? '一時停止' : '再生'}
             >
                 {isPlaying ? (
-                    <Pause className="h-5 w-5" />
+                    <Pause className="size-5" />
                 ) : (
-                    <Play className="h-5 w-5" />
+                    <Play className="size-5" />
                 )}
             </Button>
             <div className="flex flex-1 items-center gap-2">
