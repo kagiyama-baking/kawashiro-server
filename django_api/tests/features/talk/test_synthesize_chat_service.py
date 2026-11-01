@@ -244,16 +244,16 @@ class TestTalkServiceChatLangfuseSession:
         mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
         mock_llm_class.return_value = mock_llm
 
-        with patch("langfuse.get_client") as mock_get_client:
+        with patch("langfuse.propagate_attributes") as mock_propagate:
             service = TalkService()
             service.synthesize_chat(
                 config=chat_config,
                 messages=[{"role": "user", "content": "hi"}],
                 session_id="abc-123",
             )
-            mock_get_client.return_value.update_current_trace.assert_called_with(
-                session_id="abc-123"
-            )
+            mock_propagate.assert_called_once_with(session_id="abc-123")
+            mock_propagate.return_value.__enter__.assert_called_once()
+            mock_propagate.return_value.__exit__.assert_called_once()
 
     @patch("features.talk.services.LLMClient")
     def test_no_session_id_does_not_set_session(self, mock_llm_class, chat_config):
@@ -261,15 +261,32 @@ class TestTalkServiceChatLangfuseSession:
         mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
         mock_llm_class.return_value = mock_llm
 
-        with patch("langfuse.get_client") as mock_get_client:
+        with patch("langfuse.propagate_attributes") as mock_propagate:
             service = TalkService()
             service.synthesize_chat(
                 config=chat_config,
                 messages=[{"role": "user", "content": "hi"}],
             )
-            # get_client 自体はプロンプト取得などで呼ばれうるが、
-            # update_current_trace は session_id 連携時のみ呼ぶ
-            mock_get_client.return_value.update_current_trace.assert_not_called()
+            # session_id が無いときは属性の伝播を始めない
+            mock_propagate.assert_not_called()
+
+    @patch("features.talk.services.LLMClient")
+    def test_langfuse_session_failure_does_not_break_chat(
+        self, mock_llm_class, chat_config
+    ):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
+        mock_llm_class.return_value = mock_llm
+
+        with patch("langfuse.propagate_attributes") as mock_propagate:
+            mock_propagate.return_value.__enter__.side_effect = RuntimeError("boom")
+            service = TalkService()
+            result = service.synthesize_chat(
+                config=chat_config,
+                messages=[{"role": "user", "content": "hi"}],
+                session_id="abc-123",
+            )
+        assert result["message"]["content"] == "OK"
 
 
 @pytest.mark.django_db

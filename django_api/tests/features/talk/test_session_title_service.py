@@ -72,15 +72,15 @@ class TestGenerateSessionTitle:
         mock_llm.chat_completion.return_value = _mock_completion("OK")
         mock_llm_class.return_value = mock_llm
 
-        with patch("langfuse.get_client") as mock_get_client:
+        with patch("langfuse.propagate_attributes") as mock_propagate:
             service = TalkService()
             service.generate_session_title(
                 [{"role": "user", "content": "x"}],
                 session_id="sess-abc",
             )
-            mock_get_client.return_value.update_current_trace.assert_called_with(
-                session_id="sess-abc"
-            )
+            mock_propagate.assert_called_once_with(session_id="sess-abc")
+            mock_propagate.return_value.__enter__.assert_called_once()
+            mock_propagate.return_value.__exit__.assert_called_once()
 
     @patch("features.talk.services.LLMClient")
     def test_no_session_id_does_not_set_session(self, mock_llm_class):
@@ -88,7 +88,22 @@ class TestGenerateSessionTitle:
         mock_llm.chat_completion.return_value = _mock_completion("OK")
         mock_llm_class.return_value = mock_llm
 
-        with patch("langfuse.get_client") as mock_get_client:
+        with patch("langfuse.propagate_attributes") as mock_propagate:
             service = TalkService()
             service.generate_session_title([{"role": "user", "content": "x"}])
-            mock_get_client.return_value.update_current_trace.assert_not_called()
+            mock_propagate.assert_not_called()
+
+    @patch("features.talk.services.LLMClient")
+    def test_langfuse_session_failure_does_not_break_title(self, mock_llm_class):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion.return_value = _mock_completion("OK")
+        mock_llm_class.return_value = mock_llm
+
+        with patch("langfuse.propagate_attributes") as mock_propagate:
+            mock_propagate.return_value.__enter__.side_effect = RuntimeError("boom")
+            service = TalkService()
+            title = service.generate_session_title(
+                [{"role": "user", "content": "x"}],
+                session_id="sess-abc",
+            )
+        assert title == "OK"

@@ -132,7 +132,7 @@ features/talk/
 
 **編集再送** — 対象 `sequence` 以降のメッセージを（シグナルを確実に発火させるため）1 件ずつ削除してから、同じ `sequence` で新しい user メッセージを作り直し、対象より前の履歴だけを LLM に渡して応答を再生成します。
 
-**Langfuse Sessions 連携** — `synthesize` / `synthesize_chat` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では `_set_langfuse_session` がトレースに `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。
+**Langfuse Sessions 連携** — `synthesize` / `synthesize_chat` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では `_langfuse_session`（`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。
 
 ## 運用
 
