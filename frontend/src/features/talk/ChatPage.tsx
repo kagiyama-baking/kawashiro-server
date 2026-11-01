@@ -51,7 +51,9 @@ export function ChatPage() {
     };
 
     return (
-        <div className="flex h-[calc(100svh-var(--mobile-bar-height)-var(--page-pad-top)-var(--page-pad-bottom))] w-full overflow-hidden rounded-lg border lg:h-[calc(100svh-var(--page-pad-top)-var(--page-pad-bottom))]">
+        // 高さの低い画面では min-h で一覧の高さを確保し、外側の main でスクロールさせる
+        <div className="flex h-[calc(100svh-var(--mobile-bar-height)-var(--page-pad-top)-var(--page-pad-bottom))] min-h-112 w-full rounded-lg border lg:h-[calc(100svh-var(--page-pad-top)-var(--page-pad-bottom))]">
+            <h1 className="sr-only">チャット</h1>
             <SessionSidebar
                 sessions={sessions}
                 activeSessionId={activeSessionId}
@@ -74,7 +76,7 @@ export function ChatPage() {
                         onClick={() => setIsMobileOpen(true)}
                         aria-label="サイドバーを開く"
                     >
-                        <Menu className="h-5 w-5" />
+                        <Menu className="size-5" />
                     </Button>
                     <span className="text-ink-strong text-sm font-semibold">
                         チャット

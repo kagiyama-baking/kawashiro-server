@@ -133,9 +133,10 @@ function CropDialogContent({
                         </p>
                     )}
                     {preview.status === 'ready' && preview.url && (
-                        // ReactCrop.css が img の max-height を inherit で上書きするので、親で制限する
+                        // ReactCrop.css が img の max-height を inherit で上書きするので、親で制限する。
+                        // 15rem はダイアログの見出し・ボタン・余白の分。低い画面では 20rem を保ちスクロールさせる
                         <ReactCrop
-                            className="m-auto max-h-[calc(95vh-15rem)]"
+                            className="m-auto max-h-[max(20rem,calc(95vh-15rem))]"
                             crop={crop}
                             onChange={(_, percent) => setCrop(percent)}
                             keepSelection
