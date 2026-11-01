@@ -1,17 +1,20 @@
-"""Orchestrator — LangGraph ReAct AgentでDetective Agentを制御."""
+"""Orchestrator — PydanticAI のエージェントでサブエージェントを制御."""
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langfuse import observe
-from langgraph.prebuilt import create_react_agent
+from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
+from pydantic_ai.tools import ToolDefinition
+from pydantic_ai.usage import UsageLimits
 
 from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
+from integrations.llm.runtime import run_agent_sync
 
 from .agents.detective import DetectiveAgent
 from .agents.devils_advocate import DevilsAdvocateAgent
@@ -23,9 +26,105 @@ logger = logging.getLogger(__name__)
 
 MAX_STEPS = 10
 
+# ツール呼び出しステップから結果キーへの対応（失敗判定に使う）
+_TOOL_RESULT_KEYS = {
+    "detective_investigate": "detective_result",
+    "devils_advocate_analyze": "devils_advocate_result",
+    "security_responder_analyze": "security_responder_result",
+}
+
+
+@dataclass(frozen=True)
+class OrchestratorDeps:
+    """ツールへ渡す実行ごとの依存."""
+
+    thread: HNThread
+    results: dict[str, Any]
+    detective_agent: DetectiveAgent
+    devils_advocate_agent: DevilsAdvocateAgent
+    security_responder_agent: SecurityResponderAgent
+
+
+class _IgnoreToolArguments(AbstractCapability[OrchestratorDeps]):
+    """ツールの引数を検証せずに捨てる.
+
+    どのツールも引数を取らないので、モデルが余計な引数を付けてもそのまま実行する。
+    検証すると再試行を消費し、超過すると調査全体が失敗して次のポーリングで再実行される。
+    """
+
+    async def before_tool_validate(
+        self,
+        ctx: RunContext[OrchestratorDeps],
+        *,
+        call: ToolCallPart,
+        tool_def: ToolDefinition,
+        args: Any,
+    ) -> dict[str, Any]:
+        """引数を空にする."""
+        return {}
+
+
+# 出力に None を許し、ツールの後に本文がなくても再試行せず結論なしで終える
+ORCHESTRATOR_AGENT = Agent(
+    name="hn-orchestrator",
+    deps_type=OrchestratorDeps,
+    output_type=str | None,
+    capabilities=[_IgnoreToolArguments()],
+)
+
+
+# ツールの関数名と docstring は Langfuse 上のプロンプトとの契約なので変えない
+# （integrations/langfuse/migrations/0003_seed_new_agent_refs.py）。
+# サブエージェントを実行するので async にする（同期ツールの中では実行できない）。
+@ORCHESTRATOR_AGENT.tool
+async def detective_investigate(ctx: RunContext[OrchestratorDeps]) -> str:
+    """スレッドが急上昇している理由を汎用的に調査する。
+    タイトル和訳、注目理由、背景情報、HNコメントのハイライトを整理する。
+    一般的なニュース・話題性のある記事で使う。"""
+    deps = ctx.deps
+    try:
+        result = await deps.detective_agent.investigate(deps.thread)
+        deps.results["detective_result"] = result
+        return json.dumps(result, ensure_ascii=False, default=str)
+    except Exception:
+        logger.exception("Detective Agent実行エラー: [%d]", deps.thread.hn_id)
+        return json.dumps({"error": "Detective Agent実行に失敗しました"})
+
+
+@ORCHESTRATOR_AGENT.tool
+async def devils_advocate_analyze(ctx: RunContext[OrchestratorDeps]) -> str:
+    """新しい技術・プロダクト発表（Show HN）、アーキテクチャ議論など、
+    新規性の高いスレッドに対して HN民の辛口・批判的な視点を抽出する。
+    懸念点・トレードオフ・過去の類似事例・批判的コメントを整理する。
+    detective_investigate と併用することが多い。"""
+    deps = ctx.deps
+    try:
+        result = await deps.devils_advocate_agent.analyze(deps.thread)
+        deps.results["devils_advocate_result"] = result
+        return json.dumps(result, ensure_ascii=False, default=str)
+    except Exception:
+        logger.exception("Devil's Advocate Agent実行エラー: [%d]", deps.thread.hn_id)
+        return json.dumps({"error": "Devil's Advocate Agent実行に失敗しました"})
+
+
+@ORCHESTRATOR_AGENT.tool
+async def security_responder_analyze(ctx: RunContext[OrchestratorDeps]) -> str:
+    """脆弱性・CVE・情報漏洩・ハッキング・ゼロデイなど、セキュリティ
+    インシデントのスレッドに対して、影響範囲・回避策・公式パッチ・CVE ID
+    を整理してエンジニアの対応方針を明確化する。
+    セキュリティ話題ではこのツール単独で完結させてよい（detective は不要）。"""
+    deps = ctx.deps
+    try:
+        result = await deps.security_responder_agent.analyze(deps.thread)
+        deps.results["security_responder_result"] = result
+        return json.dumps(result, ensure_ascii=False, default=str)
+    except Exception:
+        logger.exception("Security Responder Agent実行エラー: [%d]", deps.thread.hn_id)
+        return json.dumps({"error": "Security Responder Agent実行に失敗しました"})
+
 
 class Orchestrator:
-    """LangGraph ReAct AgentベースでDetective Agentを制御するオーケストレーター."""
+    """PydanticAI のエージェントでサブエージェントを制御するオーケストレーター."""
 
     def __init__(
         self,
@@ -72,8 +171,7 @@ class Orchestrator:
     def investigate(self, thread: HNThread) -> dict[str, Any]:
         """スレッドの調査をオーケストレーション.
 
-        LangGraph ReAct Agentがツール呼び出しを自律的に判断し、
-        Detective Agentを実行する。
+        エージェントがツール呼び出しを自律的に判断し、サブエージェントを実行する。
 
         Args:
             thread: 調査対象スレッド
@@ -95,7 +193,7 @@ class Orchestrator:
 
         try:
             agent_output = self._run_agent(thread, results)
-            self._extract_results(agent_output, results)
+            self._extract_results(agent_output.all_messages(), results)
         except Exception:
             logger.exception("Orchestrator LLM呼び出しエラー: [%d]", thread.hn_id)
             results["final_summary"] = "LLM呼び出しエラーにより調査を中断しました。"
@@ -126,80 +224,19 @@ class Orchestrator:
         )
         return results
 
-    def _run_agent(self, thread: HNThread, results: dict[str, Any]) -> dict[str, Any]:
-        """LangGraph ReAct Agentを構築・実行."""
+    def _run_agent(
+        self, thread: HNThread, results: dict[str, Any]
+    ) -> AgentRunResult[str | None]:
+        """エージェントを実行する（ツールが results に結果を書き込む）."""
         settings = get_llm_settings("orchestrator")
         agent_config = HNAgentConfig.objects.get_active_config()
 
-        llm = ChatOpenAI(
-            base_url=settings.proxy_base_url,
-            api_key=settings.proxy_api_key,
-            model=settings.model_alias,
-            timeout=settings.timeout,
-            extra_body={
-                "metadata": {
-                    "service_name": settings.service_name,
-                    "environment": settings.environment,
-                }
-            },
-        )
-
-        detective_agent = self.detective_agent
-        devils_advocate_agent = self.devils_advocate_agent
-        security_responder_agent = self.security_responder_agent
-
-        @tool
-        def detective_investigate() -> str:
-            """スレッドが急上昇している理由を汎用的に調査する。
-            タイトル和訳、注目理由、背景情報、HNコメントのハイライトを整理する。
-            一般的なニュース・話題性のある記事で使う。"""
-            try:
-                result = detective_agent.investigate(thread)
-                results["detective_result"] = result
-                return json.dumps(result, ensure_ascii=False, default=str)
-            except Exception:
-                logger.exception("Detective Agent実行エラー: [%d]", thread.hn_id)
-                return json.dumps({"error": "Detective Agent実行に失敗しました"})
-
-        @tool
-        def devils_advocate_analyze() -> str:
-            """新しい技術・プロダクト発表（Show HN）、アーキテクチャ議論など、
-            新規性の高いスレッドに対して HN民の辛口・批判的な視点を抽出する。
-            懸念点・トレードオフ・過去の類似事例・批判的コメントを整理する。
-            detective_investigate と併用することが多い。"""
-            try:
-                result = devils_advocate_agent.analyze(thread)
-                results["devils_advocate_result"] = result
-                return json.dumps(result, ensure_ascii=False, default=str)
-            except Exception:
-                logger.exception("Devil's Advocate Agent実行エラー: [%d]", thread.hn_id)
-                return json.dumps({"error": "Devil's Advocate Agent実行に失敗しました"})
-
-        @tool
-        def security_responder_analyze() -> str:
-            """脆弱性・CVE・情報漏洩・ハッキング・ゼロデイなど、セキュリティ
-            インシデントのスレッドに対して、影響範囲・回避策・公式パッチ・CVE ID
-            を整理してエンジニアの対応方針を明確化する。
-            セキュリティ話題ではこのツール単独で完結させてよい（detective は不要）。"""
-            try:
-                result = security_responder_agent.analyze(thread)
-                results["security_responder_result"] = result
-                return json.dumps(result, ensure_ascii=False, default=str)
-            except Exception:
-                logger.exception(
-                    "Security Responder Agent実行エラー: [%d]", thread.hn_id
-                )
-                return json.dumps(
-                    {"error": "Security Responder Agent実行に失敗しました"}
-                )
-
-        agent = create_react_agent(
-            llm,
-            [
-                detective_investigate,
-                devils_advocate_analyze,
-                security_responder_analyze,
-            ],
+        deps = OrchestratorDeps(
+            thread=thread,
+            results=results,
+            detective_agent=self.detective_agent,
+            devils_advocate_agent=self.devils_advocate_agent,
+            security_responder_agent=self.security_responder_agent,
         )
 
         system_prompt = resolve_prompt(agent_config.orchestrator_system_prompt)
@@ -208,76 +245,54 @@ class Orchestrator:
             **self._build_user_variables(thread),
         )
 
-        config: dict[str, Any] = {
-            "recursion_limit": MAX_STEPS * 2 + 1,
-        }
-
-        return agent.invoke(
-            {
-                "messages": [
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=user_content),
-                ]
-            },
-            config=config,
+        return run_agent_sync(
+            ORCHESTRATOR_AGENT,
+            settings,
+            user_prompt=user_content,
+            instructions=system_prompt,
+            deps=deps,
+            usage_limits=UsageLimits(
+                request_limit=MAX_STEPS + 1, tool_calls_limit=MAX_STEPS
+            ),
+            # 未知のツール名はモデルへ伝えて続行させる（打ち切りは usage_limits に任せる）
+            retries={"tools": MAX_STEPS},
         )
 
     def _extract_results(
-        self, agent_output: dict[str, Any], results: dict[str, Any]
+        self, messages: list[ModelMessage], results: dict[str, Any]
     ) -> None:
-        """LangGraphの出力からステップ情報と最終サマリーを抽出."""
-        from langchain_core.messages import ToolMessage
-
-        messages = agent_output.get("messages", [])
+        """実行の全メッセージからステップ情報と最終サマリーを抽出."""
         step_num = 0
 
         for msg in messages:
-            if isinstance(msg, AIMessage):
-                if msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        step_num += 1
-                        results["steps"].append(
-                            {
-                                "step": step_num,
-                                "action": tc["name"],
-                                "success": True,
-                            }
-                        )
-                elif msg.content:
+            if not isinstance(msg, ModelResponse):
+                continue
+            if msg.tool_calls:
+                for tool_call in msg.tool_calls:
                     step_num += 1
                     results["steps"].append(
                         {
                             "step": step_num,
-                            "action": "conclusion",
-                            "content": msg.content,
+                            "action": tool_call.tool_name,
+                            "success": True,
                         }
                     )
-                    results["final_summary"] = msg.content
-
-        # ToolMessageからエージェント結果を補完
-        tool_result_map = {
-            "detective_investigate": "detective_result",
-            "devils_advocate_analyze": "devils_advocate_result",
-            "security_responder_analyze": "security_responder_result",
-        }
-        for msg in messages:
-            if isinstance(msg, ToolMessage) and msg.name in tool_result_map:
-                result_key = tool_result_map[msg.name]
-                if results[result_key] is None:
-                    try:
-                        parsed = json.loads(msg.content)
-                        if "error" not in parsed:
-                            results[result_key] = parsed
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+            elif msg.text:
+                step_num += 1
+                results["steps"].append(
+                    {
+                        "step": step_num,
+                        "action": "conclusion",
+                        "content": msg.text,
+                    }
+                )
+                results["final_summary"] = msg.text
 
         # ツールエラーチェック
         for step in results["steps"]:
-            action = step["action"]
-            if action in tool_result_map:
-                result_key = tool_result_map[action]
-                if results[result_key] is None:
-                    step["success"] = False
+            result_key = _TOOL_RESULT_KEYS.get(step["action"])
+            if result_key and results[result_key] is None:
+                step["success"] = False
 
     def _build_user_variables(self, thread: HNThread) -> dict[str, str]:
         """Orchestrator ユーザープロンプトの変数を組み立てる."""
