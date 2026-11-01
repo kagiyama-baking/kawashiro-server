@@ -67,7 +67,7 @@ export function MediaPage() {
                     {result && (
                         <div className="animate-slide-up mt-4 space-y-3">
                             <Separator />
-                            <div className="bg-secondary flex items-center justify-between gap-3 rounded-lg border p-4">
+                            <div className="bg-secondary flex flex-col items-start gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <span className="text-ink-strong min-w-0 text-sm wrap-anywhere">
                                     {result.filename}
                                 </span>

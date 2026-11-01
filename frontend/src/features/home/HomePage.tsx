@@ -20,18 +20,20 @@ export function HomePage() {
                 title="鍵山製パンWebApp"
                 lead="使う機能を選んでください"
             />
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-[clamp(1.4rem,2.6vw,2.4rem)]">
+            {/* 4 枚が半端に折り返さないよう、列数は 1・2・4 で切り替える */}
+            <ul className="grid gap-[clamp(1rem,1.6vw,1.4rem)] sm:grid-cols-2 xl:grid-cols-4">
                 {menuItems.map(({ to, en, label }) => (
                     <li key={to}>
                         <Link
                             to={to}
                             className="group bg-card border-border hover:border-input hover:shadow-lift flex h-full flex-col overflow-hidden rounded-lg border transition-[translate,box-shadow,border-color] duration-400 hover:-translate-y-[5px] focus-visible:outline-offset-3"
                         >
-                            <div className="bg-secondary text-ink-strong flex aspect-[16/10] flex-col items-center justify-center gap-[0.7rem] overflow-hidden p-[1.2rem] text-center">
+                            {/* タイトルはカードの幅に合わせて縮める（最長の 8 文字でも表紙に収める） */}
+                            <div className="bg-secondary text-ink-strong @container flex aspect-[16/10] flex-col items-center justify-center gap-[0.7rem] overflow-hidden p-[1.2rem] text-center">
                                 <span className="font-latin pl-[0.32em] text-[0.66rem] font-light tracking-[0.32em] uppercase">
                                     {en}
                                 </span>
-                                <h2 className="text-[clamp(1.6rem,4.2vw,2.1rem)] leading-[1.15] font-bold transition-transform duration-800 group-hover:scale-[1.04]">
+                                <h2 className="text-[clamp(1.4rem,10cqi,2.1rem)] leading-[1.15] font-bold transition-transform duration-800 group-hover:scale-[1.04]">
                                     {label}
                                 </h2>
                             </div>

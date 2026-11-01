@@ -41,7 +41,7 @@ export function TtsPage() {
                 lead="テキストを入力して音声を生成します"
             />
 
-            <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
+            <div className="grid items-start gap-5 lg:grid-cols-[1fr_300px]">
                 <Card>
                     <CardHeader>
                         <CardTitle>テキスト入力</CardTitle>

@@ -118,21 +118,24 @@ function CropDialogContent({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="bg-background flex flex-1 items-center justify-center overflow-auto rounded-md p-4">
+                {/* 中央寄せは m-auto で行う。items-center だと高さがあふれたときに上端へスクロールできない */}
+                <div className="bg-background flex min-h-0 flex-1 overflow-auto rounded-md p-4">
                     {preview.status === 'loading' && (
-                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                        <div className="text-muted-foreground m-auto flex items-center gap-2 text-sm">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             高解像度プレビューを生成中…
                         </div>
                     )}
                     {preview.status === 'error' && (
-                        <p className="text-destructive text-sm">
+                        <p className="text-destructive m-auto text-sm">
                             {preview.errorMessage ??
                                 'プレビューの生成に失敗しました'}
                         </p>
                     )}
                     {preview.status === 'ready' && preview.url && (
+                        // ReactCrop.css が img の max-height を inherit で上書きするので、親で制限する
                         <ReactCrop
+                            className="m-auto max-h-[calc(95vh-15rem)]"
                             crop={crop}
                             onChange={(_, percent) => setCrop(percent)}
                             keepSelection
@@ -141,7 +144,7 @@ function CropDialogContent({
                             <img
                                 src={preview.url}
                                 alt="トリミングプレビュー"
-                                className="max-h-[78vh] max-w-full object-contain"
+                                className="object-contain"
                             />
                         </ReactCrop>
                     )}

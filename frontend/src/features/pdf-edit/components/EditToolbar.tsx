@@ -61,7 +61,7 @@ export function EditToolbar({
                 </Button>
             )}
 
-            <Separator orientation="vertical" className="h-6" />
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
             <Button
                 variant="ghost"
@@ -96,7 +96,7 @@ export function EditToolbar({
                 トリミング
             </Button>
 
-            <Separator orientation="vertical" className="h-6" />
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
             <Button
                 variant="ghost"
@@ -124,7 +124,7 @@ export function EditToolbar({
                 {selection.size} / {pages.length} ページ選択中
             </div>
 
-            <Separator orientation="vertical" className="h-6" />
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
             <DownloadButton
                 sourceBytes={sourceBytes}
