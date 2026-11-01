@@ -2,8 +2,9 @@
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -33,21 +34,33 @@ logger = logging.getLogger(__name__)
 SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
 
 
-def _set_langfuse_session(session_id: str | None) -> None:
-    """現在のトレースに Langfuse セッション ID を設定する.
+@contextmanager
+def _langfuse_session(session_id: str | None) -> Iterator[None]:
+    """現在のトレースと配下の観測に Langfuse セッション ID を伝播する.
 
     Langfuse の Sessions 機能 (https://langfuse.com/docs/observability/features/sessions)
-    で同一チャットセッション内のトレースを集約表示するためのもの。失敗しても
+    で同一チャットセッション内のトレースを集約表示するためのもの。SDK 4 系では
+    属性の伝播が with 文になったので、本処理をこの中で実行する。失敗しても
     本処理は継続する。
     """
-    if not session_id:
-        return
-    try:
-        from langfuse import get_client
+    context = None
+    if session_id:
+        try:
+            from langfuse import propagate_attributes
 
-        get_client().update_current_trace(session_id=str(session_id))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Langfuse session_id 設定失敗: %s", exc)
+            context = propagate_attributes(session_id=str(session_id))
+            context.__enter__()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Langfuse session_id 設定失敗: %s", exc)
+            context = None
+    try:
+        yield
+    finally:
+        if context is not None:
+            try:
+                context.__exit__(None, None, None)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Langfuse session_id 解除失敗: %s", exc)
 
 
 class TalkService:
@@ -197,12 +210,20 @@ class TalkService:
             PlaceholderDataMissingError: system_prompt が要求するデータ取得設定が
                 不足している場合（例: {{weather}} 使用時の area_code 未設定）
         """
+        with _langfuse_session(session_id):
+            return self._synthesize_chat(config, messages)
+
+    def _synthesize_chat(
+        self,
+        config: "TalkConfig",
+        messages: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """チャット応答生成の本体（Langfuse の属性の伝播の中で実行する）."""
         logger.info(
             "チャット応答を生成: config=%s, messages=%d件",
             config.name,
             len(messages),
         )
-        _set_langfuse_session(session_id)
 
         system_compile, required_keys = self._prepare_chat_context(config)
         logger.debug("検出されたプレースホルダー: %s", required_keys)
@@ -277,10 +298,13 @@ class TalkService:
 
         失敗時は空文字を返す（呼び出し側で title 設定をスキップ）。
         """
+        with _langfuse_session(session_id):
+            return self._generate_session_title(messages)
+
+    def _generate_session_title(self, messages: list[dict[str, str]]) -> str:
+        """セッションタイトル生成の本体（Langfuse の属性の伝播の中で実行する）."""
         if not messages:
             return ""
-
-        _set_langfuse_session(session_id)
 
         system_prompt = (
             "以下の会話の内容を表す短いタイトルを、日本語で 1 行・"
