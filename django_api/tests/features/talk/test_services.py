@@ -6,10 +6,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from features.talk.exceptions import PlaceholderDataMissingError
+from features.talk.llm_agents import TALK_SYNTHESIZE_AGENT
 from features.talk.models import TalkConfig
 from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
 from integrations.tts.client import TTSResult
+from tests.fixtures.llm import ScriptedLLM
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +95,13 @@ class TestTalkService:
         return "おはようございます、先輩。\n今日は晴れですね。最高気温は10度です。"
 
     @pytest.fixture
+    def synthesize_llm(self, mock_openai_response, talk_llm_settings):
+        """単発生成エージェントの応答を固定する."""
+        llm = ScriptedLLM(mock_openai_response)
+        with TALK_SYNTHESIZE_AGENT.override(model=llm.model):
+            yield llm
+
+    @pytest.fixture
     def config_datetime_only(self, db):
         """datetime のみ使うユーザープロンプトを持つ config."""
         refs = _make_refs(
@@ -172,22 +181,17 @@ class TestTalkService:
     # 正常系テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_datetime_only(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_openai_response,
         config_datetime_only,
+        synthesize_llm,
     ):
         """datetime のみ使用時に挨拶が生成される."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
-
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
 
         service = TalkService()
         result = service.synthesize(config=config_datetime_only)
@@ -195,19 +199,18 @@ class TestTalkService:
         assert result is not None
         assert result["greeting_text"] == mock_openai_response
         assert "audio_data" not in result
-        mock_openai.generate_text.assert_called_once()
+        assert len(synthesize_llm.requests) == 1
 
     @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.WeatherClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_with_weather(
         self,
-        mock_openai_class,
         mock_weather_class,
         mock_holiday_class,
         mock_weather_response,
         mock_openai_response,
         config_with_weather,
+        synthesize_llm,
     ):
         """プロンプトに {{weather}} があれば天気APIが呼ばれる."""
         mock_holiday = MagicMock()
@@ -217,10 +220,6 @@ class TestTalkService:
         mock_weather = MagicMock()
         mock_weather.get_weather.return_value = mock_weather_response
         mock_weather_class.return_value = mock_weather
-
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
 
         service = TalkService()
         result = service.synthesize(config=config_with_weather)
@@ -232,10 +231,8 @@ class TestTalkService:
     @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_all_placeholders(
         self,
-        mock_openai_class,
         mock_outlook_class,
         mock_weather_class,
         mock_holiday_class,
@@ -243,6 +240,7 @@ class TestTalkService:
         mock_events_response,
         mock_openai_response,
         config_all_placeholders,
+        synthesize_llm,
     ):
         """全プレースホルダー含むプロンプト時に全APIが呼ばれる."""
         mock_holiday = MagicMock()
@@ -257,10 +255,6 @@ class TestTalkService:
         mock_outlook.get_calendar_events.return_value = mock_events_response
         mock_outlook_class.return_value = mock_outlook
 
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
-
         service = TalkService()
         result = service.synthesize(config=config_all_placeholders)
 
@@ -272,21 +266,16 @@ class TestTalkService:
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_no_placeholders_calls_no_external_apis(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_outlook_class,
         mock_weather_class,
         mock_openai_response,
         config_no_placeholders,
+        synthesize_llm,
     ):
         """プロンプトにプレースホルダーが無いときは外部APIを呼ばない."""
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
-
         service = TalkService()
         result = service.synthesize(config=config_no_placeholders)
 
@@ -296,26 +285,36 @@ class TestTalkService:
         mock_outlook_class.return_value.get_calendar_events.assert_not_called()
         mock_holiday_class.return_value.get_holiday_name.assert_not_called()
 
+    def test_synthesize_sends_system_prompt_and_metadata(
+        self, synthesize_llm, config_no_placeholders
+    ):
+        """system プロンプトと LiteLLM 向け metadata を渡し、出力上限は付けない."""
+        service = TalkService()
+        service.synthesize(config=config_no_placeholders)
+
+        request = synthesize_llm.requests[0]
+        assert request.instructions == "system fallback"
+        assert request.conversation == [("user", "プレースホルダーなし")]
+        assert request.model_settings["extra_body"] == {
+            "metadata": {"service_name": "talk", "environment": "test"}
+        }
+        assert "max_tokens" not in request.model_settings
+
     # 動的検出テスト
 
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_user_prompt_overrides_required_keys(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_outlook_class,
         mock_weather_class,
         mock_openai_response,
         config_no_placeholders,
+        synthesize_llm,
     ):
         """カスタム user_prompt のプレースホルダーで取得対象が決まる."""
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
-
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
@@ -333,15 +332,14 @@ class TestTalkService:
 
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_system_prompt_placeholder_triggers_fetch(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_weather_class,
         mock_weather_response,
         mock_openai_response,
         db,
+        synthesize_llm,
     ):
         """system_prompt 側の {{weather}} でも天気取得がトリガーされる."""
         refs = _make_refs(
@@ -364,10 +362,6 @@ class TestTalkService:
         mock_weather = MagicMock()
         mock_weather.get_weather.return_value = mock_weather_response
         mock_weather_class.return_value = mock_weather
-
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
 
         service = TalkService()
         service.synthesize(config=config)
@@ -397,24 +391,19 @@ class TestTalkService:
     # TTS関連テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     @patch("features.talk.services.TTSClient")
     def test_synthesize_with_tts(
         self,
         mock_tts_class,
-        mock_openai_class,
         mock_holiday_class,
         mock_openai_response,
         config_with_tts,
+        synthesize_llm,
     ):
         """TTS有効時に音声が生成される."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
-
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
 
         mock_tts = MagicMock()
         mock_tts.synthesize.return_value = TTSResult(
@@ -441,22 +430,17 @@ class TestTalkService:
         assert call_kwargs["format"] == "wav"
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_without_tts(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_openai_response,
         config_datetime_only,
+        synthesize_llm,
     ):
         """TTS無効時は音声データがない."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
-
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
 
         service = TalkService()
         result = service.synthesize(config=config_datetime_only)
@@ -512,16 +496,13 @@ class TestTalkService:
     @patch("features.talk.services.HolidayClient")
     @patch("features.talk.services.WeatherClient")
     @patch("features.talk.services.OutlookMSGraphClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_parallel_execution(
         self,
-        mock_openai_class,
         mock_outlook_class,
         mock_weather_class,
         mock_holiday_class,
         mock_weather_response,
         mock_events_response,
-        mock_openai_response,
         config_all_placeholders,
     ):
         """API呼び出しが並列で実行される."""
@@ -550,39 +531,33 @@ class TestTalkService:
         mock_holiday.get_holiday_name.side_effect = slow_datetime
         mock_holiday_class.return_value = mock_holiday
 
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
-
         service = TalkService()
         start = time.time()
-        result = service.synthesize(config=config_all_placeholders)
+        data = service._fetch_placeholder_data(
+            config_all_placeholders, {"weather", "events", "datetime"}
+        )
         elapsed = time.time() - start
 
-        assert result is not None
+        assert data["weather"] == mock_weather_response
+        assert data["events"] == mock_events_response
 
-        # 並列実行なら0.2秒未満（直列なら0.3秒以上）
+        # 並列実行なら0.2秒未満（直列なら0.3秒以上）。LLM 実行の時間は含めない
         assert elapsed < 0.25, f"並列実行されていません: {elapsed:.2f}秒"
 
     # user_prompt 指定テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_with_custom_user_prompt_expands_placeholders(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_openai_response,
         config_datetime_only,
+        synthesize_llm,
     ):
         """user_prompt 指定時: {{datetime}} 等のプレースホルダーが展開される."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
-
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
 
         service = TalkService()
         custom_prompt = "今日は {{datetime}} です。"
@@ -591,8 +566,7 @@ class TestTalkService:
             user_prompt=custom_prompt,
         )
 
-        llm_call_kwargs = mock_openai.generate_text.call_args.kwargs
-        sent_prompt = llm_call_kwargs["prompt"]
+        sent_prompt = synthesize_llm.requests[0].user_prompt
         # {{datetime}} は JSON 化された日時情報に置換される
         assert "{{datetime}}" not in sent_prompt
         assert "day_of_week" in sent_prompt
@@ -600,27 +574,21 @@ class TestTalkService:
     # 祝日テスト
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_with_holiday(
         self,
-        mock_openai_class,
         mock_holiday_class,
         mock_openai_response,
         config_datetime_only,
+        synthesize_llm,
     ):
         """祝日がある場合も正常に動作し、プロンプトに祝日名が含まれる."""
         mock_holiday = MagicMock()
         mock_holiday.get_holiday_name.return_value = "元日"
         mock_holiday_class.return_value = mock_holiday
 
-        mock_openai = MagicMock()
-        mock_openai.generate_text.return_value = mock_openai_response
-        mock_openai_class.return_value = mock_openai
-
         service = TalkService()
         result = service.synthesize(config=config_datetime_only)
 
         assert result is not None
-        call_args = mock_openai.generate_text.call_args
-        prompt_sent = call_args.kwargs["prompt"]
+        prompt_sent = synthesize_llm.requests[0].user_prompt
         assert "元日" in prompt_sent

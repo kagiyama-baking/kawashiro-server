@@ -17,7 +17,8 @@ from integrations.langfuse.client import (
     get_prompt_with_variables,
     render_template,
 )
-from integrations.llm.client import LLMClient
+from integrations.llm.config import get_llm_settings
+from integrations.llm.runtime import run_agent_sync
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
 from integrations.weather.client import WeatherClient
@@ -25,6 +26,12 @@ from integrations.weather.client import WeatherClient
 from .constants import DAY_OF_WEEK_JA
 from .exceptions import PlaceholderDataMissingError
 from .holiday_client import HolidayClient
+from .llm_agents import (
+    TALK_CHAT_AGENT,
+    TALK_SYNTHESIZE_AGENT,
+    TALK_TITLE_AGENT,
+    split_conversation,
+)
 
 if TYPE_CHECKING:
     from .models import TalkConfig
@@ -68,18 +75,10 @@ class TalkService:
 
     def __init__(self):
         """サービスを初期化."""
-        self._llm_client = None
         self._tts_client = None
         self._holiday_client = None
         self._weather_client = None
         self._outlook_client = None
-
-    @property
-    def llm_client(self) -> LLMClient:
-        """LLMクライアントを取得（遅延初期化）."""
-        if self._llm_client is None:
-            self._llm_client = LLMClient(service_name="talk")
-        return self._llm_client
 
     @property
     def tts_client(self) -> TTSClient:
@@ -193,8 +192,8 @@ class TalkService:
 
         config の system_prompt のみを Langfuse から取得し、プレースホルダー
         `{{weather}}` / `{{events}}` / `{{datetime}}` を検出して必要なデータを
-        並列取得して埋め込む。`messages` はそのまま Chat Completions API に
-        流す（user メッセージ内のプレースホルダーは展開しない）。
+        並列取得して埋め込む。`messages` はそのまま LLM に渡す（user メッセージ内の
+        プレースホルダーは展開しない）。
 
         Args:
             config: 会話生成設定
@@ -270,15 +269,16 @@ class TalkService:
         messages: list[dict[str, str]],
     ) -> str:
         """過去履歴を含めて LLM に問い合わせ、assistant 応答を取得する."""
-        full_messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            *messages,
-        ]
-        response = self.llm_client.chat_completion(
-            full_messages,
+        history, user_prompt = split_conversation(messages)
+        result = run_agent_sync(
+            TALK_CHAT_AGENT,
+            get_llm_settings("talk"),
+            user_prompt=user_prompt,
+            instructions=system_prompt,
+            message_history=history,
             max_tokens=self.CHAT_MAX_OUTPUT_TOKENS,
         )
-        assistant_text = response.choices[0].message.content or ""
+        assistant_text = result.output or ""
         logger.info("チャット応答生成完了: %d文字", len(assistant_text))
         return assistant_text
 
@@ -314,21 +314,20 @@ class TalkService:
         # 履歴が長い場合でもトークンを節約するため先頭 4 件まで利用
         sample = messages[:4]
         joined = "\n".join(f"{m['role']}: {m['content']}" for m in sample)
-        full_messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": joined},
-        ]
 
         try:
-            response = self.llm_client.chat_completion(
-                full_messages,
+            result = run_agent_sync(
+                TALK_TITLE_AGENT,
+                get_llm_settings("talk"),
+                user_prompt=joined,
+                instructions=system_prompt,
                 max_tokens=self.SESSION_TITLE_MAX_OUTPUT_TOKENS,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("セッションタイトル生成失敗: %s", exc)
             return ""
 
-        title = (response.choices[0].message.content or "").strip()
+        title = (result.output or "").strip()
         # 改行・引用符などを軽く正規化、長すぎる場合は丸める
         title = title.splitlines()[0] if title else ""
         title = title.strip("「」\"' 　")
@@ -338,10 +337,13 @@ class TalkService:
 
     def _generate_greeting(self, system_prompt: str, user_prompt: str) -> str:
         """LLM でテキスト生成."""
-        greeting_text = self.llm_client.generate_text(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
+        result = run_agent_sync(
+            TALK_SYNTHESIZE_AGENT,
+            get_llm_settings("talk"),
+            user_prompt=user_prompt,
+            instructions=system_prompt,
         )
+        greeting_text = result.output or ""
         logger.info("会話生成完了: %d文字", len(greeting_text))
         return greeting_text
 

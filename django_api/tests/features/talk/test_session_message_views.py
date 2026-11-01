@@ -4,11 +4,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from pydantic_ai.exceptions import ModelHTTPError, ModelTimeoutError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from features.talk.llm_agents import TALK_CHAT_AGENT, TALK_TITLE_AGENT
 from features.talk.models import ChatMessage, ChatSession, TalkConfig
 from integrations.langfuse.models import LangfusePromptRef
+from tests.fixtures.llm import ScriptedLLM
 
 User = get_user_model()
 
@@ -17,6 +21,12 @@ User = get_user_model()
 def _disable_langfuse_client():
     with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_throttle_counts():
+    """talk_chat スロットルの計数をテスト間で持ち越さない."""
+    cache.clear()
 
 
 @pytest.fixture
@@ -251,6 +261,64 @@ class TestSessionMessagePost:
         # LLM エラー時はユーザーメッセージもロールバック
         assert session.messages.count() == 0
 
+    @pytest.mark.parametrize("status_code", [429, 500, 503])
+    def test_llm_status_error_returns_502_and_rolls_back(
+        self, status_code, talk_llm_settings, auth_client, session
+    ):
+        """LLM の HTTP エラーは 502 になり、ユーザーメッセージも残らない."""
+        llm = ScriptedLLM(ModelHTTPError(status_code, "test-alias"))
+
+        with TALK_CHAT_AGENT.override(model=llm.model):
+            response = auth_client.post(
+                _url(session.id), {"content": "hi"}, format="json"
+            )
+
+        assert response.status_code == 502
+        assert session.messages.count() == 0
+
+    def test_llm_timeout_returns_504_and_rolls_back(
+        self, talk_llm_settings, auth_client, session
+    ):
+        """LLM のタイムアウトは 504 になり、ユーザーメッセージも残らない."""
+        llm = ScriptedLLM(ModelTimeoutError("test-alias", "timeout"))
+
+        with TALK_CHAT_AGENT.override(model=llm.model):
+            response = auth_client.post(
+                _url(session.id), {"content": "hi"}, format="json"
+            )
+
+        assert response.status_code == 504
+        assert session.messages.count() == 0
+
+    def test_send_through_real_agents_saves_reply_and_title(
+        self, talk_llm_settings, auth_client, session
+    ):
+        """モデル以外を差し替えずに通し、応答とタイトルが保存される.
+
+        LLM 呼び出しはビューの transaction.atomic の中で走る。
+        """
+        chat = ScriptedLLM("返信本文")
+        title = ScriptedLLM("生成タイトル")
+
+        with (
+            TALK_CHAT_AGENT.override(model=chat.model),
+            TALK_TITLE_AGENT.override(model=title.model),
+        ):
+            response = auth_client.post(
+                _url(session.id), {"content": "おはよう"}, format="json"
+            )
+
+        assert response.status_code == 201
+        msgs = list(session.messages.order_by("sequence"))
+        assert [(m.role, m.content) for m in msgs] == [
+            ("user", "おはよう"),
+            ("assistant", "返信本文"),
+        ]
+        session.refresh_from_db()
+        assert session.title == "生成タイトル"
+        assert chat.requests[0].instructions == "あなたは親切な AI です。"
+        assert chat.requests[0].conversation == [("user", "おはよう")]
+
     def test_session_config_missing_returns_404(self, auth_client, user):
         # 存在しない config を指す session
         sess = ChatSession.objects.create(user=user, config_name="nope")
@@ -265,11 +333,6 @@ class TestSessionMessagePost:
     def test_messages_endpoint_rate_limited(
         self, mock_service_class, auth_client, session
     ):
-        # 直前のテストの talk_chat キャッシュが残ると 1 回目から 429 になる
-        from django.core.cache import cache
-
-        cache.clear()
-
         mock_service_class.return_value = _mock_service(
             {"message": {"role": "assistant", "content": "ok"}}
         )

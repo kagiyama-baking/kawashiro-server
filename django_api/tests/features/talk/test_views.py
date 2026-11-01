@@ -5,10 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from django.urls import reverse
+from pydantic_ai.exceptions import ModelHTTPError, ModelTimeoutError
 from rest_framework import status
 
+from features.talk.llm_agents import TALK_SYNTHESIZE_AGENT
 from features.talk.models import TalkConfig
 from integrations.langfuse.models import LangfusePromptRef
+from tests.fixtures.llm import ScriptedLLM
 
 
 @pytest.fixture
@@ -429,6 +432,54 @@ class TestTalkSynthesizeView:
 
         response = authenticated_client.post(url, request_data, format="json")
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+    @pytest.mark.parametrize(
+        ("error", "expected_status"),
+        [
+            (ModelHTTPError(429, "test-alias"), status.HTTP_502_BAD_GATEWAY),
+            (ModelHTTPError(503, "test-alias"), status.HTTP_502_BAD_GATEWAY),
+            (
+                ModelTimeoutError("test-alias", "timeout"),
+                status.HTTP_504_GATEWAY_TIMEOUT,
+            ),
+        ],
+    )
+    def test_greeting_through_real_agent_maps_llm_error(
+        self,
+        error,
+        expected_status,
+        talk_llm_settings,
+        authenticated_client,
+        url,
+        request_data,
+    ):
+        """モデル以外を差し替えずに通し、LLM の失敗を 502 / 504 にする."""
+        llm = ScriptedLLM(error)
+
+        with (
+            patch("langfuse.get_client", side_effect=RuntimeError("disabled")),
+            TALK_SYNTHESIZE_AGENT.override(model=llm.model),
+        ):
+            response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == expected_status
+
+    def test_greeting_through_real_agent_returns_generated_text(
+        self, talk_llm_settings, authenticated_client, url, request_data
+    ):
+        """モデル以外を差し替えずに通し、生成文を返す."""
+        llm = ScriptedLLM("おはようございます")
+
+        with (
+            patch("langfuse.get_client", side_effect=RuntimeError("disabled")),
+            TALK_SYNTHESIZE_AGENT.override(model=llm.model),
+        ):
+            response = authenticated_client.post(url, request_data, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["greeting_text"] == "おはようございます"
+        assert llm.requests[0].instructions == "system fallback"
+        assert llm.requests[0].user_prompt == "user fallback"
 
     @patch("features.talk.views.synthesize.TalkService")
     def test_greeting_tts_network_error(
