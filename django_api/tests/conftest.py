@@ -1,11 +1,39 @@
 """pytest設定とフィクスチャ定義"""
 
+import os
+
+import pydantic_ai.models
 import pytest
 from django.contrib.auth import get_user_model
+from pydantic_ai.models import override_allow_model_requests
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from tests.fixtures.llm import FakeLiteLLM
+
+# 開発者の .env に Langfuse キーがあってもテストからトレースを送らない。
+# Langfuse クライアントは生成時にこの値を読むので、テスト実行より前に設定する。
+os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
+
+# テストから実 LLM へリクエストを送らない（TestModel / FunctionModel は対象外）。
+pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
+
 User = get_user_model()
+
+
+@pytest.fixture
+def fake_litellm(mocker):
+    """`open_model` が作る AsyncOpenAI の HTTP 層だけを差し替える（ネットワークへ出ない）."""
+
+    def install(*script) -> FakeLiteLLM:
+        fake = FakeLiteLLM(*script)
+        mocker.patch(
+            "integrations.llm.runtime.AsyncOpenAI", side_effect=fake.build_client
+        )
+        return fake
+
+    with override_allow_model_requests(True):
+        yield install
 
 
 @pytest.fixture
