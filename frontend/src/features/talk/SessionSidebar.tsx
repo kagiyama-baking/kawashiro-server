@@ -40,7 +40,7 @@ export function SessionSidebar({
             {/* モバイル用 overlay */}
             <div
                 className={cn(
-                    'fixed inset-0 z-40 bg-black/50 md:hidden',
+                    'bg-overlay fixed inset-0 z-40 backdrop-blur-[4px] md:hidden',
                     isOpen ? 'block' : 'hidden',
                 )}
                 onClick={onClose}
@@ -49,33 +49,30 @@ export function SessionSidebar({
 
             <aside
                 className={cn(
-                    'bg-background fixed top-0 left-0 z-50 flex h-full w-72 flex-col border-r border-[oklch(0.95_0_0/0.08)] transition-transform',
+                    'bg-background fixed top-0 left-0 z-50 flex h-full w-72 flex-col border-r transition-transform',
                     'md:relative md:z-0 md:h-auto md:w-72 md:translate-x-0',
                     isOpen
                         ? 'translate-x-0'
                         : '-translate-x-full md:translate-x-0',
                 )}
             >
-                <div className="flex items-center justify-between border-b border-[oklch(0.95_0_0/0.08)] px-3 py-3">
-                    <h2 className="font-heading text-[14px] font-semibold">
-                        チャット履歴
-                    </h2>
+                <div className="flex items-center justify-between border-b px-3 py-3">
+                    <h2 className="text-sm">チャット履歴</h2>
                     <div className="flex items-center gap-1">
                         <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             onClick={onNew}
-                            className="h-7 text-[12px]"
                         >
-                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            <Plus />
                             新規
                         </Button>
                         <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 md:hidden"
+                            size="icon-sm"
+                            className="md:hidden"
                             onClick={onClose}
                             aria-label="閉じる"
                         >
@@ -86,7 +83,7 @@ export function SessionSidebar({
 
                 <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
                     {sessions.length === 0 && !isLoading && (
-                        <div className="text-muted-foreground p-4 text-center text-[12px]">
+                        <div className="text-muted-foreground p-4 text-center text-xs">
                             まだ履歴がありません
                         </div>
                     )}
@@ -106,7 +103,7 @@ export function SessionSidebar({
                             size="sm"
                             onClick={onLoadMore}
                             disabled={isLoading}
-                            className="mt-2 w-full text-[12px]"
+                            className="mt-2 w-full"
                         >
                             {isLoading ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

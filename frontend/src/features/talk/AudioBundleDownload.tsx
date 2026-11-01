@@ -64,7 +64,7 @@ export function AudioBundleDownload({
             onClick={handleClick}
             disabled={isDisabled}
         >
-            <Download className="mr-1.5 h-4 w-4" />
+            <Download />
             一括 DL ({audioCount})
         </Button>
     );

@@ -2,6 +2,7 @@ import { Check, Pencil, Trash2, Volume2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { AudioDownload } from '@/components/audio/AudioDownload';
 import { AudioPlayer } from '@/components/audio/AudioPlayer';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { formatBytes } from '@/lib/format/bytes';
@@ -31,6 +32,8 @@ export function ChatMessageItem({
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(message.content);
     const [audioError, setAudioError] = useState<string | null>(null);
+    const [isConfirmingAudioDelete, setIsConfirmingAudioDelete] =
+        useState(false);
 
     useEffect(() => {
         if (!message.audio_url) return;
@@ -64,8 +67,8 @@ export function ChatMessageItem({
         onEdit(message.id, draft);
     };
 
-    const handleDeleteAudio = async () => {
-        if (!confirm('この音声を削除しますか？')) return;
+    const handleConfirmAudioDelete = async () => {
+        setIsConfirmingAudioDelete(false);
         await deleteMessageAudio(message.id);
     };
 
@@ -80,7 +83,7 @@ export function ChatMessageItem({
         >
             <div
                 className={cn(
-                    'flex max-w-[85%] flex-col gap-2',
+                    'flex max-w-[85%] min-w-0 flex-col gap-2',
                     isUser ? 'items-end' : 'items-start',
                 )}
             >
@@ -92,16 +95,16 @@ export function ChatMessageItem({
                             rows={3}
                             aria-invalid={isOverLimit || undefined}
                         />
-                        <div className="text-muted-foreground flex items-center justify-between text-[12px]">
+                        <div className="text-ink-subtle flex items-center justify-between gap-2 text-xs">
                             <span>
                                 編集して再送すると以降の履歴は破棄されます
                             </span>
                             <span
-                                className={
-                                    isOverLimit
-                                        ? 'text-destructive font-medium'
-                                        : undefined
-                                }
+                                className={cn(
+                                    'tabular-nums',
+                                    isOverLimit &&
+                                        'text-destructive font-medium',
+                                )}
                             >
                                 {draft.length} / {CHAT_MESSAGE_MAX_LENGTH}
                             </span>
@@ -113,7 +116,7 @@ export function ChatMessageItem({
                                 variant="ghost"
                                 onClick={cancelEdit}
                             >
-                                <X className="mr-1 h-3.5 w-3.5" />
+                                <X />
                                 キャンセル
                             </Button>
                             <Button
@@ -122,7 +125,7 @@ export function ChatMessageItem({
                                 onClick={saveEdit}
                                 disabled={cannotSave}
                             >
-                                <Check className="mr-1 h-3.5 w-3.5" />
+                                <Check />
                                 保存して再送
                             </Button>
                         </div>
@@ -131,10 +134,8 @@ export function ChatMessageItem({
                     <>
                         <div
                             className={cn(
-                                'rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap',
-                                isUser
-                                    ? 'text-foreground bg-[oklch(0.75_0.20_155/0.18)]'
-                                    : 'glass text-foreground',
+                                'text-foreground rounded-lg px-4 py-2.5 text-sm wrap-anywhere whitespace-pre-wrap',
+                                isUser ? 'bg-accent' : 'bg-card border',
                             )}
                         >
                             {message.content}
@@ -147,9 +148,8 @@ export function ChatMessageItem({
                                 variant="ghost"
                                 onClick={startEdit}
                                 disabled={disabled}
-                                className="text-muted-foreground h-7 px-2 text-[12px]"
                             >
-                                <Pencil className="mr-1 h-3 w-3" />
+                                <Pencil />
                                 編集
                             </Button>
                         )}
@@ -159,12 +159,12 @@ export function ChatMessageItem({
                                 {cachedUrl ? (
                                     <AudioPlayer src={cachedUrl} />
                                 ) : (
-                                    <div className="text-muted-foreground glass rounded-xl p-3 text-[12px]">
+                                    <div className="text-muted-foreground bg-secondary rounded-lg border p-3 text-xs">
                                         音声を読み込み中…
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between gap-2">
-                                    <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px]">
+                                    <span className="text-ink-subtle inline-flex items-center gap-1 text-xs">
                                         <Volume2 className="h-3 w-3" />
                                         {formatBytes(message.audio_size_bytes)}
                                     </span>
@@ -175,11 +175,12 @@ export function ChatMessageItem({
                                         />
                                         <Button
                                             type="button"
-                                            size="sm"
+                                            size="icon-sm"
                                             variant="ghost"
-                                            onClick={handleDeleteAudio}
+                                            onClick={() =>
+                                                setIsConfirmingAudioDelete(true)
+                                            }
                                             disabled={disabled}
-                                            className="text-muted-foreground h-7 px-2 text-[12px]"
                                             aria-label="音声を削除"
                                         >
                                             <Trash2 className="h-3.5 w-3.5" />
@@ -189,13 +190,24 @@ export function ChatMessageItem({
                             </div>
                         )}
                         {audioError && (
-                            <span className="text-destructive text-[12px]">
+                            <span className="text-destructive text-xs">
                                 {audioError}
                             </span>
                         )}
                     </>
                 )}
             </div>
+
+            <ConfirmDialog
+                open={isConfirmingAudioDelete}
+                title="音声を削除"
+                confirmLabel="削除"
+                destructive
+                onConfirm={handleConfirmAudioDelete}
+                onCancel={() => setIsConfirmingAudioDelete(false)}
+            >
+                この音声を削除しますか？
+            </ConfirmDialog>
         </div>
     );
 }

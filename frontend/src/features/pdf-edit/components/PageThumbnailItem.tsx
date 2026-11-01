@@ -16,7 +16,7 @@ interface PageThumbnailItemProps {
 /**
  * ページサムネイル1枚。
  *
- * - 選択中はネオングロー枠で強調
+ * - 選択中は緑の枠で強調
  * - 左上のチェックボックスで明示的に複数選択（クリックの伝播を止める）
  * - 分割（左/右）はサムネをCSSでクリッピングして表現
  * - トリミング（crop）は枠線オーバーレイで可視化
@@ -54,13 +54,11 @@ export function PageThumbnailItem({
                 }
             }}
             className={cn(
-                'glass group relative flex cursor-pointer flex-col overflow-hidden rounded-xl p-2 transition-all duration-200 select-none',
-                isSelected
-                    ? 'border border-[oklch(0.75_0.20_155)] shadow-[0_0_16px_oklch(0.75_0.20_155/0.4)]'
-                    : 'neon-border hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.15)]',
+                'bg-secondary group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border p-2 transition-colors select-none',
+                isSelected ? 'border-primary' : 'hover:border-input',
             )}
         >
-            <div className="bg-background/50 relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg">
+            <div className="bg-background relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-md">
                 <div
                     className="flex h-full w-full items-center justify-center"
                     style={halfStyle}
@@ -75,7 +73,7 @@ export function PageThumbnailItem({
                 {/* トリム枠の可視化 */}
                 {page.crop && (
                     <div
-                        className="pointer-events-none absolute border-2 border-[oklch(0.75_0.20_155)] shadow-[0_0_8px_oklch(0.75_0.20_155/0.5)]"
+                        className="border-primary pointer-events-none absolute border-2"
                         style={{
                             left: `${page.crop.x * 100}%`,
                             top: `${page.crop.y * 100}%`,
@@ -88,7 +86,7 @@ export function PageThumbnailItem({
                 <div className="absolute top-1 right-1 flex gap-1">
                     {page.splitHalf && (
                         <span
-                            className="bg-background/80 text-foreground rounded px-1 py-0.5 font-mono text-[9px]"
+                            className="bg-background/80 text-foreground block rounded-sm px-1 py-0.5"
                             title={
                                 page.splitHalf === 'left' ? '左半分' : '右半分'
                             }
@@ -98,7 +96,7 @@ export function PageThumbnailItem({
                     )}
                     {page.crop && (
                         <span
-                            className="bg-background/80 text-foreground rounded px-1 py-0.5 font-mono text-[9px]"
+                            className="bg-background/80 text-foreground block rounded-sm px-1 py-0.5"
                             title="トリミング適用済み"
                         >
                             <Crop className="h-3 w-3" />
@@ -112,7 +110,7 @@ export function PageThumbnailItem({
                 サムネ本体の単一選択挙動と衝突しないようにする。 */}
             <div
                 className={cn(
-                    'absolute top-2.5 left-2.5 z-10 transition-opacity duration-150',
+                    'absolute top-2.5 left-2.5 z-10 transition-opacity',
                     isSelected
                         ? 'opacity-100'
                         : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
@@ -126,11 +124,11 @@ export function PageThumbnailItem({
                     checked={isSelected}
                     onCheckedChange={() => onToggle(page.id)}
                     aria-label={`ページ ${displayIndex} の選択をトグル`}
-                    className="h-5 w-5 bg-[oklch(0.15_0_0/0.85)] backdrop-blur-sm"
+                    className="h-5 w-5"
                 />
             </div>
 
-            <p className="text-muted-foreground mt-2 text-center font-mono text-[11px] tabular-nums">
+            <p className="font-latin text-ink-subtle mt-2 text-center text-xs tabular-nums">
                 {displayIndex}
             </p>
         </div>

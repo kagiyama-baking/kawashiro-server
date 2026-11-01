@@ -1,5 +1,6 @@
 import { Menu } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { fetchConfigs } from '@/lib/api/talk';
 import { useChatStore } from '@/stores/chat-store';
@@ -23,6 +24,9 @@ export function ChatPage() {
     const [configs, setConfigs] = useState<GenerateConfig[]>([]);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isNewOpen, setIsNewOpen] = useState(false);
+    const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
+        null,
+    );
 
     useEffect(() => {
         loadSessions(true);
@@ -35,9 +39,10 @@ export function ChatPage() {
         };
     }, [loadSessions, reset]);
 
-    const handleDeleteSession = async (id: string) => {
-        if (!confirm('このチャットを削除します。よろしいですか？')) return;
-        await removeSession(id);
+    const handleConfirmDelete = async () => {
+        if (!deletingSessionId) return;
+        setDeletingSessionId(null);
+        await removeSession(deletingSessionId);
     };
 
     const handleCreate = async (configName: string) => {
@@ -53,7 +58,7 @@ export function ChatPage() {
                 hasMore={hasMore}
                 isLoading={isLoadingList}
                 onSelect={selectSession}
-                onDelete={handleDeleteSession}
+                onDelete={setDeletingSessionId}
                 onLoadMore={loadMoreSessions}
                 onNew={() => setIsNewOpen(true)}
                 isOpen={isMobileOpen}
@@ -61,7 +66,7 @@ export function ChatPage() {
             />
 
             <main className="bg-background flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center gap-2 border-b border-[oklch(0.95_0_0/0.06)] px-3 py-2 md:hidden">
+                <div className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
                     <Button
                         type="button"
                         variant="ghost"
@@ -71,7 +76,7 @@ export function ChatPage() {
                     >
                         <Menu className="h-5 w-5" />
                     </Button>
-                    <span className="font-heading text-[14px] font-semibold">
+                    <span className="text-ink-strong text-sm font-semibold">
                         チャット
                     </span>
                 </div>
@@ -86,6 +91,17 @@ export function ChatPage() {
                 onClose={() => setIsNewOpen(false)}
                 onCreate={handleCreate}
             />
+
+            <ConfirmDialog
+                open={deletingSessionId !== null}
+                title="チャットを削除"
+                confirmLabel="削除"
+                destructive
+                onConfirm={handleConfirmDelete}
+                onCancel={() => setDeletingSessionId(null)}
+            >
+                このチャットを削除します。よろしいですか？
+            </ConfirmDialog>
         </div>
     );
 }

@@ -49,26 +49,23 @@ export function SessionTitleEditor({ title, onSave }: SessionTitleEditorProps) {
                     onKeyDown={handleKeyDown}
                     autoFocus
                     maxLength={120}
-                    className="h-8 text-[14px]"
                 />
                 <Button
                     type="button"
-                    size="icon"
+                    size="icon-sm"
                     variant="ghost"
                     onClick={save}
                     disabled={isSaving}
-                    className="h-8 w-8"
                     aria-label="保存"
                 >
                     <Check className="h-4 w-4" />
                 </Button>
                 <Button
                     type="button"
-                    size="icon"
+                    size="icon-sm"
                     variant="ghost"
                     onClick={cancel}
                     disabled={isSaving}
-                    className="h-8 w-8"
                     aria-label="キャンセル"
                 >
                     <X className="h-4 w-4" />
@@ -78,16 +75,13 @@ export function SessionTitleEditor({ title, onSave }: SessionTitleEditorProps) {
     }
 
     return (
-        <div className="flex items-center gap-2">
-            <h2 className="font-heading truncate text-[16px] font-semibold">
-                {title || '（無題）'}
-            </h2>
+        <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-base">{title || '（無題）'}</h2>
             <Button
                 type="button"
-                size="icon"
+                size="icon-sm"
                 variant="ghost"
                 onClick={start}
-                className="h-7 w-7"
                 aria-label="タイトルを編集"
             >
                 <Pencil className="h-3.5 w-3.5" />

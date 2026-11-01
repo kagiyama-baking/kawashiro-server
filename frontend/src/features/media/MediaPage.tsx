@@ -1,6 +1,6 @@
 import { Download } from 'lucide-react';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
-import { TerminalText } from '@/components/common/TerminalText';
+import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -26,20 +26,17 @@ export function MediaPage() {
     } = useMedia();
 
     return (
-        <div className="mx-auto max-w-4xl space-y-6">
-            <div className="animate-slide-up">
-                <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
-                    メディア変換
-                </h1>
-                <TerminalText text="media --convert" />
-            </div>
+        <div className="max-w-(--page-max-width)">
+            <PageHeader
+                eyebrow="Media"
+                title="メディア変換"
+                lead="画像の形式を変換したり、ZIP にまとめた画像を PDF にします"
+            />
 
-            <Card className="animate-slide-up neon-border">
+            <Card>
                 <CardHeader>
-                    <CardTitle className="font-heading font-semibold">
-                        変換ツール
-                    </CardTitle>
-                    <CardDescription className="text-[13px]">
+                    <CardTitle>変換ツール</CardTitle>
+                    <CardDescription>
                         変換タイプを選択してファイルをアップロードしてください
                     </CardDescription>
                 </CardHeader>
@@ -69,18 +66,17 @@ export function MediaPage() {
 
                     {result && (
                         <div className="animate-slide-up mt-4 space-y-3">
-                            <Separator className="opacity-30" />
-                            <div className="glass neon-border flex items-center justify-between rounded-xl p-4">
-                                <span className="text-foreground font-mono text-sm">
+                            <Separator />
+                            <div className="bg-secondary flex items-center justify-between gap-3 rounded-lg border p-4">
+                                <span className="text-ink-strong min-w-0 text-sm wrap-anywhere">
                                     {result.filename}
                                 </span>
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.15)]"
                                     onClick={downloadResult}
                                 >
-                                    <Download className="mr-2 h-4 w-4" />
+                                    <Download />
                                     ダウンロード
                                 </Button>
                             </div>

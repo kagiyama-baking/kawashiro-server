@@ -118,7 +118,7 @@ function CropDialogContent({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="bg-background/50 flex flex-1 items-center justify-center overflow-auto rounded-lg p-4">
+                <div className="bg-background flex flex-1 items-center justify-center overflow-auto rounded-md p-4">
                     {preview.status === 'loading' && (
                         <div className="text-muted-foreground flex items-center gap-2 text-sm">
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -147,13 +147,13 @@ function CropDialogContent({
                     )}
                 </div>
 
-                <DialogFooter className="gap-2">
+                <DialogFooter>
                     <Button
                         variant="ghost"
                         onClick={handleClear}
-                        className="mr-auto text-[oklch(0.65_0.25_25)]"
+                        className="text-destructive hover:text-destructive sm:mr-auto"
                     >
-                        <Trash2 className="mr-1.5 h-4 w-4" />
+                        <Trash2 />
                         トリミングをクリア
                     </Button>
                     <Button variant="outline" onClick={onClose}>
