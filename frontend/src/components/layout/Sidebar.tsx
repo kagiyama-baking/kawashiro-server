@@ -75,7 +75,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                                 <span className="font-latin text-[0.76rem] tracking-[0.22em] uppercase">
                                     {en}
                                 </span>
-                                <span className="text-[0.66rem] tracking-[0.1em] opacity-78">
+                                <span className="text-[0.72rem] tracking-[0.1em] opacity-78">
                                     {label}
                                 </span>
                             </NavLink>
