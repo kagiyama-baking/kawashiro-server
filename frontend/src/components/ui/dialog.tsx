@@ -36,7 +36,7 @@ function DialogOverlay({
         <DialogPrimitive.Overlay
             data-slot="dialog-overlay"
             className={cn(
-                'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/70 backdrop-blur-sm',
+                'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 bg-overlay fixed inset-0 z-50 backdrop-blur-[4px]',
                 className,
             )}
             {...props}
@@ -47,24 +47,29 @@ function DialogOverlay({
 function DialogContent({
     className,
     children,
+    showCloseButton = true,
     ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+    showCloseButton?: boolean;
+}) {
     return (
         <DialogPortal>
             <DialogOverlay />
             <DialogPrimitive.Content
                 data-slot="dialog-content"
                 className={cn(
-                    'glass neon-border data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl p-6 shadow-lg duration-200',
+                    'bg-popover text-popover-foreground border-border shadow-lift data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-[34rem] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 duration-200',
                     className,
                 )}
                 {...props}
             >
                 {children}
-                <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:pointer-events-none">
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">閉じる</span>
-                </DialogPrimitive.Close>
+                {showCloseButton && (
+                    <DialogPrimitive.Close className="text-muted-foreground hover:text-accent-foreground absolute top-4 right-4 rounded-sm transition-colors disabled:pointer-events-none">
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">閉じる</span>
+                    </DialogPrimitive.Close>
+                )}
             </DialogPrimitive.Content>
         </DialogPortal>
     );
@@ -74,10 +79,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
     return (
         <div
             data-slot="dialog-header"
-            className={cn(
-                'flex flex-col space-y-1.5 text-center sm:text-left',
-                className,
-            )}
+            className={cn('flex flex-col gap-2 text-left', className)}
             {...props}
         />
     );
@@ -88,7 +90,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<'div'>) {
         <div
             data-slot="dialog-footer"
             className={cn(
-                'flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2',
+                'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end',
                 className,
             )}
             {...props}
@@ -104,7 +106,7 @@ function DialogTitle({
         <DialogPrimitive.Title
             data-slot="dialog-title"
             className={cn(
-                'font-heading text-lg leading-none font-semibold tracking-tight',
+                'font-heading text-[1.08rem] leading-snug font-semibold tracking-[0.04em]',
                 className,
             )}
             {...props}
