@@ -1,0 +1,70 @@
+/* ==========================================================================
+   tokens.css — kagiyama.net の暗色テーマを shadcn のセマンティックトークンへ割り当てる
+   --------------------------------------------------------------------------
+   @theme を含むファイルに素の :root を置くと Tailwind v4 が出力から落とすので、
+   @theme のないこのファイルの @layer base に置く（参照は index.css の @theme inline）。
+   文字色は地 #0d1117 と面 #161b22 の上で 4.5:1 以上になる値にする。
+   ========================================================================== */
+@layer base {
+    :root {
+        color-scheme: dark;
+
+        /* 地と面 */
+        --background: #0d1117;
+        --card: #161b22;
+        --popover: #161b22;
+        --secondary: #11161d;
+        --muted: #11161d;
+
+        /* 文字 */
+        --foreground: #c9d4cc; /* 本文 */
+        --ink-strong: #eef5f0; /* 見出し */
+        --muted-foreground: #a3aea6; /* 補助本文 */
+        --ink-subtle: #87928a; /* meta・caption */
+        --card-foreground: #c9d4cc;
+        --popover-foreground: #c9d4cc;
+        --secondary-foreground: #c9d4cc;
+
+        /* ブランド。#7faa90 に白文字は 2.6:1 しかないので primary の文字は暗くする */
+        --primary: #7faa90;
+        --primary-foreground: #0d1117;
+        --primary-hover: #aecbb9;
+        --accent: #15291a;
+        --accent-foreground: #aecbb9;
+
+        /* 状態。元の #c0392b は暗い地で約 3.5:1 なので、白と 7:3 で混ぜて 4.5:1 以上にする */
+        --destructive: #d3746b;
+
+        /* 線と幕 */
+        --border: rgb(255 255 255 / 0.1);
+        --input: rgb(255 255 255 / 0.18);
+        --ring: #7faa90;
+        --overlay: rgb(12 18 15 / 0.62);
+
+        /* サイドバー（暗い緑の面）。リングは暗い面でも見えるよう明るい緑にする */
+        --sidebar: #15291a;
+        --sidebar-foreground: rgb(255 255 255 / 0.86);
+        --sidebar-muted-foreground: rgb(255 255 255 / 0.68);
+        --sidebar-primary: #7faa90;
+        --sidebar-primary-foreground: #0d1117;
+        --sidebar-accent: rgb(255 255 255 / 0.07);
+        --sidebar-accent-foreground: #ffffff;
+        --sidebar-hover: rgb(255 255 255 / 0.04);
+        --sidebar-border: rgb(255 255 255 / 0.12);
+        --sidebar-ring: #aecbb9;
+
+        /* 角丸（ボタン・入力は 2px、カードは 4px。ピルと円だけ rounded-full） */
+        --radius: 4px;
+
+        /* イージング */
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+        /* 骨組みの寸法。ChatPage の高さの計算もこの値を読む */
+        --sidebar-width: 232px;
+        --mobile-bar-height: 3.5rem;
+        --page-max-width: 1120px;
+        --page-pad-x: clamp(24px, 3vw, 44px);
+        --page-pad-top: clamp(28px, 4vw, 52px);
+        --page-pad-bottom: clamp(32px, 5vw, 64px);
+    }
+}

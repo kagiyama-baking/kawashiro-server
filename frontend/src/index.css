@@ -1,26 +1,38 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+@import './styles/tokens.css';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: 'Sora', sans-serif;
-    --font-sans: 'Urbanist', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-sans: 'Murecho Variable', system-ui, sans-serif;
+    --font-heading: 'Murecho Variable', system-ui, sans-serif;
+    --font-latin: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+    /* transition-* の既定を kagiyama.net の速度とイージングに揃える */
+    --default-transition-duration: 300ms;
+    --default-transition-timing-function: var(--ease);
+
+    /* 和文が詰まらないよう、小さい文字も本文と同じ行送りにする */
+    --text-xs--line-height: 1.7;
+    --text-sm--line-height: 1.7;
+    --text-base--line-height: 1.7;
+
+    --shadow-lift: 0 26px 50px -26px rgb(0 0 0 / 0.85);
+
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-hover: var(--sidebar-hover);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-accent: var(--sidebar-accent);
     --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
     --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
+    --color-overlay: var(--overlay);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -31,95 +43,79 @@
     --color-muted: var(--muted);
     --color-secondary-foreground: var(--secondary-foreground);
     --color-secondary: var(--secondary);
+    --color-primary-hover: var(--primary-hover);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
     --color-popover-foreground: var(--popover-foreground);
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
+    --color-ink-subtle: var(--ink-subtle);
+    --color-ink-strong: var(--ink-strong);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --color-neon-cyan: var(--neon-cyan);
-    --color-neon-green: var(--neon-green);
-    --color-neon-magenta: var(--neon-magenta);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
-}
 
-/* Electric Terminal ダークモードテーマ */
-.dark {
-    --background: oklch(0.07 0.005 240);
-    --foreground: oklch(0.97 0.003 240);
-    --card: oklch(0.12 0.008 240);
-    --card-foreground: oklch(0.97 0.003 240);
-    --popover: oklch(0.14 0.01 240);
-    --popover-foreground: oklch(0.97 0.003 240);
-    --primary: oklch(0.75 0.2 155);
-    --primary-foreground: oklch(0.1 0.02 240);
-    --secondary: oklch(0.16 0.01 240);
-    --secondary-foreground: oklch(0.9 0.005 240);
-    --muted: oklch(0.18 0.008 240);
-    --muted-foreground: oklch(0.55 0.01 240);
-    --accent: oklch(0.2 0.04 155);
-    --accent-foreground: oklch(0.97 0.003 240);
-    --destructive: oklch(0.65 0.25 25);
-    --border: oklch(0.2 0.005 240);
-    --input: oklch(0.16 0.008 240);
-    --ring: oklch(0.75 0.2 155);
-    --chart-1: oklch(0.75 0.2 155);
-    --chart-2: oklch(0.72 0.2 155);
-    --chart-3: oklch(0.65 0.25 330);
-    --chart-4: oklch(0.55 0.15 270);
-    --chart-5: oklch(0.5 0.1 60);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.08 0.008 240);
-    --sidebar-foreground: oklch(0.9 0.005 240);
-    --sidebar-primary: oklch(0.75 0.2 155);
-    --sidebar-primary-foreground: oklch(0.1 0.02 240);
-    --sidebar-accent: oklch(0.14 0.02 155);
-    --sidebar-accent-foreground: oklch(0.97 0.003 240);
-    --sidebar-border: oklch(0.16 0.005 240);
-    --sidebar-ring: oklch(0.75 0.2 155);
-
-    /* ネオンカスタムカラー */
-    --neon-cyan: oklch(0.75 0.2 155);
-    --neon-green: oklch(0.72 0.2 155);
-    --neon-magenta: oklch(0.65 0.25 330);
+    /* 角丸はボタン・入力 2px、カード 4px に揃え、これより大きいものを作らない */
+    --radius-xs: 2px;
+    --radius-sm: 2px;
+    --radius-md: 2px;
+    --radius-lg: 4px;
+    --radius-xl: 4px;
+    --radius-2xl: 4px;
+    --radius-3xl: 4px;
+    --radius-4xl: 4px;
 }
 
 @layer base {
     * {
-        @apply border-border outline-ring/50;
-    }
-    body {
-        @apply bg-background text-foreground;
-        margin: 0;
-        font-weight: 400;
-        font-synthesis: none;
-        text-rendering: optimizeLegibility;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        line-height: 1.6;
+        @apply border-border;
     }
     html {
         @apply font-sans;
     }
+    body {
+        @apply bg-background text-foreground;
+        margin: 0;
+        font-size: 0.9375rem;
+        font-weight: 400;
+        line-height: 1.7;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        /* 和文は文節で折り返す（Chromium 系。html の lang="ja" が前提） */
+        word-break: auto-phrase;
+    }
     h1,
     h2,
-    h3,
-    h4,
-    h5,
-    h6 {
-        letter-spacing: -0.01em;
+    h3 {
+        color: var(--ink-strong);
+        font-weight: 600;
         line-height: 1.2;
+        letter-spacing: 0.04em;
+    }
+    /* 最後の行に 1〜2 文字だけ残る折り返しを避ける */
+    p {
+        text-wrap: pretty;
     }
     #root {
         min-height: 100svh;
+    }
+    /* キーボード操作のときだけ、ブランドの緑で枠を出す */
+    :focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+    }
+    /* 動きを減らす設定では、アニメーションと遷移を止める */
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
     }
 }
 
