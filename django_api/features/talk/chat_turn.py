@@ -258,7 +258,9 @@ class ChatTurnRunner:
                     yield "delta", {"text": text}
             finally:
                 _close_quietly(stream)
-        except GeneratorExit:
+        # GeneratorExit は切断で応答が閉じられたとき、SystemExit は gunicorn が
+        # ワーカーを強制終了するとき（--timeout の超過）。どちらも接続はここで切れる。
+        except (GeneratorExit, SystemExit):
             self._save_stopped_turn("".join(parts))
             raise
         return "".join(parts)

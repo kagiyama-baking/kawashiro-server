@@ -308,6 +308,29 @@ class TestDisconnect:
         assert len(records) == 1
         assert str(records[0].exc_info[1]) == "close failed"
 
+    def test_worker_abort_during_llm_saves_partial(
+        self, chat_llm, title_llm, auth_client, session
+    ):
+        """gunicorn のワーカー強制終了（SystemExit）でも、届いた分を失わない.
+
+        ワーカーの `--timeout` を超えると SIGABRT で `sys.exit` され、接続が切れる。
+        """
+
+        def dying_stream(*args, **kwargs):
+            yield "途中"
+            raise SystemExit(1)
+
+        with patch.object(TalkService, "stream_chat_reply", dying_stream):
+            reader = send_sse(auth_client, session.id)
+            with pytest.raises(SystemExit):
+                reader.read_all()
+
+        assert saved_messages(session) == [
+            (0, "user", "おはよう"),
+            (1, "assistant", "途中"),
+        ]
+        assert title_llm.requests == []
+
     def test_disconnect_after_message_keeps_reply_and_skips_rest(
         self, chat_llm, title_llm, mock_tts, auth_client, tts_session
     ):
