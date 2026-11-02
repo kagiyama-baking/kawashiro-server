@@ -11,6 +11,7 @@ from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
 from integrations.llm.exceptions import LLMClientError, LLMConfigurationError
 from tests.fixtures.llm import LiteLLMStreamBody, litellm_stream, stream_of
+from tests.fixtures.sse import SEPARATE_DELTAS
 
 SYSTEM_PROMPT = "あなたは親切なアシスタントです。"
 
@@ -155,7 +156,7 @@ class TestStreamChatReply:
 
     def test_stream_chat_reply_chunks_arrive_in_order(self, chat_llm):
         """増分は届いた順に返り、連結すると本文になる."""
-        chat_llm.enqueue(stream_of("一", "二", gap=0.12))
+        chat_llm.enqueue(stream_of("一", "二", gap=SEPARATE_DELTAS))
 
         assert _reply() == ["一", "二"]
 

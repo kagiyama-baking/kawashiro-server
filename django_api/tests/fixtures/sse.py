@@ -4,8 +4,8 @@ import json
 
 SSE_ACCEPT = "text/event-stream, application/json"
 
-# デバウンスの幅より長い間隔（別の delta に分かれる）
-SEPARATE_DELTAS = 0.12
+# デバウンスの幅（50 ms）より十分に長い間隔（別の delta に分かれる）
+SEPARATE_DELTAS = 0.25
 
 
 def send_url(session_id) -> str:

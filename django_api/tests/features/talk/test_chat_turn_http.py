@@ -96,7 +96,7 @@ class TestPreValidationStaysHttp:
         assert chat_llm.requests == []
 
     def test_edit_has_no_message_limit(self, chat_llm, auth_client, session):
-        """編集には上限がない（対象以降を置き換えるので増えない）."""
+        """編集には上限がない（対象より前の履歴だけで上限に達していても編集できる）."""
         messages = [
             ChatMessage.objects.create(
                 session=session,
@@ -104,18 +104,18 @@ class TestPreValidationStaysHttp:
                 role="user" if sequence % 2 == 0 else "assistant",
                 content=f"#{sequence}",
             )
-            for sequence in range(SESSION_MAX_MESSAGES)
+            for sequence in range(SESSION_MAX_MESSAGES + 2)
         ]
         chat_llm.enqueue("再生成")
         session.title = "既存"
         session.save()
 
         events = edit_sse(
-            auth_client, session.id, messages[SESSION_MAX_MESSAGES - 2].id
+            auth_client, session.id, messages[SESSION_MAX_MESSAGES].id
         ).read_all()
 
         assert event_names(events)[-1] == "done"
-        assert session.messages.count() == SESSION_MAX_MESSAGES
+        assert session.messages.count() == SESSION_MAX_MESSAGES + 2
 
     def test_missing_placeholder_config_returns_400(self, auth_client, user, db):
         system_ref = LangfusePromptRef.objects.create(

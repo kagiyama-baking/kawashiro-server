@@ -178,6 +178,23 @@ class TestEventSequence:
         assert parse_datetime(done["updated_at"]) == tts_session.updated_at
         assert tts_session.updated_at > before
 
+    def test_done_advances_updated_at_after_commit(
+        self, chat_llm, auth_client, user, talk_config
+    ):
+        """done の時点でも updated_at を進める（タイトルも音声もないターンで確かめる）."""
+        titled = ChatSession.objects.create(
+            user=user, config_name=talk_config.name, title="既存"
+        )
+        chat_llm.enqueue("返信")
+        reader = send_sse(auth_client, titled.id)
+
+        reader.read_until("message")
+        committed_at = ChatSession.objects.get(id=titled.id).updated_at
+        events = reader.read_all()
+
+        done_at = parse_datetime(event_data(events, "done")["updated_at"])
+        assert done_at > committed_at
+
     def test_llm_receives_history_and_system_prompt(
         self, chat_llm, title_llm, auth_client, session, conversation
     ):

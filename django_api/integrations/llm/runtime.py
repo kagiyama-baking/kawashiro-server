@@ -7,7 +7,7 @@ LiteLLM Proxy 経由のモデル生成、同期コードからの実行、例外
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
-from contextlib import asynccontextmanager, closing, contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from typing import Any
 
@@ -346,9 +346,9 @@ def stream_text_sync(
         ):
             # 本文のない応答はここへ来た時点で実行が終わっていて、stream_text() は使えない
             if run.response.state == "incomplete":
-                with closing(
-                    run.stream_text(delta=True, debounce_by=_STREAM_DEBOUNCE_SECONDS)
-                ) as deltas:
-                    yield from deltas
+                # yield from なので、閉じられたら内側のジェネレータもその場で閉じる
+                yield from run.stream_text(
+                    delta=True, debounce_by=_STREAM_DEBOUNCE_SECONDS
+                )
     finally:
         _close_client(client)

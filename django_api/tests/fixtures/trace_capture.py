@@ -2,7 +2,8 @@
 
 `tests/integrations/llm/test_tracing.py` がサブプロセスで実行する。Langfuse のクライアントは
 プロセス内で共有され、テストのプロセスではトレースを無効にしているので分離する。
-モデルは FunctionModel、エクスポーターはメモリ上なので、LLM にも Langfuse にも送信しない。
+モデルは FunctionModel か HTTP 層だけの代役、エクスポーターはメモリ上なので、
+LLM にも Langfuse にも送信しない。
 """
 
 import json

@@ -29,6 +29,7 @@ from integrations.llm.exceptions import (
 from integrations.llm.runtime import run_agent_sync, stream_text_sync
 from tests.fixtures.llm import LITELLM_ALIASES as ALIASES
 from tests.fixtures.llm import LiteLLMStreamBody, litellm_response, litellm_stream
+from tests.fixtures.sse import SEPARATE_DELTAS
 
 BASE_URL = "http://litellm.invalid/v1"
 
@@ -144,7 +145,7 @@ class TestStreamResponseContract:
 
     def test_chunks_with_gap_arrive_as_separate_deltas(self, fake_litellm):
         """デバウンスの幅より間隔が空いたチャンクは別の増分になる."""
-        fake_litellm(litellm_stream("一", "二", gap=0.12))
+        fake_litellm(litellm_stream("一", "二", gap=SEPARATE_DELTAS))
 
         assert _stream() == ["一", "二"]
 
@@ -224,7 +225,9 @@ class TestStreamErrors:
     def test_read_timeout_midway_raises_after_partial_text(self, fake_litellm):
         """途中のタイムアウトは、届いた増分を流した後で LLMTimeoutError になる."""
         fake_litellm(
-            litellm_stream("途中", "続き", gap=0.12, raises=httpx2.ReadTimeout("slow"))
+            litellm_stream(
+                "途中", "続き", gap=SEPARATE_DELTAS, raises=httpx2.ReadTimeout("slow")
+            )
         )
         received = []
 

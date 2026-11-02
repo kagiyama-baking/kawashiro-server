@@ -308,6 +308,27 @@ class TestDisconnect:
         assert len(records) == 1
         assert str(records[0].exc_info[1]) == "close failed"
 
+    def test_next_turn_after_stop_without_text_sends_consecutive_user_messages(
+        self, chat_llm, title_llm, auth_client, session
+    ):
+        """本文なしで停止した後のターンでは、user が続いた履歴をそのまま LLM に渡す."""
+        chat_llm.enqueue("次の返信")
+        reader = send_sse(auth_client, session.id, "最初の発話")
+        reader.next_event()
+        reader.disconnect()
+
+        send_sse(auth_client, session.id, "次の発話").read_all()
+
+        assert chat_llm.requests[0].conversation == [
+            ("user", "最初の発話"),
+            ("user", "次の発話"),
+        ]
+        assert saved_messages(session) == [
+            (0, "user", "最初の発話"),
+            (1, "user", "次の発話"),
+            (2, "assistant", "次の返信"),
+        ]
+
     def test_worker_abort_during_llm_saves_partial(
         self, chat_llm, title_llm, auth_client, session
     ):
