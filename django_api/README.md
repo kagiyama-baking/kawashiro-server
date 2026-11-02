@@ -15,7 +15,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | `integrations.tts` | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） | [sbv2_api/README.md](../sbv2_api/README.md) |
 | `integrations.weather` | `/weather/` | 気象庁天気予報 | [README](integrations/weather/README.md) |
 | `features.media` | `/media/` | 画像変換・ZIP→PDF（制限値あり） | [README](features/media/README.md) |
-| `features.talk` | `/talk/` | 会話生成 + チャット履歴セッション + 日時情報（`/talk/datetime/`） | [README](features/talk/README.md) |
+| `features.talk` | `/talk/` | 会話生成 + チャット履歴セッション（応答は JSON か SSE）+ 日時情報（`/talk/datetime/`） | [README](features/talk/README.md) |
 | `features.hn_agent` | `/hn-agent/` | HackerNews Agent（監視・調査・辛口分析・セキュリティ対応指針。superuser のみ） | [README](features/hn_agent/README.md) |
 
 ### 裏方のアプリ（URL なし）

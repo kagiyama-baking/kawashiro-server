@@ -26,7 +26,7 @@ kawashiro-server/
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/            # 会話生成API + チャット履歴セッション
+│   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
 │   │   └── hn_agent/        # HN監視・分析エージェント（PydanticAI）
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
@@ -60,7 +60,7 @@ kawashiro-server/
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
 | LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
-| Talk・チャットセッション仕様・プレースホルダー | `django_api/features/talk/README.md` |
+| Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
 | 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
@@ -170,6 +170,7 @@ django_api/tests/
 ├── fixtures/
 │   ├── factories.py         # factory-boy ファクトリ（UserFactory等）
 │   ├── llm.py               # LLM の代役（ScriptedLLM）
+│   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
 │   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
 ├── core/                    # admin並び順等のコアテスト
 ├── integrations/            # 外部サービス連携テスト
@@ -255,6 +256,8 @@ llm.requests[0].instructions  # モデルが受け取った内容を確認でき
 ```
 
 `ScriptedLLM` は `OpenAIChatModel` の応答の解釈を通りません。送信本文や応答の解釈を確かめるテストでは `fake_litellm` フィクスチャ（HTTP 層だけの代役）を使います。
+
+ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
 
 ## コーディング規約
 

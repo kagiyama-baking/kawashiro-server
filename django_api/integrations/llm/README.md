@@ -162,7 +162,7 @@ except LLMClientError:
 
 | 関数 | 用途 |
 |---|---|
-| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries)` | 同期コードから実行する。Talk と Orchestrator はこちら |
+| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries)` | 同期コードから実行する。Talk のタイトル・単発生成と Orchestrator はこちら |
 | `arun_agent(...)`（引数は同じ） | イベントループ上から `await` する。サブエージェントはこちら |
 | `stream_text_sync(agent, settings, *, user_prompt, deps, message_history, max_tokens, conversation_id)` | 同期コードから実行し、本文の増分を順に返すジェネレータ。Talk のチャットはこちら |
 | `open_model(settings)` | `AsyncOpenAI` を作って閉じる async context manager。接続はイベントループに属するので、実行ごとに作る |
