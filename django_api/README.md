@@ -23,7 +23,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | アプリ | 説明 | 詳細 |
 |---|---|---|
 | `core` | カスタム `User` モデル（email ログイン）・Fernet 暗号化ユーティリティ・admin 並び順制御 | — |
-| `integrations.llm` | LiteLLM Proxy 経由の LLM クライアントと接続設定（`LLMProviderConfig` / `LLMServiceConfig`） | [README](integrations/llm/README.md) |
+| `integrations.llm` | LiteLLM Proxy 経由の PydanticAI 実行基盤と接続設定（`LLMProviderConfig` / `LLMServiceConfig`） | [README](integrations/llm/README.md) |
 | `integrations.langfuse` | Langfuse プロンプト参照（`LangfusePromptRef` / `resolve_prompt`） | [README](integrations/llm/README.md) |
 | `integrations.msgraph` | Microsoft Graph の証明書認証設定・クライアント（onedrive / outlook が利用） | — |
 | `integrations.hn` | Hacker News Algolia API クライアント（hn_agent が利用。API キー不要のため設定モデルなし） | — |

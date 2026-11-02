@@ -3,12 +3,16 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic_ai.messages import ModelResponse, TextPart
 
 from features.talk.exceptions import PlaceholderDataMissingError
+from features.talk.llm_agents import TALK_CHAT_AGENT
 from features.talk.models import TalkConfig
 from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.exceptions import LLMConfigurationError
 from integrations.tts.client import TTSResult
+from tests.fixtures.llm import ScriptedLLM
 
 
 @pytest.fixture(autouse=True)
@@ -16,6 +20,14 @@ def _disable_langfuse_client():
     """Langfuse 接続を切って fallback_text 経由に統一する."""
     with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
+
+
+@pytest.fixture
+def chat_llm(talk_llm_settings):
+    """チャットエージェントの応答を台本で固定する."""
+    llm = ScriptedLLM()
+    with TALK_CHAT_AGENT.override(model=llm.model):
+        yield llm
 
 
 @pytest.fixture
@@ -57,27 +69,12 @@ def chat_config_with_tts(chat_prompt_refs):
     )
 
 
-def _mock_chat_completion(content: str):
-    response = MagicMock()
-    message = MagicMock()
-    message.content = content
-    choice = MagicMock()
-    choice.message = message
-    response.choices = [choice]
-    return response
-
-
 @pytest.mark.django_db
 class TestTalkServiceChat:
     """TalkService.synthesize_chat のテスト"""
 
-    @patch("features.talk.services.LLMClient")
-    def test_synthesize_chat_single_turn(self, mock_llm_class, chat_config):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion(
-            "こんにちは、先輩"
-        )
-        mock_llm_class.return_value = mock_llm
+    def test_synthesize_chat_single_turn(self, chat_llm, chat_config):
+        chat_llm.enqueue("こんにちは、先輩")
 
         service = TalkService()
         result = service.synthesize_chat(
@@ -89,18 +86,14 @@ class TestTalkServiceChat:
         assert result["message"]["content"] == "こんにちは、先輩"
         assert "audio_data" not in result
 
-        sent_messages = mock_llm.chat_completion.call_args.args[0]
-        assert sent_messages[0]["role"] == "system"
-        assert sent_messages[1]["role"] == "user"
-        assert sent_messages[1]["content"] == "こんにちは"
+        request = chat_llm.requests[0]
+        assert request.instructions == "あなたは親切なアシスタントです。"
+        assert request.conversation == [("user", "こんにちは")]
 
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_chat_multi_turn_passes_full_history(
-        self, mock_llm_class, chat_config
+        self, chat_llm, chat_config
     ):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("最近どうですか")
-        mock_llm_class.return_value = mock_llm
+        chat_llm.enqueue("最近どうですか")
 
         messages = [
             {"role": "user", "content": "こんにちは"},
@@ -112,23 +105,19 @@ class TestTalkServiceChat:
 
         assert result["message"]["content"] == "最近どうですか"
 
-        sent = mock_llm.chat_completion.call_args.args[0]
-        assert sent[0]["role"] == "system"
-        assert len(sent) == 4
-        assert [m["content"] for m in sent[1:]] == [
-            "こんにちは",
-            "こんにちは",
-            "今日の調子はどう？",
+        request = chat_llm.requests[0]
+        assert request.instructions == "あなたは親切なアシスタントです。"
+        assert request.conversation == [
+            ("user", "こんにちは"),
+            ("assistant", "こんにちは"),
+            ("user", "今日の調子はどう？"),
         ]
 
-    @patch("features.talk.services.LLMClient")
     @patch("features.talk.services.TTSClient")
     def test_synthesize_chat_with_tts(
-        self, mock_tts_class, mock_llm_class, chat_config_with_tts
+        self, mock_tts_class, chat_llm, chat_config_with_tts
     ):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("お返事です")
-        mock_llm_class.return_value = mock_llm
+        chat_llm.enqueue("お返事です")
 
         mock_tts = MagicMock()
         mock_tts.synthesize.return_value = TTSResult(
@@ -148,9 +137,8 @@ class TestTalkServiceChat:
         assert mock_tts.synthesize.call_args.kwargs["text"] == "お返事です"
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_chat_expands_system_placeholder(
-        self, mock_llm_class, mock_holiday_class, db
+        self, mock_holiday_class, chat_llm, db
     ):
         sys_ref = LangfusePromptRef.objects.create(
             name="chat-sys-dt",
@@ -173,9 +161,7 @@ class TestTalkServiceChat:
         mock_holiday.get_holiday_name.return_value = None
         mock_holiday_class.return_value = mock_holiday
 
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
-        mock_llm_class.return_value = mock_llm
+        chat_llm.enqueue("OK")
 
         service = TalkService()
         service.synthesize_chat(
@@ -183,7 +169,7 @@ class TestTalkServiceChat:
             messages=[{"role": "user", "content": "今何時？"}],
         )
 
-        sent_system = mock_llm.chat_completion.call_args.args[0][0]["content"]
+        sent_system = chat_llm.requests[0].instructions
         assert "{{datetime}}" not in sent_system
         assert "day_of_week" in sent_system
 
@@ -214,14 +200,11 @@ class TestTalkServiceChat:
             )
 
     @patch("features.talk.services.HolidayClient")
-    @patch("features.talk.services.LLMClient")
     def test_synthesize_chat_does_not_expand_user_messages(
-        self, mock_llm_class, mock_holiday_class, chat_config
+        self, mock_holiday_class, chat_llm, chat_config
     ):
         """user メッセージ内の {{datetime}} は展開しない（純粋な対話）."""
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
-        mock_llm_class.return_value = mock_llm
+        chat_llm.enqueue("OK")
 
         service = TalkService()
         service.synthesize_chat(
@@ -229,20 +212,72 @@ class TestTalkServiceChat:
             messages=[{"role": "user", "content": "今日は {{datetime}} です"}],
         )
 
-        sent = mock_llm.chat_completion.call_args.args[0]
-        assert sent[1]["content"] == "今日は {{datetime}} です"
+        assert chat_llm.requests[0].user_prompt == "今日は {{datetime}} です"
         mock_holiday_class.return_value.get_holiday_name.assert_not_called()
+
+    def test_synthesize_chat_empty_reply_returns_empty_text_without_retry(
+        self, chat_llm, chat_config
+    ):
+        """本文のない応答は再試行せず空文字にする（従来の `content or ""` と同じ）."""
+        chat_llm.enqueue(ModelResponse(parts=[TextPart(content="")]))
+
+        service = TalkService()
+        result = service.synthesize_chat(
+            config=chat_config,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+        assert result["message"]["content"] == ""
+        assert len(chat_llm.requests) == 1
+
+    @pytest.mark.parametrize("finish_reason", ["length", "content_filter"])
+    def test_synthesize_chat_reply_emptied_by_provider_returns_empty_text(
+        self, finish_reason, chat_llm, chat_config
+    ):
+        """出力上限やフィルターで本文がなくても例外にせず空文字にする（従来と同じ）."""
+        chat_llm.enqueue(ModelResponse(parts=[], finish_reason=finish_reason))
+
+        service = TalkService()
+        result = service.synthesize_chat(
+            config=chat_config,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+        assert result["message"]["content"] == ""
+        assert len(chat_llm.requests) == 1
+
+    def test_synthesize_chat_sends_service_metadata(self, chat_llm, chat_config):
+        """LiteLLM 向けの metadata を送る."""
+        chat_llm.enqueue("OK")
+
+        service = TalkService()
+        service.synthesize_chat(
+            config=chat_config,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+        assert chat_llm.requests[0].model_settings["extra_body"] == {
+            "metadata": {"service_name": "talk", "environment": "test"}
+        }
+
+    def test_synthesize_chat_without_llm_config_raises_configuration_error(
+        self, chat_config
+    ):
+        """LLM 設定がなければ従来どおり LLMConfigurationError になる."""
+        service = TalkService()
+        with pytest.raises(LLMConfigurationError):
+            service.synthesize_chat(
+                config=chat_config,
+                messages=[{"role": "user", "content": "hi"}],
+            )
 
 
 @pytest.mark.django_db
 class TestTalkServiceChatLangfuseSession:
     """synthesize_chat に session_id を渡すと Langfuse トレースに反映される."""
 
-    @patch("features.talk.services.LLMClient")
-    def test_session_id_propagates_to_langfuse(self, mock_llm_class, chat_config):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
-        mock_llm_class.return_value = mock_llm
+    def test_session_id_propagates_to_langfuse(self, chat_llm, chat_config):
+        chat_llm.enqueue("OK")
 
         with patch("langfuse.propagate_attributes") as mock_propagate:
             service = TalkService()
@@ -255,11 +290,8 @@ class TestTalkServiceChatLangfuseSession:
             mock_propagate.return_value.__enter__.assert_called_once()
             mock_propagate.return_value.__exit__.assert_called_once()
 
-    @patch("features.talk.services.LLMClient")
-    def test_no_session_id_does_not_set_session(self, mock_llm_class, chat_config):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
-        mock_llm_class.return_value = mock_llm
+    def test_no_session_id_does_not_set_session(self, chat_llm, chat_config):
+        chat_llm.enqueue("OK")
 
         with patch("langfuse.propagate_attributes") as mock_propagate:
             service = TalkService()
@@ -270,13 +302,8 @@ class TestTalkServiceChatLangfuseSession:
             # session_id が無いときは属性の伝播を始めない
             mock_propagate.assert_not_called()
 
-    @patch("features.talk.services.LLMClient")
-    def test_langfuse_session_failure_does_not_break_chat(
-        self, mock_llm_class, chat_config
-    ):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
-        mock_llm_class.return_value = mock_llm
+    def test_langfuse_session_failure_does_not_break_chat(self, chat_llm, chat_config):
+        chat_llm.enqueue("OK")
 
         with patch("langfuse.propagate_attributes") as mock_propagate:
             mock_propagate.return_value.__enter__.side_effect = RuntimeError("boom")
@@ -293,11 +320,8 @@ class TestTalkServiceChatLangfuseSession:
 class TestTalkServiceChatMaxTokens:
     """LLM 呼び出し時に max_tokens 上限が指定されることのテスト"""
 
-    @patch("features.talk.services.LLMClient")
-    def test_synthesize_chat_passes_max_tokens(self, mock_llm_class, chat_config):
-        mock_llm = MagicMock()
-        mock_llm.chat_completion.return_value = _mock_chat_completion("OK")
-        mock_llm_class.return_value = mock_llm
+    def test_synthesize_chat_passes_max_tokens(self, chat_llm, chat_config):
+        chat_llm.enqueue("OK")
 
         service = TalkService()
         service.synthesize_chat(
@@ -305,5 +329,6 @@ class TestTalkServiceChatMaxTokens:
             messages=[{"role": "user", "content": "test"}],
         )
 
-        call_kwargs = mock_llm.chat_completion.call_args.kwargs
-        assert call_kwargs.get("max_tokens") == TalkService.CHAT_MAX_OUTPUT_TOKENS
+        settings = chat_llm.requests[0].model_settings
+        assert settings["max_tokens"] == TalkService.CHAT_MAX_OUTPUT_TOKENS
+        assert TalkService.CHAT_MAX_OUTPUT_TOKENS == 1024

@@ -13,6 +13,7 @@ features/talk/
 ├── models.py            # TalkConfig / ChatSession / ChatMessage
 ├── serializers.py       # リクエスト・レスポンス定義（content 上限 4000 文字）
 ├── services.py          # TalkService: プレースホルダー検出・並列取得・LLM・TTS
+├── llm_agents.py        # PydanticAI エージェント（チャット・タイトル・単発生成）と履歴の変換
 ├── views/               # ビューは責務ごとに 5 分割（外部からは features.talk.views.X で参照）
 │   ├── __init__.py      # 各ビューの再エクスポート（urls.py 側は変更不要）
 │   ├── _common.py       # 例外→HTTP マッピング / SESSION_MAX_MESSAGES / 音声保存ヘルパ
@@ -28,7 +29,7 @@ features/talk/
 └── management/commands/cleanup_orphan_audio.py
 ```
 
-`TalkService` は LLM・TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。LLM 設定は `LLMClient(service_name="talk")` で talk 用の設定が選択されます。テストで差し替える際は `features.talk.views.messages.TalkService` のように具体モジュールのパスを patch してください。
+`TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。LLM は `llm_agents.py` の 3 エージェントを `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストで差し替える際は、サービスごとなら `features.talk.views.messages.TalkService` のように具体モジュールのパスを patch し、LLM だけなら `TALK_CHAT_AGENT.override(model=...)` を使ってください。
 
 ## TalkConfig リファレンス
 
@@ -120,7 +121,7 @@ features/talk/
 
 **認可**: セッション・メッセージ・音声のいずれも `user=request.user` でクエリセットを絞るため、他人の `session_id` / `msg_id` を指定しても 404 になります（`ChatMessage.id` はグローバル連番のため、編集・音声系では `session_id` と所有者の二重チェックを行っています）。
 
-**エラーマッピング**（`views/_common.handle_synthesis_error`）: プレースホルダー設定不足 → 400、予報区コード不明 → 404、外部 API/LLM/TTS/祝日のタイムアウト → 504、ネットワーク・パース・認証エラー → 502、MS Graph 等の設定不備 → 503、それ以外 → 500。
+**エラーマッピング**（`views/_common.handle_synthesis_error`）: プレースホルダー設定不足 → 400、予報区コード不明 → 404、外部 API/LLM/TTS/祝日のタイムアウト → 504、ネットワーク・パース・認証エラーと LLM の HTTP エラー（4xx / 5xx）や不正な応答 → 502、MS Graph 等の設定不備 → 503、それ以外 → 500。
 
 ## 内部挙動
 

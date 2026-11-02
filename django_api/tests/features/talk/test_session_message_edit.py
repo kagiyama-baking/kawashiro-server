@@ -5,11 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from pydantic_ai.exceptions import ModelHTTPError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from features.talk.llm_agents import TALK_CHAT_AGENT
 from features.talk.models import ChatMessage, ChatSession, TalkConfig
 from integrations.langfuse.models import LangfusePromptRef
+from tests.fixtures.llm import ScriptedLLM
 
 User = get_user_model()
 
@@ -213,6 +216,51 @@ class TestSessionMessageEdit:
         assert session.messages.count() == original_count
         msgs[0].refresh_from_db()
         assert msgs[0].content == original_seq0_content
+
+    def test_edit_through_real_agent_sends_prior_history_and_replaces_rest(
+        self, talk_llm_settings, populated_session, auth_client
+    ):
+        """モデル以外を差し替えずに通し、対象より前の履歴だけを LLM に渡す."""
+        session, msgs = populated_session
+        llm = ScriptedLLM("再生成された返信")
+
+        with TALK_CHAT_AGENT.override(model=llm.model):
+            response = auth_client.patch(
+                _url(session.id, msgs[2].id), {"content": "編集後"}, format="json"
+            )
+
+        assert response.status_code == 200
+        assert llm.requests[0].conversation == [
+            ("user", "#0"),
+            ("assistant", "#1"),
+            ("user", "編集後"),
+        ]
+        assert [m.content for m in session.messages.order_by("sequence")] == [
+            "#0",
+            "#1",
+            "編集後",
+            "再生成された返信",
+        ]
+
+    def test_llm_status_error_returns_502_and_keeps_messages(
+        self, talk_llm_settings, populated_session, auth_client
+    ):
+        """LLM の HTTP エラーは 502 になり、既存のメッセージは残る."""
+        session, msgs = populated_session
+        llm = ScriptedLLM(ModelHTTPError(429, "test-alias"))
+
+        with TALK_CHAT_AGENT.override(model=llm.model):
+            response = auth_client.patch(
+                _url(session.id, msgs[0].id), {"content": "編集後"}, format="json"
+            )
+
+        assert response.status_code == 502
+        assert [m.content for m in session.messages.order_by("sequence")] == [
+            "#0",
+            "#1",
+            "#2",
+            "#3",
+        ]
 
     def test_message_not_in_session_returns_404(self, populated_session, auth_client):
         session, msgs = populated_session

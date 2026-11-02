@@ -4,6 +4,30 @@ import pytest
 
 from features.hn_agent.models import HNAgentConfig
 from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
+
+
+@pytest.fixture
+def hn_llm_services(db):
+    """HN Agent の全サービスに LLM 設定を割り当てる.
+
+    接続設定はサブエージェントの準備処理の中で DB から読むので、実データを用意する。
+    モデルは各テストで `Agent.override` するので LiteLLM へは接続しない。
+    """
+    provider = LLMProviderConfig.objects.create(
+        name="hn-agent-test", model_alias="test-alias"
+    )
+    return {
+        service_name: LLMServiceConfig.objects.create(
+            service_name=service_name, provider_config=provider
+        )
+        for service_name in (
+            "orchestrator",
+            "detective",
+            "devils_advocate",
+            "security_responder",
+        )
+    }
 
 
 @pytest.fixture

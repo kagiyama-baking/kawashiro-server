@@ -15,13 +15,9 @@ dependencies = [
     "drf-spectacular>=0.28.0",
     "gunicorn>=23.0.0",
     "img2pdf>=0.5.0",
-    "langchain-core>=0.3.0",
-    "langchain-openai>=0.3.0",
     "langfuse>=4.7,<5.0",
-    "langgraph>=0.4.0",
-    "langgraph-sdk>=0.4.4",
     "msal>=1.32.3",
-    "openai>=2.14.0",
+    "openai>=3.31,<4",
     "pgvector>=0.3.6",
     "psycopg[binary]>=3.2.0",
     "pyjwt>=2.14.0",
@@ -33,6 +29,7 @@ dependencies = [
     "sqlparse>=0.6.0",
     "urllib3>=2.8.0",
     "whitenoise>=6.8.2",
+    "pydantic-ai-slim[openai]==2.64.0",
 ]
 
 [dependency-groups]

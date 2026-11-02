@@ -1,7 +1,7 @@
 """LLM設定取得ヘルパー."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .exceptions import LLMConfigurationError
 
@@ -11,7 +11,7 @@ class LLMSettings:
     """LiteLLM Proxy経由のLLM設定を保持するデータクラス."""
 
     proxy_base_url: str
-    proxy_api_key: str
+    proxy_api_key: str = field(repr=False)
     model_alias: str
     timeout: int
     service_name: str

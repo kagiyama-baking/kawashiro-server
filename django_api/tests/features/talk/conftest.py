@@ -1,8 +1,21 @@
 """Talk テスト共通フィクスチャ."""
 
+from unittest.mock import patch
+
 import pytest
 
 from integrations.langfuse.models import LangfusePromptRef
+from tests.fixtures.llm import make_llm_settings
+
+
+@pytest.fixture
+def talk_llm_settings():
+    """LLM 接続設定を固定する（DB の LLMServiceConfig に依存させない）."""
+    with patch(
+        "features.talk.services.get_llm_settings",
+        return_value=make_llm_settings("talk"),
+    ) as mock_get_settings:
+        yield mock_get_settings
 
 
 @pytest.fixture

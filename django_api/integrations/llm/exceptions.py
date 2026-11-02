@@ -11,3 +11,7 @@ class LLMClientError(Exception):
 
 class LLMTimeoutError(LLMClientError):
     """LLM APIタイムアウト."""
+
+
+class LLMOutputError(LLMClientError):
+    """LLM の応答が期待する形にならなかった（出力リトライ後も不正など）."""
