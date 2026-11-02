@@ -36,6 +36,8 @@ _EDIT_FALLBACK = "チャット応答の再生成中に問題が発生しまし�
 _AUDIO_FALLBACK = "音声の合成に失敗しました"
 _AUDIO_SAVE_ERROR = "音声の保存に失敗しました"
 _SESSION_GONE_ERROR = "セッションが見つかりません"
+# タイトルを生成する履歴の上限。初回と、停止した初回ターン（最大 2 件）の次のターンまで
+_TITLE_MAX_HISTORY = 2
 
 
 class ChatTurnRejectedError(Exception):
@@ -320,8 +322,13 @@ class ChatTurnRunner:
         )
 
     def _title_events(self, reply: str) -> Iterator[TurnEvent]:
-        """タイトルが空なら生成する（失敗しても続行し、手動の名前は上書きしない）."""
+        """会話の冒頭でタイトルが空なら生成する（失敗しても続行し、手動の名前は上書きしない）.
+
+        冒頭に限るのは、生成に失敗し続けるセッションで毎ターン LLM を呼ばないため。
+        """
         plan = self._plan
+        if len(plan.history) > _TITLE_MAX_HISTORY:
+            return
         untitled = ChatSession.objects.filter(id=plan.session.id, title="")
         if not untitled.exists():
             return

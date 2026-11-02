@@ -108,6 +108,21 @@ class TestEventSequence:
         assert event_names(events) == ["start", "delta", "message", "done"]
         assert title_llm.requests == []
 
+    def test_title_is_not_retried_past_opening_of_conversation(
+        self, chat_llm, title_llm, auth_client, session
+    ):
+        """冒頭を過ぎたら題が空のままでも生成しない（失敗し続けても毎ターン呼ばない）."""
+        for sequence, role in enumerate(["user", "assistant", "user", "assistant"]):
+            ChatMessage.objects.create(
+                session=session, sequence=sequence, role=role, content=f"#{sequence}"
+            )
+        chat_llm.enqueue("返信")
+
+        events = send_sse(auth_client, session.id).read_all()
+
+        assert event_names(events) == ["start", "delta", "message", "done"]
+        assert title_llm.requests == []
+
     def test_deltas_concatenate_to_saved_reply(
         self, chat_llm, auth_client, session, title_llm
     ):
