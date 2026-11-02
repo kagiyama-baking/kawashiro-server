@@ -4,8 +4,10 @@ LiteLLM Proxy 経由のモデル生成、同期コードからの実行、例外
 エージェントの定義は各機能に置き、実行はここの関数だけを通す。
 """
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, closing, contextmanager
 from dataclasses import replace
 from typing import Any
 
@@ -33,6 +35,11 @@ from pydantic_ai.usage import RequestUsage, UsageLimits
 
 from .config import LLMSettings
 from .exceptions import LLMClientError, LLMOutputError, LLMTimeoutError
+
+logger = logging.getLogger(__name__)
+
+# ストリーミングの増分をまとめる幅（秒）。トークンごとに書き込まず、体感を損なわない範囲に抑える
+_STREAM_DEBOUNCE_SECONDS = 0.05
 
 # LiteLLM のモデル名は DB 上の任意の文字列なので、名前から推定される既定プロファイルに
 # 送受信を左右させない。ここで指定した項目は、どのエイリアスでも同じになる。
@@ -135,6 +142,25 @@ def translate_llm_errors() -> Iterator[None]:
         raise LLMClientError(f"LLM APIの呼び出しに失敗しました: {exc.message}") from exc
 
 
+def _build_client(settings: LLMSettings) -> AsyncOpenAI:
+    """LiteLLM Proxy へ接続するクライアントを作る（接続は最初のリクエストで開く）."""
+    return AsyncOpenAI(
+        base_url=settings.proxy_base_url,
+        # キー未設定でも送信し、認証の判断は LiteLLM に任せる（SDK は空文字を拒否する）
+        api_key=settings.proxy_api_key or _MISSING_API_KEY,
+        timeout=settings.timeout,
+    )
+
+
+def _build_model(settings: LLMSettings, client: AsyncOpenAI) -> _LiteLLMChatModel:
+    """クライアントを使うモデルを作る."""
+    return _LiteLLMChatModel(
+        settings.model_alias,
+        provider=LiteLLMProvider(openai_client=client),
+        profile=_LITELLM_PROFILE,
+    )
+
+
 @asynccontextmanager
 async def open_model(settings: LLMSettings) -> AsyncIterator[_LiteLLMChatModel]:
     """LiteLLM Proxy へ接続するモデルを開く.
@@ -142,17 +168,8 @@ async def open_model(settings: LLMSettings) -> AsyncIterator[_LiteLLMChatModel]:
     AsyncOpenAI の接続はイベントループに属し、同期コードからの実行では毎回ループが
     変わるので、クライアントは実行ごとに作って閉じる。
     """
-    async with AsyncOpenAI(
-        base_url=settings.proxy_base_url,
-        # キー未設定でも送信し、認証の判断は LiteLLM に任せる（SDK は空文字を拒否する）
-        api_key=settings.proxy_api_key or _MISSING_API_KEY,
-        timeout=settings.timeout,
-    ) as client:
-        yield _LiteLLMChatModel(
-            settings.model_alias,
-            provider=LiteLLMProvider(openai_client=client),
-            profile=_LITELLM_PROFILE,
-        )
+    async with _build_client(settings) as client:
+        yield _build_model(settings, client)
 
 
 def _build_model_settings(
@@ -168,6 +185,17 @@ def _build_model_settings(
     if max_tokens is None:
         return ModelSettings(extra_body=extra_body)
     return ModelSettings(extra_body=extra_body, max_tokens=max_tokens)
+
+
+def _run_options(
+    settings: LLMSettings, *, max_tokens: int | None, conversation_id: str | None
+) -> dict[str, Any]:
+    """通常の実行とストリーミングの実行で揃える引数を組み立てる."""
+    return {
+        "model_settings": _build_model_settings(settings, max_tokens),
+        "conversation_id": conversation_id or settings.service_name,
+        "capabilities": [_TreatEmptyResponseAsFinished()],
+    }
 
 
 async def arun_agent(
@@ -217,11 +245,11 @@ async def arun_agent(
                 instructions=instructions,
                 message_history=message_history,
                 deps=deps,
-                model_settings=_build_model_settings(settings, max_tokens),
                 usage_limits=usage_limits,
                 retries=retries,
-                conversation_id=conversation_id or settings.service_name,
-                capabilities=[_TreatEmptyResponseAsFinished()],
+                **_run_options(
+                    settings, max_tokens=max_tokens, conversation_id=conversation_id
+                ),
             )
 
 
@@ -243,3 +271,84 @@ def run_agent_sync(
         実行結果
     """
     return async_to_sync(arun_agent)(agent, settings, **kwargs)
+
+
+def _close_client(client: AsyncOpenAI) -> None:
+    """`run_stream_sync` が使ったループ（呼び出し元スレッドの現在のループ）で閉じる.
+
+    接続はループに属するので、別のループでは閉じられない。ループが使えないときは
+    `run_stream_sync` が接続を開く前に失敗しているので、何もしない。
+    """
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        return
+    if loop.is_closed() or loop.is_running():
+        return
+    try:
+        loop.run_until_complete(client.close())
+    except Exception as exc:  # noqa: BLE001
+        # 本文はすでに処理済みなので、ここでの失敗で応答を失敗にしない
+        logger.warning("LLM クライアントを閉じられませんでした: %s", exc)
+
+
+def stream_text_sync(
+    agent: Agent[Any, Any],
+    settings: LLMSettings,
+    *,
+    user_prompt: str,
+    deps: Any = None,
+    message_history: Sequence[ModelMessage] | None = None,
+    max_tokens: int | None = None,
+    conversation_id: str | None = None,
+) -> Iterator[str]:
+    """同期コードからテキスト出力のエージェントを実行し、本文の増分を順に返す.
+
+    `Agent.run_stream_sync` は 1 本の長寿命タスクで実行全体を動かすので、OpenTelemetry の
+    ネストとキャンセルスコープが保たれる。呼び出し元スレッドのイベントループで動くので、
+    同じスレッドで読み進めて閉じること。`close()` で閉じると HTTP の接続もその場で閉じる。
+
+    `run_stream_sync` には instructions の引数がないので、system プロンプトは
+    エージェントの動的 instructions（`deps` を返す関数）で渡す。
+
+    本文のない応答は増分なしで正常に終わる（`output_type` に `None` を許すエージェントのみ）。
+
+    Args:
+        agent: 実行するエージェント
+        settings: 接続設定
+        user_prompt: 今回のユーザーメッセージ
+        deps: エージェントへ渡す依存
+        message_history: 過去の会話履歴
+        max_tokens: 出力トークン数の上限
+        conversation_id: 会話 ID（`arun_agent` と同じく、省略時はサービス名）
+
+    Yields:
+        本文の増分
+
+    Raises:
+        LLMTimeoutError: タイムアウト時
+        LLMOutputError: 応答が期待する形にならなかった時
+        LLMClientError: その他の LLM 実行エラー時
+    """
+    client = _build_client(settings)
+    try:
+        with (
+            translate_llm_errors(),
+            agent.run_stream_sync(
+                user_prompt,
+                model=_build_model(settings, client),
+                message_history=message_history,
+                deps=deps,
+                **_run_options(
+                    settings, max_tokens=max_tokens, conversation_id=conversation_id
+                ),
+            ) as run,
+        ):
+            # 本文のない応答はここへ来た時点で実行が終わっていて、stream_text() は使えない
+            if run.response.state == "incomplete":
+                with closing(
+                    run.stream_text(delta=True, debounce_by=_STREAM_DEBOUNCE_SECONDS)
+                ) as deltas:
+                    yield from deltas
+    finally:
+        _close_client(client)
