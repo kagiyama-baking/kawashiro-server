@@ -16,6 +16,7 @@ from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
 from integrations.llm.runtime import run_agent_sync
 
+from .agents import hn_conversation_id
 from .agents.detective import DetectiveAgent
 from .agents.devils_advocate import DevilsAdvocateAgent
 from .agents.security_responder import SecurityResponderAgent
@@ -256,6 +257,7 @@ class Orchestrator:
             ),
             # 未知のツール名はモデルへ伝えて続行させる（打ち切りは usage_limits に任せる）
             retries={"tools": MAX_STEPS},
+            conversation_id=hn_conversation_id(thread),
         )
 
     def _extract_results(

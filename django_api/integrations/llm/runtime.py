@@ -11,6 +11,7 @@ from typing import Any
 
 from asgiref.sync import async_to_sync
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from pydantic_ai import Agent, AgentRunResult, RunContext
 from pydantic_ai.agent import AgentRetries
 from pydantic_ai.capabilities import AbstractCapability
@@ -24,11 +25,11 @@ from pydantic_ai.exceptions import (
 )
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models import ModelRequestContext
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIStreamedResponse
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.litellm import LiteLLMProvider
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai.usage import RequestUsage, UsageLimits
 
 from .config import LLMSettings
 from .exceptions import LLMClientError, LLMOutputError, LLMTimeoutError
@@ -79,6 +80,37 @@ class _TreatEmptyResponseAsFinished(AbstractCapability[Any]):
         return response
 
 
+def _without_breakdown(usage: RequestUsage) -> RequestUsage:
+    """usage から内訳を除く.
+
+    LiteLLM の `text_tokens` や `reasoning_tokens` は output の内数だが、Langfuse は usage の
+    全項目を足して total にするので、残すと output を二重に数える。
+    """
+    return replace(usage, details={})
+
+
+class _LiteLLMStreamedResponse(OpenAIStreamedResponse):
+    """usage の内訳を持たない、LiteLLM のストリーミング応答."""
+
+    def _map_usage(self, response: ChatCompletionChunk) -> RequestUsage:
+        return _without_breakdown(super()._map_usage(response))
+
+
+class _LiteLLMChatModel(OpenAIChatModel):
+    """usage の内訳を持たない、LiteLLM の Chat モデル.
+
+    計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で
+    書き換えても generation には反映されない。応答を作るところで除く。
+    """
+
+    def _map_usage(self, response: ChatCompletion) -> RequestUsage:
+        return _without_breakdown(super()._map_usage(response))
+
+    @property
+    def _streamed_response_cls(self) -> type[OpenAIStreamedResponse]:
+        return _LiteLLMStreamedResponse
+
+
 @contextmanager
 def translate_llm_errors() -> Iterator[None]:
     """PydanticAI の例外をプロジェクトの例外へ変換する.
@@ -104,7 +136,7 @@ def translate_llm_errors() -> Iterator[None]:
 
 
 @asynccontextmanager
-async def open_model(settings: LLMSettings) -> AsyncIterator[OpenAIChatModel]:
+async def open_model(settings: LLMSettings) -> AsyncIterator[_LiteLLMChatModel]:
     """LiteLLM Proxy へ接続するモデルを開く.
 
     AsyncOpenAI の接続はイベントループに属し、同期コードからの実行では毎回ループが
@@ -116,7 +148,7 @@ async def open_model(settings: LLMSettings) -> AsyncIterator[OpenAIChatModel]:
         api_key=settings.proxy_api_key or _MISSING_API_KEY,
         timeout=settings.timeout,
     ) as client:
-        yield OpenAIChatModel(
+        yield _LiteLLMChatModel(
             settings.model_alias,
             provider=LiteLLMProvider(openai_client=client),
             profile=_LITELLM_PROFILE,
@@ -149,6 +181,7 @@ async def arun_agent(
     usage_limits: UsageLimits | None = None,
     max_tokens: int | None = None,
     retries: int | AgentRetries | None = None,
+    conversation_id: str | None = None,
 ) -> AgentRunResult[Any]:
     """エージェントを LiteLLM Proxy 経由で 1 回実行する.
 
@@ -164,6 +197,9 @@ async def arun_agent(
         usage_limits: リクエスト数・ツール呼び出し数の上限
         max_tokens: 出力トークン数の上限
         retries: リトライ回数の上書き
+        conversation_id: 会話 ID。Langfuse はこれをセッションとして扱う（`session.id` を
+            伝播していればそちらを優先する）。PydanticAI の既定は実行ごとの UUID で、
+            セッションが増え続けるので、省略時はサービス名にする
 
     Returns:
         実行結果
@@ -184,6 +220,7 @@ async def arun_agent(
                 model_settings=_build_model_settings(settings, max_tokens),
                 usage_limits=usage_limits,
                 retries=retries,
+                conversation_id=conversation_id or settings.service_name,
                 capabilities=[_TreatEmptyResponseAsFinished()],
             )
 

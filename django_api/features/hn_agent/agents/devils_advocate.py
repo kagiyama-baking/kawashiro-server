@@ -12,7 +12,12 @@ from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
 
 from ..models import HNAgentConfig, HNThread
-from . import PreparedAnalysis, fetch_comments_text, run_analysis
+from . import (
+    PreparedAnalysis,
+    fetch_comments_text,
+    hn_conversation_id,
+    run_analysis,
+)
 from .schemas import DevilsAdvocateAnalysis
 
 logger = logging.getLogger(__name__)
@@ -115,6 +120,7 @@ class DevilsAdvocateAgent:
             prepared.system_prompt,
             prepared.user_prompt,
             _fallback_analysis,
+            conversation_id=hn_conversation_id(thread),
         )
 
         result = {

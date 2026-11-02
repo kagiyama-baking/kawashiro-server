@@ -36,6 +36,15 @@ class PreparedAnalysis:
     sources: list[dict[str, Any]] = field(default_factory=list)
 
 
+def hn_conversation_id(thread: HNThread) -> str:
+    """スレッドの調査の会話 ID を返す.
+
+    Langfuse はこれをセッションとして扱うので、Orchestrator とサブエージェントで揃えて
+    1 つのスレッドの調査を 1 つのセッションにまとめる。
+    """
+    return f"hn-thread/{thread.hn_id}"
+
+
 def _last_response_text(messages: list[ModelMessage]) -> str:
     """実行中の最後の応答本文を返す（本文のない応答は飛ばす）."""
     for message in reversed(messages):
@@ -50,6 +59,8 @@ async def run_analysis(
     system_prompt: str,
     user_prompt: str,
     fallback: Callable[[str], dict[str, Any]],
+    *,
+    conversation_id: str,
 ) -> dict[str, Any]:
     """構造化出力のエージェントを実行し、結果を dict で返す.
 
@@ -63,6 +74,7 @@ async def run_analysis(
         system_prompt: システムプロンプト
         user_prompt: ユーザープロンプト
         fallback: 最後の応答本文から代わりの分析結果を作る関数
+        conversation_id: 会話 ID（`hn_conversation_id`）
 
     Returns:
         分析結果
@@ -79,6 +91,7 @@ async def run_analysis(
                 instructions=system_prompt,
                 retries={"output": ANALYSIS_OUTPUT_RETRIES},
                 usage_limits=UsageLimits(request_limit=ANALYSIS_REQUEST_LIMIT),
+                conversation_id=conversation_id,
             )
         except LLMOutputError as exc:
             # 不正な HTTP 応答などでモデルの応答を受け取れていないなら、分析の失敗として送出する

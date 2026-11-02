@@ -14,7 +14,12 @@ from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
 from ..models import HNAgentConfig, HNThread
-from . import PreparedAnalysis, fetch_comments_text, run_analysis
+from . import (
+    PreparedAnalysis,
+    fetch_comments_text,
+    hn_conversation_id,
+    run_analysis,
+)
 from .schemas import SecurityAnalysis
 
 logger = logging.getLogger(__name__)
@@ -165,6 +170,7 @@ class SecurityResponderAgent:
             prepared.system_prompt,
             prepared.user_prompt,
             _fallback_analysis,
+            conversation_id=hn_conversation_id(thread),
         )
 
         result = {

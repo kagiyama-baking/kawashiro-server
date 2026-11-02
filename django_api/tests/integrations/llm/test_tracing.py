@@ -134,6 +134,23 @@ class TestTraceStructure:
         assert _ancestor_names(talk, spans) == ["talk/chat"]
         assert generation["attributes"]["session.id"] == "trace-session"
 
+    def test_investigation_uses_one_conversation_id(self, captured):
+        """調査全体で会話 ID が 1 つになり、Langfuse のセッションが実行ごとに増えない.
+
+        Langfuse は `gen_ai.conversation.id` をセッションとして扱い、省略すると
+        エージェントの実行ごとに別の UUID になる。
+        """
+        spans = captured["spans"]
+        root = _find(spans, "hn-agent/orchestrator")
+        conversation_ids = {
+            span["attributes"]["gen_ai.conversation.id"]
+            for span in spans
+            if span["trace_id"] == root["trace_id"]
+            and "gen_ai.conversation.id" in span["attributes"]
+        }
+
+        assert conversation_ids == {"hn-thread/4242"}
+
 
 IMPORT_CHECK_CODE = """
 import json

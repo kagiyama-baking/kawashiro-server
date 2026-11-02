@@ -115,6 +115,7 @@ def litellm_response(
     content: str | None = "OK",
     *,
     finish_reason: str = "stop",
+    usage: dict[str, object] | None = None,
     **message: object,
 ) -> httpx2.Response:
     """LiteLLM の Chat Completions の 200 応答を作る."""
@@ -132,7 +133,8 @@ def litellm_response(
                     "message": {"role": "assistant", "content": content, **message},
                 }
             ],
-            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            "usage": usage
+            or {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         },
     )
 

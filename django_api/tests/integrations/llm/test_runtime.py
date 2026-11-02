@@ -501,6 +501,60 @@ class TestErrorsThroughHTTP:
 class TestArunAgent:
     """arun_agent の引数の受け渡し."""
 
+    def test_conversation_id_defaults_to_service_name(self, fake_litellm):
+        """会話 ID の既定はサービス名で、実行ごとに変わらない.
+
+        Langfuse は会話 ID をセッションとして扱うので、ランダムな既定値のままだと
+        実行のたびにセッションが増える。
+        """
+        fake_litellm(litellm_response("a"), litellm_response("b"))
+        agent = Agent(name="contract")
+
+        first = run_agent_sync(agent, _settings(), user_prompt="1")
+        second = run_agent_sync(agent, _settings(), user_prompt="2")
+
+        expected = _settings().service_name
+        assert first.conversation_id == expected
+        assert second.conversation_id == expected
+
+    def test_conversation_id_can_be_specified(self, fake_litellm):
+        """会話 ID を指定すると、その値で実行する."""
+        fake_litellm(litellm_response("a"))
+
+        result = run_agent_sync(
+            Agent(name="contract"),
+            _settings(),
+            user_prompt="u",
+            conversation_id="hn-thread/1",
+        )
+
+        assert result.conversation_id == "hn-thread/1"
+
+    def test_usage_breakdown_is_dropped(self, fake_litellm):
+        """usage に output の内数を持たない.
+
+        Langfuse は usage の全項目を足して total にするので、残すと output を二重に数える。
+        """
+        fake_litellm(
+            litellm_response(
+                usage={
+                    "prompt_tokens": 10,
+                    "completion_tokens": 3,
+                    "total_tokens": 13,
+                    "completion_tokens_details": {
+                        "text_tokens": 2,
+                        "reasoning_tokens": 1,
+                    },
+                }
+            )
+        )
+
+        result = run_agent_sync(Agent(name="contract"), _settings(), user_prompt="u")
+
+        usage = result.response.usage
+        assert (usage.input_tokens, usage.output_tokens) == (10, 3)
+        assert usage.details == {}
+
     def test_usage_limits_are_applied(self, fake_litellm):
         """usage_limits の超過は LLMClientError になる."""
         fake_litellm()

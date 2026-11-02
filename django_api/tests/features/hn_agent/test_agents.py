@@ -364,6 +364,7 @@ class TestRunAnalysis:
             "system",
             "user",
             lambda raw: {"fallback": raw},
+            conversation_id="hn-thread/1",
         )
 
     def test_valid_output_returns_json_dict(self, agent):
