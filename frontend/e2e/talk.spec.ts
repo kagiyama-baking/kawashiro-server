@@ -332,6 +332,14 @@ async function sendText(page: Page, text: string) {
     await composer(page).press('Enter');
 }
 
+/** 新規チャットを開く。プリセットが読み込まれるまで送信できないので待つ。 */
+async function openNewChat(page: Page) {
+    await page.goto('/talk');
+    await expect(page.getByRole('combobox', { name: 'プリセット' })).toHaveText(
+        'フレンドリー',
+    );
+}
+
 /** 同じ座標を実際のマウスで間を置いて 2 回押す（2 回目は要素の有無に関わらず押す）。 */
 async function clickTwice(page: Page, target: Locator) {
     const box = await target.boundingBox();
@@ -383,7 +391,7 @@ test.describe('チャット画面', () => {
         });
 
         test('応答が終わるとタイトルが一覧とヘッダに出る', async ({ page }) => {
-            await page.goto('/talk');
+            await openNewChat(page);
             await sendText(page, 'こんにちは');
             await pushEvent(page, 0, 'start');
             await pushEvent(page, 0, 'delta', { text: 'こんにちは！' });
@@ -410,7 +418,7 @@ test.describe('チャット画面', () => {
         test('最初の応答に失敗すると空のセッションを消して /talk へ戻り、本文を入力欄へ戻す', async ({
             page,
         }) => {
-            await page.goto('/talk');
+            await openNewChat(page);
 
             await sendText(page, '失敗する発話');
             await expect(page).toHaveURL('/talk/new');
@@ -672,12 +680,12 @@ test.describe('チャット画面', () => {
 
             await expect(mainArea(page).getByText('直した発話')).toBeVisible();
             await expect(mainArea(page).getByText('元の応答')).toHaveCount(0);
+
+            await pushEvent(page, 0, 'delta', { text: '新しい応答' });
             const [turn] = await turnsOf(page);
             expect(turn.method).toBe('PATCH');
             expect(turn.pathname).toBe('/api/talk/sessions/s2/messages/11/');
             expect(turn.content).toBe('直した発話');
-
-            await pushEvent(page, 0, 'delta', { text: '新しい応答' });
             await pushEvent(page, 0, 'message', {
                 user: message(21, 0, 'user', '直した発話'),
                 assistant: message(22, 1, 'assistant', '新しい応答'),
@@ -1092,7 +1100,9 @@ test.describe('チャット画面', () => {
             await composer(page).press('Enter');
 
             await expect(composer(page)).toHaveValue('');
-            expect((await turnsOf(page))[0].content).toBe('1 行目\n2 行目');
+            await expect
+                .poll(async () => (await turnsOf(page))[0]?.content)
+                .toBe('1 行目\n2 行目');
         });
 
         test('IME で変換中の Enter では送らない', async ({ page }) => {
