@@ -54,9 +54,13 @@ function BulkAudioActions({ sessionId }: { readonly sessionId: string }) {
                 size="sm"
                 onClick={() => setIsConfirming(true)}
                 disabled={isBusy}
+                aria-label="音声を全削除"
             >
                 <Trash2 />
-                音声を全削除
+                {/* スマホ幅で 1 行に収める */}
+                <span>
+                    <span className="hidden sm:inline">音声を</span>全削除
+                </span>
             </Button>
             <ConfirmDialog
                 open={isConfirming}

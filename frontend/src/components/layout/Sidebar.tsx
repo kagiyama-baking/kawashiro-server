@@ -74,7 +74,13 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                                 to={to}
                                 end={to === '/'}
                                 onClick={onClose}
-                                className="text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full flex-col items-start gap-[3px] rounded-md py-[0.7rem] pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] aria-[current=page]:before:h-[62%]"
+                                className={cn(
+                                    'text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full rounded-md pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] aria-[current=page]:before:h-[62%]',
+                                    // チャットでは一覧の場所を空けるため 1 行に詰める
+                                    isChat
+                                        ? 'items-baseline justify-between gap-2 py-[0.35rem]'
+                                        : 'flex-col items-start gap-[3px] py-[0.7rem]',
+                                )}
                             >
                                 <span className="font-latin text-[0.76rem] tracking-[0.22em] uppercase">
                                     {en}

@@ -36,6 +36,11 @@ import { PresetPicker } from './PresetPicker';
 const REVEAL_ON_HOVER =
     '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:transition-opacity [@media(hover:hover)]:group-hover/message:opacity-100 [@media(hover:hover)]:focus-within:opacity-100';
 
+/** タッチの環境で自動フォーカスすると、開いただけでソフトキーボードが画面を覆ってしまう。 */
+function canAutoFocusComposer(): boolean {
+    return window.matchMedia?.('(hover: hover)').matches ?? false;
+}
+
 function useComposerLimit() {
     const length = useAuiState((s) => s.composer.text.length);
     return { length, isOverLimit: length > CHAT_MESSAGE_MAX_LENGTH };
@@ -88,7 +93,7 @@ function Composer({ isEmpty }: { readonly isEmpty: boolean }) {
                     isEmpty ? 'メッセージを入力' : '続けてメッセージを入力'
                 }
                 rows={1}
-                autoFocus
+                autoFocus={canAutoFocusComposer()}
                 enterKeyHint="send"
                 onKeyDown={handleKeyDown}
                 className="text-ink-strong placeholder:text-ink-subtle max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1.5 outline-none"

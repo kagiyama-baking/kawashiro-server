@@ -161,7 +161,7 @@ const components = memoizeMarkdownComponents({
     th: ({ className, ...props }) => (
         <th
             className={cn(
-                'bg-card text-ink-strong border px-3 py-1.5 text-start font-medium [[align=center]]:text-center [[align=right]]:text-right',
+                'bg-card text-ink-strong border px-3 py-1.5 text-start font-medium whitespace-nowrap [[align=center]]:text-center [[align=right]]:text-right',
                 className,
             )}
             {...props}
@@ -170,7 +170,7 @@ const components = memoizeMarkdownComponents({
     td: ({ className, ...props }) => (
         <td
             className={cn(
-                'border px-3 py-1.5 text-start [[align=center]]:text-center [[align=right]]:text-right',
+                'min-w-[5em] border px-3 py-1.5 text-start [overflow-wrap:break-word] [[align=center]]:text-center [[align=right]]:text-right',
                 className,
             )}
             {...props}
