@@ -84,7 +84,7 @@ interface ChatStoreActions {
     readonly openSession: (id: string) => Promise<OpenSessionResult>;
     readonly startNewChat: () => void;
     readonly updateActiveTitle: (title: string) => Promise<void>;
-    readonly removeSession: (id: string) => Promise<void>;
+    readonly removeSession: (id: string) => Promise<boolean>;
     readonly sendMessage: (
         content: string,
         hooks?: TurnHooks,
@@ -144,6 +144,7 @@ interface CurrentRun {
 
 /** 1 回の送信または編集の文脈。 */
 interface TurnContext {
+    readonly kind: 'send' | 'edit';
     readonly controller: AbortController;
     readonly sessionId: string;
     readonly threadKey: number;
@@ -181,6 +182,10 @@ function delay(ms: number): Promise<void> {
 
 function isNotFound(error: unknown): boolean {
     return error instanceof HTTPError && error.response.status === 404;
+}
+
+function isBadRequest(error: unknown): boolean {
+    return error instanceof HTTPError && error.response.status === 400;
 }
 
 function readSelectedConfig(): string | null {
@@ -497,17 +502,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }
     };
 
-    /** 保存のあと done の前に切れた。音声の通知は来ないので、保存された値を読み直す。 */
-    const refreshAfterLostStream = async (ctx: TurnContext) => {
-        updateMessages(ctx.sessionId, (messages) =>
-            finishPendingAudio(messages, ctx.assistantLocalId),
-        );
+    /** サーバーの値を 1 度読み直す。次のターンの表示は巻き戻さない。 */
+    const refreshFromServer = async (sessionId: string) => {
         try {
-            const detail = await apiGetSession(ctx.sessionId);
+            const detail = await apiGetSession(sessionId);
             const state = get();
-            // 次のターンの表示を巻き戻さない
             if (
-                state.activeSessionId === ctx.sessionId &&
+                state.activeSessionId === sessionId &&
                 !state.isRunning &&
                 !state.isSyncing
             ) {
@@ -516,6 +517,14 @@ export const useChatStore = create<ChatStore>((set, get) => {
         } catch {
             // 次の読み込みで揃う
         }
+    };
+
+    /** 保存のあと done の前に切れた。音声の通知は来ないので、保存された値を読み直す。 */
+    const refreshAfterLostStream = async (ctx: TurnContext) => {
+        updateMessages(ctx.sessionId, (messages) =>
+            finishPendingAudio(messages, ctx.assistantLocalId),
+        );
+        await refreshFromServer(ctx.sessionId);
     };
 
     const consumeTurn = async (
@@ -551,7 +560,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
                     error,
                     SEND_FAILED,
                 );
-                return failTurn(ctx, message);
+                const result = failTurn(ctx, message);
+                // 件数の上限なら、別のタブなどで増えた分を読み直して上限の案内を出す
+                if (ctx.kind === 'send' && isBadRequest(error)) {
+                    void refreshFromServer(ctx.sessionId);
+                }
+                return result;
             }
         } finally {
             backgroundRuns.delete(controller);
@@ -694,7 +708,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
             } catch (error) {
                 if (token !== openToken) return 'stale';
                 if (isNotFound(error)) {
-                    set(emptyThread());
+                    set({
+                        ...emptyThread(),
+                        error: 'チャットが見つかりませんでした',
+                    });
                     return 'not-found';
                 }
                 set({
@@ -719,7 +736,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
         },
 
         removeSession: async (id) => {
-            await apiDeleteSession(id);
+            try {
+                await apiDeleteSession(id);
+            } catch {
+                set({ error: 'チャットを削除できませんでした' });
+                return false;
+            }
             backgroundRuns.forEach((sessionId, controller) => {
                 if (sessionId === id) controller.abort(LEAVE);
             });
@@ -728,6 +750,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
                 set(emptyThread());
             }
             dropFromList(id);
+            return true;
         },
 
         sendMessage: async (content, hooks = {}) => {
@@ -755,6 +778,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
             return consumeTurn(
                 {
+                    kind: 'send',
                     controller,
                     sessionId,
                     threadKey,
@@ -800,6 +824,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
             return consumeTurn(
                 {
+                    kind: 'edit',
                     controller,
                     sessionId,
                     threadKey: state.threadKey,

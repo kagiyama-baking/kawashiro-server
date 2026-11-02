@@ -82,6 +82,51 @@ describe('Sidebar', () => {
         });
     });
 
+    describe('チャットの一覧', () => {
+        it.each(['/talk', '/talk/s1'])(
+            '%s では新しいチャットの導線を出す',
+            (path) => {
+                renderSidebar(path);
+
+                expect(
+                    desktop().getByRole('link', { name: '新しいチャット' }),
+                ).toHaveAttribute('href', '/talk');
+            },
+        );
+
+        it('チャット以外では出さない', () => {
+            renderSidebar('/tts');
+
+            expect(
+                desktop().queryByRole('link', { name: '新しいチャット' }),
+            ).not.toBeInTheDocument();
+        });
+
+        it('/talk 配下でもチャットのナビを現在地にする', () => {
+            renderSidebar('/talk/s1');
+
+            expect(
+                desktop().getByRole('link', { name: /Talk/ }),
+            ).toHaveAttribute('aria-current', 'page');
+        });
+
+        it('ドロワーの一覧を押すと閉じる', async () => {
+            const user = userEvent.setup();
+            renderSidebar('/talk/s1');
+            await user.click(
+                screen.getByRole('button', { name: 'メニューを開く' }),
+            );
+            expect(drawer()).not.toHaveAttribute('inert');
+
+            await user.click(
+                within(drawer()).getByRole('link', { name: '新しいチャット' }),
+            );
+
+            expect(drawer()).toHaveAttribute('inert');
+            expect(screen.getByTestId('pathname').textContent).toBe('/talk');
+        });
+    });
+
     describe('ブランド', () => {
         it('ブランド名を表示し、ページの h1 と競合する見出しにはしない', () => {
             renderSidebar();

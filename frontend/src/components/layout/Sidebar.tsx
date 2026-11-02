@@ -1,19 +1,17 @@
 import { LogOut, Menu, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router';
+import { NavLink, useMatch, useNavigate } from 'react-router';
 import swirlMark from '@/assets/swirl.webp';
 import { Button } from '@/components/ui/button';
+import { SessionNav } from '@/features/talk/SessionNav';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { navItems } from './nav-items';
+import { GHOST_ON_SIDEBAR } from './sidebar-styles';
 
 // 暗い緑の面。フォーカスの枠は、この面の上でも見える明るい緑に切り替える
 const SURFACE =
     'bg-sidebar text-sidebar-foreground [--ring:var(--sidebar-ring)]';
-
-// ghost の hover（accent）はこの面と同じ色で見えないので上書きする
-const GHOST_ON_SURFACE =
-    'text-sidebar-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-accent-foreground';
 
 function Brand() {
     return (
@@ -39,6 +37,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     const email = useAuthStore((s) => s.email);
     const clearAuth = useAuthStore((s) => s.clearAuth);
     const navigate = useNavigate();
+    const isChat = useMatch('/talk/*') !== null;
 
     const handleLogout = () => {
         clearAuth();
@@ -46,7 +45,12 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     };
 
     return (
-        <div className="flex h-full flex-col gap-[2.4rem] overflow-y-auto pt-[1.7rem] pb-[1.2rem] select-none">
+        <div
+            className={cn(
+                'flex h-full flex-col overflow-y-auto pt-[1.7rem] pb-[1.2rem] select-none',
+                isChat ? 'gap-[1.2rem]' : 'gap-[2.4rem]',
+            )}
+        >
             <div className="flex items-center justify-between gap-2 px-[1.4rem]">
                 <Brand />
                 {onClose && (
@@ -54,7 +58,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                         variant="ghost"
                         size="icon-sm"
                         onClick={onClose}
-                        className={GHOST_ON_SURFACE}
+                        className={GHOST_ON_SIDEBAR}
                         aria-label="メニューを閉じる"
                     >
                         <X className="size-5" />
@@ -84,6 +88,8 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                 </ul>
             </nav>
 
+            {isChat && <SessionNav onNavigate={onClose} />}
+
             <div className="border-sidebar-border mx-[1.4rem] mt-auto border-t pt-4">
                 <p className="font-latin text-sidebar-muted-foreground truncate text-[0.7rem] tracking-[0.06em] select-text">
                     {email}
@@ -92,7 +98,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                     variant="ghost"
                     size="sm"
                     className={cn(
-                        GHOST_ON_SURFACE,
+                        GHOST_ON_SIDEBAR,
                         'mt-2 -ml-[0.7rem] justify-start',
                     )}
                     onClick={handleLogout}
@@ -137,7 +143,7 @@ export function Sidebar() {
                     ref={menuButtonRef}
                     variant="ghost"
                     size="icon"
-                    className={GHOST_ON_SURFACE}
+                    className={GHOST_ON_SIDEBAR}
                     onClick={() => setMobileOpen(true)}
                     aria-label="メニューを開く"
                 >
