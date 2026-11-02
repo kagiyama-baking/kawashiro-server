@@ -1105,23 +1105,39 @@ test.describe('チャット画面', () => {
                 .toBe('1 行目\n2 行目');
         });
 
-        test('IME で変換中の Enter では送らない', async ({ page }) => {
+        test('IME で変換中の Enter では送らず、確定後の Enter で送る', async ({
+            page,
+        }) => {
             await page.goto('/talk/s2');
-            await composer(page).fill('かな');
+            await composer(page).click();
+            const cdp = await page.context().newCDPSession(page);
 
-            await composer(page).evaluate((el) => {
-                el.dispatchEvent(
-                    new KeyboardEvent('keydown', {
-                        key: 'Enter',
-                        bubbles: true,
-                        cancelable: true,
-                        isComposing: true,
-                    }),
-                );
+            await cdp.send('Input.imeSetComposition', {
+                text: 'かな',
+                selectionStart: 2,
+                selectionEnd: 2,
             });
+            await expect(composer(page)).toHaveValue('かな');
+            // 変換中の Enter は、IME がキーコード 229 で keydown を渡す
+            for (const type of ['rawKeyDown', 'keyUp'] as const) {
+                await cdp.send('Input.dispatchKeyEvent', {
+                    type,
+                    windowsVirtualKeyCode: 229,
+                    key: 'Enter',
+                    code: 'Enter',
+                });
+            }
 
             await expect(composer(page)).toHaveValue('かな');
             expect(await turnsOf(page)).toEqual([]);
+
+            await cdp.send('Input.insertText', { text: 'かな' });
+            await page.keyboard.press('Enter');
+
+            await expect(composer(page)).toHaveValue('');
+            await expect
+                .poll(async () => (await turnsOf(page))[0]?.content)
+                .toBe('かな');
         });
 
         test('4000 字を超えても切り詰めず、送信を止める', async ({ page }) => {
