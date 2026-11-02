@@ -311,6 +311,15 @@ class TestStreamChatReplyLangfuseSession:
 
         assert deltas == ["OK"]
 
+    def test_langfuse_session_release_failure_does_not_break_chat(self, chat_llm):
+        chat_llm.enqueue("OK")
+
+        with patch("langfuse.propagate_attributes") as mock_propagate:
+            mock_propagate.return_value.__exit__.side_effect = RuntimeError("boom")
+            deltas = _reply(session_id="abc-123")
+
+        assert deltas == ["OK"]
+
 
 @pytest.mark.django_db
 class TestSynthesizeAudio:

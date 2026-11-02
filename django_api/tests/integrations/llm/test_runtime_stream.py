@@ -5,10 +5,12 @@ HTTP の契約は `httpx2.MockTransport` で OpenAI SDK の下まで通して確
 """
 
 import threading
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2
 import pytest
 from asgiref.sync import async_to_sync
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import UserError
@@ -26,7 +28,7 @@ from integrations.llm.exceptions import (
     LLMOutputError,
     LLMTimeoutError,
 )
-from integrations.llm.runtime import run_agent_sync, stream_text_sync
+from integrations.llm.runtime import _close_client, run_agent_sync, stream_text_sync
 from tests.fixtures.llm import LITELLM_ALIASES as ALIASES
 from tests.fixtures.llm import LiteLLMStreamBody, litellm_response, litellm_stream
 from tests.fixtures.sse import SEPARATE_DELTAS
@@ -404,6 +406,26 @@ class TestStreamLifecycle:
             async_to_sync(call)()
 
         assert fake.requests == []
+
+    def test_client_close_failure_does_not_fail_stream(self, fake_litellm, caplog):
+        """閉じるときの失敗は警告だけにする（本文はすでに返している）."""
+        fake_litellm(litellm_stream("本文"))
+
+        with patch.object(
+            AsyncOpenAI, "close", AsyncMock(side_effect=RuntimeError("close failed"))
+        ):
+            assert _stream() == ["本文"]
+
+        assert "close failed" in caplog.text
+
+    def test_close_client_without_event_loop_does_nothing(self):
+        """ループがなければ接続も開いていないので何もしない."""
+        client = MagicMock()
+
+        with patch("asyncio.get_event_loop", side_effect=RuntimeError("no loop")):
+            _close_client(client)
+
+        client.close.assert_not_called()
 
 
 @pytest.mark.unit

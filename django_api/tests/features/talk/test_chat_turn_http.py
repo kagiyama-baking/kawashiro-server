@@ -22,6 +22,7 @@ from tests.fixtures.sse import (
     SSE_ACCEPT,
     SSEReader,
     edit_sse,
+    edit_url,
     event_names,
     send_sse,
     send_url,
@@ -75,6 +76,42 @@ class TestPreValidationStaysHttp:
         assert response.status_code == 404
         assert not response.streaming
         assert "error" in response.data
+
+    def test_edit_missing_config_returns_404_and_keeps_message(self, auth_client, user):
+        orphan = ChatSession.objects.create(user=user, config_name="nope")
+        message = ChatMessage.objects.create(
+            session=orphan, sequence=0, role="user", content="元の発話"
+        )
+
+        response = auth_client.patch(
+            edit_url(orphan.id, message.id),
+            {"content": "編集後"},
+            format="json",
+            HTTP_ACCEPT=SSE_ACCEPT,
+        )
+
+        assert response.status_code == 404
+        assert not response.streaming
+        message.refresh_from_db()
+        assert message.content == "元の発話"
+
+    def test_edit_unexpected_failure_returns_edit_message(
+        self, talk_llm_settings, auth_client, session, conversation
+    ):
+        """想定外の失敗は編集用のメッセージで 500 になる."""
+        with patch.object(
+            TalkService, "prepare_chat_prompt", side_effect=RuntimeError("内部の詳細")
+        ):
+            response = auth_client.patch(
+                edit_url(session.id, conversation[0].id),
+                {"content": "編集後"},
+                format="json",
+                HTTP_ACCEPT=SSE_ACCEPT,
+            )
+
+        assert response.status_code == 500
+        assert response.data == {"error": "チャット応答の再生成中に問題が発生しました"}
+        assert session.messages.count() == len(conversation)
 
     def test_message_limit_returns_400(self, chat_llm, auth_client, session):
         ChatMessage.objects.bulk_create(
