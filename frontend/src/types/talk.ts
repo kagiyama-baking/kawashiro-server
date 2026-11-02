@@ -18,6 +18,27 @@ export interface ChatSessionMessage {
     readonly created_at: string;
 }
 
+export type ChatUiStatus = 'streaming' | 'complete' | 'cancelled';
+export type ChatAudioState = 'idle' | 'pending' | 'failed';
+
+// 画面に出す 1 メッセージ。送信中は id などのサーバー側の値がまだない
+export interface ChatUiMessage {
+    // 生涯変わらない識別子（`srv-<id>` か `local-<連番>`）。React の key になるので、
+    // サーバー id が届いても置き換えない。置き換えると行がリマウントする。
+    readonly localId: string;
+    readonly id: number | null;
+    readonly sequence: number | null;
+    readonly role: ChatRole;
+    readonly content: string;
+    readonly audio_url: string | null;
+    readonly audio_format: string;
+    readonly audio_size_bytes: number;
+    readonly created_at: string | null;
+    readonly uiStatus: ChatUiStatus;
+    readonly audioState: ChatAudioState;
+    readonly audioError: string | null;
+}
+
 // セッション一覧の 1 項目
 export interface ChatSessionListItem {
     readonly id: string;
