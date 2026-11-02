@@ -142,7 +142,11 @@ class TestSessionMessageEdit:
         assert response.status_code == 400
 
     def test_edit_drops_subsequent_messages_and_audio(
-        self, chat_llm, populated_session, auth_client
+        self,
+        chat_llm,
+        populated_session,
+        auth_client,
+        django_capture_on_commit_callbacks,
     ):
         session, msgs = populated_session
         chat_llm.enqueue("再生成された応答")
@@ -154,11 +158,12 @@ class TestSessionMessageEdit:
         assert storage.exists(a1_path) and storage.exists(a3_path)
 
         # msgs[0] (user, sequence=0) を編集
-        response = auth_client.patch(
-            _url(session.id, msgs[0].id),
-            {"content": "編集後"},
-            format="json",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            response = auth_client.patch(
+                _url(session.id, msgs[0].id),
+                {"content": "編集後"},
+                format="json",
+            )
 
         assert response.status_code == 200
         # 残るのは新 user (sequence=0) + 新 assistant (sequence=1)

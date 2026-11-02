@@ -4,6 +4,8 @@
 Django テストクライアントの `closing_iterator_wrapper` を通る）。
 """
 
+import signal
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -204,7 +206,12 @@ class TestDisconnect:
         assert session.updated_at > before
 
     def test_edit_disconnect_replaces_target_and_later(
-        self, chat_llm, auth_client, session, conversation
+        self,
+        chat_llm,
+        auth_client,
+        session,
+        conversation,
+        django_capture_on_commit_callbacks,
     ):
         """編集の切断は対象以降を置き換え、古い音声を消す."""
         chat_llm.enqueue(stream_of("途中", hang=True))
@@ -213,7 +220,8 @@ class TestDisconnect:
         reader = edit_sse(auth_client, session.id, conversation[2].id)
 
         reader.read_until("delta")
-        reader.disconnect()
+        with django_capture_on_commit_callbacks(execute=True):
+            reader.disconnect()
 
         assert saved_messages(session) == [
             (0, "user", "#0"),
@@ -329,29 +337,6 @@ class TestDisconnect:
             (2, "assistant", "次の返信"),
         ]
 
-    def test_worker_abort_during_llm_saves_partial(
-        self, chat_llm, title_llm, auth_client, session
-    ):
-        """gunicorn のワーカー強制終了（SystemExit）でも、届いた分を失わない.
-
-        ワーカーの `--timeout` を超えると SIGABRT で `sys.exit` され、接続が切れる。
-        """
-
-        def dying_stream(*args, **kwargs):
-            yield "途中"
-            raise SystemExit(1)
-
-        with patch.object(TalkService, "stream_chat_reply", dying_stream):
-            reader = send_sse(auth_client, session.id)
-            with pytest.raises(SystemExit):
-                reader.read_all()
-
-        assert saved_messages(session) == [
-            (0, "user", "おはよう"),
-            (1, "assistant", "途中"),
-        ]
-        assert title_llm.requests == []
-
     def test_disconnect_after_message_keeps_reply_and_skips_rest(
         self, chat_llm, title_llm, mock_tts, auth_client, tts_session
     ):
@@ -409,6 +394,117 @@ class TestDisconnect:
         ]
 
 
+def _stream_then_abort(*chunks: str):
+    """本文を流した後でワーカーが強制終了されるストリームを作る."""
+
+    def stream(*args, **kwargs):
+        yield from chunks
+        raise SystemExit(1)
+
+    return stream
+
+
+@pytest.mark.django_db
+class TestWorkerAbort:
+    """gunicorn のワーカー強制終了（`--timeout` の超過で SIGABRT → `sys.exit`）."""
+
+    def test_abort_with_text_saves_partial(
+        self, chat_llm, title_llm, auth_client, session
+    ):
+        """本文が届いていれば、切断と同じく届いた分を保存する."""
+        with patch.object(TalkService, "stream_chat_reply", _stream_then_abort("途中")):
+            reader = send_sse(auth_client, session.id)
+            with pytest.raises(SystemExit):
+                reader.read_all()
+
+        assert saved_messages(session) == [
+            (0, "user", "おはよう"),
+            (1, "assistant", "途中"),
+        ]
+        assert title_llm.requests == []
+
+    def test_abort_before_text_saves_nothing(self, chat_llm, auth_client, session):
+        """本文が届く前なら、LLM の失敗と同じく何も保存しない."""
+        with patch.object(TalkService, "stream_chat_reply", _stream_then_abort()):
+            reader = send_sse(auth_client, session.id)
+            with pytest.raises(SystemExit):
+                reader.read_all()
+
+        assert session.messages.count() == 0
+
+    def test_edit_abort_before_text_keeps_history_and_audio(
+        self,
+        chat_llm,
+        auth_client,
+        session,
+        conversation,
+        django_capture_on_commit_callbacks,
+    ):
+        """編集で本文が届く前なら、元の履歴と音声を残す（利用者の停止ではない）."""
+        audio_names = [conversation[1].audio_file.name, conversation[3].audio_file.name]
+        storage = conversation[1].audio_file.storage
+
+        with (
+            django_capture_on_commit_callbacks(execute=True),
+            patch.object(TalkService, "stream_chat_reply", _stream_then_abort()),
+        ):
+            reader = edit_sse(auth_client, session.id, conversation[0].id)
+            with pytest.raises(SystemExit):
+                reader.read_all()
+
+        assert saved_messages(session) == [
+            (0, "user", "#0"),
+            (1, "assistant", "#1"),
+            (2, "user", "#2"),
+            (3, "assistant", "#3"),
+        ]
+        assert all(storage.exists(name) for name in audio_names)
+
+    def test_edit_abort_with_text_replaces_target_and_later(
+        self, chat_llm, auth_client, session, conversation
+    ):
+        """編集で本文が届いていれば、切断と同じく対象以降を置き換える."""
+        with patch.object(TalkService, "stream_chat_reply", _stream_then_abort("途中")):
+            reader = edit_sse(auth_client, session.id, conversation[2].id)
+            with pytest.raises(SystemExit):
+                reader.read_all()
+
+        assert saved_messages(session) == [
+            (0, "user", "#0"),
+            (1, "assistant", "#1"),
+            (2, "user", "編集後"),
+            (3, "assistant", "途中"),
+        ]
+
+    def test_real_signal_while_waiting_for_llm_saves_partial(
+        self, chat_llm, title_llm, auth_client, session
+    ):
+        """LLM を待つ select の中で届くシグナルも、同期ブリッジを通って同じ経路になる.
+
+        gunicorn の `handle_abort` と同じく、シグナルハンドラから `sys.exit` する。
+        """
+        chat_llm.enqueue(stream_of("途中", hang=True))
+        reader = send_sse(auth_client, session.id)
+        reader.read_until("delta")
+
+        def abort(signum, frame):
+            sys.exit(1)
+
+        previous = signal.signal(signal.SIGALRM, abort)
+        signal.setitimer(signal.ITIMER_REAL, 0.2)
+        try:
+            with pytest.raises(SystemExit):
+                reader.read_all()
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous)
+
+        assert saved_messages(session) == [
+            (0, "user", "おはよう"),
+            (1, "assistant", "途中"),
+        ]
+
+
 @pytest.mark.django_db(transaction=True)
 class TestNoTransactionDuringLLM:
     """LLM の間はトランザクションを持たない（ロックで他のリクエストを待たせない）."""
@@ -441,6 +537,21 @@ class TestNoTransactionDuringLLM:
 
         assert response.status_code == 201
         assert llm_transaction_state == [False]
+
+    def test_edit_removes_old_audio_after_real_commit(
+        self, llm_transaction_state, auth_client, session, conversation
+    ):
+        """本物のコミットの後で古い音声を消す（テスト用のトランザクションで包まない）."""
+        session.title = "既存"
+        session.save()
+        removed = conversation[3].audio_file.name
+        kept = conversation[1].audio_file.name
+        storage = conversation[1].audio_file.storage
+
+        edit_sse(auth_client, session.id, conversation[2].id).read_all()
+
+        assert not storage.exists(removed)
+        assert storage.exists(kept)
 
 
 @pytest.mark.django_db
@@ -529,11 +640,16 @@ class TestCommitTurn:
         with pytest.raises(ChatSession.DoesNotExist):
             commit_turn(plan, "x")
 
-    def test_commit_is_atomic(self, session, conversation):
-        """途中で失敗すると履歴の削除ごと巻き戻る."""
+    def test_commit_is_atomic(
+        self, session, conversation, django_capture_on_commit_callbacks
+    ):
+        """途中で失敗すると履歴の削除ごと巻き戻り、音声ファイルも残る."""
         plan = _prepare_plan(session, conversation[0])
+        audio_names = [conversation[1].audio_file.name, conversation[3].audio_file.name]
+        storage = conversation[1].audio_file.storage
 
         with (
+            django_capture_on_commit_callbacks(execute=True),
             patch(
                 "features.talk.chat_turn.create_assistant_message",
                 side_effect=RuntimeError("db down"),
@@ -548,3 +664,17 @@ class TestCommitTurn:
             (2, "user", "#2"),
             (3, "assistant", "#3"),
         ]
+        assert all(storage.exists(name) for name in audio_names)
+
+    def test_commit_locks_session_row_before_numbering(self, session):
+        """採番の前にセッションの行をロックする（SQLite のテストでは効かないので呼び出しを確かめる）."""
+        plan = _prepare_plan(session)
+
+        with patch.object(
+            ChatSession.objects,
+            "select_for_update",
+            wraps=ChatSession.objects.select_for_update,
+        ) as lock:
+            commit_turn(plan, "x")
+
+        lock.assert_called_once_with()

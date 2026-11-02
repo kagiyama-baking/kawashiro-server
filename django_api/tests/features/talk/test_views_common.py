@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db.models.query import QuerySet
 
 from features.talk.exceptions import (
     HolidayNetworkError,
@@ -158,3 +159,26 @@ class TestAttachAudioToMessage:
         assert saved.content == "本文"
         assert not saved.audio_file
         assert saved.audio_size_bytes == 0
+
+    def test_attach_audio_db_failure_leaves_no_file(
+        self, assistant_message, media_root
+    ):
+        """DB の更新に失敗したらファイルを残さず False を返す."""
+        with patch.object(QuerySet, "update", side_effect=RuntimeError("db down")):
+            assert (
+                attach_audio_to_message(assistant_message, b"\x00" * 8, "wav") is False
+            )
+
+        assert _audio_files(media_root) == []
+
+    def test_attach_audio_cleanup_failure_returns_false(self, assistant_message):
+        """後始末の失敗でも例外を出さず False を返す."""
+        storage = assistant_message.audio_file.storage
+
+        with (
+            patch.object(QuerySet, "update", side_effect=RuntimeError("db down")),
+            patch.object(storage, "delete", side_effect=OSError("disk error")),
+        ):
+            assert (
+                attach_audio_to_message(assistant_message, b"\x00" * 8, "wav") is False
+            )

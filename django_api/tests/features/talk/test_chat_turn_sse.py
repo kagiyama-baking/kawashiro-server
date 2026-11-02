@@ -224,6 +224,45 @@ class TestEventSequence:
 
         mock_propagate.assert_any_call(session_id=str(session.id))
 
+    @pytest.mark.parametrize(
+        ("chunk", "stored"),
+        [
+            ("前\x00後", "前後"),
+            ("前\ud83d後", "前?後"),
+        ],
+    )
+    def test_text_that_cannot_be_stored_is_normalized(
+        self, chunk, stored, chat_llm, title_llm, auth_client, session
+    ):
+        """NUL（PostgreSQL に保存できない）と孤立サロゲート（UTF-8 にできない）で応答を失わない."""
+        chat_llm.enqueue(chunk)
+
+        events = send_sse(auth_client, session.id).read_all()
+
+        assert event_names(events)[-1] == "done"
+        assert joined_deltas(events) == stored
+        assert saved_messages(session)[1] == (1, "assistant", stored)
+
+    @pytest.mark.parametrize(
+        ("generated", "stored"),
+        [
+            ("題\x00名", "題名"),
+            ("題\ud83d名", "題?名"),
+        ],
+    )
+    def test_title_that_cannot_be_stored_is_normalized(
+        self, generated, stored, chat_llm, title_llm, auth_client, session
+    ):
+        """タイトルも同じく正規化する."""
+        chat_llm.enqueue("返信")
+        title_llm.enqueue(generated)
+
+        events = send_sse(auth_client, session.id).read_all()
+
+        assert event_data(events, "title") == {"title": stored}
+        session.refresh_from_db()
+        assert session.title == stored
+
     def test_reply_without_text_saves_empty_assistant_and_skips_audio(
         self, chat_llm, title_llm, mock_tts, auth_client, tts_session
     ):
@@ -245,7 +284,12 @@ class TestEdit:
     """編集再送の SSE."""
 
     def test_edit_replaces_target_and_later_messages(
-        self, chat_llm, auth_client, session, conversation, media_root
+        self,
+        chat_llm,
+        auth_client,
+        session,
+        conversation,
+        django_capture_on_commit_callbacks,
     ):
         """対象以降を消して作り直し、前の履歴だけを LLM に渡す."""
         session.title = "既存"
@@ -255,7 +299,8 @@ class TestEdit:
         kept = conversation[1].audio_file.name
         storage = conversation[1].audio_file.storage
 
-        events = edit_sse(auth_client, session.id, conversation[2].id).read_all()
+        with django_capture_on_commit_callbacks(execute=True):
+            events = edit_sse(auth_client, session.id, conversation[2].id).read_all()
 
         assert event_names(events) == ["start", "delta", "message", "done"]
         assert chat_llm.requests[0].conversation == [
@@ -300,6 +345,22 @@ class TestEdit:
 @pytest.mark.django_db
 class TestAudio:
     """音声合成のイベント."""
+
+    def test_empty_audio_emits_audio_error_and_saves_no_file(
+        self, chat_llm, title_llm, mock_tts, auth_client, tts_session, media_root
+    ):
+        """0 バイトの音声は成功として扱わない."""
+        chat_llm.enqueue("返信")
+        mock_tts.synthesize.return_value = TTSResult(
+            audio_data=b"", content_type="audio/wav", format="wav"
+        )
+
+        events = send_sse(auth_client, tts_session.id).read_all()
+
+        assert "audio" not in event_names(events)
+        assert event_data(events, "audio_error")["error"] == "音声の合成に失敗しました"
+        assert audio_files(media_root) == []
+        assert tts_session.messages.get(role="assistant").content == "返信"
 
     def test_audio_event_has_saved_audio(
         self, chat_llm, title_llm, mock_tts, auth_client, tts_session, media_root

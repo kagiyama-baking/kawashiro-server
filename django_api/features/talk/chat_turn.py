@@ -58,6 +58,7 @@ class TurnPlan:
         history: 今回の発話より前の履歴（編集なら対象より前だけ）
         system_prompt: 展開済みの system プロンプト
         service: LLM と TTS を呼ぶサービス
+        fallback_message: 想定外の例外のときにクライアントへ返すメッセージ
         edit_target_id: 編集対象のメッセージ ID（送信なら None）
     """
 
@@ -67,17 +68,13 @@ class TurnPlan:
     history: list[dict[str, str]]
     system_prompt: str
     service: TalkService
+    fallback_message: str
     edit_target_id: int | None = None
 
     @property
     def conversation(self) -> list[dict[str, str]]:
         """LLM へ渡す会話（末尾が今回の発話）."""
         return [*self.history, {"role": "user", "content": self.content}]
-
-    @property
-    def fallback_message(self) -> str:
-        """想定外の例外のときにクライアントへ返すメッセージ."""
-        return _SEND_FALLBACK if self.edit_target_id is None else _EDIT_FALLBACK
 
 
 def prepare_turn(
@@ -124,11 +121,11 @@ def prepare_turn(
         )
 
     service = TalkService()
+    fallback_message = _SEND_FALLBACK if edit_target is None else _EDIT_FALLBACK
     try:
         system_prompt = service.prepare_chat_prompt(config)
     except Exception as exc:
-        fallback = _SEND_FALLBACK if edit_target is None else _EDIT_FALLBACK
-        status_code, error = classify_synthesis_error(exc, fallback)
+        status_code, error = classify_synthesis_error(exc, fallback_message)
         raise ChatTurnRejectedError(status_code, {"error": error}) from exc
 
     return TurnPlan(
@@ -138,6 +135,7 @@ def prepare_turn(
         history=history,
         system_prompt=system_prompt,
         service=service,
+        fallback_message=fallback_message,
         edit_target_id=None if edit_target is None else edit_target.id,
     )
 
@@ -192,6 +190,15 @@ def commit_turn(
             )
         ChatSession.objects.filter(id=session.id).update(updated_at=timezone.now())
     return user_message, assistant_message
+
+
+def _storable_text(text: str) -> str:
+    """LLM が生成した文字列を、保存と SSE の送信ができる形にする.
+
+    PostgreSQL の text は NUL を保存できず、孤立サロゲートは UTF-8 にできない。1 文字の
+    ために応答全体を失わないよう取り除く（ユーザー発話はシリアライザが拒否している）。
+    """
+    return text.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
 
 
 def _close_quietly(stream: Iterator[str]) -> None:
@@ -253,15 +260,20 @@ class ChatTurnRunner:
                 plan.system_prompt, plan.conversation, session_id=str(plan.session.id)
             )
             try:
-                for text in stream:
+                for text in map(_storable_text, stream):
                     parts.append(text)
                     yield "delta", {"text": text}
             finally:
                 _close_quietly(stream)
-        # GeneratorExit は切断で応答が閉じられたとき、SystemExit は gunicorn が
-        # ワーカーを強制終了するとき（--timeout の超過）。どちらも接続はここで切れる。
-        except (GeneratorExit, SystemExit):
+        # GeneratorExit: 停止・切断で応答が閉じられた。本文がなくてもターンを確定する。
+        # SystemExit: gunicorn がワーカーを強制終了する（--timeout の超過）。利用者の停止
+        # ではないので、本文が届く前なら LLM の失敗と同じく何も保存しない。
+        except GeneratorExit:
             self._save_stopped_turn("".join(parts))
+            raise
+        except SystemExit:
+            if parts:
+                self._save_stopped_turn("".join(parts))
             raise
         return "".join(parts)
 
@@ -289,6 +301,9 @@ class ChatTurnRunner:
         except Exception as exc:
             _, error = classify_synthesis_error(exc, _AUDIO_FALLBACK)
             yield "audio_error", {"message_id": message.id, "error": error}
+            return
+        if not audio.audio_data:
+            yield "audio_error", {"message_id": message.id, "error": _AUDIO_FALLBACK}
             return
         if not attach_audio_to_message(message, audio.audio_data, audio.format):
             yield "audio_error", {"message_id": message.id, "error": _AUDIO_SAVE_ERROR}
@@ -318,6 +333,7 @@ class ChatTurnRunner:
         except Exception:
             logger.exception("セッションタイトル生成に失敗")
             return
+        title = _storable_text(title)
         if title and untitled.update(title=title, updated_at=timezone.now()):
             yield "title", {"title": title}
 

@@ -146,13 +146,25 @@ def attach_audio_to_message(
             audio_format=audio_format,
             audio_size_bytes=len(audio_data),
         )
-        if not saved:
-            logger.info("音声の保存先の行が削除済み: message=%s", msg.pk)
-            msg.audio_file.delete(save=False)
-            return False
     except Exception:
         logger.exception("音声ファイル保存に失敗（テキスト応答は維持）")
+        saved = 0
+    else:
+        if not saved:
+            logger.info("音声の保存先の行が削除済み: message=%s", msg.pk)
+    if not saved:
+        _discard_audio_file(msg)
         return False
     msg.audio_format = audio_format
     msg.audio_size_bytes = len(audio_data)
     return True
+
+
+def _discard_audio_file(msg: ChatMessage) -> None:
+    """行に紐付かなかった音声ファイルを消す（ファイルがなければ何もしない）."""
+    if not msg.audio_file:
+        return
+    try:
+        msg.audio_file.delete(save=False)
+    except Exception:
+        logger.exception("音声ファイルの削除に失敗: %s", msg.audio_file.name)
