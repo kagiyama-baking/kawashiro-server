@@ -38,7 +38,7 @@ export function EditToolbar({
     const hasSelection = selection.size > 0;
 
     return (
-        <div className="glass flex flex-wrap items-center gap-2 rounded-xl p-3">
+        <div className="bg-secondary flex flex-wrap items-center gap-2 rounded-lg border p-3">
             {selection.size === pages.length && pages.length > 0 ? (
                 <Button
                     variant="ghost"
@@ -46,7 +46,7 @@ export function EditToolbar({
                     onClick={clearSelection}
                     aria-label="すべて選択解除"
                 >
-                    <Square className="mr-1.5 h-4 w-4" />
+                    <Square />
                     解除
                 </Button>
             ) : (
@@ -56,12 +56,12 @@ export function EditToolbar({
                     onClick={selectAll}
                     aria-label="すべて選択"
                 >
-                    <SquareCheck className="mr-1.5 h-4 w-4" />
+                    <SquareCheck />
                     全選択
                 </Button>
             )}
 
-            <Separator orientation="vertical" className="h-6 opacity-30" />
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
             <Button
                 variant="ghost"
@@ -70,7 +70,7 @@ export function EditToolbar({
                 disabled={!hasSelection}
                 aria-label="選択ページを削除"
             >
-                <Trash2 className="mr-1.5 h-4 w-4" />
+                <Trash2 />
                 削除
             </Button>
 
@@ -81,7 +81,7 @@ export function EditToolbar({
                 disabled={!hasSelection}
                 aria-label="選択ページを左右に分割"
             >
-                <SplitSquareHorizontal className="mr-1.5 h-4 w-4" />
+                <SplitSquareHorizontal />
                 分割
             </Button>
 
@@ -92,11 +92,11 @@ export function EditToolbar({
                 disabled={!hasSelection}
                 aria-label="選択ページをトリミング"
             >
-                <Crop className="mr-1.5 h-4 w-4" />
+                <Crop />
                 トリミング
             </Button>
 
-            <Separator orientation="vertical" className="h-6 opacity-30" />
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
             <Button
                 variant="ghost"
@@ -105,7 +105,7 @@ export function EditToolbar({
                 disabled={!canUndo}
                 aria-label="元に戻す"
             >
-                <Undo2 className="mr-1.5 h-4 w-4" />
+                <Undo2 />
                 Undo
             </Button>
 
@@ -116,15 +116,15 @@ export function EditToolbar({
                 disabled={!canRedo}
                 aria-label="やり直す"
             >
-                <Redo2 className="mr-1.5 h-4 w-4" />
+                <Redo2 />
                 Redo
             </Button>
 
-            <div className="text-muted-foreground ml-auto font-mono text-[12px] tabular-nums">
+            <div className="font-latin text-ink-subtle ml-auto text-xs tabular-nums">
                 {selection.size} / {pages.length} ページ選択中
             </div>
 
-            <Separator orientation="vertical" className="h-6 opacity-30" />
+            <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
             <DownloadButton
                 sourceBytes={sourceBytes}

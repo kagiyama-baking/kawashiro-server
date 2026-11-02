@@ -1,9 +1,7 @@
-import { FileEdit, Home, Image, MessagesSquare, Mic } from 'lucide-react';
-
 export const navItems = [
-    { to: '/', label: 'ホーム', icon: Home },
-    { to: '/tts', label: 'テキスト読み上げ', icon: Mic },
-    { to: '/talk', label: 'チャット', icon: MessagesSquare },
-    { to: '/media', label: 'メディア変換', icon: Image },
-    { to: '/pdf-edit', label: 'PDF編集', icon: FileEdit },
+    { to: '/', en: 'Home', label: 'ホーム' },
+    { to: '/tts', en: 'Voice', label: 'テキスト読み上げ' },
+    { to: '/talk', en: 'Talk', label: 'チャット' },
+    { to: '/media', en: 'Media', label: 'メディア変換' },
+    { to: '/pdf-edit', en: 'PDF', label: 'PDF編集' },
 ] as const;

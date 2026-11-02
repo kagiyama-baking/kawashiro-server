@@ -36,9 +36,7 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
     return (
         <form onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-2">
-                <Label htmlFor="image-file" className="text-[13px] font-medium">
-                    画像ファイル
-                </Label>
+                <Label htmlFor="image-file">画像ファイル</Label>
                 <Input
                     id="image-file"
                     ref={fileInputRef}
@@ -46,7 +44,7 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
                     accept=".jpg,.jpeg,.png,.webp,.tiff,.heif,.heic,.psd,.dng"
                     required
                 />
-                <p className="text-muted-foreground text-[11px]">
+                <p className="text-muted-foreground text-xs">
                     対応形式: JPG, PNG, WEBP, TIFF, HEIF, HEIC, PSD,
                     DNG（最大50MB）
                 </p>
@@ -54,12 +52,7 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
 
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                    <Label
-                        htmlFor="output-format-select"
-                        className="text-[13px] font-medium"
-                    >
-                        出力形式
-                    </Label>
+                    <Label htmlFor="output-format-select">出力形式</Label>
                     <Select
                         value={outputFormat}
                         onValueChange={(v) =>
@@ -81,10 +74,8 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
                 {outputFormat === 'jpg' && (
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <Label className="text-[13px] font-medium">
-                                品質
-                            </Label>
-                            <span className="text-muted-foreground font-mono text-[13px] tabular-nums">
+                            <Label>品質</Label>
+                            <span className="font-latin text-muted-foreground text-sm tabular-nums">
                                 {quality}
                             </span>
                         </div>
@@ -102,7 +93,7 @@ export function ImageConverter({ onSubmit, isLoading }: ImageConverterProps) {
 
             <LoadingButton
                 type="submit"
-                className="mt-1 w-full font-medium"
+                className="mt-1 w-full"
                 isLoading={isLoading}
                 loadingText="変換中..."
             >

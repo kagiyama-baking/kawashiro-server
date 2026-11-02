@@ -21,9 +21,7 @@ export function ZipToPdf({ onSubmit, isLoading }: ZipToPdfProps) {
     return (
         <form onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-2">
-                <Label htmlFor="zip-file" className="text-[13px] font-medium">
-                    ZIPファイル
-                </Label>
+                <Label htmlFor="zip-file">ZIPファイル</Label>
                 <Input
                     id="zip-file"
                     ref={fileInputRef}
@@ -31,14 +29,14 @@ export function ZipToPdf({ onSubmit, isLoading }: ZipToPdfProps) {
                     accept=".zip"
                     required
                 />
-                <p className="text-muted-foreground text-[11px]">
+                <p className="text-muted-foreground text-xs">
                     画像を含むZIPファイルをアップロードしてください（最大1GB、最大1000ファイル）
                 </p>
             </div>
 
             <LoadingButton
                 type="submit"
-                className="mt-1 w-full font-medium"
+                className="mt-1 w-full"
                 isLoading={isLoading}
                 loadingText="変換中..."
             >

@@ -146,7 +146,7 @@ export function AudioBundlePlay({
                 size="sm"
                 onClick={stop}
             >
-                <Square className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
+                <Square fill="currentColor" />
                 停止 {formatTime(currentTime)} / {formatTime(duration)}
             </Button>
         );
@@ -160,7 +160,7 @@ export function AudioBundlePlay({
                 onClick={playPrepared}
                 disabled={disabled}
             >
-                <Play className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
+                <Play fill="currentColor" />
                 再生開始 ({formatTime(duration)})
             </Button>
         );
@@ -169,7 +169,7 @@ export function AudioBundlePlay({
     if (phase === 'preparing') {
         return (
             <Button type="button" variant="outline" size="sm" disabled>
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
                 準備中…
             </Button>
         );
@@ -183,7 +183,7 @@ export function AudioBundlePlay({
             onClick={prepare}
             disabled={disabled || audioCount === 0}
         >
-            <Play className="mr-1.5 h-3.5 w-3.5" fill="currentColor" />
+            <Play fill="currentColor" />
             一括再生 ({audioCount})
         </Button>
     );

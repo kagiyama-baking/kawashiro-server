@@ -1,10 +1,39 @@
 import { LogOut, Menu, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router';
+import swirlMark from '@/assets/swirl.webp';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { navItems } from './nav-items';
+
+// 暗い緑の面。フォーカスの枠は、この面の上でも見える明るい緑に切り替える
+const SURFACE =
+    'bg-sidebar text-sidebar-foreground [--ring:var(--sidebar-ring)]';
+
+// ghost の hover（accent）はこの面と同じ色で見えないので上書きする
+const GHOST_ON_SURFACE =
+    'text-sidebar-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-accent-foreground';
+
+function Brand() {
+    return (
+        <div className="flex min-w-0 items-center gap-3">
+            <img
+                src={swirlMark}
+                alt=""
+                width={34}
+                height={34}
+                className="size-[34px] shrink-0 opacity-96"
+            />
+            <p className="text-sidebar-accent-foreground min-w-0 text-[1.02rem] leading-[1.15] font-semibold tracking-[0.06em]">
+                鍵山製パン
+                <small className="font-latin text-sidebar-muted-foreground mt-1.5 block text-[0.58rem] font-light tracking-[0.34em] uppercase">
+                    Web App
+                </small>
+            </p>
+        </div>
+    );
+}
 
 function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     const email = useAuthStore((s) => s.email);
@@ -17,115 +46,134 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     };
 
     return (
-        <>
-            <div className="flex items-center justify-between px-5 py-5">
-                <div>
-                    <h1 className="font-heading neon-text text-lg font-bold tracking-tight">
-                        鍵山製パン
-                    </h1>
-                    <div className="mt-2 h-px w-12 bg-gradient-to-r from-[oklch(0.75_0.20_155)] to-transparent" />
-                </div>
+        <div className="flex h-full flex-col gap-[2.4rem] overflow-y-auto pt-[1.7rem] pb-[1.2rem] select-none">
+            <div className="flex items-center justify-between gap-2 px-[1.4rem]">
+                <Brand />
                 {onClose && (
                     <Button
                         variant="ghost"
-                        size="icon"
+                        size="icon-sm"
                         onClick={onClose}
-                        className="lg:hidden"
+                        className={GHOST_ON_SURFACE}
                         aria-label="メニューを閉じる"
                     >
-                        <X className="h-5 w-5" />
+                        <X className="size-5" />
                     </Button>
                 )}
             </div>
 
-            <nav className="flex-1 space-y-1 p-4">
-                {navItems.map(({ to, label, icon: Icon }) => (
-                    <NavLink
-                        key={to}
-                        to={to}
-                        end={to === '/'}
-                        onClick={(e) => {
-                            e.currentTarget.blur();
-                            onClose?.();
-                        }}
-                        className={({ isActive }) =>
-                            cn(
-                                'flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200',
-                                isActive
-                                    ? 'bg-[oklch(0.75_0.20_155/0.1)] text-[oklch(0.75_0.20_155)]'
-                                    : 'hover:text-foreground text-[oklch(0.65_0.01_240)] hover:bg-[oklch(0.95_0_0/0.04)]',
-                            )
-                        }
-                    >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                    </NavLink>
-                ))}
+            <nav aria-label="メインメニュー">
+                <ul className="flex flex-col gap-0.5 px-[0.7rem]">
+                    {navItems.map(({ to, en, label }) => (
+                        <li key={to}>
+                            <NavLink
+                                to={to}
+                                end={to === '/'}
+                                onClick={onClose}
+                                className="text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full flex-col items-start gap-[3px] rounded-md py-[0.7rem] pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] aria-[current=page]:before:h-[62%]"
+                            >
+                                <span className="font-latin text-[0.76rem] tracking-[0.22em] uppercase">
+                                    {en}
+                                </span>
+                                <span className="text-[0.72rem] tracking-[0.1em] opacity-78">
+                                    {label}
+                                </span>
+                            </NavLink>
+                        </li>
+                    ))}
+                </ul>
             </nav>
 
-            <div className="px-5 py-4">
-                <p className="text-muted-foreground mb-3 truncate font-mono text-[11px] tracking-wide">
+            <div className="border-sidebar-border mx-[1.4rem] mt-auto border-t pt-4">
+                <p className="font-latin text-sidebar-muted-foreground truncate text-[0.7rem] tracking-[0.06em] select-text">
                     {email}
                 </p>
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="text-muted-foreground w-full justify-start gap-2 hover:text-[oklch(0.75_0.20_155)]"
+                    className={cn(
+                        GHOST_ON_SURFACE,
+                        'mt-2 -ml-[0.7rem] justify-start',
+                    )}
                     onClick={handleLogout}
                 >
-                    <LogOut className="h-4 w-4" />
+                    <LogOut />
                     ログアウト
                 </Button>
             </div>
-        </>
+        </div>
     );
 }
 
 export function Sidebar() {
     const [mobileOpen, setMobileOpen] = useState(false);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+    // 閉じるとドロワーの中は inert になりフォーカスが行き先を失うので、メニューボタンへ戻す
+    const closeDrawer = useCallback(() => {
+        setMobileOpen(false);
+        menuButtonRef.current?.focus();
+    }, []);
 
     useEffect(() => {
         if (!mobileOpen) return;
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setMobileOpen(false);
+            if (e.key === 'Escape') closeDrawer();
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [mobileOpen]);
+    }, [mobileOpen, closeDrawer]);
 
     return (
         <>
-            {/* モバイルハンバーガーボタン */}
-            <Button
-                variant="ghost"
-                size="icon"
-                className="fixed top-4 left-4 z-50 lg:hidden"
-                onClick={() => setMobileOpen(true)}
-                aria-label="メニューを開く"
+            {/* モバイルの上端バー */}
+            <header
+                className={cn(
+                    SURFACE,
+                    'flex h-(--mobile-bar-height) shrink-0 items-center gap-2 px-2 lg:hidden',
+                )}
             >
-                <Menu className="h-5 w-5" />
-            </Button>
+                <Button
+                    ref={menuButtonRef}
+                    variant="ghost"
+                    size="icon"
+                    className={GHOST_ON_SURFACE}
+                    onClick={() => setMobileOpen(true)}
+                    aria-label="メニューを開く"
+                >
+                    <Menu className="size-5" />
+                </Button>
+                <Brand />
+            </header>
 
             {/* モバイルオーバーレイ */}
             {mobileOpen && (
                 <div
-                    className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
-                    onClick={() => setMobileOpen(false)}
+                    className="bg-overlay fixed inset-0 z-40 backdrop-blur-[4px] lg:hidden"
+                    onClick={closeDrawer}
+                    role="presentation"
                 />
             )}
 
-            {/* モバイルサイドバー */}
+            {/* モバイルサイドバー。閉じている間は画面外のリンクにフォーカスさせない */}
             <aside
+                inert={!mobileOpen}
                 className={cn(
-                    'glass fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-[oklch(0.95_0_0/0.06)] transition-transform duration-200 lg:hidden',
+                    SURFACE,
+                    'fixed inset-y-0 left-0 z-50 flex w-(--sidebar-width) flex-col transition-transform lg:hidden',
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
                 )}
             >
-                <SidebarContent onClose={() => setMobileOpen(false)} />
+                <SidebarContent onClose={closeDrawer} />
             </aside>
 
             {/* デスクトップサイドバー */}
-            <aside className="glass hidden h-full w-60 flex-col border-r border-[oklch(0.95_0_0/0.06)] lg:flex">
+            <aside
+                className={cn(
+                    SURFACE,
+                    'hidden h-full w-(--sidebar-width) shrink-0 flex-col lg:flex',
+                )}
+            >
                 <SidebarContent />
             </aside>
         </>

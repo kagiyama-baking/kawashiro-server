@@ -10,6 +10,11 @@ export default defineConfig({
             '@': path.resolve(__dirname, './src'),
         },
     },
+    build: {
+        // 既定（4KB 未満をインライン）だと和文書体の小さいサブセットが base64 で CSS に
+        // 埋め込まれ、描画を止める CSS が大きく膨らむ。必要な分だけ読まれるよう分離する。
+        assetsInlineLimit: 0,
+    },
     server: {
         proxy: {
             '/api': {

@@ -1,5 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
     Select,
@@ -26,8 +34,6 @@ export function NewSessionDialog({
     const [selected, setSelected] = useState<string>(configs[0]?.name ?? '');
     const [isCreating, setIsCreating] = useState(false);
 
-    if (!open) return null;
-
     const handleCreate = async () => {
         if (!selected || isCreating) return;
         setIsCreating(true);
@@ -40,28 +46,17 @@ export function NewSessionDialog({
     };
 
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-            onClick={onClose}
-            role="presentation"
-        >
-            <div
-                className="bg-background w-full max-w-md rounded-xl border border-[oklch(0.95_0_0/0.1)] p-5 shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-            >
-                <h2 className="font-heading text-foreground mb-1 text-lg font-semibold">
-                    新しいチャット
-                </h2>
-                <p className="text-muted-foreground mb-4 text-[13px]">
-                    使用するプリセットを選択してください。途中で変更はできません。
-                </p>
+        <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>新しいチャット</DialogTitle>
+                    <DialogDescription>
+                        使用するプリセットを選択してください。途中で変更はできません。
+                    </DialogDescription>
+                </DialogHeader>
 
                 <div className="space-y-2">
-                    <Label htmlFor="new-session-preset" className="text-[13px]">
-                        プリセット
-                    </Label>
+                    <Label htmlFor="new-session-preset">プリセット</Label>
                     <Select value={selected} onValueChange={setSelected}>
                         <SelectTrigger id="new-session-preset">
                             <SelectValue placeholder="設定を選択" />
@@ -76,7 +71,7 @@ export function NewSessionDialog({
                     </Select>
                 </div>
 
-                <div className="mt-5 flex justify-end gap-2">
+                <DialogFooter>
                     <Button
                         type="button"
                         variant="ghost"
@@ -92,8 +87,8 @@ export function NewSessionDialog({
                     >
                         {isCreating ? '作成中…' : '作成'}
                     </Button>
-                </div>
-            </div>
-        </div>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }

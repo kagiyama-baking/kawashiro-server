@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import { LoadingButton } from '@/components/common/LoadingButton';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { CHAT_MESSAGE_MAX_LENGTH } from '@/types/talk';
 
 interface ChatInputFormProps {
@@ -50,7 +51,7 @@ export function ChatInputForm({
                 aria-invalid={isOverLimit || undefined}
                 disabled={disabled || isLoading}
             />
-            <div className="text-muted-foreground flex items-center justify-between text-[12px]">
+            <div className="text-ink-subtle flex items-center justify-between gap-2 text-xs">
                 <span>
                     {disabled
                         ? 'チャットを選んでください'
@@ -59,9 +60,10 @@ export function ChatInputForm({
                           : 'Enter で送信、Shift+Enter で改行'}
                 </span>
                 <span
-                    className={
-                        isOverLimit ? 'text-destructive font-medium' : undefined
-                    }
+                    className={cn(
+                        'font-latin tabular-nums',
+                        isOverLimit && 'text-destructive font-medium',
+                    )}
                 >
                     {length} / {CHAT_MESSAGE_MAX_LENGTH}
                 </span>
@@ -73,10 +75,7 @@ export function ChatInputForm({
                         variant="destructive"
                         onClick={onCancel}
                     >
-                        <Square
-                            className="mr-1.5 h-4 w-4"
-                            fill="currentColor"
-                        />
+                        <Square fill="currentColor" />
                         停止
                     </Button>
                 ) : (

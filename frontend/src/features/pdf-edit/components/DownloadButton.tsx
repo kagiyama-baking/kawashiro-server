@@ -68,9 +68,8 @@ export function DownloadButton({
             disabled={disabled}
             isLoading={isExporting}
             loadingText="出力中…"
-            className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.15)]"
         >
-            <Download className="mr-1.5 h-4 w-4" />
+            <Download />
             ダウンロード
         </LoadingButton>
     );
