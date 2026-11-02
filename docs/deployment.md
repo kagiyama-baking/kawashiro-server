@@ -150,6 +150,8 @@ docker compose ps django-api celery-worker celery-beat frontend      # 結果確
 
 `app-database` / `redis` は再作成対象外です（外部イメージのため、更新は Ansible 側の責務）。
 
+ワーカー数とタイムアウトは本番 compose の起動コマンド（Ansible）で指定します。メモリの共有設定だけは、イメージ内の `django_api/gunicorn.conf.py` にあります（gunicorn は作業ディレクトリの同名ファイルを自動で読みます）。fork の前にアプリを読み込むので、4 ワーカーで約 200MiB に収まります（無効だと 500MiB を超え、`mem_limit` の 512m に達します）。
+
 ## 7. ロールバック手順
 
 本番が壊れた場合、`release` タグを過去のビルドに差し戻すのが最短の復旧手段です。`tag-release` ジョブと同じ操作を手で行います。
