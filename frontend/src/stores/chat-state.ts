@@ -41,10 +41,17 @@ export type GetChatState = () => ChatStoreState;
 export const selectIsAtMessageLimit = (state: ChatStoreState): boolean =>
     state.messages.length >= CHAT_HISTORY_MAX_COUNT;
 
+/** 読み込みに失敗した。セッションは決まっているが、履歴もプリセットも分からない状態。 */
+export const selectHasLoadFailed = (state: ChatStoreState): boolean =>
+    state.activeSessionId !== null &&
+    state.activeSession === null &&
+    !state.isLoadingDetail;
+
 export const selectIsSendDisabled = (state: ChatStoreState): boolean =>
     state.isLoadingDetail ||
     state.isSyncing ||
     selectIsAtMessageLimit(state) ||
+    selectHasLoadFailed(state) ||
     (state.activeSessionId === null && state.selectedConfigName === null);
 
 let threadKeyCounter = 0;

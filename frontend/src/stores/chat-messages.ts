@@ -143,12 +143,20 @@ export function applyAudioError(
     }));
 }
 
+/**
+ * 音声の情報を消す。音声のない行は同じオブジェクトのままにする。
+ * 編集中の行を差し替えると、編集に失敗したときに assistant-ui が編集欄を開き直せない。
+ */
 export function clearAudio(
     messages: Messages,
     shouldClear: (message: ChatUiMessage) => boolean,
 ): Messages {
-    return messages.map((m) =>
-        shouldClear(m)
+    return messages.map((m) => {
+        const hasAudio =
+            m.audio_url !== null ||
+            m.audioState !== 'idle' ||
+            m.audioError !== null;
+        return shouldClear(m) && hasAudio
             ? {
                   ...m,
                   audio_url: null,
@@ -157,6 +165,18 @@ export function clearAudio(
                   audioState: 'idle',
                   audioError: null,
               }
+            : m;
+    });
+}
+
+/** 音声の通知を待っている run がなくなった行の「合成中」を解く。 */
+export function settleOrphanedAudio(
+    messages: Messages,
+    waitingLocalIds: ReadonlySet<string>,
+): Messages {
+    return messages.map((m) =>
+        m.audioState === 'pending' && !waitingLocalIds.has(m.localId)
+            ? { ...m, audioState: 'idle' }
             : m,
     );
 }
@@ -219,7 +239,16 @@ export function hasSameRows(
     );
 }
 
-/** サーバーの値へ同期する。位置で対応付けて localId を保つので行はリマウントしない。 */
+function isSameMessage(a: ChatUiMessage, b: ChatUiMessage): boolean {
+    return (Object.keys(a) as (keyof ChatUiMessage)[]).every(
+        (key) => a[key] === b[key],
+    );
+}
+
+/**
+ * サーバーの値へ同期する。位置で対応付けて localId を保つので行はリマウントしない。
+ * 変わらない行は同じオブジェクトのままにする（編集欄を開き直す条件のため）。
+ */
 export function mergeServerMessages(
     local: Messages,
     server: readonly ChatSessionMessage[],
@@ -230,7 +259,7 @@ export function mergeServerMessages(
         if (current?.role !== message.role) return base;
         const isSameRow = current.id === message.id;
         const keepAudioState = isSameRow && message.audio_url === null;
-        return {
+        const merged: ChatUiMessage = {
             ...base,
             localId: current.localId,
             uiStatus:
@@ -238,6 +267,7 @@ export function mergeServerMessages(
             audioState: keepAudioState ? current.audioState : 'idle',
             audioError: keepAudioState ? current.audioError : null,
         };
+        return isSameMessage(current, merged) ? current : merged;
     });
 }
 

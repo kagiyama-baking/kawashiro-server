@@ -245,6 +245,44 @@ describe('SessionNav', () => {
             expect(screen.getByTestId('pathname').textContent).toBe('/talk/s2');
         });
 
+        it('削除の応答を待つ間に別のチャットへ移っていたら移らない', async () => {
+            const { user } = renderNav('/talk/s1');
+            await loadList([item(), item({ id: 's2', title: '別' })]);
+            vi.mocked(api.getSession).mockResolvedValueOnce({
+                ...item(),
+                messages: [],
+            });
+            await act(async () => {
+                await store().openSession('s1');
+            });
+            let finishDelete = () => {};
+            vi.mocked(api.deleteSession).mockImplementationOnce(
+                () =>
+                    new Promise<void>((resolve) => {
+                        finishDelete = resolve;
+                    }),
+            );
+
+            await user.click(deleteButton());
+            await answer(user, '削除');
+            await user.click(screen.getByRole('link', { name: /別/ }));
+            expect(screen.getByTestId('pathname').textContent).toBe('/talk/s2');
+            vi.mocked(api.getSession).mockResolvedValueOnce({
+                ...item({ id: 's2', title: '別' }),
+                messages: [],
+            });
+            await act(async () => {
+                await store().openSession('s2');
+            });
+
+            await act(async () => {
+                finishDelete();
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            });
+
+            expect(screen.getByTestId('pathname').textContent).toBe('/talk/s2');
+        });
+
         it('失敗したらバナーで知らせて一覧に残す', async () => {
             const { user } = renderNav('/talk');
             await loadList([item()]);

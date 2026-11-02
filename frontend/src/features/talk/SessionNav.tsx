@@ -1,6 +1,6 @@
 import { Loader2, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { NavLink, useMatch, useNavigate } from 'react-router';
+import { NavLink, useNavigate } from 'react-router';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { GHOST_ON_SIDEBAR } from '@/components/layout/sidebar-styles';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,6 @@ export function SessionNav({ onNavigate }: SessionNavProps) {
     const isLoading = useChatStore((s) => s.isLoadingList);
     const loadMoreSessions = useChatStore((s) => s.loadMoreSessions);
     const removeSession = useChatStore((s) => s.removeSession);
-    const routeSessionId = useMatch('/talk/:sessionId')?.params.sessionId;
     const navigate = useNavigate();
     const [deleting, setDeleting] = useState<ChatSessionListItem | null>(null);
 
@@ -27,10 +26,9 @@ export function SessionNav({ onNavigate }: SessionNavProps) {
         if (!deleting) return;
         const { id } = deleting;
         setDeleting(null);
-        const removed = await removeSession(id);
-        if (removed && routeSessionId === id) {
-            navigate('/talk', { replace: true });
-        }
+        const result = await removeSession(id);
+        // 表示中のチャットを消したときだけ移る。応答を待つ間に別のチャットへ移っていたら移らない
+        if (result === 'active') navigate('/talk', { replace: true });
     };
 
     return (

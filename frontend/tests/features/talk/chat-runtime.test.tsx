@@ -9,6 +9,7 @@ import { useChatRuntime } from '@/features/talk/useChatRuntime';
 import * as api from '@/lib/api/talk';
 import { useChatStore } from '@/stores/chat-store';
 import type { ChatSessionDetail, ChatSessionMessage } from '@/types/talk';
+import { deferred, httpError } from '../../helpers/chat-fixtures';
 import {
     controlledStream,
     type ControlledStream,
@@ -349,6 +350,33 @@ describe('useChatRuntime', () => {
             });
         });
 
+        it('作成の応答を待つ間に停止すると、すぐ入力文を入力欄へ戻す', async () => {
+            const { runtime } = setup('/talk');
+            await ready();
+            const created = deferred<ChatSessionDetail>();
+            vi.mocked(api.createSession).mockReturnValueOnce(created.promise);
+            await send(runtime(), 'こんにちは');
+            expect(runtime().thread.composer.getState().text).toBe('');
+
+            act(() => runtime().thread.cancelRun());
+
+            await waitFor(() => {
+                expect(runtime().thread.composer.getState().text).toBe(
+                    'こんにちは',
+                );
+            });
+            expect(threadState(runtime()).messages).toEqual([]);
+
+            await act(async () => {
+                created.resolve(detail([], { id: 'new' }));
+                await created.promise;
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            });
+
+            expect(api.deleteSession).toHaveBeenCalledWith('new');
+            expect(screen.getByTestId('pathname').textContent).toBe('/talk');
+        });
+
         it('応答に失敗したら /talk へ戻して入力文を入力欄へ戻す', async () => {
             const { runtime } = setup('/talk');
             await ready();
@@ -528,6 +556,59 @@ describe('useChatRuntime', () => {
                 expect(state.getState().isEditing).toBe(true);
                 expect(state.getState().text).toBe('直した');
             });
+        });
+
+        // 行が差し替わると assistant-ui は編集を開き直さず、編集文が消える
+        it('編集欄を開いている間に音声を全削除しても、失敗すれば編集を開き直す', async () => {
+            const { runtime } = setup();
+            await openSession([
+                history[0],
+                { ...history[1], audio_url: '/a/2/', audio_size_bytes: 8 },
+            ]);
+            vi.mocked(api.bulkDeleteAudio).mockResolvedValueOnce(undefined);
+            const stream = controlledStream();
+            nextStreamEdit(stream);
+            const message = await beginEdit(runtime(), '直した');
+            await act(async () => {
+                await store().deleteAllAudio();
+            });
+            await act(async () => {
+                await message.composer.send();
+            });
+
+            await push(stream, { type: 'error', status: 502, error: '失敗' });
+
+            await waitFor(() => {
+                const state = runtime().thread.getMessageById('srv-1').composer;
+                expect(state.getState().isEditing).toBe(true);
+                expect(state.getState().text).toBe('直した');
+            });
+        });
+
+        it('セッションが消えていたら /talk へ移る', async () => {
+            const { runtime } = setup();
+            await openSession(history);
+            vi.mocked(api.streamEdit).mockImplementationOnce(
+                // eslint-disable-next-line require-yield
+                async function* () {
+                    throw httpError(null, 404);
+                },
+            );
+            vi.mocked(api.getSession).mockRejectedValueOnce(
+                httpError(null, 404),
+            );
+            const message = await beginEdit(runtime(), '直した');
+
+            await act(async () => {
+                await message.composer.send();
+            });
+
+            await waitFor(() => {
+                expect(screen.getByTestId('pathname').textContent).toBe(
+                    '/talk',
+                );
+            });
+            expect(store().error).toBe('このチャットは削除されています');
         });
     });
 

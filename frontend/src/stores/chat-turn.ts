@@ -25,6 +25,7 @@ import {
     markCancelled,
     replaceFromTarget,
     rollbackMessages,
+    settleOrphanedAudio,
 } from './chat-messages';
 import {
     type ChatStateUpdaters,
@@ -56,10 +57,14 @@ const SYNC_FAILED =
     'サーバーの状態を確認できませんでした。ページを再読み込みしてください。';
 const UNSAVED_MESSAGE =
     '保存が確認できていないメッセージは編集できません。ページを再読み込みしてください。';
+const SESSION_GONE = 'このチャットは削除されています';
 
 // 中断の理由。fetch は signal.reason でリジェクトするので AbortError の形にしておく
 const STOP = new DOMException('ユーザーが停止した', 'AbortError');
-const LEAVE = new DOMException('チャットを離れた', 'AbortError');
+// 別のチャットへ移った。サーバーは途中までを保存するので、裏で確かめて反映する
+const SWITCH = new DOMException('別のチャットへ移った', 'AbortError');
+// 画面を離れた、またはセッションを消した。もう確かめない
+const CLOSE = new DOMException('チャットを閉じた', 'AbortError');
 
 /** 本文を生成している run。保存が済むとここから外れて backgroundRuns へ移る。 */
 interface CurrentRun {
@@ -67,6 +72,12 @@ interface CurrentRun {
     readonly restore: readonly ChatUiMessage[];
     // セッションの作成を待っている間は false。まだ何も送っていないので同期が要らない
     readonly posted: boolean;
+}
+
+/** 保存が済み、音声とタイトルを待っている run。 */
+interface BackgroundRun {
+    readonly sessionId: string;
+    readonly assistantLocalId: string;
 }
 
 /** 1 回の送信または編集の文脈。 */
@@ -109,17 +120,27 @@ export interface ChatTurns {
     readonly editMessage: (
         localId: string,
         content: string,
+        hooks?: TurnHooks,
     ) => Promise<SendResult>;
-    readonly regenerate: (userLocalId: string) => Promise<void>;
+    readonly regenerate: (
+        userLocalId: string,
+        hooks?: TurnHooks,
+    ) => Promise<void>;
     readonly cancelRun: () => void;
 }
 
 /** ストアの外へは出さない、run の中断の操作。 */
 export interface ChatTurnControls {
     readonly actions: ChatTurns;
-    /** 本文を生成している run を中断する。音声とタイトルを待つ run は別のセッションを壊さないので止めない。 */
-    readonly leaveCurrentRun: () => void;
-    readonly abortBackgroundRuns: (sessionId?: string) => void;
+    /**
+     * 別のチャットへ移るとき。本文を生成している run を中断し、保存を裏で確かめる。
+     * 音声とタイトルを待つ run は別のセッションを壊さないので止めない。
+     */
+    readonly leaveForAnotherThread: () => void;
+    /** セッションを消すとき。そのセッションの run を止める。 */
+    readonly closeSessionRuns: (sessionId: string) => void;
+    /** チャットの画面を離れるとき。すべての run と裏の確認を止める。 */
+    readonly closeAllRuns: () => void;
 }
 
 /**
@@ -144,8 +165,11 @@ export function createChatTurns(
     } = updaters;
 
     let currentRun: CurrentRun | null = null;
-    // 保存が済み、音声とタイトルを待っている run（controller → セッション id）
-    const backgroundRuns = new Map<AbortController, string>();
+    const backgroundRuns = new Map<AbortController, BackgroundRun>();
+    // 履歴が動いたら増やす。読み直しの間に動いていたら、古い応答を捨てる
+    let historyVersion = 0;
+    // 画面を離れたら増やす。裏で続けている確認をやめる
+    let closeEpoch = 0;
 
     /** 表示中のセッションを手放して新規チャットの状態へ戻す。入力欄を保つためリマウントはさせない。 */
     const abandonSession = (ctx: TurnContext) => {
@@ -164,19 +188,27 @@ export function createChatTurns(
     /** 送信の失敗。楽観表示を戻し、遅延作成したばかりの空セッションは消す。 */
     const failTurn = (ctx: TurnContext, message: string): SendResult => {
         if (!isSameThread(ctx)) return 'not-sent';
-        set((state) => ({
-            messages: rollbackMessages(
-                ctx.restore,
-                state.messages,
-                ctx.userLocalId,
-            ),
+        const restored = rollbackMessages(
+            ctx.restore,
+            get().messages,
+            ctx.userLocalId,
+        );
+        // 編集の間は行を落としていたので、音声の通知を受け取れなかった行があるかもしれない
+        const waiting = new Set(
+            [...backgroundRuns.values()].map((run) => run.assistantLocalId),
+        );
+        const settled = settleOrphanedAudio(restored, waiting);
+        set({
+            messages: settled,
             isRunning: false,
             isSyncing: false,
             error: message,
-        }));
+        });
         if (ctx.createdSession) {
             discardSession(ctx.sessionId);
             abandonSession(ctx);
+        } else if (settled.some((m, index) => m !== restored[index])) {
+            void refreshFromServer(ctx.sessionId);
         }
         return 'not-sent';
     };
@@ -230,7 +262,11 @@ export function createChatTurns(
         event: Extract<ChatStreamEvent, { type: 'message' }>,
     ) => {
         detachRun(ctx.controller);
-        backgroundRuns.set(ctx.controller, ctx.sessionId);
+        backgroundRuns.set(ctx.controller, {
+            sessionId: ctx.sessionId,
+            assistantLocalId: ctx.assistantLocalId,
+        });
+        historyVersion += 1;
         if (!isSameThread(ctx)) return;
         const state = get();
         const audioPending = state.configs.some(
@@ -255,24 +291,33 @@ export function createChatTurns(
         });
     };
 
-    /** 保存を確認するまで詳細を読み直す。 */
-    const pollForSavedTurn = async (ctx: TurnContext): Promise<SyncResult> => {
+    /**
+     * 保存を確認するまで詳細を読み直す。ky の既定だと GET が固まったときに 2 分ほど待つので、
+     * 残り時間だけ待って再試行しない。
+     */
+    const pollForSavedTurn = async (
+        ctx: TurnContext,
+        shouldContinue: () => boolean,
+    ): Promise<SyncResult> => {
         const deadline = Date.now() + SYNC_TIMEOUT_MS;
         let latest: ChatSessionDetail | null = null;
         for (;;) {
             try {
-                latest = await apiGetSession(ctx.sessionId);
+                latest = await apiGetSession(ctx.sessionId, {
+                    timeout: deadline - Date.now(),
+                    retry: 0,
+                });
                 if (ctx.isSaved(latest)) {
                     return { status: 'saved', detail: latest };
                 }
             } catch (error) {
                 if (hasStatus(error, 404)) return { status: 'gone' };
             }
-            if (Date.now() + SYNC_INTERVAL_MS > deadline) {
+            if (Date.now() + SYNC_INTERVAL_MS >= deadline) {
                 return { status: 'timeout', detail: latest };
             }
             await delay(SYNC_INTERVAL_MS);
-            if (!isSameThread(ctx)) {
+            if (!shouldContinue()) {
                 return { status: 'timeout', detail: latest };
             }
         }
@@ -306,7 +351,7 @@ export function createChatTurns(
             isSyncing: true,
             messages: markCancelled(state.messages),
         }));
-        const result = await pollForSavedTurn(ctx);
+        const result = await pollForSavedTurn(ctx, () => isSameThread(ctx));
         if (!isSameThread(ctx)) return 'sent';
 
         switch (result.status) {
@@ -317,35 +362,72 @@ export function createChatTurns(
             case 'gone':
                 set({ isSyncing: false });
                 abandonSession(ctx);
+                set({ error: SESSION_GONE });
                 return 'not-sent';
             default:
                 return settleTimedOutSync(ctx, result.detail);
         }
     };
 
-    /** サーバーの値を 1 度読み直す。次のターンの表示は巻き戻さない。 */
-    const refreshFromServer = async (sessionId: string) => {
+    /** 次のターンが動いていなければ、表示をサーバーの詳細へ揃える。 */
+    const applyDetailIfIdle = (detail: ChatSessionDetail): boolean => {
+        const state = get();
+        const isIdle =
+            state.activeSessionId === detail.id &&
+            !state.isRunning &&
+            !state.isSyncing &&
+            !state.isLoadingDetail;
+        if (isIdle) applyServerDetail(detail);
+        return isIdle;
+    };
+
+    /** サーバーの値を 1 度読み直す。読み直しの間に履歴が動いていたら、古い応答は捨てる。 */
+    async function refreshFromServer(sessionId: string): Promise<void> {
+        const version = historyVersion;
         try {
             const detail = await apiGetSession(sessionId);
-            const state = get();
-            if (
-                state.activeSessionId === sessionId &&
-                !state.isRunning &&
-                !state.isSyncing
-            ) {
-                applyServerDetail(detail);
-            }
+            if (version === historyVersion) applyDetailIfIdle(detail);
         } catch {
             // 次の読み込みで揃う
         }
-    };
+    }
 
     /** 保存のあと done の前に切れた。音声の通知は来ないので、保存された値を読み直す。 */
     const refreshAfterLostStream = async (ctx: TurnContext) => {
+        // 保存の通知を処理できなかった場合も、生成中のまま止まらないようにする
+        if (isSameThread(ctx) && currentRun === null) {
+            set({ isRunning: false });
+        }
         updateMessages(ctx.sessionId, (messages) =>
             finishPendingAudio(messages, ctx.assistantLocalId),
         );
         await refreshFromServer(ctx.sessionId);
+    };
+
+    /** 生成中に別のチャットへ移ったターン。保存されるのを裏で確かめて一覧と表示に反映する。 */
+    const syncLeftTurn = async (ctx: TurnContext) => {
+        const epoch = closeEpoch;
+        const result = await pollForSavedTurn(ctx, () => epoch === closeEpoch);
+        if (result.status !== 'saved' || epoch !== closeEpoch) return;
+        if (!applyDetailIfIdle(result.detail)) {
+            patchSession(ctx.sessionId, aggregateFromDetail(result.detail));
+        }
+    };
+
+    /** セッションが別のタブなどで消されていたら手放す。プリセットが消えた 404 と区別するため確かめる。 */
+    const abandonIfGone = async (ctx: TurnContext) => {
+        try {
+            await apiGetSession(ctx.sessionId);
+        } catch (error) {
+            if (
+                hasStatus(error, 404) &&
+                isSameThread(ctx) &&
+                get().activeSessionId === ctx.sessionId
+            ) {
+                abandonSession(ctx);
+                set({ error: SESSION_GONE });
+            }
+        }
     };
 
     /** 応答が始まる前の失敗。サーバーの文言を出して楽観表示を戻す。 */
@@ -359,6 +441,9 @@ export function createChatTurns(
         // 件数の上限なら、別のタブなどで増えた分を読み直して上限の案内を出す
         if (ctx.kind === 'send' && hasStatus(error, 400)) {
             void refreshFromServer(ctx.sessionId);
+        }
+        if (hasStatus(error, 404) && !ctx.createdSession) {
+            void abandonIfGone(ctx);
         }
         return result;
     };
@@ -377,7 +462,11 @@ export function createChatTurns(
                 if (controller.signal.aborted) break;
                 if (event.type === 'error' && !saved) {
                     detachRun(controller);
-                    return failTurn(ctx, event.error);
+                    const result = failTurn(ctx, event.error);
+                    if (event.status === 404 && !ctx.createdSession) {
+                        void abandonIfGone(ctx);
+                    }
+                    return result;
                 }
                 if (event.type === 'message') {
                     saved = true;
@@ -397,7 +486,11 @@ export function createChatTurns(
             backgroundRuns.delete(controller);
         }
 
-        if (controller.signal.reason === LEAVE) return 'sent';
+        if (controller.signal.reason === CLOSE) return 'sent';
+        if (controller.signal.reason === SWITCH) {
+            void syncLeftTurn(ctx);
+            return 'sent';
+        }
         if (!saved) return syncInterruptedTurn(ctx);
         if (!finished) await refreshAfterLostStream(ctx);
         return 'sent';
@@ -410,20 +503,28 @@ export function createChatTurns(
         restore: readonly ChatUiMessage[],
         hooks: TurnHooks,
     ): Promise<string | null> => {
-        let detail: ChatSessionDetail;
+        const creating = apiCreateSession(configName);
+        const aborted = new Promise<null>((resolve) => {
+            controller.signal.addEventListener('abort', () => resolve(null), {
+                once: true,
+            });
+        });
+        let detail: ChatSessionDetail | null;
         try {
-            detail = await apiCreateSession(configName);
+            detail = await Promise.race([creating, aborted]);
         } catch (error) {
-            if (currentRun?.controller !== controller) return null;
             const message = await extractApiErrorMessage(error, CREATE_FAILED);
             if (currentRun?.controller !== controller) return null;
             currentRun = null;
             set({ messages: restore, isRunning: false, error: message });
             return null;
         }
-        // 作成を待つ間に停止された、または別のチャットへ移った
-        if (currentRun?.controller !== controller) {
-            discardSession(detail.id);
+        // 停止された、または別のチャットへ移った。応答を待たずに入力文を戻し、作られたら消す
+        if (detail === null || currentRun?.controller !== controller) {
+            creating.then(
+                ({ id }) => discardSession(id),
+                () => {},
+            );
             return null;
         }
         currentRun = { controller, restore, posted: true };
@@ -450,6 +551,7 @@ export function createChatTurns(
             const user = createUserMessage(content);
             const createdSession = state.activeSessionId === null;
             currentRun = { controller, restore, posted: !createdSession };
+            historyVersion += 1;
             set({ messages: [...restore, user], isRunning: true, error: null });
 
             const sessionId =
@@ -482,7 +584,7 @@ export function createChatTurns(
             );
         },
 
-        editMessage: async (localId, content) => {
+        editMessage: async (localId, content, hooks = {}) => {
             const state = get();
             const sessionId = state.activeSessionId;
             const target = state.messages.find((m) => m.localId === localId);
@@ -502,6 +604,7 @@ export function createChatTurns(
             const controller = new AbortController();
             const restore = state.messages;
             currentRun = { controller, restore, posted: true };
+            historyVersion += 1;
             set({
                 messages: replaceFromTarget(restore, localId, content),
                 isRunning: true,
@@ -518,7 +621,7 @@ export function createChatTurns(
                     userLocalId: localId,
                     assistantLocalId: createLocalId(),
                     createdSession: false,
-                    hooks: {},
+                    hooks,
                     isSaved: (detail) =>
                         detail.messages.find(
                             (m) => m.sequence === target.sequence,
@@ -530,11 +633,13 @@ export function createChatTurns(
             );
         },
 
-        regenerate: async (userLocalId) => {
+        regenerate: async (userLocalId, hooks) => {
             const target = get().messages.find(
                 (m) => m.localId === userLocalId,
             );
-            if (target) await actions.editMessage(userLocalId, target.content);
+            if (target) {
+                await actions.editMessage(userLocalId, target.content, hooks);
+            }
         },
 
         cancelRun: () => {
@@ -554,17 +659,25 @@ export function createChatTurns(
         },
     };
 
+    const abortCurrentRun = (reason: DOMException) => {
+        currentRun?.controller.abort(reason);
+        currentRun = null;
+    };
+
     return {
         actions,
-        leaveCurrentRun: () => {
-            currentRun?.controller.abort(LEAVE);
-            currentRun = null;
+        leaveForAnotherThread: () => abortCurrentRun(SWITCH),
+        closeSessionRuns: (sessionId) => {
+            if (get().activeSessionId === sessionId) abortCurrentRun(CLOSE);
+            backgroundRuns.forEach((run, controller) => {
+                if (run.sessionId === sessionId) controller.abort(CLOSE);
+            });
         },
-        abortBackgroundRuns: (sessionId) => {
-            backgroundRuns.forEach((runSessionId, controller) => {
-                if (sessionId === undefined || runSessionId === sessionId) {
-                    controller.abort(LEAVE);
-                }
+        closeAllRuns: () => {
+            closeEpoch += 1;
+            abortCurrentRun(CLOSE);
+            backgroundRuns.forEach((_run, controller) => {
+                controller.abort(CLOSE);
             });
         },
     };

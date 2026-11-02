@@ -454,6 +454,32 @@ test.describe('チャット画面', () => {
             await expect(mainArea(page).getByText('TALK')).toBeVisible();
             await expect(composer(page)).toHaveValue('');
         });
+
+        test('作成の応答を待つ間に停止すると、すぐ本文を入力欄へ戻す', async ({
+            page,
+        }) => {
+            let releaseCreate = () => {};
+            const createHeld = new Promise<void>((resolve) => {
+                releaseCreate = resolve;
+            });
+            await page.route('**/api/talk/sessions/', async (route) => {
+                if (route.request().method() === 'POST') await createHeld;
+                await route.fallback();
+            });
+            await openNewChat(page);
+
+            await sendText(page, '止める発話');
+            await stopButton(page).click();
+
+            await expect(composer(page)).toHaveValue('止める発話');
+            await expect(mainArea(page).getByText('TALK')).toBeVisible();
+
+            releaseCreate();
+            await expect
+                .poll(() => server.mutations)
+                .toEqual(['POST talk/sessions/', 'DELETE talk/sessions/new/']);
+            await expect(page).toHaveURL('/talk');
+        });
     });
 
     test.describe('逐次表示', () => {
@@ -558,6 +584,36 @@ test.describe('チャット画面', () => {
             await expect
                 .poll(async () => (await turnsOf(page))[0].aborted)
                 .toBe(true);
+        });
+
+        test('生成中に離れてすぐ戻っても、サーバーが保存したら表示に出る', async ({
+            page,
+        }) => {
+            await page.goto('/talk/s2');
+            await sendText(page, '戻ってくる発話');
+            await pushEvent(page, 0, 'delta', { text: '途中の応答' });
+            await expect(mainArea(page).getByText('途中の応答')).toBeVisible();
+
+            await page.getByRole('link', { name: /朝の挨拶の練習/ }).click();
+            await expect(page).toHaveURL('/talk/s1');
+            await page.getByRole('link', { name: /音声なしの話/ }).click();
+            await expect(page).toHaveURL('/talk/s2');
+            await expect(mainArea(page).getByText('元の応答')).toBeVisible();
+            await expect(mainArea(page).getByText('途中の応答')).toHaveCount(0);
+
+            // サーバーは切断を検知してから保存する
+            server.sessions.set('s2', {
+                ...plain,
+                messages: [
+                    ...plain.messages,
+                    message(13, 2, 'user', '戻ってくる発話'),
+                    message(14, 3, 'assistant', '途中の応答まで保存'),
+                ],
+            });
+
+            await expect(
+                mainArea(page).getByText('途中の応答まで保存'),
+            ).toBeVisible();
         });
     });
 
@@ -1085,6 +1141,51 @@ test.describe('チャット画面', () => {
             await expect(page).toHaveURL('/talk/s2');
             await expect(mainArea(page).getByText('元の応答')).toBeVisible();
             await expect(composer(page)).toHaveValue('');
+        });
+
+        test('細工したリンクでは別の API を呼ばず /talk へ移る', async ({
+            page,
+        }) => {
+            const requested: string[] = [];
+            page.on('request', (request) => {
+                requested.push(new URL(request.url()).pathname);
+            });
+
+            await page.goto('/talk/..%2F..%2Fhn-agent%2Frun-all%2F%3F');
+
+            await expect(page).toHaveURL('/talk');
+            await expect(page.getByRole('alert')).toContainText(
+                'チャットが見つかりません',
+            );
+            expect(
+                requested.filter(
+                    (path) =>
+                        path.startsWith('/api/') && path.includes('hn-agent'),
+                ),
+            ).toEqual([]);
+        });
+
+        test('読み込みに失敗したら送信を止め、再読み込みで会話を出す', async ({
+            page,
+        }) => {
+            await page.route('**/api/talk/sessions/s2/', (route) =>
+                route.fulfill({ status: 502, json: {} }),
+            );
+            await page.goto('/talk/s2');
+
+            await expect(page.getByRole('alert')).toContainText(
+                '読み込みに失敗しました',
+            );
+            await expect(mainArea(page).getByText('TALK')).toHaveCount(0);
+            await composer(page).fill('送れないはず');
+            await expect(sendButton(page)).toBeDisabled();
+
+            await page.unroute('**/api/talk/sessions/s2/');
+            await page.getByRole('button', { name: '再読み込み' }).click();
+
+            await expect(mainArea(page).getByText('元の応答')).toBeVisible();
+            await expect(page.getByRole('alert')).toHaveCount(0);
+            await expect(sendButton(page)).toBeEnabled();
         });
     });
 

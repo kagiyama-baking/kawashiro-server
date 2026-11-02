@@ -5,11 +5,12 @@ import {
     type ThreadMessageLike,
     useExternalStoreRuntime,
 } from '@assistant-ui/react';
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
     selectIsSendDisabled,
     type SendResult,
+    type TurnHooks,
     useChatStore,
 } from '@/stores/chat-store';
 import type { ChatAudioState, ChatUiMessage, ChatUiStatus } from '@/types/talk';
@@ -90,22 +91,42 @@ export function useChatRuntime(): AssistantRuntime {
     const isSendDisabled = useChatStore(selectIsSendDisabled);
     const navigate = useNavigate();
 
-    const onNew = useCallback(
-        async (message: AppendMessage) => {
-            const result = await useChatStore
-                .getState()
-                .sendMessage(textOf(message), {
-                    onSessionCreated: (id) => {
-                        navigate(`/talk/${id}`, { replace: true });
-                    },
-                    onSessionAbandoned: () => {
-                        navigate('/talk', { replace: true });
-                    },
-                });
-            await throwIfNotSent(result);
-        },
-        [navigate],
-    );
+    const callbacks = useMemo(() => {
+        // 送信の途中で変わるセッションに URL を合わせる
+        const hooks: TurnHooks = {
+            onSessionCreated: (id) => {
+                navigate(`/talk/${id}`, { replace: true });
+            },
+            onSessionAbandoned: () => {
+                navigate('/talk', { replace: true });
+            },
+        };
+        return {
+            onNew: async (message: AppendMessage) => {
+                const result = await useChatStore
+                    .getState()
+                    .sendMessage(textOf(message), hooks);
+                await throwIfNotSent(result);
+            },
+            onEdit: async (message: AppendMessage) => {
+                const result = await useChatStore
+                    .getState()
+                    .editMessage(
+                        message.sourceId ?? '',
+                        textOf(message),
+                        hooks,
+                    );
+                await throwIfNotSent(result);
+            },
+            onReload: async (parentId: string | null) => {
+                if (parentId === null) return;
+                await useChatStore.getState().regenerate(parentId, hooks);
+            },
+            onCancel: async () => {
+                useChatStore.getState().cancelRun();
+            },
+        };
+    }, [navigate]);
 
     const adapter = useMemo(
         () => ({
@@ -114,22 +135,9 @@ export function useChatRuntime(): AssistantRuntime {
             isRunning,
             isLoading,
             isSendDisabled,
-            onNew,
-            onEdit: async (message: AppendMessage) => {
-                const result = await useChatStore
-                    .getState()
-                    .editMessage(message.sourceId ?? '', textOf(message));
-                await throwIfNotSent(result);
-            },
-            onReload: async (parentId: string | null) => {
-                if (parentId === null) return;
-                await useChatStore.getState().regenerate(parentId);
-            },
-            onCancel: async () => {
-                useChatStore.getState().cancelRun();
-            },
+            ...callbacks,
         }),
-        [messages, isRunning, isLoading, isSendDisabled, onNew],
+        [messages, isRunning, isLoading, isSendDisabled, callbacks],
     );
 
     return useExternalStoreRuntime(adapter);

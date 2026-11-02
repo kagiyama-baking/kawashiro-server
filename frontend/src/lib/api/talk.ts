@@ -11,6 +11,11 @@ interface ConfigsResponse {
     readonly configs: GenerateConfig[];
 }
 
+/** セッションの API のパス。id は URL から来るので、パスの区切りとして解釈されないようにする。 */
+function sessionPath(id: string): string {
+    return `talk/sessions/${encodeURIComponent(id)}/`;
+}
+
 export async function fetchConfigs(): Promise<GenerateConfig[]> {
     const response = await apiClient
         .get('talk/configs/')
@@ -42,8 +47,16 @@ export async function createSession(
         .json<ChatSessionDetail>();
 }
 
-export async function getSession(id: string): Promise<ChatSessionDetail> {
-    return apiClient.get(`talk/sessions/${id}/`).json<ChatSessionDetail>();
+interface GetSessionOptions {
+    readonly timeout?: number;
+    readonly retry?: number;
+}
+
+export async function getSession(
+    id: string,
+    options: GetSessionOptions = {},
+): Promise<ChatSessionDetail> {
+    return apiClient.get(sessionPath(id), options).json<ChatSessionDetail>();
 }
 
 export async function updateSessionTitle(
@@ -51,12 +64,12 @@ export async function updateSessionTitle(
     title: string,
 ): Promise<ChatSessionDetail> {
     return apiClient
-        .patch(`talk/sessions/${id}/`, { json: { title } })
+        .patch(sessionPath(id), { json: { title } })
         .json<ChatSessionDetail>();
 }
 
 export async function deleteSession(id: string): Promise<void> {
-    await apiClient.delete(`talk/sessions/${id}/`);
+    await apiClient.delete(sessionPath(id));
 }
 
 interface SendOptions {
@@ -115,7 +128,7 @@ export async function* streamMessage(
     options: SendOptions = {},
 ): AsyncGenerator<ChatStreamEvent> {
     const response = await apiClient.post(
-        `talk/sessions/${sessionId}/messages/`,
+        `${sessionPath(sessionId)}messages/`,
         {
             ...STREAM_REQUEST_OPTIONS,
             json: { content },
@@ -133,7 +146,7 @@ export async function* streamEdit(
     options: SendOptions = {},
 ): AsyncGenerator<ChatStreamEvent> {
     const response = await apiClient.patch(
-        `talk/sessions/${sessionId}/messages/${msgId}/`,
+        `${sessionPath(sessionId)}messages/${msgId}/`,
         {
             ...STREAM_REQUEST_OPTIONS,
             json: { content },
@@ -148,7 +161,7 @@ export async function fetchAudioBlob(
     msgId: number,
 ): Promise<Blob> {
     const response = await apiClient.get(
-        `talk/sessions/${sessionId}/audio/${msgId}/`,
+        `${sessionPath(sessionId)}audio/${msgId}/`,
     );
     return response.blob();
 }
@@ -157,9 +170,9 @@ export async function deleteAudio(
     sessionId: string,
     msgId: number,
 ): Promise<void> {
-    await apiClient.delete(`talk/sessions/${sessionId}/audio/${msgId}/`);
+    await apiClient.delete(`${sessionPath(sessionId)}audio/${msgId}/`);
 }
 
 export async function bulkDeleteAudio(sessionId: string): Promise<void> {
-    await apiClient.delete(`talk/sessions/${sessionId}/audio/`);
+    await apiClient.delete(`${sessionPath(sessionId)}audio/`);
 }

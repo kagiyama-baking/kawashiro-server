@@ -21,14 +21,22 @@ import {
     createChatStateUpdaters,
     emptyThread,
     initialChatState,
+    selectHasLoadFailed,
     withoutAudioIds,
 } from './chat-state';
 import { type ChatTurns, createChatTurns } from './chat-turn';
 
-export { selectIsAtMessageLimit, selectIsSendDisabled } from './chat-state';
+export {
+    selectHasLoadFailed,
+    selectIsAtMessageLimit,
+    selectIsSendDisabled,
+} from './chat-state';
 export type { SendResult, TurnHooks } from './chat-turn';
 
 export type OpenSessionResult = 'ok' | 'not-found' | 'error' | 'stale';
+
+/** セッションの削除の結果。active なら表示中のセッションを消したので新規チャットへ移る。 */
+export type RemoveSessionResult = 'active' | 'other' | 'failed';
 
 interface ChatStoreActions extends ChatTurns {
     readonly loadSessions: (refresh?: boolean) => Promise<void>;
@@ -36,9 +44,10 @@ interface ChatStoreActions extends ChatTurns {
     readonly loadConfigs: () => Promise<void>;
     readonly selectConfig: (name: string) => void;
     readonly openSession: (id: string) => Promise<OpenSessionResult>;
+    readonly retryOpenSession: () => Promise<OpenSessionResult>;
     readonly startNewChat: () => void;
     readonly updateActiveTitle: (title: string) => Promise<void>;
-    readonly removeSession: (id: string) => Promise<boolean>;
+    readonly removeSession: (id: string) => Promise<RemoveSessionResult>;
     readonly deleteMessageAudio: (messageId: number) => Promise<void>;
     readonly deleteAllAudio: () => Promise<void>;
     readonly ensureAudioObjectUrl: (
@@ -52,6 +61,10 @@ type ChatStore = ChatStoreState & ChatStoreActions;
 
 const SELECTED_CONFIG_KEY = 'talk-selected-config';
 const AUDIO_DELETE_FAILED = '音声を削除できませんでした';
+const SESSION_NOT_FOUND = 'チャットが見つかりませんでした';
+// id は URL から来て API のパスに入る。react-router は %2F を / に戻すので、
+// 細工したリンクで別の API を呼ばれないよう、UUID に使う文字だけを通す。
+const SESSION_ID_PATTERN = /^[0-9a-zA-Z-]+$/;
 
 const pendingAudio = new Map<number, Promise<string | null>>();
 let openToken = 0;
@@ -81,9 +94,38 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     /** 表示中のセッションを離れる。遅れて届く読み込みの結果も捨てる。 */
     const leaveThread = () => {
-        turns.leaveCurrentRun();
+        turns.leaveForAnotherThread();
         openToken += 1;
         get().audioObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+        // 取得中の音声は結果を捨てるので、戻ってきたら取り直す
+        pendingAudio.clear();
+    };
+
+    const loadSession = async (id: string): Promise<OpenSessionResult> => {
+        const token = openToken;
+        try {
+            const detail = await apiGetSession(id);
+            if (token !== openToken) return 'stale';
+            const item = aggregateFromDetail(detail);
+            set((state) => ({
+                activeSession: item,
+                messages: detail.messages.map(fromServerMessage),
+                isLoadingDetail: false,
+                sessions: state.sessions.map((s) => (s.id === id ? item : s)),
+            }));
+            return 'ok';
+        } catch (error) {
+            if (token !== openToken) return 'stale';
+            if (error instanceof HTTPError && error.response.status === 404) {
+                set({ ...emptyThread(), error: SESSION_NOT_FOUND });
+                return 'not-found';
+            }
+            set({
+                isLoadingDetail: false,
+                error: 'チャットの読み込みに失敗しました',
+            });
+            return 'error';
+        }
     };
 
     return {
@@ -160,43 +202,23 @@ export const useChatStore = create<ChatStore>((set, get) => {
         openSession: async (id) => {
             if (get().activeSessionId === id) return 'ok';
             leaveThread();
-            const token = openToken;
+            if (!SESSION_ID_PATTERN.test(id)) {
+                set({ ...emptyThread(), error: SESSION_NOT_FOUND });
+                return 'not-found';
+            }
             set({
                 ...emptyThread(),
                 activeSessionId: id,
                 isLoadingDetail: true,
             });
-            try {
-                const detail = await apiGetSession(id);
-                if (token !== openToken) return 'stale';
-                const item = aggregateFromDetail(detail);
-                set((state) => ({
-                    activeSession: item,
-                    messages: detail.messages.map(fromServerMessage),
-                    isLoadingDetail: false,
-                    sessions: state.sessions.map((s) =>
-                        s.id === id ? item : s,
-                    ),
-                }));
-                return 'ok';
-            } catch (error) {
-                if (token !== openToken) return 'stale';
-                if (
-                    error instanceof HTTPError &&
-                    error.response.status === 404
-                ) {
-                    set({
-                        ...emptyThread(),
-                        error: 'チャットが見つかりませんでした',
-                    });
-                    return 'not-found';
-                }
-                set({
-                    isLoadingDetail: false,
-                    error: 'チャットの読み込みに失敗しました',
-                });
-                return 'error';
-            }
+            return loadSession(id);
+        },
+
+        retryOpenSession: async () => {
+            const id = get().activeSessionId;
+            if (id === null || !selectHasLoadFailed(get())) return 'stale';
+            set({ isLoadingDetail: true, error: null });
+            return loadSession(id);
         },
 
         startNewChat: () => {
@@ -221,15 +243,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
                 await apiDeleteSession(id);
             } catch {
                 set({ error: 'チャットを削除できませんでした' });
-                return false;
+                return 'failed';
             }
-            turns.abortBackgroundRuns(id);
-            if (get().activeSessionId === id) {
+            const isActive = get().activeSessionId === id;
+            turns.closeSessionRuns(id);
+            if (isActive) {
                 leaveThread();
                 set(emptyThread());
             }
             dropFromList(id);
-            return true;
+            return isActive ? 'active' : 'other';
         },
 
         deleteMessageAudio: async (messageId) => {
@@ -297,7 +320,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
                     }));
                     return url;
                 })
-                .finally(() => pendingAudio.delete(messageId));
+                .finally(() => {
+                    if (pendingAudio.get(messageId) === task) {
+                        pendingAudio.delete(messageId);
+                    }
+                });
             pendingAudio.set(messageId, task);
             return task;
         },
@@ -305,9 +332,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
         clearError: () => set({ error: null }),
 
         reset: () => {
+            turns.closeAllRuns();
             leaveThread();
-            turns.abortBackgroundRuns();
-            pendingAudio.clear();
             listToken += 1;
             configsToken += 1;
             set({ ...initialChatState, ...emptyThread() });

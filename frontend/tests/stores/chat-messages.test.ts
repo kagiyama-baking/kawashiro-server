@@ -15,6 +15,7 @@ import {
     mergeServerMessages,
     replaceFromTarget,
     rollbackMessages,
+    settleOrphanedAudio,
 } from '@/stores/chat-messages';
 import type {
     ChatSessionDetail,
@@ -247,6 +248,44 @@ describe('applyAudio / applyAudioError / clearAudio', () => {
     });
 });
 
+describe('clearAudio', () => {
+    // 編集中の行を差し替えると、編集に失敗したときに編集欄を開き直せない
+    it('音声のない行は同じオブジェクトのままにする', () => {
+        const plain = uiMessage({ id: 3 });
+
+        expect(clearAudio([plain], () => true)[0]).toBe(plain);
+    });
+
+    it.each([
+        ['合成中', { audioState: 'pending' as const }],
+        ['失敗', { audioState: 'failed' as const, audioError: 'x' }],
+    ])('%s の行は状態を解く', (_name, overrides) => {
+        const row = uiMessage(overrides);
+
+        expect(clearAudio([row], () => true)[0]).toMatchObject({
+            audioState: 'idle',
+            audioError: null,
+        });
+    });
+});
+
+describe('settleOrphanedAudio', () => {
+    it('待っている run のない行の合成中だけを解く', () => {
+        const orphan = uiMessage({ localId: 'a', audioState: 'pending' });
+        const waiting = uiMessage({ localId: 'b', audioState: 'pending' });
+        const failed = uiMessage({ localId: 'c', audioState: 'failed' });
+
+        const next = settleOrphanedAudio(
+            [orphan, waiting, failed],
+            new Set(['b']),
+        );
+
+        expect(next[0].audioState).toBe('idle');
+        expect(next[1]).toBe(waiting);
+        expect(next[2]).toBe(failed);
+    });
+});
+
 describe('finishPendingAudio', () => {
     it('対象の行が pending のときだけ idle に戻す', () => {
         const target = uiMessage({ localId: 'a', audioState: 'pending' });
@@ -342,6 +381,25 @@ describe('replaceFromTarget', () => {
 });
 
 describe('mergeServerMessages', () => {
+    it('変わらない行は同じオブジェクトのままにする', () => {
+        const same = fromServerMessage(serverMessage({ id: 1 }));
+        const changed = fromServerMessage(
+            serverMessage({ id: 2, sequence: 1, content: '古い本文' }),
+        );
+
+        const next = mergeServerMessages(
+            [same, changed],
+            [
+                serverMessage({ id: 1 }),
+                serverMessage({ id: 2, sequence: 1, content: '新しい本文' }),
+            ],
+        );
+
+        expect(next[0]).toBe(same);
+        expect(next[1]).not.toBe(changed);
+        expect(next[1].content).toBe('新しい本文');
+    });
+
     it('位置で対応付け、localId を保ったままサーバーの値で更新する', () => {
         const local = [
             uiMessage({ localId: 'local-u', id: null, sequence: null }),

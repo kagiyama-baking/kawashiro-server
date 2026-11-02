@@ -219,6 +219,35 @@ describe('Talk API', () => {
         expect(detail.id).toBe(SESSION_ID);
     });
 
+    it('セッション id はパスの区切りとして解釈されないようにする', async () => {
+        let requested = '';
+        server.use(
+            http.get('*/api/*', ({ request }) => {
+                requested = new URL(request.url).pathname;
+                return HttpResponse.json(baseSession);
+            }),
+        );
+
+        await getSession('../../hn-agent/run-all/?');
+
+        expect(requested).toBe(
+            '/api/talk/sessions/..%2F..%2Fhn-agent%2Frun-all%2F%3F/',
+        );
+    });
+
+    it('セッション詳細の取得は待つ時間を指定できる', async () => {
+        server.use(
+            http.get(`*/api/talk/sessions/${SESSION_ID}/`, async () => {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                return HttpResponse.json(baseSession);
+            }),
+        );
+
+        await expect(
+            getSession(SESSION_ID, { timeout: 10, retry: 0 }),
+        ).rejects.toMatchObject({ name: 'TimeoutError' });
+    });
+
     it('セッションタイトルを更新できる', async () => {
         const detail = await updateSessionTitle(SESSION_ID, '新タイトル');
         expect(detail.title).toBe('新タイトル');

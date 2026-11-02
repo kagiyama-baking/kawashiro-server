@@ -1329,7 +1329,7 @@ describe('chat-store', () => {
             expect(state().isRunning).toBe(false);
             expect(state().isSyncing).toBe(false);
             expect(state().messages).toEqual([]);
-            expect(api.getSession).toHaveBeenCalledTimes(2);
+            expect(api.getSession).toHaveBeenCalledWith('other');
         });
 
         it('切り替えのあと音声合成の結果が届いても別のセッションに反映しない。題は一覧に反映する', async () => {

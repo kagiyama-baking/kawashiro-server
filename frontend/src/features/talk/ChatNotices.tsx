@@ -1,15 +1,20 @@
 import { AlertCircle, Loader2, X } from 'lucide-react';
-import { Link } from 'react-router';
+import type { ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
-import { selectIsAtMessageLimit, useChatStore } from '@/stores/chat-store';
+import {
+    selectHasLoadFailed,
+    selectIsAtMessageLimit,
+    useChatStore,
+} from '@/stores/chat-store';
 import { CHAT_HISTORY_MAX_COUNT } from '@/types/talk';
 
 function ErrorNotice({
     message,
-    onDismiss,
+    action,
 }: {
     readonly message: string;
-    readonly onDismiss?: () => void;
+    readonly action?: ReactNode;
 }) {
     return (
         <div
@@ -20,18 +25,31 @@ function ErrorNotice({
             <p className="text-destructive min-w-0 flex-1 text-sm wrap-anywhere">
                 {message}
             </p>
-            {onDismiss && (
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={onDismiss}
-                    aria-label="メッセージを閉じる"
-                >
-                    <X />
-                </Button>
-            )}
+            {action}
         </div>
+    );
+}
+
+/** 読み込みに失敗したチャットを読み直す。消えていたら新規チャットへ移る。 */
+function RetryButton() {
+    const retryOpenSession = useChatStore((s) => s.retryOpenSession);
+    const navigate = useNavigate();
+
+    const handleClick = async () => {
+        const result = await retryOpenSession();
+        if (result === 'not-found') navigate('/talk', { replace: true });
+    };
+
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            className="shrink-0"
+            onClick={() => void handleClick()}
+        >
+            再読み込み
+        </Button>
     );
 }
 
@@ -42,6 +60,7 @@ export function ChatNotices() {
     const isSyncing = useChatStore((s) => s.isSyncing);
     const isRunning = useChatStore((s) => s.isRunning);
     const isAtLimit = useChatStore(selectIsAtMessageLimit);
+    const hasLoadFailed = useChatStore(selectHasLoadFailed);
     const configsFailed = useChatStore(
         (s) => s.configsFailed && s.activeSessionId === null,
     );
@@ -51,7 +70,28 @@ export function ChatNotices() {
             {configsFailed && (
                 <ErrorNotice message="プリセットを取得できませんでした。ページを再読み込みしてください。" />
             )}
-            {error && <ErrorNotice message={error} onDismiss={clearError} />}
+            {hasLoadFailed && (
+                <ErrorNotice
+                    message={error ?? 'チャットの読み込みに失敗しました'}
+                    action={<RetryButton />}
+                />
+            )}
+            {error && !hasLoadFailed && (
+                <ErrorNotice
+                    message={error}
+                    action={
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={clearError}
+                            aria-label="メッセージを閉じる"
+                        >
+                            <X />
+                        </Button>
+                    }
+                />
+            )}
             {isAtLimit && !isRunning && (
                 <div
                     role="status"

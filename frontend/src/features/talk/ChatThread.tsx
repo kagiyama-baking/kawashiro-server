@@ -24,7 +24,7 @@ import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-ic
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useChatStore } from '@/stores/chat-store';
+import { selectHasLoadFailed, useChatStore } from '@/stores/chat-store';
 import { CHAT_MESSAGE_MAX_LENGTH } from '@/types/talk';
 import { ChatHeader } from './ChatHeader';
 import { ChatNotices } from './ChatNotices';
@@ -308,7 +308,9 @@ function Welcome() {
 export function ChatThread() {
     const hasNoMessages = useAuiState((s) => s.thread.messages.length === 0);
     const isThreadLoading = useAuiState((s) => s.thread.isLoading);
-    const isEmpty = hasNoMessages && !isThreadLoading;
+    // 読み込みに失敗したチャットは、新規チャットに見せない
+    const hasLoadFailed = useChatStore(selectHasLoadFailed);
+    const isEmpty = hasNoMessages && !isThreadLoading && !hasLoadFailed;
     const isLoading = hasNoMessages && isThreadLoading;
 
     return (

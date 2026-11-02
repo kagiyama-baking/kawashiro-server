@@ -163,6 +163,82 @@ describe('ChatPage', () => {
         ).toBeInTheDocument();
     });
 
+    // react-router は %2F を / に戻すので、そのまま API のパスに入ると別の API を呼ばれる
+    it('細工したリンクでは API を呼ばずに /talk へ移る', async () => {
+        renderPage('/talk/..%2F..%2Fhn-agent%2Frun-all%2F%3F');
+
+        await waitFor(() => {
+            expect(screen.getByTestId('pathname').textContent).toBe('/talk');
+        });
+        expect(api.getSession).not.toHaveBeenCalled();
+        expect(store().activeSessionId).toBeNull();
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'チャットが見つかりません',
+        );
+    });
+
+    describe('読み込みの失敗', () => {
+        async function failToLoad() {
+            vi.mocked(api.getSession).mockRejectedValueOnce(
+                new TypeError('Failed to fetch'),
+            );
+            renderPage('/talk/s1');
+            await screen.findByRole('button', { name: '再読み込み' });
+        }
+
+        it('新規チャットに見せず、送信を止めて再読み込みの導線を出す', async () => {
+            await failToLoad();
+
+            expect(screen.queryByText('TALK')).not.toBeInTheDocument();
+            expect(
+                screen.queryByRole('combobox', { name: 'プリセット' }),
+            ).not.toBeInTheDocument();
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'チャットの読み込みに失敗しました',
+            );
+            expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(
+                1,
+            );
+            fireEvent.change(composerInput(), {
+                target: { value: '送れないはず' },
+            });
+            expect(screen.getByRole('button', { name: '送信' })).toBeDisabled();
+        });
+
+        it('再読み込みすると会話を表示して送信できるようになる', async () => {
+            await failToLoad();
+            vi.mocked(api.getSession).mockResolvedValueOnce(detail([greeting]));
+
+            fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+            expect(await screen.findByText('おはよう')).toBeInTheDocument();
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            fireEvent.change(composerInput(), {
+                target: { value: 'こんにちは' },
+            });
+            expect(screen.getByRole('button', { name: '送信' })).toBeEnabled();
+        });
+
+        it('再読み込みでも見つからなければ /talk へ移る', async () => {
+            await failToLoad();
+            vi.mocked(api.getSession).mockRejectedValueOnce(
+                new HTTPError(
+                    new Response(null, { status: 404 }),
+                    new Request('http://localhost/api/x'),
+                    {} as NormalizedOptions,
+                ),
+            );
+
+            fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('pathname').textContent).toBe(
+                    '/talk',
+                );
+            });
+        });
+    });
+
     it('存在しないセッションなら /talk へ移ってバナーで知らせる', async () => {
         vi.mocked(api.getSession).mockRejectedValueOnce(
             new HTTPError(
