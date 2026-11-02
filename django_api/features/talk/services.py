@@ -18,7 +18,7 @@ from integrations.langfuse.client import (
     render_template,
 )
 from integrations.llm.config import get_llm_settings
-from integrations.llm.runtime import run_agent_sync
+from integrations.llm.runtime import run_agent_sync, stream_text_sync
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
 from integrations.weather.client import WeatherClient
@@ -152,7 +152,7 @@ class TalkService:
 
         tts_options = config.get_tts_options()
         if tts_options is not None:
-            tts_result = self._synthesize_audio(greeting_text, tts_options)
+            tts_result = self.synthesize_audio(greeting_text, tts_options)
             result["audio_data"] = tts_result.audio_data
             result["audio_content_type"] = tts_result.content_type
             result["audio_format"] = tts_result.format
@@ -241,12 +241,82 @@ class TalkService:
 
         tts_options = config.get_tts_options()
         if tts_options is not None:
-            tts_result = self._synthesize_audio(assistant_text, tts_options)
+            tts_result = self.synthesize_audio(assistant_text, tts_options)
             result["audio_data"] = tts_result.audio_data
             result["audio_content_type"] = tts_result.content_type
             result["audio_format"] = tts_result.format
 
         return result
+
+    @observe(name="talk/prepare_chat", capture_input=False, capture_output=False)
+    def prepare_chat_prompt(self, config: "TalkConfig") -> str:
+        """チャットの system プロンプトを確定する（LLM を呼ぶ前の検証を含む）.
+
+        config の system_prompt のみを Langfuse から取得し、プレースホルダー
+        `{{weather}}` / `{{events}}` / `{{datetime}}` を検出して必要なデータを
+        並列取得して埋め込む。応答のストリームを始める前に呼び、失敗を通常の HTTP
+        ステータスで返せるようにする。
+
+        Args:
+            config: 会話生成設定
+
+        Returns:
+            展開済みの system プロンプト
+
+        Raises:
+            PlaceholderDataMissingError: system_prompt が要求するデータ取得設定が
+                不足している場合（例: {{weather}} 使用時の area_code 未設定）
+            LLMConfigurationError: LLM 設定がない場合
+        """
+        system_compile, required_keys = self._prepare_chat_context(config)
+        logger.debug("検出されたプレースホルダー: %s", required_keys)
+
+        self._validate_requirements(config, required_keys)
+
+        data = self._fetch_placeholder_data(config, required_keys)
+        system_prompt = system_compile(**self._build_prompt_variables(data))
+
+        get_llm_settings("talk")
+        return system_prompt
+
+    @observe(name="talk/chat", capture_input=False)
+    def stream_chat_reply(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> Iterator[str]:
+        """過去の会話を引き継いで応答を生成し、本文の増分を順に返す.
+
+        `messages` はそのまま LLM に渡す（user メッセージ内のプレースホルダーは
+        展開しない）。本文のない応答は増分なしで正常に終わる。`close()` で閉じると
+        LLM への接続もその場で閉じる。
+
+        Args:
+            system_prompt: `prepare_chat_prompt` で確定した system プロンプト
+            messages: 会話履歴 `[{"role": "user"|"assistant", "content": ...}]`。
+                末尾は user メッセージ
+            session_id: Langfuse のセッション ID（チャットセッションの UUID）
+
+        Yields:
+            本文の増分
+
+        Raises:
+            LLMConfigurationError: LLM 設定がない場合
+            LLMClientError: LLM の実行に失敗した場合（`LLMTimeoutError` などを含む）
+        """
+        logger.info("チャット応答を生成: messages=%d件", len(messages))
+        history, user_prompt = split_conversation(messages)
+        with _langfuse_session(session_id):
+            yield from stream_text_sync(
+                TALK_CHAT_AGENT,
+                get_llm_settings("talk"),
+                user_prompt=user_prompt,
+                deps=system_prompt,
+                message_history=history,
+                max_tokens=self.CHAT_MAX_OUTPUT_TOKENS,
+            )
 
     def _prepare_chat_context(
         self,
@@ -274,7 +344,7 @@ class TalkService:
             TALK_CHAT_AGENT,
             get_llm_settings("talk"),
             user_prompt=user_prompt,
-            instructions=system_prompt,
+            deps=system_prompt,
             message_history=history,
             max_tokens=self.CHAT_MAX_OUTPUT_TOKENS,
         )
@@ -440,7 +510,7 @@ class TalkService:
                 variables[key] = json.dumps(data[key], ensure_ascii=False, indent=2)
         return variables
 
-    def _synthesize_audio(
+    def synthesize_audio(
         self,
         text: str,
         tts_options: dict[str, Any],
