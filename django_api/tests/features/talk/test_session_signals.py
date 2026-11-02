@@ -117,11 +117,12 @@ class TestAudioFileCleanup:
         msg = _make_message_with_audio(session)
 
         with (
-            django_capture_on_commit_callbacks(execute=True),
             patch.object(
                 msg.audio_file.storage, "delete", side_effect=OSError("disk error")
-            ),
+            ) as storage_delete,
+            django_capture_on_commit_callbacks(execute=True),
         ):
             msg.delete()
 
+        storage_delete.assert_called_once()
         assert ChatMessage.objects.filter(session=session).count() == 0

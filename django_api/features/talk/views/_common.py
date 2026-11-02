@@ -135,6 +135,7 @@ def attach_audio_to_message(
     Returns:
         保存できたら True、行が削除済みか保存に失敗したら False
     """
+    saved = 0
     try:
         msg.audio_file.save(
             f"{msg.sequence}.{audio_format}",
@@ -146,12 +147,10 @@ def attach_audio_to_message(
             audio_format=audio_format,
             audio_size_bytes=len(audio_data),
         )
-    except Exception:
-        logger.exception("音声ファイル保存に失敗（テキスト応答は維持）")
-        saved = 0
-    else:
         if not saved:
             logger.info("音声の保存先の行が削除済み: message=%s", msg.pk)
+    except Exception:
+        logger.exception("音声ファイル保存に失敗（テキスト応答は維持）")
     if not saved:
         _discard_audio_file(msg)
         return False
