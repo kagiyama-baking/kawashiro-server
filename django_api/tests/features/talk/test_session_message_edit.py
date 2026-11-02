@@ -1,6 +1,10 @@
-"""PATCH /talk/sessions/<id>/messages/<msg_id>/ (編集再送) のテスト."""
+"""PATCH /talk/sessions/<id>/messages/<msg_id>/ (編集再送) のテスト（JSON モード）.
 
-from unittest.mock import MagicMock, patch
+`Accept` に `text/event-stream` を含まないときの応答を確かめる。SSE モードは
+`test_chat_turn_sse.py`、LLM はモデルだけを差し替えて実行する。
+"""
+
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -9,10 +13,8 @@ from pydantic_ai.exceptions import ModelHTTPError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from features.talk.llm_agents import TALK_CHAT_AGENT
 from features.talk.models import ChatMessage, ChatSession, TalkConfig
 from integrations.langfuse.models import LangfusePromptRef
-from tests.fixtures.llm import ScriptedLLM
 
 User = get_user_model()
 
@@ -106,15 +108,6 @@ def _url(session_id, msg_id) -> str:
     return f"/talk/sessions/{session_id}/messages/{msg_id}/"
 
 
-def _mock_service(content="再生成"):
-    svc = MagicMock()
-    svc.synthesize_chat.return_value = {
-        "message": {"role": "assistant", "content": content}
-    }
-    svc.generate_session_title.return_value = "新タイトル"
-    return svc
-
-
 @pytest.mark.django_db
 class TestSessionMessageEdit:
     def test_unauthenticated_returns_401(self, populated_session):
@@ -148,12 +141,15 @@ class TestSessionMessageEdit:
         )
         assert response.status_code == 400
 
-    @patch("features.talk.views.messages.TalkService")
     def test_edit_drops_subsequent_messages_and_audio(
-        self, mock_service_class, populated_session, auth_client
+        self,
+        chat_llm,
+        populated_session,
+        auth_client,
+        django_capture_on_commit_callbacks,
     ):
         session, msgs = populated_session
-        mock_service_class.return_value = _mock_service("再生成された応答")
+        chat_llm.enqueue("再生成された応答")
 
         # 削除対象の audio file path を覚えておく
         a1_path = msgs[1].audio_file.name
@@ -162,11 +158,12 @@ class TestSessionMessageEdit:
         assert storage.exists(a1_path) and storage.exists(a3_path)
 
         # msgs[0] (user, sequence=0) を編集
-        response = auth_client.patch(
-            _url(session.id, msgs[0].id),
-            {"content": "編集後"},
-            format="json",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            response = auth_client.patch(
+                _url(session.id, msgs[0].id),
+                {"content": "編集後"},
+                format="json",
+            )
 
         assert response.status_code == 200
         # 残るのは新 user (sequence=0) + 新 assistant (sequence=1)
@@ -178,59 +175,32 @@ class TestSessionMessageEdit:
         # 旧音声は物理削除済み
         assert not storage.exists(a1_path) and not storage.exists(a3_path)
 
-    @patch("features.talk.views.messages.TalkService")
     def test_edit_keeps_existing_title(
-        self, mock_service_class, populated_session, auth_client
+        self, chat_llm, title_llm, populated_session, auth_client
     ):
         session, msgs = populated_session
-        mock_service_class.return_value = _mock_service()
+        chat_llm.enqueue("再生成")
 
         auth_client.patch(_url(session.id, msgs[0].id), {"content": "x"}, format="json")
 
         session.refresh_from_db()
-        # 編集再送ではタイトル再生成しない（既存維持）
+        # タイトルがあれば編集再送でも再生成しない（既存維持）
         assert session.title == "既存タイトル"
-
-    @patch("features.talk.views.messages.TalkService")
-    def test_synthesis_error_rollbacks(
-        self, mock_service_class, populated_session, auth_client
-    ):
-        from integrations.llm.exceptions import LLMClientError
-
-        session, msgs = populated_session
-        original_count = session.messages.count()
-        original_seq0_content = msgs[0].content
-
-        svc = MagicMock()
-        svc.synthesize_chat.side_effect = LLMClientError("nope")
-        mock_service_class.return_value = svc
-
-        response = auth_client.patch(
-            _url(session.id, msgs[0].id),
-            {"content": "編集予定だった"},
-            format="json",
-        )
-
-        assert response.status_code == 502
-        # ロールバック: メッセージ件数も内容も保持される
-        assert session.messages.count() == original_count
-        msgs[0].refresh_from_db()
-        assert msgs[0].content == original_seq0_content
+        assert title_llm.requests == []
 
     def test_edit_through_real_agent_sends_prior_history_and_replaces_rest(
-        self, talk_llm_settings, populated_session, auth_client
+        self, chat_llm, populated_session, auth_client
     ):
         """モデル以外を差し替えずに通し、対象より前の履歴だけを LLM に渡す."""
         session, msgs = populated_session
-        llm = ScriptedLLM("再生成された返信")
+        chat_llm.enqueue("再生成された返信")
 
-        with TALK_CHAT_AGENT.override(model=llm.model):
-            response = auth_client.patch(
-                _url(session.id, msgs[2].id), {"content": "編集後"}, format="json"
-            )
+        response = auth_client.patch(
+            _url(session.id, msgs[2].id), {"content": "編集後"}, format="json"
+        )
 
         assert response.status_code == 200
-        assert llm.requests[0].conversation == [
+        assert chat_llm.requests[0].conversation == [
             ("user", "#0"),
             ("assistant", "#1"),
             ("user", "編集後"),
@@ -241,18 +211,29 @@ class TestSessionMessageEdit:
             "編集後",
             "再生成された返信",
         ]
+        assert [m["content"] for m in response.data["messages"]] == [
+            "#0",
+            "#1",
+            "編集後",
+            "再生成された返信",
+        ]
 
-    def test_llm_status_error_returns_502_and_keeps_messages(
-        self, talk_llm_settings, populated_session, auth_client
+    @pytest.mark.parametrize("status_code", [429, 500])
+    def test_llm_status_error_returns_502_and_keeps_messages_and_audio(
+        self, status_code, chat_llm, populated_session, auth_client
     ):
-        """LLM の HTTP エラーは 502 になり、既存のメッセージは残る."""
-        session, msgs = populated_session
-        llm = ScriptedLLM(ModelHTTPError(429, "test-alias"))
+        """LLM の HTTP エラーは 502 になり、既存のメッセージも音声も残る.
 
-        with TALK_CHAT_AGENT.override(model=llm.model):
-            response = auth_client.patch(
-                _url(session.id, msgs[0].id), {"content": "編集後"}, format="json"
-            )
+        以前は行だけがロールバックされ、音声ファイルは削除されたままになっていた。
+        """
+        session, msgs = populated_session
+        audio_names = [msgs[1].audio_file.name, msgs[3].audio_file.name]
+        storage = msgs[1].audio_file.storage
+        chat_llm.enqueue(ModelHTTPError(status_code, "test-alias"))
+
+        response = auth_client.patch(
+            _url(session.id, msgs[0].id), {"content": "編集後"}, format="json"
+        )
 
         assert response.status_code == 502
         assert [m.content for m in session.messages.order_by("sequence")] == [
@@ -261,6 +242,7 @@ class TestSessionMessageEdit:
             "#2",
             "#3",
         ]
+        assert all(storage.exists(name) for name in audio_names)
 
     def test_message_not_in_session_returns_404(self, populated_session, auth_client):
         session, msgs = populated_session

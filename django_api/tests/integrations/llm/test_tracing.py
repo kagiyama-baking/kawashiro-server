@@ -95,8 +95,8 @@ class TestTraceStructure:
         spans = captured["spans"]
         generations = [span for span in spans if span["name"].startswith("chat ")]
 
-        # Orchestrator 2 回 + Detective 1 回 + Talk 1 回
-        assert len(generations) == 4
+        # Orchestrator 2 回 + Detective 1 回 + Talk 3 回（ストリーミング）
+        assert len(generations) == 6
         assert {span["scope"] for span in generations} == {"pydantic-ai"}
         assert {span["scope"] for span in spans} == {"pydantic-ai", "langfuse-sdk"}
 
@@ -150,6 +150,93 @@ class TestTraceStructure:
         }
 
         assert conversation_ids == {"hn-thread/4242"}
+
+
+def _generations_of_session(spans: list[dict], session_id: str) -> list[dict]:
+    return [
+        span
+        for span in spans
+        if span["name"].startswith("chat ")
+        and span["attributes"].get("session.id") == session_id
+    ]
+
+
+def _talk_span_of_generation(generation: dict, spans: list[dict]) -> dict:
+    """generation の祖先の talk/chat スパンを返す."""
+    by_id = {span["span_id"]: span for span in spans}
+    span = generation
+    while span["name"] != "talk/chat":
+        span = by_id[span["parent_id"]]
+    return span
+
+
+@pytest.mark.integration
+class TestStreamingTrace:
+    """ストリーミングのチャットのトレース."""
+
+    @pytest.mark.parametrize(
+        "session_id", ["trace-session", "litellm-session", "stopped-session"]
+    )
+    def test_each_stream_records_one_generation_under_talk_chat(
+        self, captured, session_id
+    ):
+        """1 回の実行で generation は 1 本だけで、talk/chat の配下に入る."""
+        spans = captured["spans"]
+        generations = _generations_of_session(spans, session_id)
+
+        assert len(generations) == 1
+        assert _ancestor_names(generations[0], spans) == [
+            "invoke_agent talk-chat",
+            "talk/chat",
+        ]
+
+    def test_talk_chat_records_output_without_input(self, captured):
+        """talk/chat は本文を出力に記録し、入力（履歴）は generation に任せる."""
+        spans = captured["spans"]
+        generation = _generations_of_session(spans, "litellm-session")[0]
+
+        attributes = _talk_span_of_generation(generation, spans)["attributes"]
+
+        assert attributes["langfuse.observation.output"] == "本文"
+        assert "langfuse.observation.input" not in attributes
+
+    def test_stream_usage_breakdown_is_dropped(self, captured):
+        """ストリーミングでも usage の内訳を持たない（Langfuse で二重に数えない）."""
+        generation = _generations_of_session(captured["spans"], "litellm-session")[0]
+
+        attributes = generation["attributes"]
+        assert attributes["gen_ai.usage.input_tokens"] == "10"
+        assert attributes["gen_ai.usage.output_tokens"] == "3"
+        assert [
+            key for key in attributes if key.startswith("gen_ai.usage.details")
+        ] == []
+
+    def test_stream_uses_service_name_as_conversation_id(self, captured):
+        """会話 ID はサービス名（session.id があれば Langfuse はそちらを優先する）."""
+        generation = _generations_of_session(captured["spans"], "litellm-session")[0]
+
+        assert generation["attributes"]["gen_ai.conversation.id"] == "talk"
+
+    def test_stopped_stream_ends_spans_without_error(self, captured):
+        """途中で閉じてもスパンは閉じ、届いた本文を残し、エラーにしない."""
+        spans = captured["spans"]
+        generation = _generations_of_session(spans, "stopped-session")[0]
+        talk = _talk_span_of_generation(generation, spans)
+
+        assert "途中" in generation["attributes"]["gen_ai.output.messages"]
+        assert talk["attributes"]["langfuse.observation.output"] == "途中"
+        assert talk["attributes"].get("langfuse.observation.level") != "ERROR"
+        assert generation["status"] != "ERROR"
+        assert talk["status"] != "ERROR"
+
+    def test_prepare_chat_is_separate_trace_without_io(self, captured):
+        """プロンプトの準備は別のトレースで記録し、内容は残さない."""
+        spans = captured["spans"]
+        prepare = _find(spans, "talk/prepare_chat")
+
+        assert prepare["parent_id"] is None
+        assert "langfuse.observation.input" not in prepare["attributes"]
+        assert "langfuse.observation.output" not in prepare["attributes"]
 
 
 IMPORT_CHECK_CODE = """

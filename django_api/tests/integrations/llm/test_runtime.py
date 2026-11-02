@@ -49,23 +49,10 @@ from integrations.llm.runtime import (
     run_agent_sync,
     translate_llm_errors,
 )
+from tests.fixtures.llm import LITELLM_ALIASES as ALIASES
 from tests.fixtures.llm import litellm_response
 
 BASE_URL = "http://litellm.invalid/v1"
-
-# LiteLLM のモデル名は DB 上の任意の文字列。名前の形によって PydanticAI が推定する
-# プロファイルが変わるので、代表的な形で本文が変わらないことを確かめる。
-ALIASES = [
-    "gpt-4o-mini",
-    "kimi-k2.5",
-    "bedrock/moonshotai.kimi-k2.5",
-    "moonshotai/kimi-k2.5",
-    "anthropic/claude-sonnet-4-5",
-    "openai/gpt-5.4",
-    "google/gemini-2.5-flash",
-    "deepseek/deepseek-reasoner",
-    "o1-mini",
-]
 
 
 def _settings(alias: str = "gpt-4o-mini", service_name: str = "talk") -> LLMSettings:

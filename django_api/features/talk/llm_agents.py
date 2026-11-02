@@ -4,7 +4,7 @@
 出力に `None` を許し、本文のない応答を再試行せず空として受ける（呼び出し側で空文字にする）。
 """
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -13,8 +13,9 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-TALK_CHAT_AGENT: Agent[None, str | None] = Agent(
-    name="talk-chat", output_type=str | None
+# ストリーミングの実行には instructions の引数がないので、system プロンプトは deps で渡す
+TALK_CHAT_AGENT: Agent[str, str | None] = Agent(
+    name="talk-chat", deps_type=str, output_type=str | None
 )
 TALK_TITLE_AGENT: Agent[None, str | None] = Agent(
     name="talk-title", output_type=str | None
@@ -22,6 +23,12 @@ TALK_TITLE_AGENT: Agent[None, str | None] = Agent(
 TALK_SYNTHESIZE_AGENT: Agent[None, str | None] = Agent(
     name="talk-synthesize", output_type=str | None
 )
+
+
+@TALK_CHAT_AGENT.instructions
+def _chat_system_prompt(ctx: RunContext[str]) -> str:
+    """`deps` で渡された system プロンプトをそのまま使う."""
+    return ctx.deps
 
 
 def _to_model_message(message: dict[str, str]) -> ModelMessage:

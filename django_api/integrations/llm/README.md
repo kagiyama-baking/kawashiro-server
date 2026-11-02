@@ -162,18 +162,20 @@ except LLMClientError:
 
 | 関数 | 用途 |
 |---|---|
-| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries)` | 同期コードから実行する。Talk と Orchestrator はこちら |
+| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries)` | 同期コードから実行する。Talk のタイトル・単発生成と Orchestrator はこちら |
 | `arun_agent(...)`（引数は同じ） | イベントループ上から `await` する。サブエージェントはこちら |
+| `stream_text_sync(agent, settings, *, user_prompt, deps, message_history, max_tokens, conversation_id)` | 同期コードから実行し、本文の増分を順に返すジェネレータ。Talk のチャットはこちら |
 | `open_model(settings)` | `AsyncOpenAI` を作って閉じる async context manager。接続はイベントループに属するので、実行ごとに作る |
 | `translate_llm_errors()` | PydanticAI の例外を上の 3 種へ変換する。`RunCancelled` と `UserError` は変換しない |
 
 - **`agent.run_sync` は使いません。** そちらでは `sync_to_async(thread_sensitive=True)` が呼び出し元スレッドに戻らず、別の DB 接続になります（トランザクション内のデータも見えません）。`run_agent_sync` は `asgiref.async_to_sync` で実行するので、ツール内の `sync_to_async` は呼び出し元スレッドで動きます。
+- **ストリーミングは `stream_text_sync` を通します。** `Agent.run_stream_sync` の同期ブリッジは 1 本の長寿命タスクで実行全体を動かすので、OpenTelemetry のネストとキャンセルスコープが保たれます。呼び出し元スレッドのイベントループで動くので、同じスレッドで読み進めて閉じます（`AsyncOpenAI` も同じループで閉じます）。`close()` すると LiteLLM への HTTP 接続もその場で閉じます。`run_stream_sync` に `instructions` の引数がないので、system プロンプトはエージェントの動的 instructions（`deps` を返す関数）で渡します。増分は 50 ms 幅でまとめます。
 - **イベントループ上で ORM に触れません。** async のツールやメソッドでは、ORM・HN/Tavily 取得・プロンプト解決を同期関数にまとめて `await sync_to_async(...)` で実行します（`features/hn_agent/agents/*.py` の `_prepare`）。同期のツールの中から `run_sync` は呼べないので、ツールは `async def` にします。
 - **LiteLLM との送受信**: LiteLLM のモデル名は DB 上の任意の文字列なので、名前から推定されるプロファイルに送受信を左右させません（`_LITELLM_PROFILE`）。どのエイリアスでも、出力上限は `max_tokens`（`drop_params` で `max_completion_tokens` が黙って落ちるのを避ける）で送り、`response_format`・tools の `strict`・推論テキストの送り返し・system プロンプトへの追記やロールの変更はありません。応答本文は `<think>` などの文字列も含めてそのまま受け取ります。`service_name` と `environment` は `extra_body.metadata` に付与します。契約は `tests/integrations/llm/test_runtime.py` で固定しています。
-- **本文のない応答**: 出力上限（`length`）やフィルター（`content_filter`）で本文がなくなった応答も例外にせず、本文なしとして扱います（`_TreatEmptyResponseAsFinished`）。`output_type` に `None` を許すエージェントはそのまま `None` を受け取り、再試行しません。
+- **本文のない応答**: 出力上限（`length`）やフィルター（`content_filter`）で本文がなくなった応答も例外にせず、本文なしとして扱います（`_TreatEmptyResponseAsFinished`）。`output_type` に `None` を許すエージェントはそのまま `None` を受け取り、再試行しません。`stream_text_sync` では増分なしで正常に終わります。
 - **トレーシング**: `apps.py` の `ready()` で `Agent.instrument_all(InstrumentationSettings())` を呼び、呼び出しは Langfuse の generation として記録されます（名前は `chat <model_alias>`）。設定は 1 つを共有します。引数なしの `instrument_all()` は実行のたびに設定を作り、MeterProvider が未設定の間は OpenTelemetry 側に Meter がたまり続けます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめ、チャットは `propagate_attributes(session_id=...)` で Langfuse Sessions に集約しています。`langfuse.openai` は import するだけで OpenAI SDK を書き換えて generation が二重になるので、使わないでください。
-- **Langfuse の Sessions**: Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（チャット）そちらが優先されます。
-- **usage の内訳**: LiteLLM の `text_tokens` と `reasoning_tokens` は output の内数ですが、Langfuse は usage の全項目を足して total にします。二重に数えないよう、`_LiteLLMChatModel` で内訳を除いています。計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で書き換えても反映されません。
+- **Langfuse の Sessions**: Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` と `stream_text_sync` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（チャット）そちらが優先されます。
+- **usage の内訳**: LiteLLM の `text_tokens` と `reasoning_tokens` は output の内数ですが、Langfuse は usage の全項目を足して total にします。二重に数えないよう、`_LiteLLMChatModel`（ストリーミングは `_LiteLLMStreamedResponse`）で内訳を除いています。計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で書き換えても反映されません。
 - **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。コード側でハードコードしません。
 - **テスト**: 書き方は [../../../.claude/CLAUDE.md](../../../.claude/CLAUDE.md) の「LLM 呼び出しのテスト」を参照してください。
 

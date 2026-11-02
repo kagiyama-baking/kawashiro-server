@@ -14,12 +14,14 @@ features/talk/
 ├── serializers.py       # リクエスト・レスポンス定義（content 上限 4000 文字）
 ├── services.py          # TalkService: プレースホルダー検出・並列取得・LLM・TTS
 ├── llm_agents.py        # PydanticAI エージェント（チャット・タイトル・単発生成）と履歴の変換
-├── views/               # ビューは責務ごとに 5 分割（外部からは features.talk.views.X で参照）
+├── chat_turn.py         # チャットの 1 ターンの実行: prepare_turn / commit_turn / ChatTurnRunner
+├── views/               # ビューは責務ごとに分割（外部からは features.talk.views.X で参照）
 │   ├── __init__.py      # 各ビューの再エクスポート（urls.py 側は変更不要）
 │   ├── _common.py       # 例外→HTTP マッピング / SESSION_MAX_MESSAGES / 音声保存ヘルパ
+│   ├── _sse.py          # ターンの応答（SSE / JSON の切替）: format_sse / respond_with_turn
 │   ├── synthesize.py    # TalkSynthesizeView, TodayInfoView, ConfigsListView
 │   ├── sessions.py      # ChatSessionListCreateView, ChatSessionDetailView, SessionPagination
-│   ├── messages.py      # ChatSessionMessageView, ChatSessionMessageEditView
+│   ├── messages.py      # ChatSessionMessageView, ChatSessionMessageEditView（検証のみ）
 │   └── audio.py         # ChatSessionMessageAudioView, ChatSessionAudioBulkDeleteView
 ├── signals.py           # post_delete で音声ファイルを物理削除（apps.ready() で登録）
 ├── permissions.py       # IsSessionOwner（session / session 経由オブジェクトの所有者判定）
@@ -29,7 +31,7 @@ features/talk/
 └── management/commands/cleanup_orphan_audio.py
 ```
 
-`TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。LLM は `llm_agents.py` の 3 エージェントを `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストで差し替える際は、サービスごとなら `features.talk.views.messages.TalkService` のように具体モジュールのパスを patch し、LLM だけなら `TALK_CHAT_AGENT.override(model=...)` を使ってください。
+`TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。LLM は `llm_agents.py` の 3 エージェントを、チャットは `stream_text_sync`、タイトルと単発生成は `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストでは LLM を `TALK_CHAT_AGENT.override(model=...)` で差し替えます（`tests/features/talk/conftest.py` の `chat_llm` / `title_llm`）。
 
 ## TalkConfig リファレンス
 
@@ -72,7 +74,7 @@ features/talk/
 4. 必要なキーのみ `ThreadPoolExecutor(max_workers=min(len(tasks), 3))` で並列取得。`FIRST_EXCEPTION` で待ち、いずれかが失敗したら未完了の future をキャンセルして最初の例外を伝播
 5. 取得結果を `json.dumps(..., ensure_ascii=False, indent=2)` で文字列化して埋め込む。要求されなかったキーは空文字で埋めるため、未使用の `{{...}}` がそのまま残ることはない
 
-検出対象は API によって異なります。`/talk/synthesize/` は **system + user 両方**を走査し、チャット（`synthesize_chat`）は **system プロンプトのみ**を走査します（ユーザー発話の中の `{{...}}` は展開されません）。
+検出対象は API によって異なります。`/talk/synthesize/` は **system + user 両方**を走査し、チャット（`prepare_chat_prompt`）は **system プロンプトのみ**を走査します（ユーザー発話の中の `{{...}}` は展開されません）。
 
 | プレースホルダー | データ源 | 埋め込まれる内容 | 前提 |
 |---|---|---|---|
@@ -103,37 +105,81 @@ features/talk/
 | `GET` | `/talk/sessions/<uuid>/` | 詳細（messages 込み。音声は `audio_url` 経由） |
 | `PATCH` | `/talk/sessions/<uuid>/` | タイトル更新 |
 | `DELETE` | `/talk/sessions/<uuid>/` | セッション削除（メッセージと音声ファイルも消える） |
-| `POST` | `/talk/sessions/<uuid>/messages/` | ユーザー発話を送信し assistant 応答を生成（201 でセッション詳細を返す） |
-| `PATCH` | `/talk/sessions/<uuid>/messages/<int>/` | user メッセージを編集して再送。対象以降は破棄して再生成（assistant は編集不可で 400） |
+| `POST` | `/talk/sessions/<uuid>/messages/` | ユーザー発話を送信し assistant 応答を生成（201 でセッション詳細、または SSE で逐次。下記） |
+| `PATCH` | `/talk/sessions/<uuid>/messages/<int>/` | user メッセージを編集して再送。対象以降は破棄して再生成（200 でセッション詳細、または SSE で逐次。assistant は編集不可で 400） |
 | `GET` | `/talk/sessions/<uuid>/audio/<int>/` | 認可付き音声配信（`FileResponse`） |
 | `DELETE` | `/talk/sessions/<uuid>/audio/<int>/` | 個別メッセージの音声だけ削除（本文は残す） |
 | `DELETE` | `/talk/sessions/<uuid>/audio/` | セッション内の音声を一括削除（本文は残す） |
+
+**送信・編集再送の応答（SSE / JSON）**
+
+応答の形式は `Accept` で決まります。
+
+| `Accept` | 応答 |
+|---|---|
+| `text/event-stream` を含む（例: `text/event-stream, application/json`） | 200 + SSE |
+| それ以外（`application/json`、`*/*`、指定なし） | 同じ処理を最後まで実行し、送信は 201 / 編集は 200 + セッション詳細の JSON |
+| `text/event-stream` のみ | 406（`JSONRenderer` のみの DRF が受け付けない） |
+
+SSE を使うクライアントは `Accept: text/event-stream, application/json` を送ります。認証・スロットル・所有権・入力検証・プリセットの存在・件数上限・プロンプトの準備・LLM 設定の失敗は、SSE を要求しても通常の HTTP ステータスと JSON で返ります（ストリームは始まりません）。
+
+各イベントは `event: <名前>` と `data: <JSON>` の 2 行で、UTF-8（日本語はエスケープしない）です。順序は `start` → `delta`（0 回以上）→ `message` → `audio` か `audio_error`（TTS 有効時のみ）→ `title`（生成時のみ）→ `done` です。
+
+| イベント | data | 説明 |
+|---|---|---|
+| `start` | `{}` | 最初のイベント。LLM を呼ぶ前に流れ、ここで応答ヘッダが届く |
+| `delta` | `{"text"}` | 本文の増分（約 50 ms ごとにまとまる）。連結すると保存される本文になる（保存できない NUL と孤立サロゲートは取り除く）。本文のない応答では流れない |
+| `message` | `{"user", "assistant"}` | DB に保存した直後。中身はセッション詳細の `messages[]` と同じ形（`audio_url` はまだ `null`） |
+| `audio` | `{"message_id", "audio_url", "audio_format", "audio_size_bytes"}` | 音声を保存した |
+| `audio_error` | `{"message_id", "error"}` | 音声の合成か保存に失敗した。本文は残り、処理は続く |
+| `title` | `{"title"}` | タイトルを生成した（手動で名前が付いたら流れない） |
+| `done` | `{"title", "message_count", "total_audio_bytes", "updated_at"}` | 正常終了。セッション一覧の項目を更新できる |
+| `error` | `{"status", "error"}` | 失敗して終了（これが最後のイベント）。`status` は JSON モードなら返す HTTP ステータス。写像は下のエラーマッピングと同じ |
+
+**失敗と停止の挙動**
+
+| 状況 | 動作 |
+|---|---|
+| LLM の失敗 | `error` を送って終わり、DB は変わらない（ユーザー発話も残らない）。編集でも元の履歴と音声が残る |
+| 停止・切断（クライアントが接続を閉じる） | ユーザー発話と届いた分の応答を保存する（本文が空ならユーザー発話だけ）。編集なら対象以降を置き換える。音声とタイトルは実行しない |
+| 音声の失敗 | 致命にしない。本文を残して `audio_error` を送り、続行する（JSON モードでは無視して 201 / 200） |
+| 本文の保存後の切断 | 実行中の音声合成は完了して保存され、次の書き込みで切断に気づいて終わる（切断の直後の書き込みは成功することがあるので、タイトルの生成まで進むことがある） |
+| セッションが途中で削除された | `error`（status 404）で終わり、何も保存しない |
+| 同時送信 | コミット時に採番するので一意制約は壊れない。後から完了した方が末尾に付く（履歴の文脈はずれ得る） |
+
+- 切断は次の書き込みで検知するので、クライアントが受け取った分より少し長い本文が保存されることがあります。`done` も `error` も来ないまま接続が切れたら、セッション詳細を取り直してください。
+- 最初のトークンが届くまでは書き込みがないので、切断に気づきません。遅い応答を停止してすぐ次を送ると、停止した分はまだ保存されていないので次の応答の文脈に入らず、後から保存されると順序が入れ替わることがあります。
+- 停止した応答に印は残りません（リロード後は普通の応答に見えます）。初回のターンを停止するとタイトルは空のままで、次のターンで生成します。タイトルの生成は会話の冒頭（履歴 2 件まで）に限るので、失敗したまま冒頭を過ぎたセッションは題が空のままです（手動で付けられます）。
+- ヘッダは `Content-Type: text/event-stream; charset=utf-8`、`Cache-Control: no-cache, no-transform`、`X-Accel-Buffering: no`（nginx のバッファを止める）です。ハートビートは送らないので、nginx の `proxy_read_timeout`（120 秒）がイベントの間隔の上限です。
+- 本番の gunicorn は sync worker なので、1 ターン全体（LLM・音声・タイトル）が `--timeout` に収まる必要があります（ストリーミング中も延長されません）。超えるとワーカーが強制終了され、`done` も `error` もなく接続が切れます（切れる前に gunicorn が生のエラー応答を書くことがあります）。本文が届いていればそこまでを保存し、届く前なら LLM の失敗と同じく何も保存しません。ただし保存は SIGKILL までの短い猶予の中で行うので、確実ではありません。デプロイ時の停止で `graceful_timeout` を超えた場合は保存されません。
 
 **上限・レート制限**
 
 | 項目 | 値 | 備考 |
 |---|---|---|
 | throttle scope `talk_chat` | 20 リクエスト/分 | `ScopedRateThrottle`。メッセージ送信と編集再送に適用（`settings.py` の `DEFAULT_THROTTLE_RATES`） |
-| `SESSION_MAX_MESSAGES` | 50 | user + assistant の合計。到達後の送信は 400。編集再送は対象以降を削除するため件数は増えない |
+| `SESSION_MAX_MESSAGES` | 50 | user + assistant の合計。到達後の送信は 400。編集再送は対象以降を置き換えるので確認しない。確認は事前検証で行うので、同時送信や編集で少し超えることがある |
 | `content` 最大長 | 4000 文字 | 送信・編集どちらも同じ |
 | `CHAT_MAX_OUTPUT_TOKENS` | 1024 | チャット応答の `max_tokens` |
 | ページネーション | `default_limit=20` / `max_limit=100` | `LimitOffsetPagination`（セッション一覧のみ） |
 
 **認可**: セッション・メッセージ・音声のいずれも `user=request.user` でクエリセットを絞るため、他人の `session_id` / `msg_id` を指定しても 404 になります（`ChatMessage.id` はグローバル連番のため、編集・音声系では `session_id` と所有者の二重チェックを行っています）。
 
-**エラーマッピング**（`views/_common.handle_synthesis_error`）: プレースホルダー設定不足 → 400、予報区コード不明 → 404、外部 API/LLM/TTS/祝日のタイムアウト → 504、ネットワーク・パース・認証エラーと LLM の HTTP エラー（4xx / 5xx）や不正な応答 → 502、MS Graph 等の設定不備 → 503、それ以外 → 500。
+**エラーマッピング**（`views/_common.classify_synthesis_error`。HTTP の応答と SSE の `error` で共用）: プレースホルダー設定不足 → 400、予報区コード不明 → 404、外部 API/LLM/TTS/祝日のタイムアウト → 504、ネットワーク・パース・認証エラーと LLM の HTTP エラー（4xx / 5xx）や不正な応答 → 502、MS Graph 等の設定不備 → 503、それ以外 → 500。
 
 ## 内部挙動
 
-**タイトル自動生成** — 初回の assistant 応答後（`title` が空かつメッセージ数が 2）に `generate_session_title` が走ります。履歴の先頭 4 件のみを使い、`max_tokens=60`、「日本語 1 行・20 文字以内」を指示、前後の引用符を除去し 50 文字で丸めます。失敗しても警告ログのみでチャット応答は返ります。`PATCH /talk/sessions/<uuid>/` で手動上書きも可能です。
+**遅延コミット** — チャットの 1 ターンは LLM が完了または停止するまで DB に書きません（`chat_turn.py`）。LLM の間はトランザクションもロックも持たないので、生成中に他のリクエストを待たせません。LLM の失敗で元の履歴と音声が失われることもありません。
 
-**sequence 採番** — `transaction.atomic` 内で `ChatSession` を `select_for_update()` してロックしてから、既存メッセージの最大 `sequence + 1` を user に、その次を assistant に割り当てます。`(session, sequence)` の `UniqueConstraint` と合わせて、同時 POST による採番の衝突と 50 件上限のすり抜けを防いでいます。
+**タイトル自動生成** — `title` が空なら assistant 応答の後に `generate_session_title` が走ります（送信でも編集再送でも。停止した初回ターンの救済のため、メッセージ数は問いません）。履歴の先頭 4 件のみを使い、`max_tokens=60`、「日本語 1 行・20 文字以内」を指示、前後の引用符を除去し 50 文字で丸めます。失敗しても警告ログのみでチャット応答は返ります。更新は `title` が空の行だけに行うので、`PATCH /talk/sessions/<uuid>/` の手動の名前を上書きしません。
 
-**音声ファイルのライフサイクル** — 保存先は `talk_audio/<session_id>/<sequence>.<ext>`（`MEDIA_ROOT` 相対）。ファイル書き込みは **DB の commit 後**に行い、ロールバック時にオーファンファイルが残らないようにしています。書き込みに失敗してもテキスト応答は保持され、音声フィールドだけ未設定になります。`ChatMessage` の `post_delete` シグナルでストレージ実体を物理削除するため、メッセージ削除・セッション削除（cascade）・編集再送での破棄いずれでもファイルは残りません。DB 行は残っているのに実体が消えている場合、音声 GET は 500 ではなく 404 を返します。
+**sequence 採番** — LLM の完了後の短い `transaction.atomic` 内で `ChatSession` を `select_for_update()` してロックしてから、既存メッセージの最大 `sequence + 1` を user に、その次を assistant に割り当てます。`(session, sequence)` の `UniqueConstraint` と合わせて、同時 POST による採番の衝突を防いでいます。
 
-**編集再送** — 対象 `sequence` 以降のメッセージを（シグナルを確実に発火させるため）1 件ずつ削除してから、同じ `sequence` で新しい user メッセージを作り直し、対象より前の履歴だけを LLM に渡して応答を再生成します。
+**音声ファイルのライフサイクル** — 保存先は `talk_audio/<session_id>/<sequence>.<ext>`（`MEDIA_ROOT` 相対）。音声の合成とファイル書き込みは **DB の commit 後**に行い、ロールバック時にオーファンファイルが残らないようにしています。書き込みに失敗してもテキスト応答は保持され、音声フィールドだけ未設定になります。合成の間に行が削除されていたらファイルを残しません。`ChatMessage` の `post_delete` シグナルで、削除のコミット後にストレージ実体を物理削除するため、メッセージ削除・セッション削除（cascade）・編集再送での破棄いずれでもファイルは残らず、ロールバック時はファイルも残ります（テストで削除を確かめるときは `django_capture_on_commit_callbacks(execute=True)` を使います）。DB 行は残っているのに実体が消えている場合、音声 GET は 500 ではなく 404 を返します。本文のない応答は音声を合成しません。
 
-**Langfuse Sessions 連携** — `synthesize` / `synthesize_chat` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では `_langfuse_session`（`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。
+**編集再送** — 対象より前の履歴だけを LLM に渡して応答を生成し、完了または停止した時点で、対象 `sequence` 以降のメッセージを（シグナルを確実に発火させるため）1 件ずつ削除して、同じ `sequence` で新しい user メッセージを作り直します。LLM の間に対象の行が消えていたら末尾に追加します。
+
+**Langfuse Sessions 連携** — `synthesize` / `stream_chat_reply` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では `_langfuse_session`（`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。プレースホルダーの取得（`prepare_chat_prompt`）はストリームの前に行うので、`talk/prepare_chat` という別のトレースになります（入出力は記録しません）。`talk/chat` の出力は届いた本文で、停止した場合はそこまでの本文です。
 
 ## 運用
 
@@ -174,6 +220,14 @@ curl -X POST http://localhost:8000/talk/sessions/3f0c.../messages/ \
   -H "Content-Type: application/json" \
   -d '{"content": "おはよう"}'
 # => messages[1] が assistant。audio_url に音声取得用 URL が入る
+
+# 2') SSE で受け取る場合（-N で curl のバッファを止める）
+curl -N -X POST http://localhost:8000/talk/sessions/3f0c.../messages/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream, application/json" \
+  -d '{"content": "おはよう"}'
+# => event: start / event: delta ... / event: message / event: audio / event: done
 
 # 3) 音声ファイルを取得（streaming）
 curl http://localhost:8000/talk/sessions/3f0c.../audio/42/ \
