@@ -539,6 +539,24 @@ describe('chat-store', () => {
             expect(state().error).toBe('応答の生成に失敗しました');
         });
 
+        it('保存のあとの error イベントでは本文を残し、知らせるだけにする', async () => {
+            await openSession(prior);
+            const stream = controlledStream();
+            nextStreamMessage(stream);
+            const result = state().sendMessage('こんにちは');
+
+            stream.push(savedTurn, {
+                type: 'error',
+                status: 502,
+                error: '音声の保存に失敗しました',
+            });
+            stream.end();
+
+            await expect(result).resolves.toBe('sent');
+            expect(state().error).toBe('音声の保存に失敗しました');
+            expect(state().messages.at(-1)?.id).toBe(11);
+        });
+
         it('次の送信でエラーの表示を消す', async () => {
             await openSession(prior);
             vi.mocked(api.streamMessage).mockImplementationOnce(
@@ -1536,6 +1554,18 @@ describe('chat-store', () => {
             expect(api.updateSessionTitle).not.toHaveBeenCalled();
         });
 
+        it('題を変えられなければ元の題のままバナーで知らせる', async () => {
+            await openSession([serverMessage()]);
+            vi.mocked(api.updateSessionTitle).mockRejectedValueOnce(
+                new Error('x'),
+            );
+
+            await state().updateActiveTitle('新しい題');
+
+            expect(state().activeSession?.title).toBe('朝の挨拶');
+            expect(state().error).toBe('タイトルを変更できませんでした');
+        });
+
         it('セッションを消すと一覧から外す。表示中でなければ表示はそのまま', async () => {
             vi.mocked(api.listSessions).mockResolvedValueOnce({
                 count: 2,
@@ -1768,6 +1798,22 @@ describe('chat-store', () => {
 
             expect(api.deleteAudio).not.toHaveBeenCalled();
             expect(api.bulkDeleteAudio).not.toHaveBeenCalled();
+        });
+
+        it('音声を消せなければ表示を変えずにバナーで知らせる', async () => {
+            await openSession(withAudio);
+            vi.mocked(api.deleteAudio).mockRejectedValueOnce(new Error('x'));
+            vi.mocked(api.bulkDeleteAudio).mockRejectedValueOnce(
+                new Error('x'),
+            );
+
+            await state().deleteMessageAudio(2);
+            expect(state().error).toBe('音声を削除できませんでした');
+            state().clearError();
+            await state().deleteAllAudio();
+
+            expect(state().error).toBe('音声を削除できませんでした');
+            expect(state().messages[1].audio_url).toBe('/a/2/');
         });
 
         it('音声を一括で消す', async () => {

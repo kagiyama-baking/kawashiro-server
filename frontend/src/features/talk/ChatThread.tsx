@@ -332,7 +332,7 @@ export function ChatThread() {
                             <Loader2 className="text-muted-foreground size-6 animate-spin" />
                         </div>
                     )}
-                    <div className="flex flex-col gap-4 pt-6 empty:hidden">
+                    <div className="flex flex-col gap-2 pt-6 empty:hidden">
                         <ThreadPrimitive.Messages>
                             {() => <ThreadMessage />}
                         </ThreadPrimitive.Messages>
