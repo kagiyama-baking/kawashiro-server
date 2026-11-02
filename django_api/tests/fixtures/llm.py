@@ -30,6 +30,20 @@ from pydantic_ai.tools import ToolDefinition
 
 from integrations.llm.config import LLMSettings
 
+# LiteLLM のモデル名は DB 上の任意の文字列。名前の形によって PydanticAI が推定する
+# プロファイルが変わるので、代表的な形で本文が変わらないことを確かめる。
+LITELLM_ALIASES = [
+    "gpt-4o-mini",
+    "kimi-k2.5",
+    "bedrock/moonshotai.kimi-k2.5",
+    "moonshotai/kimi-k2.5",
+    "anthropic/claude-sonnet-4-5",
+    "openai/gpt-5.4",
+    "google/gemini-2.5-flash",
+    "deepseek/deepseek-reasoner",
+    "o1-mini",
+]
+
 
 def make_llm_settings(service_name: str = "talk") -> LLMSettings:
     """テスト用の LLM 接続設定を作る（DB を読まない）."""
