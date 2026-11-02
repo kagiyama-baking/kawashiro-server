@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import {
-    convertImage,
-    extractApiErrorMessage,
-    zipToPdf,
-} from '@/lib/api/media';
+import { extractApiErrorMessage } from '@/lib/api/errors';
+import { convertImage, zipToPdf } from '@/lib/api/media';
 import type { OutputFormat } from '@/types/media';
 
 interface MediaResult {

@@ -1,381 +1,342 @@
+import { HTTPError } from 'ky';
 import { create } from 'zustand';
 import {
     bulkDeleteAudio as apiBulkDeleteAudio,
-    createSession as apiCreateSession,
     deleteAudio as apiDeleteAudio,
     deleteSession as apiDeleteSession,
-    editMessage as apiEditMessage,
     fetchAudioBlob as apiFetchAudioBlob,
+    fetchConfigs as apiFetchConfigs,
     getSession as apiGetSession,
     listSessions as apiListSessions,
-    postMessage as apiPostMessage,
     updateSessionTitle as apiUpdateSessionTitle,
 } from '@/lib/api/talk';
-import type { ChatSessionDetail, ChatSessionListItem } from '@/types/talk';
 import { SESSION_LIST_DEFAULT_LIMIT } from '@/types/talk';
+import {
+    aggregateFromDetail,
+    clearAudio,
+    fromServerMessage,
+} from './chat-messages';
+import {
+    type ChatStoreState,
+    createChatStateUpdaters,
+    emptyThread,
+    initialChatState,
+    selectHasLoadFailed,
+    withoutAudioIds,
+} from './chat-state';
+import { type ChatTurns, createChatTurns } from './chat-turn';
 
-interface ChatStoreState {
-    readonly sessions: ChatSessionListItem[];
-    readonly sessionsCount: number;
-    readonly sessionsOffset: number;
-    readonly sessionsLimit: number;
-    readonly hasMoreSessions: boolean;
-    readonly activeSession: ChatSessionDetail | null;
-    readonly activeSessionId: string | null;
-    readonly isLoadingList: boolean;
-    readonly isLoadingDetail: boolean;
-    readonly isSendingMessage: boolean;
-    readonly error: string | null;
-    // 音声 Blob と Object URL のキャッシュ（msgId 単位）。
-    // 同一音声は 1 回だけ fetch し、UI 側はこの両方を参照する。
-    readonly audioObjectUrls: Map<number, string>;
-    readonly audioBlobs: Map<number, Blob>;
-}
+export {
+    selectHasLoadFailed,
+    selectIsAtMessageLimit,
+    selectIsSendDisabled,
+} from './chat-state';
+export type { SendResult, TurnHooks } from './chat-turn';
 
-interface ChatStoreActions {
+export type OpenSessionResult = 'ok' | 'not-found' | 'error' | 'stale';
+
+/** セッションの削除の結果。active なら表示中のセッションを消したので新規チャットへ移る。 */
+export type RemoveSessionResult = 'active' | 'other' | 'failed';
+
+interface ChatStoreActions extends ChatTurns {
     readonly loadSessions: (refresh?: boolean) => Promise<void>;
     readonly loadMoreSessions: () => Promise<void>;
-    readonly selectSession: (id: string) => Promise<void>;
-    readonly deselectSession: () => void;
-    readonly createNewSession: (configName: string) => Promise<string>;
+    readonly loadConfigs: () => Promise<void>;
+    readonly selectConfig: (name: string) => void;
+    readonly openSession: (id: string) => Promise<OpenSessionResult>;
+    readonly retryOpenSession: () => Promise<OpenSessionResult>;
+    readonly startNewChat: () => void;
     readonly updateActiveTitle: (title: string) => Promise<void>;
-    readonly removeSession: (id: string) => Promise<void>;
-    readonly sendMessage: (content: string) => Promise<void>;
-    readonly editAndResend: (msgId: number, content: string) => Promise<void>;
-    readonly cancelMessage: () => void;
-    readonly deleteMessageAudio: (msgId: number) => Promise<void>;
+    readonly removeSession: (id: string) => Promise<RemoveSessionResult>;
+    readonly deleteMessageAudio: (messageId: number) => Promise<void>;
     readonly deleteAllAudio: () => Promise<void>;
-    readonly ensureAudioObjectUrl: (msgId: number) => Promise<string | null>;
+    readonly ensureAudioObjectUrl: (
+        messageId: number,
+    ) => Promise<string | null>;
     readonly clearError: () => void;
     readonly reset: () => void;
 }
 
 type ChatStore = ChatStoreState & ChatStoreActions;
 
-const initialState: ChatStoreState = {
-    sessions: [],
-    sessionsCount: 0,
-    sessionsOffset: 0,
-    sessionsLimit: SESSION_LIST_DEFAULT_LIMIT,
-    hasMoreSessions: false,
-    activeSession: null,
-    activeSessionId: null,
-    isLoadingList: false,
-    isLoadingDetail: false,
-    isSendingMessage: false,
-    error: null,
-    audioObjectUrls: new Map(),
-    audioBlobs: new Map(),
-};
+const SELECTED_CONFIG_KEY = 'talk-selected-config';
+const AUDIO_DELETE_FAILED = '音声を削除できませんでした';
+const SESSION_NOT_FOUND = 'チャットが見つかりませんでした';
+// id は URL から来て API のパスに入る。react-router は %2F を / に戻すので、
+// 細工したリンクで別の API を呼ばれないよう、UUID に使う文字だけを通す。
+const SESSION_ID_PATTERN = /^[0-9a-zA-Z-]+$/;
 
-// 進行中の AbortController（モジュールスコープでのみ持ち、state は不変に保つ）
-let currentAbortController: AbortController | null = null;
+const pendingAudio = new Map<number, Promise<string | null>>();
+let openToken = 0;
+let listToken = 0;
+let configsToken = 0;
 
-function revokeAllAudioUrls(map: Map<number, string>) {
-    map.forEach((url) => URL.revokeObjectURL(url));
+function readSelectedConfig(): string | null {
+    try {
+        return localStorage.getItem(SELECTED_CONFIG_KEY);
+    } catch {
+        return null;
+    }
 }
 
-function aggregateFromDetail(detail: ChatSessionDetail): ChatSessionListItem {
-    return {
-        id: detail.id,
-        title: detail.title,
-        config_name: detail.config_name,
-        message_count: detail.messages.length,
-        total_audio_bytes: detail.messages.reduce(
-            (s, m) => s + m.audio_size_bytes,
-            0,
-        ),
-        created_at: detail.created_at,
-        updated_at: detail.updated_at,
+function writeSelectedConfig(name: string): void {
+    try {
+        localStorage.setItem(SELECTED_CONFIG_KEY, name);
+    } catch {
+        // 保存できなくても今回の選択は使える
+    }
+}
+
+export const useChatStore = create<ChatStore>((set, get) => {
+    const updaters = createChatStateUpdaters(set);
+    const { updateMessages, patchSession, dropFromList } = updaters;
+    const turns = createChatTurns(set, get, updaters);
+
+    /** 表示中のセッションを離れる。遅れて届く読み込みの結果も捨てる。 */
+    const leaveThread = () => {
+        turns.leaveForAnotherThread();
+        openToken += 1;
+        get().audioObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+        // 取得中の音声は結果を捨てるので、戻ってきたら取り直す
+        pendingAudio.clear();
     };
-}
 
-export const useChatStore = create<ChatStore>((set, get) => ({
-    ...initialState,
-
-    loadSessions: async (refresh = true) => {
-        set({ isLoadingList: true, error: null });
-        try {
-            const offset = refresh ? 0 : get().sessionsOffset;
-            const res = await apiListSessions({
-                limit: get().sessionsLimit,
-                offset,
-            });
-            set({
-                sessions: refresh
-                    ? [...res.results]
-                    : [...get().sessions, ...res.results],
-                sessionsCount: res.count,
-                sessionsOffset: offset + res.results.length,
-                hasMoreSessions: res.next !== null,
-            });
-        } catch {
-            set({ error: 'セッション一覧の取得に失敗しました' });
-        } finally {
-            set({ isLoadingList: false });
-        }
-    },
-
-    loadMoreSessions: async () => {
-        if (!get().hasMoreSessions || get().isLoadingList) return;
-        await get().loadSessions(false);
-    },
-
-    selectSession: async (id: string) => {
-        if (get().activeSessionId === id && get().activeSession) return;
-        const previousUrls = get().audioObjectUrls;
-        revokeAllAudioUrls(previousUrls);
-        set({
-            activeSessionId: id,
-            activeSession: null,
-            isLoadingDetail: true,
-            error: null,
-            audioObjectUrls: new Map(),
-            audioBlobs: new Map(),
-        });
+    const loadSession = async (id: string): Promise<OpenSessionResult> => {
+        const token = openToken;
         try {
             const detail = await apiGetSession(id);
-            set({ activeSession: detail });
-        } catch {
-            set({ error: 'セッション詳細の取得に失敗しました' });
-        } finally {
-            set({ isLoadingDetail: false });
-        }
-    },
-
-    deselectSession: () => {
-        revokeAllAudioUrls(get().audioObjectUrls);
-        set({
-            activeSession: null,
-            activeSessionId: null,
-            audioObjectUrls: new Map(),
-            audioBlobs: new Map(),
-        });
-    },
-
-    createNewSession: async (configName: string) => {
-        set({ error: null });
-        const detail = await apiCreateSession(configName);
-        // 一覧の先頭に追加、active にする
-        set({
-            sessions: [aggregateFromDetail(detail), ...get().sessions],
-            sessionsCount: get().sessionsCount + 1,
-            activeSession: detail,
-            activeSessionId: detail.id,
-            audioObjectUrls: new Map(),
-            audioBlobs: new Map(),
-        });
-        return detail.id;
-    },
-
-    updateActiveTitle: async (title: string) => {
-        const id = get().activeSessionId;
-        if (!id) return;
-        const detail = await apiUpdateSessionTitle(id, title);
-        set((state) => ({
-            activeSession: detail,
-            sessions: state.sessions.map((s) =>
-                s.id === id ? aggregateFromDetail(detail) : s,
-            ),
-        }));
-    },
-
-    removeSession: async (id: string) => {
-        await apiDeleteSession(id);
-        set((state) => {
-            const isActive = state.activeSessionId === id;
-            if (isActive) revokeAllAudioUrls(state.audioObjectUrls);
-            return {
-                sessions: state.sessions.filter((s) => s.id !== id),
-                sessionsCount: Math.max(0, state.sessionsCount - 1),
-                activeSession: isActive ? null : state.activeSession,
-                activeSessionId: isActive ? null : state.activeSessionId,
-                audioObjectUrls: isActive ? new Map() : state.audioObjectUrls,
-                audioBlobs: isActive ? new Map() : state.audioBlobs,
-            };
-        });
-    },
-
-    sendMessage: async (content: string) => {
-        const sessionId = get().activeSessionId;
-        if (!sessionId || get().isSendingMessage) return;
-
-        const controller = new AbortController();
-        currentAbortController = controller;
-        set({ isSendingMessage: true, error: null });
-        try {
-            const detail = await apiPostMessage(sessionId, content, {
-                signal: controller.signal,
-            });
+            if (token !== openToken) return 'stale';
+            const item = aggregateFromDetail(detail);
             set((state) => ({
-                activeSession: detail,
-                sessions: state.sessions.map((s) =>
-                    s.id === detail.id ? aggregateFromDetail(detail) : s,
-                ),
+                activeSession: item,
+                messages: detail.messages.map(fromServerMessage),
+                isLoadingDetail: false,
+                sessions: state.sessions.map((s) => (s.id === id ? item : s)),
             }));
-        } catch (err) {
-            const isAbort =
-                controller.signal.aborted ||
-                (err instanceof Error && err.name === 'AbortError');
-            if (!isAbort) {
-                set({ error: '応答の生成に失敗しました' });
+            return 'ok';
+        } catch (error) {
+            if (token !== openToken) return 'stale';
+            if (error instanceof HTTPError && error.response.status === 404) {
+                set({ ...emptyThread(), error: SESSION_NOT_FOUND });
+                return 'not-found';
             }
-        } finally {
-            if (currentAbortController === controller) {
-                currentAbortController = null;
-            }
-            set({ isSendingMessage: false });
+            set({
+                isLoadingDetail: false,
+                error: 'チャットの読み込みに失敗しました',
+            });
+            return 'error';
         }
-    },
+    };
 
-    editAndResend: async (msgId: number, content: string) => {
-        const sessionId = get().activeSessionId;
-        if (!sessionId || get().isSendingMessage) return;
+    return {
+        ...initialChatState,
+        ...turns.actions,
 
-        // 編集対象以降の Object URL / Blob キャッシュを解放
-        const session = get().activeSession;
-        if (session) {
-            const target = session.messages.find((m) => m.id === msgId);
-            if (target) {
-                const targetSeq = target.sequence;
-                const newUrls = new Map(get().audioObjectUrls);
-                const newBlobs = new Map(get().audioBlobs);
-                session.messages.forEach((m) => {
-                    if (m.sequence >= targetSeq) {
-                        const url = newUrls.get(m.id);
-                        if (url) {
-                            URL.revokeObjectURL(url);
-                            newUrls.delete(m.id);
-                        }
-                        newBlobs.delete(m.id);
+        loadSessions: async (refresh = true) => {
+            listToken += 1;
+            const token = listToken;
+            set({ isLoadingList: true });
+            try {
+                const offset = refresh ? 0 : get().sessionsOffset;
+                const res = await apiListSessions({
+                    limit: SESSION_LIST_DEFAULT_LIMIT,
+                    offset,
+                });
+                if (token !== listToken) return;
+                set((state) => {
+                    const known = new Set(state.sessions.map((s) => s.id));
+                    return {
+                        sessions: refresh
+                            ? [...res.results]
+                            : [
+                                  ...state.sessions,
+                                  ...res.results.filter(
+                                      (s) => !known.has(s.id),
+                                  ),
+                              ],
+                        sessionsCount: res.count,
+                        sessionsOffset: offset + res.results.length,
+                        hasMoreSessions: res.next !== null,
+                        isLoadingList: false,
+                    };
+                });
+            } catch {
+                if (token !== listToken) return;
+                set({
+                    error: 'セッション一覧の取得に失敗しました',
+                    isLoadingList: false,
+                });
+            }
+        },
+
+        loadMoreSessions: async () => {
+            if (!get().hasMoreSessions || get().isLoadingList) return;
+            await get().loadSessions(false);
+        },
+
+        loadConfigs: async () => {
+            configsToken += 1;
+            const token = configsToken;
+            try {
+                const configs = await apiFetchConfigs();
+                if (token !== configsToken) return;
+                const remembered = readSelectedConfig();
+                const selected =
+                    configs.find((c) => c.name === remembered) ?? configs[0];
+                set({
+                    configs,
+                    selectedConfigName: selected?.name ?? null,
+                    configsFailed: false,
+                });
+            } catch {
+                if (token !== configsToken) return;
+                set({ configsFailed: true });
+            }
+        },
+
+        selectConfig: (name) => {
+            writeSelectedConfig(name);
+            set({ selectedConfigName: name });
+        },
+
+        openSession: async (id) => {
+            if (get().activeSessionId === id) return 'ok';
+            leaveThread();
+            if (!SESSION_ID_PATTERN.test(id)) {
+                set({ ...emptyThread(), error: SESSION_NOT_FOUND });
+                return 'not-found';
+            }
+            set({
+                ...emptyThread(),
+                activeSessionId: id,
+                isLoadingDetail: true,
+            });
+            return loadSession(id);
+        },
+
+        retryOpenSession: async () => {
+            const id = get().activeSessionId;
+            if (id === null || !selectHasLoadFailed(get())) return 'stale';
+            set({ isLoadingDetail: true, error: null });
+            return loadSession(id);
+        },
+
+        startNewChat: () => {
+            if (get().activeSessionId === null) return;
+            leaveThread();
+            set(emptyThread());
+        },
+
+        updateActiveTitle: async (title) => {
+            const id = get().activeSessionId;
+            if (!id) return;
+            try {
+                const detail = await apiUpdateSessionTitle(id, title);
+                patchSession(id, { title: detail.title });
+            } catch {
+                set({ error: 'タイトルを変更できませんでした' });
+            }
+        },
+
+        removeSession: async (id) => {
+            try {
+                await apiDeleteSession(id);
+            } catch {
+                set({ error: 'チャットを削除できませんでした' });
+                return 'failed';
+            }
+            const isActive = get().activeSessionId === id;
+            turns.closeSessionRuns(id);
+            if (isActive) {
+                leaveThread();
+                set(emptyThread());
+            }
+            dropFromList(id);
+            return isActive ? 'active' : 'other';
+        },
+
+        deleteMessageAudio: async (messageId) => {
+            const sessionId = get().activeSessionId;
+            if (!sessionId) return;
+            try {
+                await apiDeleteAudio(sessionId, messageId);
+            } catch {
+                set({ error: AUDIO_DELETE_FAILED });
+                return;
+            }
+            if (get().activeSessionId !== sessionId) return;
+            set((state) => withoutAudioIds(state, [messageId]));
+            updateMessages(sessionId, (messages) =>
+                clearAudio(messages, (m) => m.id === messageId),
+            );
+            patchSession(sessionId, {
+                total_audio_bytes: get().messages.reduce(
+                    (sum, m) => sum + m.audio_size_bytes,
+                    0,
+                ),
+            });
+        },
+
+        deleteAllAudio: async () => {
+            const sessionId = get().activeSessionId;
+            if (!sessionId) return;
+            try {
+                await apiBulkDeleteAudio(sessionId);
+            } catch {
+                set({ error: AUDIO_DELETE_FAILED });
+                return;
+            }
+            patchSession(sessionId, { total_audio_bytes: 0 });
+            if (get().activeSessionId !== sessionId) return;
+            set((state) =>
+                withoutAudioIds(state, [...state.audioObjectUrls.keys()]),
+            );
+            updateMessages(sessionId, (messages) =>
+                clearAudio(messages, () => true),
+            );
+        },
+
+        ensureAudioObjectUrl: (messageId) => {
+            const { activeSessionId, audioObjectUrls, threadKey } = get();
+            if (!activeSessionId) return Promise.resolve(null);
+            const cached = audioObjectUrls.get(messageId);
+            if (cached) return Promise.resolve(cached);
+            const pending = pendingAudio.get(messageId);
+            if (pending) return pending;
+
+            const task = apiFetchAudioBlob(activeSessionId, messageId)
+                .then((blob) => {
+                    if (get().threadKey !== threadKey) return null;
+                    const url = URL.createObjectURL(blob);
+                    set((state) => ({
+                        audioObjectUrls: new Map(state.audioObjectUrls).set(
+                            messageId,
+                            url,
+                        ),
+                        audioBlobs: new Map(state.audioBlobs).set(
+                            messageId,
+                            blob,
+                        ),
+                    }));
+                    return url;
+                })
+                .finally(() => {
+                    if (pendingAudio.get(messageId) === task) {
+                        pendingAudio.delete(messageId);
                     }
                 });
-                set({ audioObjectUrls: newUrls, audioBlobs: newBlobs });
-            }
-        }
+            pendingAudio.set(messageId, task);
+            return task;
+        },
 
-        const controller = new AbortController();
-        currentAbortController = controller;
-        set({ isSendingMessage: true, error: null });
-        try {
-            const detail = await apiEditMessage(sessionId, msgId, content, {
-                signal: controller.signal,
-            });
-            set((state) => ({
-                activeSession: detail,
-                sessions: state.sessions.map((s) =>
-                    s.id === detail.id ? aggregateFromDetail(detail) : s,
-                ),
-            }));
-        } catch (err) {
-            const isAbort =
-                controller.signal.aborted ||
-                (err instanceof Error && err.name === 'AbortError');
-            if (!isAbort) {
-                set({ error: '応答の再生成に失敗しました' });
-            }
-        } finally {
-            if (currentAbortController === controller) {
-                currentAbortController = null;
-            }
-            set({ isSendingMessage: false });
-        }
-    },
+        clearError: () => set({ error: null }),
 
-    cancelMessage: () => {
-        currentAbortController?.abort();
-    },
-
-    deleteMessageAudio: async (msgId: number) => {
-        const sessionId = get().activeSessionId;
-        if (!sessionId) return;
-        await apiDeleteAudio(sessionId, msgId);
-        const urls = get().audioObjectUrls;
-        const url = urls.get(msgId);
-        if (url) {
-            URL.revokeObjectURL(url);
-            const nextUrls = new Map(urls);
-            nextUrls.delete(msgId);
-            const nextBlobs = new Map(get().audioBlobs);
-            nextBlobs.delete(msgId);
-            set({ audioObjectUrls: nextUrls, audioBlobs: nextBlobs });
-        }
-        // active session を更新
-        const detail = get().activeSession;
-        if (detail) {
-            const updated: ChatSessionDetail = {
-                ...detail,
-                messages: detail.messages.map((m) =>
-                    m.id === msgId
-                        ? {
-                              ...m,
-                              audio_url: null,
-                              audio_format: '',
-                              audio_size_bytes: 0,
-                          }
-                        : m,
-                ),
-            };
-            set((state) => ({
-                activeSession: updated,
-                sessions: state.sessions.map((s) =>
-                    s.id === detail.id ? aggregateFromDetail(updated) : s,
-                ),
-            }));
-        }
-    },
-
-    deleteAllAudio: async () => {
-        const sessionId = get().activeSessionId;
-        if (!sessionId) return;
-        await apiBulkDeleteAudio(sessionId);
-        revokeAllAudioUrls(get().audioObjectUrls);
-        set({ audioObjectUrls: new Map(), audioBlobs: new Map() });
-        const detail = get().activeSession;
-        if (detail) {
-            const updated: ChatSessionDetail = {
-                ...detail,
-                messages: detail.messages.map((m) => ({
-                    ...m,
-                    audio_url: null,
-                    audio_format: '',
-                    audio_size_bytes: 0,
-                })),
-            };
-            set((state) => ({
-                activeSession: updated,
-                sessions: state.sessions.map((s) =>
-                    s.id === detail.id ? aggregateFromDetail(updated) : s,
-                ),
-            }));
-        }
-    },
-
-    ensureAudioObjectUrl: async (msgId: number) => {
-        const sessionId = get().activeSessionId;
-        if (!sessionId) return null;
-        const cached = get().audioObjectUrls.get(msgId);
-        if (cached) return cached;
-        const blob = await apiFetchAudioBlob(sessionId, msgId);
-        const url = URL.createObjectURL(blob);
-        const nextUrls = new Map(get().audioObjectUrls);
-        nextUrls.set(msgId, url);
-        const nextBlobs = new Map(get().audioBlobs);
-        nextBlobs.set(msgId, blob);
-        set({ audioObjectUrls: nextUrls, audioBlobs: nextBlobs });
-        return url;
-    },
-
-    clearError: () => set({ error: null }),
-
-    reset: () => {
-        revokeAllAudioUrls(get().audioObjectUrls);
-        currentAbortController?.abort();
-        currentAbortController = null;
-        set({
-            ...initialState,
-            audioObjectUrls: new Map(),
-            audioBlobs: new Map(),
-        });
-    },
-}));
+        reset: () => {
+            turns.closeAllRuns();
+            leaveThread();
+            listToken += 1;
+            configsToken += 1;
+            set({ ...initialChatState, ...emptyThread() });
+        },
+    };
+});

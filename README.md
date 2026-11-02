@@ -28,7 +28,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 
 ## サービス
 
-- 🌐 **Frontend**: React SPA（テキスト読み上げ・チャット履歴・メディア変換・**PDF 編集**の操作画面、モバイル対応 2 ペイン UI）
+- 🌐 **Frontend**: React SPA（テキスト読み上げ・**ChatGPT 風のチャット**（assistant-ui による逐次表示と Markdown）・メディア変換・**PDF 編集**の操作画面、モバイル対応）
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携

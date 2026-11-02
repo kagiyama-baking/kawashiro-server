@@ -44,6 +44,7 @@ export function SessionTitleEditor({ title, onSave }: SessionTitleEditorProps) {
         return (
             <div className="flex items-center gap-1">
                 <Input
+                    aria-label="タイトル"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleKeyDown}
