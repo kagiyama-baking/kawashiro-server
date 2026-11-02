@@ -143,35 +143,6 @@ export async function* streamEdit(
     yield* readChatStream(response);
 }
 
-export async function postMessage(
-    sessionId: string,
-    content: string,
-    options: SendOptions = {},
-): Promise<ChatSessionDetail> {
-    return apiClient
-        .post(`talk/sessions/${sessionId}/messages/`, {
-            json: { content },
-            timeout: 120000,
-            signal: options.signal,
-        })
-        .json<ChatSessionDetail>();
-}
-
-export async function editMessage(
-    sessionId: string,
-    msgId: number,
-    content: string,
-    options: SendOptions = {},
-): Promise<ChatSessionDetail> {
-    return apiClient
-        .patch(`talk/sessions/${sessionId}/messages/${msgId}/`, {
-            json: { content },
-            timeout: 120000,
-            signal: options.signal,
-        })
-        .json<ChatSessionDetail>();
-}
-
 export async function fetchAudioBlob(
     sessionId: string,
     msgId: number,

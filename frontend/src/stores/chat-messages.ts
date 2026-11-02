@@ -162,9 +162,14 @@ export function clearAudio(
 }
 
 /** 音声の通知が来ないまま終わった行の「合成中」を解く。 */
-export function finishPendingAudio(messages: Messages): Messages {
+export function finishPendingAudio(
+    messages: Messages,
+    localId: string,
+): Messages {
     return messages.map((m) =>
-        m.audioState === 'pending' ? { ...m, audioState: 'idle' } : m,
+        m.localId === localId && m.audioState === 'pending'
+            ? { ...m, audioState: 'idle' }
+            : m,
     );
 }
 
@@ -182,6 +187,36 @@ export function replaceFromTarget(
 ): Messages {
     const index = messages.findIndex((m) => m.localId === targetLocalId);
     return [...messages.slice(0, index), { ...messages[index], content }];
+}
+
+/**
+ * 送信前の表示へ戻す。編集の対象は元のオブジェクトへ戻す（assistant-ui が編集を再度開く条件）。
+ * ほかの行は、前のターンの音声が届いている場合があるので今の行を残す。
+ */
+export function rollbackMessages(
+    restore: Messages,
+    current: Messages,
+    userLocalId: string,
+): Messages {
+    const currentById = new Map(current.map((m) => [m.localId, m]));
+    return restore.map((m) =>
+        m.localId === userLocalId ? m : (currentById.get(m.localId) ?? m),
+    );
+}
+
+/** 画面の行とサーバーの行が同じ内容か。 */
+export function hasSameRows(
+    local: Messages,
+    server: readonly ChatSessionMessage[],
+): boolean {
+    return (
+        local.length === server.length &&
+        local.every(
+            (m, index) =>
+                m.id === server[index].id &&
+                m.content === server[index].content,
+        )
+    );
 }
 
 /** サーバーの値へ同期する。位置で対応付けて localId を保つので行はリマウントしない。 */

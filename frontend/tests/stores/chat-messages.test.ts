@@ -10,9 +10,11 @@ import {
     createUserMessage,
     finishPendingAudio,
     fromServerMessage,
+    hasSameRows,
     markCancelled,
     mergeServerMessages,
     replaceFromTarget,
+    rollbackMessages,
 } from '@/stores/chat-messages';
 import type {
     ChatSessionDetail,
@@ -246,14 +248,58 @@ describe('applyAudio / applyAudioError / clearAudio', () => {
 });
 
 describe('finishPendingAudio', () => {
-    it('pending のまま残った行だけ idle に戻す', () => {
-        const pending = uiMessage({ id: 2, audioState: 'pending' });
-        const failed = uiMessage({ id: 3, audioState: 'failed' });
+    it('対象の行が pending のときだけ idle に戻す', () => {
+        const target = uiMessage({ localId: 'a', audioState: 'pending' });
+        const other = uiMessage({ localId: 'b', audioState: 'pending' });
+        const failed = uiMessage({ localId: 'c', audioState: 'failed' });
 
-        const next = finishPendingAudio([pending, failed]);
+        const next = finishPendingAudio([target, other, failed], 'a');
 
         expect(next[0].audioState).toBe('idle');
-        expect(next[1]).toBe(failed);
+        expect(next[1]).toBe(other);
+        expect(finishPendingAudio([failed], 'c')[0]).toBe(failed);
+    });
+});
+
+describe('rollbackMessages', () => {
+    it('編集の対象は元のオブジェクトへ戻し、落とした行も戻す', () => {
+        const target = uiMessage({ localId: 'u', content: '元' });
+        const reply = uiMessage({ localId: 'a', role: 'assistant' });
+        const edited = { ...target, content: '直し' };
+
+        const next = rollbackMessages([target, reply], [edited], 'u');
+
+        expect(next[0]).toBe(target);
+        expect(next[1]).toBe(reply);
+    });
+
+    it('ほかの行は今の行を残す', () => {
+        const earlier = uiMessage({ localId: 'e' });
+        const withAudio = { ...earlier, audio_url: '/a/' };
+        const optimistic = uiMessage({ localId: 'u' });
+
+        const next = rollbackMessages([earlier], [withAudio, optimistic], 'u');
+
+        expect(next).toEqual([withAudio]);
+        expect(next[0]).toBe(withAudio);
+    });
+});
+
+describe('hasSameRows', () => {
+    const local = [uiMessage({ id: 1, content: 'a' })];
+
+    it('id と本文が同じなら同じとみなす', () => {
+        expect(
+            hasSameRows(local, [serverMessage({ id: 1, content: 'a' })]),
+        ).toBe(true);
+    });
+
+    it.each([
+        ['件数', []],
+        ['id', [serverMessage({ id: 2, content: 'a' })]],
+        ['本文', [serverMessage({ id: 1, content: 'b' })]],
+    ])('%s が違えば別とみなす', (_name, server) => {
+        expect(hasSameRows(local, server)).toBe(false);
     });
 });
 
