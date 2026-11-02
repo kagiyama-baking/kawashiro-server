@@ -5,24 +5,14 @@ from unittest.mock import patch
 import pytest
 from pydantic_ai.messages import ModelResponse, TextPart
 
-from features.talk.llm_agents import TALK_TITLE_AGENT
 from features.talk.services import TalkService
 from integrations.llm.exceptions import LLMConfigurationError
-from tests.fixtures.llm import ScriptedLLM
 
 
 @pytest.fixture(autouse=True)
 def _disable_langfuse_client():
     with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
-
-
-@pytest.fixture
-def title_llm(talk_llm_settings):
-    """タイトル生成エージェントの応答を台本で固定する."""
-    llm = ScriptedLLM()
-    with TALK_TITLE_AGENT.override(model=llm.model):
-        yield llm
 
 
 class TestGenerateSessionTitle:

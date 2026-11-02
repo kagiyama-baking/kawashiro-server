@@ -1,6 +1,10 @@
-"""POST /talk/sessions/<id>/messages/ のテスト."""
+"""POST /talk/sessions/<id>/messages/ のテスト（JSON モード）.
 
-from unittest.mock import MagicMock, patch
+`Accept` に `text/event-stream` を含まないときの応答を確かめる。SSE モードは
+`test_chat_turn_sse.py`、LLM はモデルだけを差し替えて実行する。
+"""
+
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -9,10 +13,11 @@ from pydantic_ai.exceptions import ModelHTTPError, ModelTimeoutError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from features.talk.llm_agents import TALK_CHAT_AGENT, TALK_TITLE_AGENT
 from features.talk.models import ChatMessage, ChatSession, TalkConfig
+from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
-from tests.fixtures.llm import ScriptedLLM
+from integrations.tts.client import TTSResult
+from integrations.tts.exceptions import TTSNetworkError
 
 User = get_user_model()
 
@@ -109,14 +114,6 @@ def _url(session_id) -> str:
     return f"/talk/sessions/{session_id}/messages/"
 
 
-def _mock_service(synth_return: dict, title: str = "テストタイトル"):
-    """TalkService の synthesize_chat と generate_session_title を mock."""
-    svc = MagicMock()
-    svc.synthesize_chat.return_value = synth_return
-    svc.generate_session_title.return_value = title
-    return svc
-
-
 @pytest.mark.django_db
 class TestSessionMessagePost:
     def test_unauthenticated_returns_401(self, session):
@@ -138,13 +135,10 @@ class TestSessionMessagePost:
         )
         assert response.status_code == 400
 
-    @patch("features.talk.views.messages.TalkService")
     def test_send_creates_user_and_assistant_messages(
-        self, mock_service_class, auth_client, session
+        self, chat_llm, title_llm, auth_client, session
     ):
-        mock_service_class.return_value = _mock_service(
-            {"message": {"role": "assistant", "content": "返信"}}
-        )
+        chat_llm.enqueue("返信")
 
         response = auth_client.post(
             _url(session.id), {"content": "おはよう"}, format="json"
@@ -159,18 +153,14 @@ class TestSessionMessagePost:
         assert response.data["id"] == str(session.id)
         assert len(response.data["messages"]) == 2
 
-    @patch("features.talk.views.messages.TalkService")
+    @patch("features.talk.services.TTSClient")
     def test_send_with_tts_saves_audio_file(
-        self, mock_service_class, auth_client, talk_config_tts, user
+        self, mock_tts_class, chat_llm, title_llm, auth_client, talk_config_tts, user
     ):
         sess = ChatSession.objects.create(user=user, config_name=talk_config_tts.name)
-        mock_service_class.return_value = _mock_service(
-            {
-                "message": {"role": "assistant", "content": "音声付き"},
-                "audio_data": b"\x00" * 200,
-                "audio_format": "wav",
-                "audio_content_type": "audio/wav",
-            }
+        chat_llm.enqueue("音声付き")
+        mock_tts_class.return_value.synthesize.return_value = TTSResult(
+            audio_data=b"\x00" * 200, content_type="audio/wav", format="wav"
         )
 
         response = auth_client.post(_url(sess.id), {"content": "hi"}, format="json")
@@ -180,54 +170,69 @@ class TestSessionMessagePost:
         assert assistant.audio_file
         assert assistant.audio_format == "wav"
         assert assistant.audio_size_bytes == 200
-
-    @patch("features.talk.views.messages.TalkService")
-    def test_first_response_sets_title(self, mock_service_class, auth_client, session):
-        mock_service_class.return_value = _mock_service(
-            {"message": {"role": "assistant", "content": "返信"}},
-            title="自動タイトル",
+        assert response.data["total_audio_bytes"] == 200
+        assert response.data["messages"][1]["audio_url"].endswith(
+            f"/talk/sessions/{sess.id}/audio/{assistant.id}/"
         )
 
-        auth_client.post(_url(session.id), {"content": "hi"}, format="json")
+    @patch("features.talk.services.TTSClient")
+    def test_tts_failure_returns_201_and_keeps_reply(
+        self, mock_tts_class, chat_llm, title_llm, auth_client, talk_config_tts, user
+    ):
+        """音声合成の失敗は致命にせず、本文を残して 201 を返す（以前は 502）."""
+        sess = ChatSession.objects.create(user=user, config_name=talk_config_tts.name)
+        chat_llm.enqueue("本文")
+        mock_tts_class.return_value.synthesize.side_effect = TTSNetworkError("down")
+
+        response = auth_client.post(_url(sess.id), {"content": "hi"}, format="json")
+
+        assert response.status_code == 201
+        assert [m["content"] for m in response.data["messages"]] == ["hi", "本文"]
+        assistant = sess.messages.get(role="assistant")
+        assert not assistant.audio_file
+        assert response.data["messages"][1]["audio_url"] is None
+
+    def test_first_response_sets_title(self, chat_llm, title_llm, auth_client, session):
+        chat_llm.enqueue("返信")
+        title_llm.enqueue("自動タイトル")
+
+        response = auth_client.post(_url(session.id), {"content": "hi"}, format="json")
+
         session.refresh_from_db()
         assert session.title == "自動タイトル"
+        assert response.data["title"] == "自動タイトル"
 
-    @patch("features.talk.views.messages.TalkService")
     def test_does_not_overwrite_existing_title(
-        self, mock_service_class, auth_client, user, talk_config
+        self, chat_llm, title_llm, auth_client, user, talk_config
     ):
         sess = ChatSession.objects.create(
             user=user, config_name=talk_config.name, title="既存タイトル"
         )
-        mock_service_class.return_value = _mock_service(
-            {"message": {"role": "assistant", "content": "返信"}},
-            title="自動タイトル",
-        )
+        chat_llm.enqueue("返信")
 
         auth_client.post(_url(sess.id), {"content": "hi"}, format="json")
+
         sess.refresh_from_db()
         assert sess.title == "既存タイトル"
+        assert title_llm.requests == []
 
-    @patch("features.talk.views.messages.TalkService")
     def test_title_generation_failure_does_not_break(
-        self, mock_service_class, auth_client, session
+        self, chat_llm, auth_client, session
     ):
-        svc = MagicMock()
-        svc.synthesize_chat.return_value = {
-            "message": {"role": "assistant", "content": "返信"}
-        }
-        svc.generate_session_title.side_effect = RuntimeError("LLM down")
-        mock_service_class.return_value = svc
+        chat_llm.enqueue("返信")
 
-        response = auth_client.post(_url(session.id), {"content": "hi"}, format="json")
+        with patch.object(
+            TalkService, "generate_session_title", side_effect=RuntimeError("LLM down")
+        ):
+            response = auth_client.post(
+                _url(session.id), {"content": "hi"}, format="json"
+            )
+
         assert response.status_code == 201
         session.refresh_from_db()
         assert session.title == ""  # 失敗時は空のまま
 
-    @patch("features.talk.views.messages.TalkService")
-    def test_max_messages_per_session_returns_400(
-        self, mock_service_class, auth_client, session
-    ):
+    def test_max_messages_per_session_returns_400(self, auth_client, session, chat_llm):
         for i in range(50):
             ChatMessage.objects.create(
                 session=session,
@@ -235,9 +240,6 @@ class TestSessionMessagePost:
                 role="user" if i % 2 == 0 else "assistant",
                 content=f"#{i}",
             )
-        mock_service_class.return_value = _mock_service(
-            {"message": {"role": "assistant", "content": "x"}}
-        )
 
         response = auth_client.post(
             _url(session.id), {"content": "もう一個"}, format="json"
@@ -245,68 +247,41 @@ class TestSessionMessagePost:
         assert response.status_code == 400
         # 上限超過時は user メッセージも保存しない
         assert session.messages.count() == 50
-
-    @patch("features.talk.views.messages.TalkService")
-    def test_synthesis_error_returns_502(
-        self, mock_service_class, auth_client, session
-    ):
-        from integrations.llm.exceptions import LLMClientError
-
-        svc = MagicMock()
-        svc.synthesize_chat.side_effect = LLMClientError("upstream")
-        mock_service_class.return_value = svc
-
-        response = auth_client.post(_url(session.id), {"content": "hi"}, format="json")
-        assert response.status_code == 502
-        # LLM エラー時はユーザーメッセージもロールバック
-        assert session.messages.count() == 0
+        assert chat_llm.requests == []
 
     @pytest.mark.parametrize("status_code", [429, 500, 503])
-    def test_llm_status_error_returns_502_and_rolls_back(
-        self, status_code, talk_llm_settings, auth_client, session
+    def test_llm_status_error_returns_502_and_saves_nothing(
+        self, status_code, chat_llm, auth_client, session
     ):
         """LLM の HTTP エラーは 502 になり、ユーザーメッセージも残らない."""
-        llm = ScriptedLLM(ModelHTTPError(status_code, "test-alias"))
+        chat_llm.enqueue(ModelHTTPError(status_code, "test-alias"))
 
-        with TALK_CHAT_AGENT.override(model=llm.model):
-            response = auth_client.post(
-                _url(session.id), {"content": "hi"}, format="json"
-            )
+        response = auth_client.post(_url(session.id), {"content": "hi"}, format="json")
 
         assert response.status_code == 502
         assert session.messages.count() == 0
 
-    def test_llm_timeout_returns_504_and_rolls_back(
-        self, talk_llm_settings, auth_client, session
+    def test_llm_timeout_returns_504_and_saves_nothing(
+        self, chat_llm, auth_client, session
     ):
         """LLM のタイムアウトは 504 になり、ユーザーメッセージも残らない."""
-        llm = ScriptedLLM(ModelTimeoutError("test-alias", "timeout"))
+        chat_llm.enqueue(ModelTimeoutError("test-alias", "timeout"))
 
-        with TALK_CHAT_AGENT.override(model=llm.model):
-            response = auth_client.post(
-                _url(session.id), {"content": "hi"}, format="json"
-            )
+        response = auth_client.post(_url(session.id), {"content": "hi"}, format="json")
 
         assert response.status_code == 504
         assert session.messages.count() == 0
 
     def test_send_through_real_agents_saves_reply_and_title(
-        self, talk_llm_settings, auth_client, session
+        self, chat_llm, title_llm, auth_client, session
     ):
-        """モデル以外を差し替えずに通し、応答とタイトルが保存される.
+        """モデル以外を差し替えずに通し、応答とタイトルが保存される."""
+        chat_llm.enqueue("返信本文")
+        title_llm.enqueue("生成タイトル")
 
-        LLM 呼び出しはビューの transaction.atomic の中で走る。
-        """
-        chat = ScriptedLLM("返信本文")
-        title = ScriptedLLM("生成タイトル")
-
-        with (
-            TALK_CHAT_AGENT.override(model=chat.model),
-            TALK_TITLE_AGENT.override(model=title.model),
-        ):
-            response = auth_client.post(
-                _url(session.id), {"content": "おはよう"}, format="json"
-            )
+        response = auth_client.post(
+            _url(session.id), {"content": "おはよう"}, format="json"
+        )
 
         assert response.status_code == 201
         msgs = list(session.messages.order_by("sequence"))
@@ -316,8 +291,8 @@ class TestSessionMessagePost:
         ]
         session.refresh_from_db()
         assert session.title == "生成タイトル"
-        assert chat.requests[0].instructions == "あなたは親切な AI です。"
-        assert chat.requests[0].conversation == [("user", "おはよう")]
+        assert chat_llm.requests[0].instructions == "あなたは親切な AI です。"
+        assert chat_llm.requests[0].conversation == [("user", "おはよう")]
 
     def test_session_config_missing_returns_404(self, auth_client, user):
         # 存在しない config を指す session
@@ -329,13 +304,10 @@ class TestSessionMessagePost:
         "rest_framework.throttling.ScopedRateThrottle.THROTTLE_RATES",
         {"talk_chat": "1/minute"},
     )
-    @patch("features.talk.views.messages.TalkService")
     def test_messages_endpoint_rate_limited(
-        self, mock_service_class, auth_client, session
+        self, chat_llm, title_llm, auth_client, session
     ):
-        mock_service_class.return_value = _mock_service(
-            {"message": {"role": "assistant", "content": "ok"}}
-        )
+        chat_llm.enqueue("ok")
 
         first = auth_client.post(_url(session.id), {"content": "1"}, format="json")
         assert first.status_code == 201

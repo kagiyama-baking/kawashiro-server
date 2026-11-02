@@ -144,6 +144,14 @@ class ChatSessionDetailSerializer(serializers.ModelSerializer):
         return obj.messages.aggregate(total=Sum("audio_size_bytes"))["total"] or 0
 
 
+class ChatTurnDoneSerializer(ChatSessionDetailSerializer):
+    """チャットのターン完了時のセッション要約（SSE の done イベント）."""
+
+    class Meta(ChatSessionDetailSerializer.Meta):
+        fields = ("title", "message_count", "total_audio_bytes", "updated_at")
+        read_only_fields = fields
+
+
 class ChatSessionCreateSerializer(serializers.Serializer):
     """セッション作成."""
 

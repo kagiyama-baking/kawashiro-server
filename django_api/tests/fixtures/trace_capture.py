@@ -17,6 +17,7 @@ def _span_to_dict(span) -> dict:
         "trace_id": span.context.trace_id,
         "parent_id": span.parent.span_id if span.parent else None,
         "scope": span.instrumentation_scope.name,
+        "status": span.status.status_code.name,
         "attributes": {key: str(value) for key, value in span.attributes.items()},
     }
 
@@ -81,7 +82,7 @@ def _run_investigation(thread):
 
 
 def _run_talk():
-    """Talk のチャットを session_id 付きで実行する."""
+    """Talk のチャットをストリーミングで session_id 付きで実行する."""
     from features.talk.llm_agents import TALK_CHAT_AGENT
     from features.talk.models import TalkConfig
     from features.talk.services import TalkService
@@ -98,12 +99,50 @@ def _run_talk():
         user_prompt_ref=ref,
     )
     llm = ScriptedLLM("返信")
+    service = TalkService()
     with TALK_CHAT_AGENT.override(model=llm.model):
-        TalkService().synthesize_chat(
-            config=config,
-            messages=[{"role": "user", "content": "hi"}],
-            session_id="trace-session",
+        system_prompt = service.prepare_chat_prompt(config)
+        list(
+            service.stream_chat_reply(
+                system_prompt,
+                [{"role": "user", "content": "hi"}],
+                session_id="trace-session",
+            )
         )
+
+
+def _run_talk_through_litellm():
+    """HTTP 層だけ差し替えて、LiteLLM の応答の解釈まで通すチャットを実行する.
+
+    最後まで読むものと、途中で閉じるもの（停止・切断）の 2 本を実行する。
+    """
+    from pydantic_ai.models import override_allow_model_requests
+
+    from features.talk.services import TalkService
+    from tests.fixtures.llm import FakeLiteLLM, LiteLLMStreamBody, litellm_stream
+
+    fake = FakeLiteLLM(
+        litellm_stream(
+            "本文",
+            usage={
+                "prompt_tokens": 10,
+                "completion_tokens": 3,
+                "total_tokens": 13,
+                "completion_tokens_details": {"text_tokens": 2, "reasoning_tokens": 1},
+            },
+        ),
+        LiteLLMStreamBody("途中", hang=True).response(),
+    )
+    messages = [{"role": "user", "content": "hi"}]
+    service = TalkService()
+    with (
+        patch("integrations.llm.runtime.AsyncOpenAI", side_effect=fake.build_client),
+        override_allow_model_requests(True),
+    ):
+        list(service.stream_chat_reply("s", messages, session_id="litellm-session"))
+        stream = service.stream_chat_reply("s", messages, session_id="stopped-session")
+        next(stream)
+        stream.close()
 
 
 def main() -> None:
@@ -112,11 +151,15 @@ def main() -> None:
 
     django.setup()
 
+    import pydantic_ai.models
     from django.test.utils import setup_databases
     from langfuse import Langfuse
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
+
+    # 実モデルへのリクエストは許可しない（モデルか HTTP 層を差し替えたものだけが動く）
+    pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
 
     setup_databases(verbosity=0, interactive=False)
 
@@ -131,6 +174,7 @@ def main() -> None:
         thread = _create_fixtures()
         result = _run_investigation(thread)
         _run_talk()
+        _run_talk_through_litellm()
 
     client.flush()
     json.dump(

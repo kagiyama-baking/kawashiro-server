@@ -6,12 +6,11 @@ import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 
 from features.talk.exceptions import PlaceholderDataMissingError
-from features.talk.llm_agents import TALK_CHAT_AGENT
 from features.talk.models import TalkConfig
 from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
 from integrations.llm.exceptions import LLMClientError, LLMConfigurationError
-from tests.fixtures.llm import LiteLLMStreamBody, ScriptedLLM, litellm_stream, stream_of
+from tests.fixtures.llm import LiteLLMStreamBody, litellm_stream, stream_of
 
 SYSTEM_PROMPT = "あなたは親切なアシスタントです。"
 
@@ -21,14 +20,6 @@ def _disable_langfuse_client():
     """Langfuse 接続を切って fallback_text 経由に統一する."""
     with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
-
-
-@pytest.fixture
-def chat_llm(talk_llm_settings):
-    """チャットエージェントの応答を台本で固定する."""
-    llm = ScriptedLLM()
-    with TALK_CHAT_AGENT.override(model=llm.model):
-        yield llm
 
 
 @pytest.fixture
