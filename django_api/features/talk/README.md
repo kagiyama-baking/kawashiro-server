@@ -25,6 +25,7 @@ features/talk/
 │   └── audio.py         # ChatSessionMessageAudioView, ChatSessionAudioBulkDeleteView
 ├── signals.py           # post_delete で音声ファイルを物理削除（apps.ready() で登録）
 ├── permissions.py       # IsSessionOwner（session / session 経由オブジェクトの所有者判定）
+├── throttling.py        # TalkConfigRateThrottle（/talk/synthesize/ のプリセットごとの回数制限）
 ├── holiday_client.py    # holidays-jp API クライアント（インスタンス内キャッシュ）
 ├── constants.py         # DAY_OF_WEEK_JA（曜日の日本語マッピング）
 ├── admin.py             # TalkConfig / ChatSession / ChatMessage の管理画面
@@ -93,7 +94,7 @@ features/talk/
 
 | メソッド | パス | 用途 |
 |---|---|---|
-| `POST` | `/talk/synthesize/` | `config_name` のプリセットで会話を生成。任意の `user_prompt`（最大 4000 文字）を渡すと `user_prompt_ref` の代わりにその文字列を使う |
+| `POST` | `/talk/synthesize/` | `config_name` のプリセットで会話を生成。任意の `user_prompt`（最大 4000 文字）を渡すと `user_prompt_ref` の代わりにその文字列を使う。プリセットの回数制限を超えると 429（下の「上限・レート制限」） |
 | `GET` | `/talk/datetime/` | 本日の日付・時刻・曜日・祝日名を返す |
 | `GET` | `/talk/configs/` | 登録済みプリセット一覧（`name` / `display_name` / `tts_enabled`） |
 
@@ -159,6 +160,7 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 | 項目 | 値 | 備考 |
 |---|---|---|
 | throttle scope `talk_chat` | 20 リクエスト/分 | `ScopedRateThrottle`。メッセージ送信と編集再送に適用（`settings.py` の `DEFAULT_THROTTLE_RATES`） |
+| `/talk/synthesize/` の回数 | プリセットごと（`TalkConfig.synthesize_rate_limit`、既定 10 回/分） | `TalkConfigRateThrottle`。ユーザーとプリセットの組で直近 1 分を数え、超えると 429 + `Retry-After`（次に通るまでの秒数）。失敗した生成も 1 回と数える。上限は毎回 DB から読むので、admin で変えると次のリクエストから効く。本文が不正・プリセットがないリクエストは数えない（400 / 404） |
 | `SESSION_MAX_MESSAGES` | 50 | user + assistant の合計。到達後の送信は 400。編集再送は対象以降を置き換えるので確認しない。確認は事前検証で行うので、同時送信や編集で少し超えることがある |
 | `content` 最大長 | 4000 文字 | 送信・編集どちらも同じ |
 | `CHAT_MAX_OUTPUT_TOKENS` | 1024 | チャット応答の `max_tokens` |
