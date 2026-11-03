@@ -27,10 +27,13 @@ from pydantic_ai.exceptions import (
 )
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models import ModelRequestContext
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIStreamedResponse
+from pydantic_ai.models.openai import (
+    OpenAIChatModel,
+    OpenAIChatModelSettings,
+    OpenAIStreamedResponse,
+)
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.litellm import LiteLLMProvider
-from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage, UsageLimits
 
 from .config import LLMSettings
@@ -173,26 +176,40 @@ async def open_model(settings: LLMSettings) -> AsyncIterator[_LiteLLMChatModel]:
 
 
 def _build_model_settings(
-    settings: LLMSettings, max_tokens: int | None
-) -> ModelSettings:
-    """LiteLLM へ送るリクエストパラメータを組み立てる."""
-    extra_body = {
-        "metadata": {
-            "service_name": settings.service_name,
-            "environment": settings.environment,
-        }
-    }
-    if max_tokens is None:
-        return ModelSettings(extra_body=extra_body)
-    return ModelSettings(extra_body=extra_body, max_tokens=max_tokens)
+    settings: LLMSettings, *, max_tokens: int | None, reasoning_effort: str | None
+) -> OpenAIChatModelSettings:
+    """LiteLLM へ送るリクエストパラメータを組み立てる.
+
+    推論深度は `reasoning_effort` として送る。空文字（admin の「無効」）は送らない。
+    """
+    optional: dict[str, Any] = {}
+    if max_tokens is not None:
+        optional["max_tokens"] = max_tokens
+    if reasoning_effort:
+        optional["openai_reasoning_effort"] = reasoning_effort
+    return OpenAIChatModelSettings(
+        extra_body={
+            "metadata": {
+                "service_name": settings.service_name,
+                "environment": settings.environment,
+            }
+        },
+        **optional,
+    )
 
 
 def _run_options(
-    settings: LLMSettings, *, max_tokens: int | None, conversation_id: str | None
+    settings: LLMSettings,
+    *,
+    max_tokens: int | None,
+    conversation_id: str | None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """通常の実行とストリーミングの実行で揃える引数を組み立てる."""
     return {
-        "model_settings": _build_model_settings(settings, max_tokens),
+        "model_settings": _build_model_settings(
+            settings, max_tokens=max_tokens, reasoning_effort=reasoning_effort
+        ),
         "conversation_id": conversation_id or settings.service_name,
         "capabilities": [_TreatEmptyResponseAsFinished()],
     }
@@ -210,6 +227,7 @@ async def arun_agent(
     max_tokens: int | None = None,
     retries: int | AgentRetries | None = None,
     conversation_id: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> AgentRunResult[Any]:
     """エージェントを LiteLLM Proxy 経由で 1 回実行する.
 
@@ -228,6 +246,9 @@ async def arun_agent(
         conversation_id: 会話 ID。Langfuse はこれをセッションとして扱う（`session.id` を
             伝播していればそちらを優先する）。PydanticAI の既定は実行ごとの UUID で、
             セッションが増え続けるので、省略時はサービス名にする
+        reasoning_effort: 推論深度（`low` / `medium` / `high` など）。`reasoning_effort`
+            として送る。None や空文字なら送らない。モデルが非対応なら LiteLLM の
+            `drop_params` で捨てられる
 
     Returns:
         実行結果
@@ -248,7 +269,10 @@ async def arun_agent(
                 usage_limits=usage_limits,
                 retries=retries,
                 **_run_options(
-                    settings, max_tokens=max_tokens, conversation_id=conversation_id
+                    settings,
+                    max_tokens=max_tokens,
+                    conversation_id=conversation_id,
+                    reasoning_effort=reasoning_effort,
                 ),
             )
 

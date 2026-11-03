@@ -268,6 +268,8 @@ class Orchestrator:
             # 未知のツール名はモデルへ伝えて続行させる（打ち切りは usage_limits に任せる）
             retries={"tools": MAX_STEPS},
             conversation_id=hn_conversation_id(thread),
+            # 推論深度は Orchestrator だけに指定する（空文字は「無効」で、送らない）
+            reasoning_effort=agent_config.reasoning_effort or None,
         )
 
     def _extract_results(

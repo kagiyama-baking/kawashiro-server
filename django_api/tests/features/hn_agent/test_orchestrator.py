@@ -569,6 +569,29 @@ class TestOrchestrator:
         assert settings["extra_body"]["metadata"]["service_name"] == "orchestrator"
         assert "max_tokens" not in settings
 
+    @pytest.mark.parametrize(
+        ("configured", "expected"),
+        [("low", "low"), ("medium", "medium"), ("high", "high"), ("", None)],
+    )
+    def test_request_uses_configured_reasoning_effort(
+        self,
+        orchestrator,
+        orchestrator_llm,
+        thread,
+        hn_agent_config,
+        configured,
+        expected,
+    ):
+        """推論深度は有効な HNAgentConfig の値を使い、「無効」なら指定しない."""
+        hn_agent_config.reasoning_effort = configured
+        hn_agent_config.save()
+        orchestrator_llm.enqueue("結論")
+
+        orchestrator.investigate(thread)
+
+        settings = orchestrator_llm.requests[0].model_settings
+        assert settings.get("openai_reasoning_effort") == expected
+
     def test_tool_names_and_descriptions_match_prompt_contract(
         self, orchestrator, orchestrator_llm, thread
     ):
@@ -733,6 +756,60 @@ class TestOrchestratorThroughHTTP:
         mock_reporter.report_detective.assert_not_called()
         thread.refresh_from_db()
         assert thread.is_investigated is False
+
+    def test_reasoning_effort_is_sent_only_in_orchestrator_requests(
+        self,
+        fake_litellm,
+        thread,
+        mock_reporter,
+        hn_llm_services,
+        hn_agent_config,
+    ):
+        """推論深度は Orchestrator の送信本文にだけ載り、サブエージェントには送らない."""
+        hn_agent_config.reasoning_effort = "medium"
+        hn_agent_config.save()
+        hn_client = MagicMock()
+        hn_client.get_comments.return_value = []
+        hn_client.flatten_comments.return_value = []
+        tavily_client = MagicMock()
+        tavily_client.search_context.return_value = []
+        orchestrator = Orchestrator(
+            detective_agent=DetectiveAgent(
+                hn_client=hn_client, tavily_client=tavily_client
+            ),
+            reporter=mock_reporter,
+        )
+        fake = fake_litellm(
+            litellm_response(
+                None,
+                finish_reason="tool_calls",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "detective_investigate",
+                            "arguments": "{}",
+                        },
+                    }
+                ],
+            ),
+            litellm_response('{"title_ja": "和訳", "comment_highlights": []}'),
+            litellm_response("結論"),
+        )
+
+        result = orchestrator.investigate(thread)
+
+        assert result["detective_result"] is not None
+        sent = [
+            (body["metadata"]["service_name"], body.get("reasoning_effort"))
+            for body in fake.bodies
+        ]
+        assert sent == [
+            ("orchestrator", "medium"),
+            ("detective", None),
+            ("orchestrator", "medium"),
+        ]
 
 
 @pytest.mark.integration
