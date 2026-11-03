@@ -1014,6 +1014,8 @@ class TestRunOrchestratorTask:
 
         assert result["hn_id"] == 800
         assert result["steps"] == 1
+        # 定期実行は通知する（notify=False を渡さない）
+        mock_orch_class.assert_called_once_with()
         mock_orch_class.return_value.investigate.assert_called_once_with(thread)
 
     def test_run_orchestrator_thread_not_found(self):

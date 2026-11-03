@@ -15,47 +15,59 @@ class TestInvestigateView:
     def _post(self, client, data: dict):
         return client.post(reverse("hn_agent:investigate"), data, format="json")
 
-    def test_investigate_with_skip_notify_does_not_create_reporter(
-        self, superuser_client, investigation_thread, reporter_class
+    def test_investigate_with_skip_notify_does_not_send_to_slack(
+        self,
+        superuser_client,
+        scripted_investigation_thread,
+        reporter_class,
+        slack_client_class,
     ):
-        """skip_notify=true なら結果があっても Reporter を作らない（Slack へ送らない）."""
+        """skip_notify=true なら結果があっても Reporter を作らず、Slack へ送らない."""
         response = self._post(
-            superuser_client, {"hn_id": investigation_thread.hn_id, "skip_notify": True}
+            superuser_client,
+            {"hn_id": scripted_investigation_thread.hn_id, "skip_notify": True},
         )
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["detective_result"] is not None
         reporter_class.assert_not_called()
+        slack_client_class.assert_not_called()
 
-    def test_investigate_without_skip_notify_field_does_not_create_reporter(
-        self, superuser_client, investigation_thread, reporter_class
+    def test_investigate_without_skip_notify_field_does_not_send_to_slack(
+        self,
+        superuser_client,
+        scripted_investigation_thread,
+        reporter_class,
+        slack_client_class,
     ):
         """skip_notify の既定は true なので、省略しても Slack へ送らない."""
-        response = self._post(superuser_client, {"hn_id": investigation_thread.hn_id})
+        response = self._post(
+            superuser_client, {"hn_id": scripted_investigation_thread.hn_id}
+        )
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["detective_result"] is not None
         reporter_class.assert_not_called()
+        slack_client_class.assert_not_called()
 
-    def test_investigate_with_skip_notify_false_sends_report(
-        self, superuser_client, investigation_thread, reporter_class
+    def test_investigate_with_skip_notify_false_sends_to_slack(
+        self, superuser_client, scripted_investigation_thread, slack_client_class
     ):
         """skip_notify=false なら調査結果を Slack へ送る."""
         response = self._post(
             superuser_client,
-            {"hn_id": investigation_thread.hn_id, "skip_notify": False},
+            {"hn_id": scripted_investigation_thread.hn_id, "skip_notify": False},
         )
 
         assert response.status_code == status.HTTP_200_OK
-        reporter_class.assert_called_once_with()
-        reporter_class.return_value.report_detective.assert_called_once()
+        slack_client_class.return_value.send_blocks.assert_called_once()
 
 
 class TestRunAllView:
     """POST /hn-agent/run-all/ のテスト."""
 
-    def test_run_all_sends_report(
-        self, superuser_client, investigation_thread, reporter_class
+    def test_run_all_with_triggered_thread_sends_to_slack(
+        self, superuser_client, scripted_investigation_thread, slack_client_class
     ):
         """一括実行は従来どおり調査結果を Slack へ送る."""
         watcher_result = {
@@ -63,8 +75,8 @@ class TestRunAllView:
             "new_threads": 0,
             "triggered_threads": [
                 {
-                    "hn_id": investigation_thread.hn_id,
-                    "title": investigation_thread.title,
+                    "hn_id": scripted_investigation_thread.hn_id,
+                    "title": scripted_investigation_thread.title,
                 }
             ],
         }
@@ -76,4 +88,4 @@ class TestRunAllView:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["watcher"]["investigated_count"] == 1
-        reporter_class.return_value.report_detective.assert_called_once()
+        slack_client_class.return_value.send_blocks.assert_called_once()

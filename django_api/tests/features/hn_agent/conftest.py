@@ -84,7 +84,18 @@ def reporter_class():
 
 
 @pytest.fixture
-def investigation_thread(hn_llm_services, hn_agent_config):
+def slack_client_class():
+    """Slack への送信の境界を差し替え、生成と送信を記録する.
+
+    テスト DB には Slack 通知設定がないので、差し替えないと送信しようとしても
+    黙って止まり、送ってしまう回帰がテストから見えない。
+    """
+    with patch("features.hn_agent.reporter.SlackClient") as slack_client_class:
+        yield slack_client_class
+
+
+@pytest.fixture
+def scripted_investigation_thread(hn_llm_services, hn_agent_config):
     """調査すると Detective の結果が 1 件出るスレッドを用意する.
 
     引数なしで Orchestrator を作る入口（API・管理コマンド）のテスト用。モデルは台本で、

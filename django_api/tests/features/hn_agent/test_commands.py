@@ -17,25 +17,27 @@ class TestRunHNInvestigationCommand:
         call_command("run_hn_investigation", *args, stdout=out)
         return out.getvalue()
 
-    def test_command_with_skip_notify_does_not_create_reporter(
-        self, investigation_thread, reporter_class
+    def test_command_with_skip_notify_does_not_send_to_slack(
+        self, scripted_investigation_thread, reporter_class, slack_client_class
     ):
-        """--skip-notify なら結果があっても Reporter を作らない（Slack へ送らない）."""
-        output = self._run("--hn-id", str(investigation_thread.hn_id), "--skip-notify")
+        """--skip-notify なら結果があっても Reporter を作らず、Slack へ送らない."""
+        thread = scripted_investigation_thread
+
+        output = self._run("--hn-id", str(thread.hn_id), "--skip-notify")
 
         assert "調査完了" in output
-        investigation_thread.refresh_from_db()
-        assert investigation_thread.is_investigated is True
+        thread.refresh_from_db()
+        assert thread.is_investigated is True
         reporter_class.assert_not_called()
+        slack_client_class.assert_not_called()
 
-    def test_command_without_skip_notify_sends_report(
-        self, investigation_thread, reporter_class
+    def test_command_without_skip_notify_sends_to_slack(
+        self, scripted_investigation_thread, slack_client_class
     ):
         """--skip-notify がなければ調査結果を Slack へ送る."""
-        self._run("--hn-id", str(investigation_thread.hn_id))
+        self._run("--hn-id", str(scripted_investigation_thread.hn_id))
 
-        reporter_class.assert_called_once_with()
-        reporter_class.return_value.report_detective.assert_called_once()
+        slack_client_class.return_value.send_blocks.assert_called_once()
 
     def test_command_with_unknown_hn_id_raises_command_error(self):
         """存在しないスレッドはエラーにする."""
@@ -61,7 +63,7 @@ class TestRunHNWatcherCommand:
         ) as poll:
             yield poll
 
-    def test_command_polls_without_investigation(self, poll_front_page):
+    def test_command_without_options_polls_only(self, poll_front_page):
         """ポーリングだけを行い、トリガーされたスレッドの調査は実行しない."""
         out = StringIO()
 
