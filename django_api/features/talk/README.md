@@ -161,13 +161,13 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 | 項目 | 値 | 備考 |
 |---|---|---|
 | throttle scope `talk_chat` | 20 リクエスト/分 | `ScopedRateThrottle`。メッセージ送信と編集再送に適用（`settings.py` の `DEFAULT_THROTTLE_RATES`） |
-| `/talk/synthesize/` の回数 | プリセットごと（`TalkConfig.synthesize_rate_limit`、既定 10 回/分） | `TalkConfigRateThrottle`。ユーザーとプリセットの組で直近 1 分を数え、超えると 429 + `Retry-After`（次に通るまでの秒数）。失敗した生成も 1 回と数える。上限は毎回 DB から読むので、admin で変えると次のリクエストから効く。本文が不正・プリセットがないリクエストは数えない（400 / 404） |
+| `/talk/synthesize/` の回数 | プリセットごと（`TalkConfig.synthesize_rate_limit`、既定 10 回/分） | `TalkConfigRateThrottle`。ユーザーとプリセットの組で直近 1 分を数え、超えると 429 + `Retry-After`（次に通るまでの秒数）。失敗した生成も 1 回と数える。上限は毎回 DB から読むので、admin で変えると次のリクエストから効く。`config_name` を検証できない本文（400）とプリセットがないもの（404）は数えない（生成を始めてからの 400 / 404、たとえばプレースホルダーの設定不足や予報区コード不明は数える） |
 | `SESSION_MAX_MESSAGES` | 50 | user + assistant の合計。到達後の送信は 400。編集再送は対象以降を置き換えるので確認しない。確認は事前検証で行うので、同時送信や編集で少し超えることがある |
 | `content` 最大長 | 4000 文字 | 送信・編集どちらも同じ |
 | `CHAT_MAX_OUTPUT_TOKENS` | 1024 | チャット応答の `max_tokens` |
 | ページネーション | `default_limit=20` / `max_limit=100` | `LimitOffsetPagination`（セッション一覧のみ） |
 
-スロットルの回数は Redis（Django のキャッシュ）に記録し、全ワーカーで共有します（接続先はルート [README.md](../../../README.md) の `CACHE_REDIS_URL`）。Redis に届かないと、スロットルの付いた API は 500 になります。
+スロットルの回数は Redis（Django のキャッシュ）に記録し、全ワーカーで共有します（接続先はルート [README.md](../../../README.md) の `CACHE_REDIS_URL`）。Redis に届かないと、スロットルの付いた API は 500 になります。記録の読み書きは原子的でないので、同時に送ると、同時に処理される数（ワーカー数）まで上限を超えて通ることがあります。
 
 **認可**: セッション・メッセージ・音声のいずれも `user=request.user` でクエリセットを絞るため、他人の `session_id` / `msg_id` を指定しても 404 になります（`ChatMessage.id` はグローバル連番のため、編集・音声系では `session_id` と所有者の二重チェックを行っています）。
 
