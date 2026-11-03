@@ -8,12 +8,14 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.forms.models import model_to_dict
 from django.urls import reverse
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.test import APIClient
+from rest_framework.request import Request
+from rest_framework.test import APIClient, APIRequestFactory
 
 from features.talk.models import TalkConfig
 from features.talk.throttling import TalkConfigRateThrottle
@@ -129,6 +131,19 @@ class TestSynthesizeRateLimit:
         assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
         assert blocked["Retry-After"] == "1"
         assert allowed.status_code == status.HTTP_200_OK
+
+    def test_synthesize_with_zero_limit_always_returns_429(
+        self, authenticated_client, make_config, synthesize_service
+    ):
+        """検証を通さずに 0 が入っても落ちず、常に 429 にする（生成はしない）."""
+        config = make_config()
+        TalkConfig.objects.filter(pk=config.pk).update(synthesize_rate_limit=0)
+
+        response = _synthesize(authenticated_client)
+
+        assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert response["Retry-After"] == "60"
+        synthesize_service.synthesize.assert_not_called()
 
     def test_synthesize_failed_generation_is_counted(
         self, authenticated_client, make_config, synthesize_service
@@ -261,6 +276,38 @@ class TestSynthesizeRateLimitSkipped:
 
         assert codes == [status.HTTP_400_BAD_REQUEST] * 2
         assert _synthesize(authenticated_client).status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+class TestTalkConfigRateThrottleCacheKey:
+    """記録のキー（ユーザーとプリセットの組）."""
+
+    @pytest.fixture
+    def throttle(self):
+        throttle = TalkConfigRateThrottle()
+        throttle.config_pk = 3
+        return throttle
+
+    @staticmethod
+    def _request(user) -> Request:
+        django_request = APIRequestFactory().post(
+            "/talk/synthesize/", {"config_name": "morning"}, REMOTE_ADDR="198.51.100.7"
+        )
+        request = Request(django_request)
+        request.user = user
+        return request
+
+    def test_cache_key_combines_user_and_preset(self, throttle, regular_user):
+        """認証済みならユーザーの pk とプリセットの pk で数える."""
+        key = throttle.get_cache_key(self._request(regular_user), view=None)
+
+        assert key == f"throttle_talk_synthesize_{regular_user.pk}_3"
+
+    def test_cache_key_for_anonymous_uses_client_address(self, throttle):
+        """未認証（ビューは通さないが）なら接続元とプリセットの pk で数える."""
+        key = throttle.get_cache_key(self._request(AnonymousUser()), view=None)
+
+        assert key == "throttle_talk_synthesize_198.51.100.7_3"
 
 
 class TestSynthesizeRateLimitSchema:
