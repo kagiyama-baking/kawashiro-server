@@ -55,6 +55,8 @@ MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをす�
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
 HOME_BODY = "おかえりのあいさつをする"
 EMPTY_TEXTS = ["", " \n\t "]
+# 本文に漏れたツール呼び出しの書式（開発の実機で Kimi K2.5 が返した本文そのもの）
+LEAKED_TOOL_CALL = '<parameter name="id">good-morning</parameter>'
 AUDIO = TTSResult(
     audio_data=b"RIFF-test-audio", content_type="audio/mpeg", format="mp3"
 )
@@ -304,6 +306,17 @@ class TestSkillSpecified:
         ]
         assert llm.requests[0].system_prompts[0].endswith(NIGHT_BODY)
 
+    def test_run_companion_with_skill_and_leaked_tool_call_returns_retried_text(
+        self, config
+    ):
+        """スキルを指定した実行でも、本文に漏れた呼び出しの書式は作り直させる（検証はエージェント全体）."""
+        llm = _scripted(LEAKED_TOOL_CALL, "おやすみ！")
+
+        reply = _run(llm, skill="good-night")
+
+        assert reply.text == "おやすみ！"
+        assert len(llm.requests) == 2
+
     @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
     def test_run_companion_with_skill_with_empty_body_raises_error_before_llm(
         self, config, fallback_text
@@ -432,6 +445,18 @@ class TestRunLimits:
         with pytest.raises(LLMOutputError):
             _run(_scripted(output))
 
+        tts_client.assert_not_called()
+
+    def test_run_companion_with_leaked_tool_call_twice_raises_output_error_without_tts(
+        self, tts_config, tts_client
+    ):
+        """作り直させても呼び出しの書式が漏れたら、作り直しは 1 回だけで LLMOutputError にし、音声合成はしない."""
+        llm = _scripted(LEAKED_TOOL_CALL, LEAKED_TOOL_CALL)
+
+        with pytest.raises(LLMOutputError):
+            _run(llm)
+
+        assert len(llm.requests) == 2
         tts_client.assert_not_called()
 
     def test_run_companion_with_endless_tool_calls_stops_at_request_limit(self, config):

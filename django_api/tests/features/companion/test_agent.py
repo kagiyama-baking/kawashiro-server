@@ -90,6 +90,24 @@ FORECAST = {
 WEATHER_ERROR = {"error": "天気予報を取得できませんでした"}
 EVENTS_ERROR = {"error": "今日の予定を取得できませんでした"}
 
+# 本文に漏れたツール呼び出しの書式（先頭は、開発の実機で Kimi K2.5 が返した本文そのもの）
+LEAKED_TOOL_CALLS = [
+    '<parameter name="id">good-morning</parameter>',
+    'おはようございます。<invoke name="get_weather">',
+    "<function_calls>",
+    '<tool_call>{"name": "get_weather", "arguments": {}}</tool_call>',
+    "<|tool_calls_section_begin|>",
+    'functions.load_capability:0{"id": "good-morning"}',
+]
+# 「<」や functions などを含むが、呼び出しの書式ではないふつうのセリフ
+PLAIN_SPEECHES = [
+    "3<5 なので、5 のほうが大きいですね。",
+    "大好きです<3",
+    "関数（functions）のお話ですね。",
+    "functions.py を開いてみてください。",
+    "パラメータ（parameter）を確かめましょう。",
+]
+
 
 def _graph_event(**fields) -> dict:
     """Graph の calendarView が返す予定（`Prefer: outlook.timezone="Asia/Tokyo"` の形）."""
@@ -114,6 +132,18 @@ def _graph_event_without(key: str) -> dict:
     return {name: value for name, value in _graph_event().items() if name != key}
 
 
+def _execute(llm: ScriptedLLM, *, area_code: str = AREA_CODE, **run_options):
+    """台本のモデルで COMPANION_AGENT を 1 回実行し、実行結果を返す."""
+    with COMPANION_AGENT.override(model=llm.model):
+        return run_agent_sync(
+            COMPANION_AGENT,
+            make_llm_settings("companion"),
+            user_prompt="おはよう",
+            deps=CompanionDeps(area_code=area_code),
+            **run_options,
+        )
+
+
 def _run(
     *script: str | ModelResponse,
     area_code: str = AREA_CODE,
@@ -122,14 +152,7 @@ def _run(
 ) -> ScriptedLLM:
     """台本どおりに COMPANION_AGENT を 1 回実行し、受け取った内容を記録した代役を返す."""
     llm = ScriptedLLM(*script, profile=profile)
-    with COMPANION_AGENT.override(model=llm.model):
-        run_agent_sync(
-            COMPANION_AGENT,
-            make_llm_settings("companion"),
-            user_prompt="おはよう",
-            deps=CompanionDeps(area_code=area_code),
-            **run_options,
-        )
+    _execute(llm, area_code=area_code, **run_options)
     return llm
 
 
@@ -636,6 +659,42 @@ class TestGetTodayEvents:
         assert result == EVENTS_ERROR
         (message,) = _warnings(caplog)
         assert str(error) in message
+
+
+class TestOutputValidation:
+    """出力の検証（本文に漏れたツール呼び出しの書式を、音声合成の前に弾く）."""
+
+    @pytest.mark.parametrize("leaked", LEAKED_TOOL_CALLS)
+    def test_output_with_leaked_tool_call_is_retried_and_next_text_is_returned(
+        self, leaked
+    ):
+        """呼び出しの書式が本文に漏れたら、関数呼び出しで使うよう伝えて作り直させ、次の本文を返す."""
+        llm = ScriptedLLM(leaked, "おはよう！")
+
+        result = _execute(llm)
+
+        assert result.output == "おはよう！"
+        assert len(llm.requests) == 2
+        assert "関数呼び出し" in llm.requests[1].user_prompt
+
+    @pytest.mark.parametrize("speech", PLAIN_SPEECHES)
+    def test_output_with_symbols_or_words_in_speech_is_returned_without_retry(
+        self, speech
+    ):
+        """「<」や functions などを含むふつうのセリフは、作り直させずにそのまま返す."""
+        llm = ScriptedLLM(speech)
+
+        result = _execute(llm)
+
+        assert result.output == speech
+        assert len(llm.requests) == 1
+
+    def test_output_with_leaked_tool_call_logs_warning_with_marker(self, caplog):
+        """漏れを見つけたら、見つけた書式を warning ログに出す（作り直して直った回も追えるように）."""
+        _execute(ScriptedLLM(LEAKED_TOOL_CALLS[0], "おはよう！"))
+
+        (message,) = _warnings(caplog)
+        assert "<parameter" in message
 
 
 class TestResponsePolicy:

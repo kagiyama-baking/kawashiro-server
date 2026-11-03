@@ -1,4 +1,4 @@
-"""Companion エージェントと常設ツール（日時・天気・今日の予定）、応答の方針.
+"""Companion エージェントと常設ツール（日時・天気・今日の予定）、応答の方針、出力の検証.
 
 キャラクター設定（Langfuse）はここに持たず、実行サービスが方針（`response_policy`）と
 つないで実行ごとの `instructions` で渡す。方針はツールの戻り値と組み込みの
@@ -8,10 +8,12 @@
 変えない（`README.md` の「ツール」）。ツールは async にし、外部 API と ORM は同期関数に
 まとめて `sync_to_async` で動かす（`run_agent_sync` から実行すると、呼び出し元のスレッドと
 DB 接続で動く）。既知の失敗は warning ログを出して `{"error": ...}` を返し、実行は続ける。
+本文に漏れたツール呼び出しの書式は、出力の検証（`_reject_leaked_tool_call`）で作り直させる。
 """
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Literal
@@ -19,7 +21,7 @@ from typing import Any, Literal
 import requests
 from asgiref.sync import sync_to_async
 from django.utils import timezone
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 
 from integrations.holiday import (
     HolidayClient,
@@ -85,6 +87,45 @@ def response_policy(*, can_load_skills: bool) -> str:
     """
     rules = (_SKILL_SELECTION_RULE,) if can_load_skills else ()
     return "\n".join((_POLICY_HEADING, *rules, *_ALWAYS_RULES))
+
+
+# 本文に漏れたツール呼び出しの書式。開発の実機（LiteLLM → Bedrock の Kimi K2.5）で、ツールを
+# 呼ばずに本文が `<parameter name="id">good-morning</parameter>` だけの応答が返り、そのまま
+# 音声合成されるところだった。ふつうのセリフ（「3<5」「関数」など）と取り違えないよう、
+# 呼び出しの書式に固有の形だけを見る
+_LEAKED_TOOL_CALL = re.compile(
+    # XML 形式の呼び出しのタグ（<parameter> / <invoke> / <function_calls> / <tool_call>。閉じタグも）
+    r"</?(?:parameters?|invoke|function_calls?|tool_calls?)\b"
+    # 呼び出しの特殊トークン（Kimi の <|tool_calls_section_begin|> など）
+    r"|<\|tool"
+    # Kimi の呼び出し ID（functions.<ツール名>:<番号>）
+    r"|functions\.[A-Za-z_]\w*:\d+"
+)
+# 漏れたときにモデルへ返す、作り直しの指示
+_LEAKED_TOOL_CALL_RETRY = (
+    "ツールは関数呼び出しで使い、呼び出しの書式（タグや ID）を本文に書かないでください。"
+    "本文には、そのまま読み上げるセリフだけを書いてください。"
+)
+
+
+@COMPANION_AGENT.output_validator
+def _reject_leaked_tool_call(output: str | None) -> str | None:
+    """本文にツール呼び出しの書式が漏れた応答を、モデルに作り直させる.
+
+    本文はそのまま音声合成するので、書式を読み上げさせない。作り直させるのは出力の再試行の
+    回数（PydanticAI の既定の 1 回）までで、続けて漏れたら実行が失敗する。本文のない応答
+    （None）はそのまま通す。
+
+    Raises:
+        ModelRetry: 本文に呼び出しの書式があるとき
+    """
+    match = None if output is None else _LEAKED_TOOL_CALL.search(output)
+    if match is not None:
+        logger.warning(
+            "本文にツール呼び出しの書式が漏れたので、作り直させます: %s", match.group()
+        )
+        raise ModelRetry(_LEAKED_TOOL_CALL_RETRY)
+    return output
 
 
 def _to_json(data: dict[str, Any]) -> str:

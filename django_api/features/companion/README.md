@@ -12,7 +12,7 @@ features/companion/
 ├── apps.py                    # CompanionAppConfig（label: companion。モデル名と重ならないよう AppConfig を付ける）
 ├── models.py                  # CompanionConfig / CompanionSkill
 ├── admin.py                   # 設定 + スキルのインライン + 有効化アクション
-├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）
+├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）・出力の検証
 ├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・本文の解決・loaded_skill
 ├── services.py                # run_companion（1 回の実行）→ CompanionReply
 ├── serializers.py             # 実行 API の入力（prompt / skill）と応答（text / skill / audio_data / audio_format）
@@ -105,7 +105,7 @@ features/companion/
 | 3 | LLM の接続設定 `get_llm_settings("companion")` を読む | LLM サービス設定 `companion` がない・無効（`LLMConfigurationError`） |
 | 4 | キャラクター設定の本文を解決する | 本文が空（`PromptUnavailableError`） |
 | 5 | 実行の指示を組み立てる（下の「スキルの指定と自動選択」）。指定したスキルの本文はここで解決する | 指定したスキルの本文が空（`PromptUnavailableError`） |
-| 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`。1 リクエストごとのタイムアウトか、実行全体の `RUN_TIMEOUT` を過ぎた）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた（`LLMOutputError`）、読み込んだスキルの本文が空（`PromptUnavailableError`） |
+| 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`。1 リクエストごとのタイムアウトか、実行全体の `RUN_TIMEOUT` を過ぎた）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた・本文に漏れたツール呼び出しの書式が作り直させても直らない（`LLMOutputError`。下の「出力の検証」）、読み込んだスキルの本文が空（`PromptUnavailableError`） |
 | 7 | 応答の前後の空白を除く | 空（`LLMOutputError`。音声合成はしない） |
 | 8 | 使ったスキルを決める（指定したスキル、なければ最初に読み込みに成功したスキル、どちらもなければ `None`） | — |
 | 9 | Langfuse のスパンに出力を記録する（下の「トレース（Langfuse）」） | 止まらない（warning ログだけ） |
@@ -126,6 +126,7 @@ features/companion/
 
 - **スキルを指定した実行で本文を指示の末尾に足すのは、キャラクター設定を先頭に保つためです。** 遅延しない capability（`defer_loading=False`）にすると、その指示は実行の指示より前の別の system になり（`tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract`）、本文がキャラクター設定より先に来ます。自動選択でも本文はキャラクター設定の後ろに届くので、指定したときも後ろに置きます。
 - 有効なスキルが 1 つもなければ、自動選択でも一覧・`load_capability`・読み込みの一文は入りません（使ったスキルは `None`）。
+- **自動選択は、いつも合うスキルを読み込むとは限りません。** 開発の実機（LiteLLM → Bedrock の Kimi K2.5）で約 30 回試したところ、合うスキルを読み込んだのは 85〜95% ほどでした。読み込まなかったときもエラーにはならず、キャラクターのまま短く答えます（API の `skill` は `null`。ツールを呼ばずに「調べますね」とだけ答えることもあります）。読み込みを促す一文を応答の方針に足しても改善しなかったので、方針には入れていません。毎朝のあいさつのように決まったスキルを必ず使う自動化では、`skill` を指定してください（指定した実行では、どの回も指定したスキルの手順どおりに答えました）。
 
 ### 応答の方針
 
@@ -141,6 +142,15 @@ features/companion/
 - 文言は `agent.py` が正です。読み込みのツール名と、ツールが失敗時に返すキー（`error`）を文中で使っていること、ツールの結果の中の指示に従わない一文がどちらの方針にも入ることは `tests/features/companion/test_agent.py` で確かめています。
 - 読み込んだスキルの本文はツールの結果ではなく、その後ろの system として届きます（上の「スキル」）。`load_capability` の結果は読み込んだ旨の定型文だけなので、ツールの結果の指示に従わない一文とはぶつかりません。
 
+### 出力の検証
+
+エージェント（`agent.py` の `COMPANION_AGENT`）の output validator が、本文にツール呼び出しの書式が漏れた応答を弾きます。本文はそのまま音声合成するので、書式を読み上げさせないためです。開発の実機（LiteLLM → Bedrock の Kimi K2.5）で、ツールを呼ばずに本文が `<parameter name="id">good-morning</parameter>` だけの応答が、自動選択の約 30 回に 1 回返りました。
+
+- **弾くもの:** XML 形式の呼び出しのタグ（`<parameter>` / `<invoke>` / `<function_calls>` / `<tool_call>` とその閉じタグ。単数・複数の違いも含む）、`<|tool` で始まる特殊トークン（Kimi の `<|tool_calls_section_begin|>` など）、Kimi の呼び出し ID（`functions.<ツール名>:<番号>`）
+- **弾かないもの:** ふつうのセリフに出てくる「3<5」「<3」「関数」「functions」「functions.py」のような記号や語。呼び出しの書式に固有の形だけを見ます（例は `tests/features/companion/test_agent.py` の `TestOutputValidation`）
+- 弾くと warning ログを出し、関数呼び出しで使い書式を本文に書かないよう伝えて、モデルに作り直させます。作り直しても漏れたら `LLMOutputError`（API では 502）です（作り直させる回数は下の「上限と再試行」）。スキルの指定の有無にかかわらず効きます（エージェント全体の検証のため）。
+- 本文のない応答（`None`）はそのまま通します（空かどうかはサービスが判断します。上の「実行の流れ」の 7）。
+
 ### 上限と再試行
 
 | 定数（`services.py`） | 値 | 意味 |
@@ -151,6 +161,7 @@ features/companion/
 | `RUN_TIMEOUT` | 60 | 1 回の実行（モデルへのリクエストとツールの実行をすべて含む）の制限時間（秒）。過ぎると実行を止めて `LLMTimeoutError`（API では 504） |
 
 - `load_capability` も再試行の回数ではツールとして数えます。PydanticAI の既定（1 回）のままだと、不明なスキル名の読み込みが 2 回続いただけで実行が失敗するので、`retries={"tools": 3}` で広げています。
+- 出力の検証（上の「出力の検証」）で作り直させるのは 1 回までです。`retries` で変えているのはツールの回数だけなので、出力の再試行は PydanticAI の既定（1 回）のままです。作り直しの 1 回も `REQUEST_LIMIT` の 1 回に数えます。
 - **`RUN_TIMEOUT` は、本番の nginx が応答を待つ 120 秒（`frontend/nginx.conf` の `proxy_read_timeout`）に音声合成まで収めるための上限です。** 1 リクエストごとのタイムアウト（LLM サービス設定 `companion` の `timeout`）だけでは、合計が `REQUEST_LIMIT` 回分まで延び、その間 gunicorn のワーカーを 1 つ占有し続けます。音声合成は `RUN_TIMEOUT` に含めず、その上限は環境変数 `TTS_TIMEOUT`（ルート [README](../../../README.md)）です。
 - 期限が来ると、モデルの応答待ちはその場で止まります。ツールの取得（天気・祝日・Graph）は途中で止められないので、取得中ならそれが終わってから止まります（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
@@ -196,7 +207,7 @@ features/companion/
 | 503 | 有効な設定がないか複数ある（`CompanionNotConfiguredError`）、LLM サービス設定 `companion` がないか無効（`LLMConfigurationError`）、キャラクター設定かスキルの本文が空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
 | 504 | LLM のタイムアウト（`LLMTimeoutError`。実行全体の `RUN_TIMEOUT` の超過を含む） | `AI 生成サービスへのリクエストがタイムアウトしました` |
 | 504 | 音声合成のタイムアウト（`TTSTimeoutError`） | `音声合成サービスへのリクエストがタイムアウトしました` |
-| 502 | LLM の失敗（`LLMClientError`。上限の超過・接続や HTTP の失敗と、`LLMOutputError` の応答の不正・空の応答・ツールの失敗の連続を含む） | `AI 生成サービスでエラーが発生しました` |
+| 502 | LLM の失敗（`LLMClientError`。上限の超過・接続や HTTP の失敗と、`LLMOutputError` の応答の不正・空の応答・ツールの失敗の連続・直らない呼び出しの書式の漏れを含む） | `AI 生成サービスでエラーが発生しました` |
 | 502 | 音声合成の失敗（`TTSNetworkError`。接続の失敗・200 以外の応答） | `音声合成サービスでエラーが発生しました` |
 | 500 | それ以外 | `セリフの生成中に問題が発生しました`（トレースバックはログへ） |
 

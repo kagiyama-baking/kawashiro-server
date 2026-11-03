@@ -78,7 +78,8 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         UnknownSkillError: 指定したスキルが有効な設定にないか、無効な場合
         LLMConfigurationError: companion の LLM サービス設定がない場合
         PromptUnavailableError: キャラクター設定か、使うスキルの本文が空の場合
-        LLMOutputError: 応答の本文が空の場合・読み込みなどのツールの失敗が続いた場合
+        LLMOutputError: 応答の本文が空の場合・読み込みなどのツールの失敗が続いた場合・
+            本文に漏れたツール呼び出しの書式が作り直させても直らなかった場合
         LLMTimeoutError: リクエストごとのタイムアウトか、実行全体の RUN_TIMEOUT を過ぎた場合
         LLMClientError: そのほか LLM の実行に失敗した場合（上限の超過を含む）
         TTSError: 音声合成に失敗した場合
@@ -102,6 +103,7 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         usage_limits=UsageLimits(
             request_limit=REQUEST_LIMIT, tool_calls_limit=TOOL_CALLS_LIMIT
         ),
+        # ツールの回数だけを変える。出力の検証（agent.py）で作り直させるのは既定の 1 回のまま
         retries={"tools": TOOL_RETRIES},
         run_timeout=RUN_TIMEOUT,
     )
