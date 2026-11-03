@@ -4,20 +4,31 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
+from features.talk.models import TalkConfig
+from integrations.langfuse.models import LangfusePromptRef
+
 BEFORE_RATE_LIMIT = [("talk", "0015_chatsession_chatmessage_and_more")]
 AFTER_RATE_LIMIT = [("talk", "0016_talkconfig_synthesize_rate_limit")]
 
+LEGACY_CONFIG_NAME = "legacy"
+LEGACY_PROMPT_REF_NAME = "talk-legacy"
+
 
 @pytest.fixture
-def migrator(transactional_db):
-    """migration を行き来し、テストの後はすべて当てた状態に戻す.
+def migrator(django_db_setup, django_db_blocker):
+    """migration を行き来し、後始末ですべて当てた状態に戻して、作った行だけ消す.
 
-    スキーマを変えるので transactional_db を使う（テストの後に DB は空になる）。
+    スキーマを変えるので、テストのトランザクションの外で動かす。transactional_db は
+    後始末で全テーブルを空にし、data migration で入れた行（HN のプロンプト参照など）
+    まで消すので使わない（並び順しだいで、後に流れるテストが落ちる）。
     """
-    executor = MigrationExecutor(connection)
-    yield executor
-    executor.loader.build_graph()
-    executor.migrate(executor.loader.graph.leaf_nodes())
+    with django_db_blocker.unblock():
+        executor = MigrationExecutor(connection)
+        yield executor
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        TalkConfig.objects.filter(name=LEGACY_CONFIG_NAME).delete()
+        LangfusePromptRef.objects.filter(name=LEGACY_PROMPT_REF_NAME).delete()
 
 
 @pytest.mark.integration
@@ -28,12 +39,12 @@ def test_0016_sets_rate_limit_10_on_existing_configs(migrator):
     prompt_ref = old_apps.get_model(
         "langfuse_integration", "LangfusePromptRef"
     ).objects.create(
-        name="talk-legacy",
-        langfuse_prompt_name="talk-legacy",
+        name=LEGACY_PROMPT_REF_NAME,
+        langfuse_prompt_name=LEGACY_PROMPT_REF_NAME,
         fallback_text="既存のプロンプト",
     )
     old_apps.get_model("talk", "TalkConfig").objects.create(
-        name="legacy",
+        name=LEGACY_CONFIG_NAME,
         display_name="既存のプリセット",
         system_prompt_ref=prompt_ref,
         user_prompt_ref=prompt_ref,
@@ -43,5 +54,7 @@ def test_0016_sets_rate_limit_10_on_existing_configs(migrator):
     migrator.migrate(AFTER_RATE_LIMIT)
 
     new_apps = migrator.loader.project_state(AFTER_RATE_LIMIT).apps
-    config = new_apps.get_model("talk", "TalkConfig").objects.get(name="legacy")
+    config = new_apps.get_model("talk", "TalkConfig").objects.get(
+        name=LEGACY_CONFIG_NAME
+    )
     assert config.synthesize_rate_limit == 10
