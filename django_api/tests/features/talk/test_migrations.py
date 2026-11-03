@@ -3,6 +3,7 @@
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.db.migrations.loader import MigrationLoader
 
 from features.talk.models import TalkConfig
 from integrations.langfuse.models import LangfusePromptRef
@@ -58,3 +59,29 @@ def test_0016_sets_rate_limit_10_on_existing_configs(migrator):
         name=LEGACY_CONFIG_NAME
     )
     assert config.synthesize_rate_limit == 10
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_0016_lets_code_without_rate_limit_create_configs():
+    """0016 の後も、上限の列を知らないコード（イメージだけ戻したとき）がプリセットを作れる.
+
+    0015 時点のモデルは INSERT に上限の列を含めないので、DB の既定値で 10 になる。
+    """
+    old_apps = MigrationLoader(connection).project_state(BEFORE_RATE_LIMIT).apps
+    prompt_ref = old_apps.get_model(
+        "langfuse_integration", "LangfusePromptRef"
+    ).objects.create(
+        name=LEGACY_PROMPT_REF_NAME,
+        langfuse_prompt_name=LEGACY_PROMPT_REF_NAME,
+        fallback_text="旧版のプロンプト",
+    )
+
+    old_apps.get_model("talk", "TalkConfig").objects.create(
+        name=LEGACY_CONFIG_NAME,
+        display_name="旧版で作ったプリセット",
+        system_prompt_ref=prompt_ref,
+        user_prompt_ref=prompt_ref,
+    )
+
+    assert TalkConfig.objects.get(name=LEGACY_CONFIG_NAME).synthesize_rate_limit == 10

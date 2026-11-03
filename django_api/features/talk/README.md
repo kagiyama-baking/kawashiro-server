@@ -59,6 +59,7 @@ features/talk/
 - `save()` は `full_clean()` を呼ぶため、`area_code` の 6 桁チェックは admin 経由でもコード経由でも必ず走ります。
 - `on_delete=PROTECT` のため、`TalkConfig` から参照されている `LangfusePromptRef` は削除できません。
 - TTS 設定は `get_tts_options()` でまとめて辞書化され、`tts_enabled=False` のときは `None`（＝音声生成をスキップ）になります。
+- `synthesize_rate_limit` は DB 側にも既定値（10）を持つので、イメージだけ前の版に戻しても（[../../../docs/deployment.md](../../../docs/deployment.md) のロールバック）、admin でプリセットを作れます。
 
 > **Note (廃止フィールド):** かつて存在した `use_weather` / `use_events` / `use_datetime` は **migration `0014_remove_talkconfig_use_datetime_and_more` で削除済み**です。現在はプロンプト本文中の `{{placeholder}}` を自動検出する方式で、フラグによる有効・無効の切り替えはありません。
 

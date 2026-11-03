@@ -108,8 +108,10 @@ class TalkConfig(models.Model):
     )
 
     # 回数制限
+    # db_default は、この列を知らない旧版（イメージだけ戻したとき）でも行を作れるようにする
     synthesize_rate_limit = models.PositiveIntegerField(
         default=10,
+        db_default=10,
         validators=[MinValueValidator(1)],
         verbose_name="生成回数の上限（1 分あたり）",
         help_text=(
