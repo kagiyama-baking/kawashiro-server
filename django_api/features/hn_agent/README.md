@@ -205,8 +205,8 @@ Celery タスクとして次の 3 本が登録されています（`tasks.py` �
 コンテナ内から管理コマンドでも手動実行できます。
 
 ```bash
-# Watcher（--sync でトリガーされた調査も同期実行）
-docker compose exec django-api python manage.py run_hn_watcher --sync
+# Watcher（ポーリングのみ。トリガーされたスレッドの手動の調査は下の run_hn_investigation で行う）
+docker compose exec django-api python manage.py run_hn_watcher
 
 # 指定スレッドの調査（--skip-notify で Slack 通知を抑止）
 docker compose exec django-api python manage.py run_hn_investigation --hn-id 12345678 --skip-notify
@@ -245,7 +245,7 @@ features/hn_agent/
 │   └── security_responder.py # Security Responder Agent（CVE / パッチ整理）
 └── management/
     └── commands/
-        ├── run_hn_watcher.py       # Watcher 手動実行
+        ├── run_hn_watcher.py       # Watcher 手動実行（ポーリングのみ）
         └── run_hn_investigation.py # Orchestrator 手動実行
 ```
 
