@@ -30,6 +30,7 @@ from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
     LLMOutputError,
+    LLMTimeoutError,
 )
 from integrations.llm.runtime import _LITELLM_PROFILE
 from integrations.tts.client import TTSResult
@@ -40,6 +41,7 @@ from tests.fixtures.llm import (
     ScriptedLLM,
     load_capability,
     make_llm_settings,
+    slow_model,
     tool_call,
     tool_calls,
 )
@@ -422,6 +424,22 @@ class TestRunLimits:
             _run(llm)
 
         cls.return_value.get_weather.assert_not_called()
+
+    def test_run_companion_exceeding_run_timeout_raises_timeout_error_without_tts(
+        self, tts_config, tts_client
+    ):
+        """実行全体が RUN_TIMEOUT を過ぎたら、そこで止めて LLMTimeoutError にし、音声合成はしない.
+
+        テストを速くするため、RUN_TIMEOUT を短くして確かめる。
+        """
+        with (
+            patch(f"{SERVICES}.RUN_TIMEOUT", 0.05),
+            COMPANION_AGENT.override(model=slow_model(1)),
+            pytest.raises(LLMTimeoutError),
+        ):
+            run_companion("おはよう")
+
+        tts_client.assert_not_called()
 
     def test_run_companion_after_two_failed_skill_loads_uses_later_loaded_skill(
         self, config

@@ -230,6 +230,7 @@ async def arun_agent(
     conversation_id: str | None = None,
     reasoning_effort: str | None = None,
     capabilities: Sequence[AbstractCapability[Any]] = (),
+    run_timeout: float | None = None,
 ) -> AgentRunResult[Any]:
     """エージェントを LiteLLM Proxy 経由で 1 回実行する.
 
@@ -254,12 +255,17 @@ async def arun_agent(
         capabilities: この実行だけに足す capability（実行時に組み立てるスキルなど）。
             `defer_loading=True` のものは、モデルが `load_capability` ツールで読み込むまで
             一覧（id と説明）だけを送る
+        run_timeout: 実行全体（モデルへのリクエストとツールの実行をすべて含む）の制限時間
+            （秒）。None なら実行全体には制限を付けず、リクエストごとのタイムアウト
+            （`settings.timeout`）だけが効く。過ぎたとき、モデルの応答待ちはその場で止まるが、
+            ツールが `sync_to_async` で動かしている同期処理は途中で止められないので、
+            それが終わってから止まる
 
     Returns:
         実行結果
 
     Raises:
-        LLMTimeoutError: タイムアウト時
+        LLMTimeoutError: タイムアウト時（リクエストごとのタイムアウトと `run_timeout` の超過）
         LLMOutputError: 応答が期待する形にならなかった時
         LLMClientError: その他の LLM 実行エラー時
     """
@@ -273,6 +279,8 @@ async def arun_agent(
                 deps=deps,
                 usage_limits=usage_limits,
                 retries=retries,
+                # 期限切れの RunTimedOut は translate_llm_errors が LLMTimeoutError にする
+                timeout=run_timeout,
                 **_run_options(
                     settings,
                     max_tokens=max_tokens,

@@ -4,6 +4,7 @@ HTTP 本文の契約は `httpx2.MockTransport` で OpenAI SDK の下まで通し
 実ネットワークへは出ないので、この範囲だけ ALLOW_MODEL_REQUESTS を許可する。
 """
 
+import asyncio
 import json
 import threading
 from dataclasses import replace
@@ -51,7 +52,7 @@ from integrations.llm.runtime import (
     translate_llm_errors,
 )
 from tests.fixtures.llm import LITELLM_ALIASES as ALIASES
-from tests.fixtures.llm import litellm_response
+from tests.fixtures.llm import ScriptedLLM, litellm_response, slow_model, tool_call
 
 BASE_URL = "http://litellm.invalid/v1"
 
@@ -832,6 +833,54 @@ class TestArunAgent:
 
         with agent.override(model=TestModel(custom_output_text="非同期")):
             assert async_to_sync(call)() == "非同期"
+
+
+@pytest.mark.unit
+class TestRunTimeout:
+    """実行全体の制限時間（run_timeout）."""
+
+    def test_run_exceeding_run_timeout_raises_llm_timeout_error(self):
+        """制限時間を過ぎたら、応答を待たずに実行を止めて LLMTimeoutError にする."""
+        agent = Agent(name="contract")
+
+        with (
+            agent.override(model=slow_model(1)),
+            pytest.raises(LLMTimeoutError) as exc_info,
+        ):
+            run_agent_sync(agent, _settings(), user_prompt="u", run_timeout=0.05)
+
+        assert isinstance(exc_info.value.__cause__, RunTimedOut)
+
+    def test_run_with_steps_each_within_run_timeout_raises_when_total_exceeds(self):
+        """制限は実行全体にかかる（1 ステップずつは制限時間内でも、ツールを含む合計で止める）."""
+        agent = Agent(name="contract")
+
+        @agent.tool_plain
+        async def wait() -> str:
+            """待つ."""
+            await asyncio.sleep(0.03)
+            return "ok"
+
+        llm = ScriptedLLM(*[tool_call("wait")] * 5, "完了")
+
+        with agent.override(model=llm.model), pytest.raises(LLMTimeoutError):
+            run_agent_sync(agent, _settings(), user_prompt="u", run_timeout=0.05)
+
+    def test_run_without_run_timeout_has_no_deadline(self):
+        """省略すると実行全体の期限を付けない（リクエストごとのタイムアウトだけが効く）."""
+        agent = Agent(name="contract")
+        seen = {}
+
+        @agent.tool
+        async def check(ctx: RunContext[None]) -> str:
+            """確かめる."""
+            seen["deadline"] = ctx.deadline
+            return "ok"
+
+        with agent.override(model=TestModel()):
+            run_agent_sync(agent, _settings(), user_prompt="u")
+
+        assert seen == {"deadline": None}
 
 
 @pytest.mark.unit

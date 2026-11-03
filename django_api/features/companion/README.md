@@ -105,7 +105,7 @@ features/companion/
 | 3 | LLM の接続設定 `get_llm_settings("companion")` を読む | LLM サービス設定 `companion` がない・無効（`LLMConfigurationError`） |
 | 4 | キャラクター設定の本文を解決する | 本文が空（`PromptUnavailableError`） |
 | 5 | 実行の指示を組み立てる（下の「スキルの指定と自動選択」）。指定したスキルの本文はここで解決する | 指定したスキルの本文が空（`PromptUnavailableError`） |
-| 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた（`LLMOutputError`）、読み込んだスキルの本文が空（`PromptUnavailableError`） |
+| 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`。1 リクエストごとのタイムアウトか、実行全体の `RUN_TIMEOUT` を過ぎた）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた（`LLMOutputError`）、読み込んだスキルの本文が空（`PromptUnavailableError`） |
 | 7 | 応答の前後の空白を除く | 空（`LLMOutputError`。音声合成はしない） |
 | 8 | 使ったスキルを決める（指定したスキル、なければ最初に読み込みに成功したスキル、どちらもなければ `None`） | — |
 | 9 | Langfuse のスパンに出力を記録する（下の「トレース（Langfuse）」） | 止まらない（warning ログだけ） |
@@ -146,8 +146,11 @@ features/companion/
 | `REQUEST_LIMIT` | 6 | 1 回の実行でモデルへ送るリクエストの上限（読み込み・ツールの往復・最後の応答を含む）。超えるリクエストは送らずに `LLMClientError` |
 | `TOOL_CALLS_LIMIT` | 8 | 1 回の実行で動かすツール呼び出しの上限（`load_capability` を含む）。超える呼び出しは動かさずに `LLMClientError` |
 | `TOOL_RETRIES` | 3 | ツールごとに続けて失敗してよい回数（不明なスキル名の読み込み・引数の誤りなど）。超えると `LLMOutputError` |
+| `RUN_TIMEOUT` | 60 | 1 回の実行（モデルへのリクエストとツールの実行をすべて含む）の制限時間（秒）。過ぎると実行を止めて `LLMTimeoutError`（API では 504） |
 
 - `load_capability` も再試行の回数ではツールとして数えます。PydanticAI の既定（1 回）のままだと、不明なスキル名の読み込みが 2 回続いただけで実行が失敗するので、`retries={"tools": 3}` で広げています。
+- **`RUN_TIMEOUT` は、本番の nginx が応答を待つ 120 秒（`frontend/nginx.conf` の `proxy_read_timeout`）に音声合成まで収めるための上限です。** 1 リクエストごとのタイムアウト（LLM サービス設定 `companion` の `timeout`）だけでは、合計が `REQUEST_LIMIT` 回分まで延び、その間 gunicorn のワーカーを 1 つ占有し続けます。音声合成は `RUN_TIMEOUT` に含めず、その上限は環境変数 `TTS_TIMEOUT`（ルート [README](../../../README.md)）です。
+- 期限が来ると、モデルの応答待ちはその場で止まります。ツールの取得（天気・祝日・Graph）は途中で止められないので、取得中ならそれが終わってから止まります（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
 ### トレース（Langfuse）
 
@@ -189,7 +192,7 @@ features/companion/
 | 401 | トークンがない・不正 | （`detail`） |
 | 429 | 回数の上限を超えた（下の「回数制限」） | （`detail`。`Retry-After` ヘッダ付き） |
 | 503 | 有効な設定がない（`CompanionNotConfiguredError`）、LLM サービス設定 `companion` がないか無効（`LLMConfigurationError`）、キャラクター設定かスキルの本文が空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
-| 504 | LLM のタイムアウト（`LLMTimeoutError`） | `AI 生成サービスへのリクエストがタイムアウトしました` |
+| 504 | LLM のタイムアウト（`LLMTimeoutError`。実行全体の `RUN_TIMEOUT` の超過を含む） | `AI 生成サービスへのリクエストがタイムアウトしました` |
 | 504 | 音声合成のタイムアウト（`TTSTimeoutError`） | `音声合成サービスへのリクエストがタイムアウトしました` |
 | 502 | LLM の失敗（`LLMClientError`。上限の超過・接続や HTTP の失敗と、`LLMOutputError` の応答の不正・空の応答・ツールの失敗の連続を含む） | `AI 生成サービスでエラーが発生しました` |
 | 502 | 音声合成の失敗（`TTSNetworkError`。接続の失敗・200 以外の応答） | `音声合成サービスでエラーが発生しました` |

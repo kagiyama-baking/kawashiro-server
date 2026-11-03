@@ -241,6 +241,21 @@ class ScriptedLLM:
             await asyncio.Event().wait()
 
 
+def slow_model(seconds: float) -> FunctionModel:
+    """`seconds` 秒待ってから本文を返すモデル（実行全体の制限時間のテスト用）.
+
+    待つのは `asyncio.sleep` なので、実行の期限が来ればその場で止まる。期限が効かなければ
+    遅れて本文を返すので、待ち時間を期限より十分長くしておくと、テストは待ち続けずに
+    「例外が出ない」で失敗する。
+    """
+
+    async def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        await asyncio.sleep(seconds)
+        return ModelResponse(parts=[TextPart(content="遅れた応答")])
+
+    return FunctionModel(respond)
+
+
 class LiteLLMStreamBody(httpx2.AsyncByteStream):
     """LiteLLM の SSE 応答の本文の代役. 閉じられたかどうかを記録する.
 

@@ -161,7 +161,7 @@ try:
 except LLMConfigurationError:
     ...  # サービス設定が無い、または is_active=False
 except LLMTimeoutError:
-    ...  # timeout（既定 60 秒）超過
+    ...  # timeout（既定 60 秒）か run_timeout の超過
 except LLMOutputError:
     ...  # 応答が期待する形にならなかった（出力リトライ後も不正など）
 except LLMClientError:
@@ -170,7 +170,7 @@ except LLMClientError:
 
 | 関数 | 用途 |
 |---|---|
-| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries, conversation_id, reasoning_effort, capabilities)` | 同期コードから実行する。Talk のタイトル・単発生成、Orchestrator、Companion はこちら |
+| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries, conversation_id, reasoning_effort, capabilities, run_timeout)` | 同期コードから実行する。Talk のタイトル・単発生成、Orchestrator、Companion はこちら |
 | `arun_agent(...)`（引数は同じ） | イベントループ上から `await` する。サブエージェントはこちら |
 | `stream_text_sync(agent, settings, *, user_prompt, deps, message_history, max_tokens, conversation_id)` | 同期コードから実行し、本文の増分を順に返すジェネレータ。Talk のチャットはこちら |
 | `open_model(settings)` | `AsyncOpenAI` を作って閉じる async context manager。接続はイベントループに属するので、実行ごとに作る |
@@ -185,7 +185,7 @@ except LLMClientError:
 - **トレーシング**: `apps.py` の `ready()` で `Agent.instrument_all(InstrumentationSettings())` を呼び、呼び出しは Langfuse の generation として記録されます（名前は `chat <model_alias>`）。設定は 1 つを共有します。引数なしの `instrument_all()` は実行のたびに設定を作り、MeterProvider が未設定の間は OpenTelemetry 側に Meter がたまり続けます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめ、チャットは `propagate_attributes(session_id=...)` で Langfuse Sessions に集約しています。`langfuse.openai` は import するだけで OpenAI SDK を書き換えて generation が二重になるので、使わないでください。
 - **Langfuse の Sessions**: Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` と `stream_text_sync` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（チャット）そちらが優先されます。
 - **usage の内訳**: LiteLLM の `text_tokens` と `reasoning_tokens` は output の内数ですが、Langfuse は usage の全項目を足して total にします。二重に数えないよう、`_LiteLLMChatModel`（ストリーミングは `_LiteLLMStreamedResponse`）で内訳を除いています。計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で書き換えても反映されません。
-- **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。コード側でハードコードしません。
+- **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。1 リクエストごとの上限で、コード側でハードコードしません。ツールを使う実行はリクエストを何度も送るので、合計に上限が要る呼び出し側は、`run_agent_sync` / `arun_agent` の `run_timeout`（秒。PydanticAI の `timeout=`）で実行全体の制限時間を指定します（省略時は制限なし。今は Companion だけが指定します）。過ぎると `LLMTimeoutError` です。モデルの応答待ちはその場で止まりますが、ツールが `sync_to_async` で動かしている同期処理は途中で止められないので、それが終わってから止まります。`stream_text_sync` には実行全体の制限はありません。
 - **テスト**: 書き方は [../../../.claude/CLAUDE.md](../../../.claude/CLAUDE.md) の「LLM 呼び出しのテスト」を参照してください。
 
 ## 7. フェイルソフト挙動

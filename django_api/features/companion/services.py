@@ -37,6 +37,11 @@ TOOL_CALLS_LIMIT = 8
 # ツールごとに続けて失敗してよい回数（不明なスキル名の load_capability・引数の誤りなど）。
 # PydanticAI の既定（1 回）では、読み込みに 2 回続けて失敗しただけで実行が失敗する
 TOOL_RETRIES = 3
+# 1 回の実行（モデルへのリクエストとツールの実行をすべて含む）の制限時間（秒）。
+# リクエストごとのタイムアウト（LLM サービス設定）だけでは、合計が REQUEST_LIMIT 回分まで延びる。
+# 本番の nginx は応答を 120 秒までしか待たない（frontend/nginx.conf の proxy_read_timeout）ので、
+# 音声合成の時間を残す
+RUN_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -74,7 +79,8 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         LLMConfigurationError: companion の LLM サービス設定がない場合
         PromptUnavailableError: キャラクター設定か、使うスキルの本文が空の場合
         LLMOutputError: 応答の本文が空の場合・読み込みなどのツールの失敗が続いた場合
-        LLMClientError: LLM の実行に失敗した場合（タイムアウト・上限の超過を含む）
+        LLMTimeoutError: リクエストごとのタイムアウトか、実行全体の RUN_TIMEOUT を過ぎた場合
+        LLMClientError: そのほか LLM の実行に失敗した場合（上限の超過を含む）
         TTSError: 音声合成に失敗した場合
     """
     config = _active_config()
@@ -97,6 +103,7 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
             request_limit=REQUEST_LIMIT, tool_calls_limit=TOOL_CALLS_LIMIT
         ),
         retries={"tools": TOOL_RETRIES},
+        run_timeout=RUN_TIMEOUT,
     )
     text = (result.output or "").strip()
     if not text:
