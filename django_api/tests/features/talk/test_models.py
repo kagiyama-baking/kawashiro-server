@@ -185,3 +185,41 @@ class TestTalkConfig:
             **_base_kwargs(prompt_refs),
         )
         assert str(config) == "朝のあいさつ"
+
+    def test_synthesize_rate_limit_defaults_to_10(self, prompt_refs):
+        """生成回数の上限は、指定しなければ 1 分あたり 10 回."""
+        config = TalkConfig.objects.create(
+            name="morning",
+            display_name="朝のあいさつ",
+            **_base_kwargs(prompt_refs),
+        )
+
+        config.refresh_from_db()
+        assert config.synthesize_rate_limit == 10
+
+    @pytest.mark.parametrize(
+        "limit, expect_error",
+        [
+            pytest.param(0, True, id="zero"),
+            pytest.param(1, False, id="one"),
+            pytest.param(1000, False, id="large"),
+        ],
+    )
+    def test_synthesize_rate_limit_must_be_at_least_one(
+        self, prompt_refs, limit, expect_error
+    ):
+        """生成回数の上限は 1 以上（0 だと一度も生成できない）."""
+        config = TalkConfig(
+            name="test",
+            display_name="テスト",
+            synthesize_rate_limit=limit,
+            **_base_kwargs(prompt_refs),
+        )
+
+        if expect_error:
+            with pytest.raises(ValidationError) as exc_info:
+                config.save()
+            assert "synthesize_rate_limit" in exc_info.value.message_dict
+        else:
+            config.save()
+            assert TalkConfig.objects.get().synthesize_rate_limit == limit

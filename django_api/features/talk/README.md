@@ -53,6 +53,7 @@ features/talk/
 | `tts_format` | choices `wav` / `mp3` / `ogg`, 既定 `wav` | 出力音声フォーマット |
 | `system_prompt_ref` | FK → `LangfusePromptRef` (PROTECT) | システムプロンプトの参照。必須 |
 | `user_prompt_ref` | FK → `LangfusePromptRef` (PROTECT) | ユーザープロンプトテンプレートの参照。必須 |
+| `synthesize_rate_limit` | PositiveInteger, `10`（1 以上） | `/talk/synthesize/` を 1 分間に呼べる回数。ユーザーとプリセットの組で数え、超えると 429（下の「上限・レート制限」）。この API にだけ効き、チャットには効かない |
 
 - `save()` は `full_clean()` を呼ぶため、`area_code` の 6 桁チェックは admin 経由でもコード経由でも必ず走ります。
 - `on_delete=PROTECT` のため、`TalkConfig` から参照されている `LangfusePromptRef` は削除できません。
