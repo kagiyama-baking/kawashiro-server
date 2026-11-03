@@ -378,6 +378,23 @@ class TestGetDatetime:
         (message,) = _warnings(caplog)
         assert str(error) in message
 
+    def test_get_datetime_when_holiday_lookup_fails_does_not_read_clock_again(
+        self, fixed_clock, holiday_client
+    ):
+        """祝日の確認に失敗しても日時を読み直さない（日の境目をまたいで値がずれない）."""
+        fixed_clock.now.side_effect = [
+            datetime(2026, 11, 3, 23, 59, 59),
+            datetime(2026, 11, 4, 0, 0, 0),
+        ]
+        holiday_client.get_holiday_name.side_effect = HolidayNetworkError(
+            "祝日APIへの接続に失敗しました"
+        )
+
+        result = _call(tool_call("get_datetime"))
+
+        assert (result["date"], result["time"]) == ("2026-11-03", "23:59:59")
+        holiday_client.get_holiday_name.assert_called_once_with("2026-11-03")
+
 
 class TestGetWeather:
     """get_weather（設定された地域の天気予報）."""
@@ -467,6 +484,36 @@ class TestGetTodayEvents:
             ],
         }
         assert "会議室A" in returned.content  # ensure_ascii=False のまま
+
+    @pytest.mark.parametrize(
+        ("start", "end", "expected"),
+        [
+            ("2026-11-03T22:00", "2026-11-04T01:00", ("2026-11-03 22:00", "01:00")),
+            ("2026-11-04T23:00", "2026-11-05T02:00", ("23:00", "2026-11-05 02:00")),
+            ("2026-11-04T23:00", "2026-11-05T00:00", ("23:00", "2026-11-05 00:00")),
+            (
+                "2026-11-03T09:00",
+                "2026-11-05T18:00",
+                ("2026-11-03 09:00", "2026-11-05 18:00"),
+            ),
+        ],
+        ids=["from-yesterday", "until-tomorrow", "until-midnight", "spanning-today"],
+    )
+    def test_get_today_events_with_times_on_other_days_returns_them_with_date(
+        self, fixed_today, outlook_client, start, end, expected
+    ):
+        """今日の取得に入る日をまたぐ予定は、今日以外の日の時刻だけ日付付き（YYYY-MM-DD HH:MM）にする."""
+        outlook_client.get_calendar_events.return_value = [
+            _graph_event(
+                start={"dateTime": f"{start}:00.0000000", "timeZone": "Asia/Tokyo"},
+                end={"dateTime": f"{end}:00.0000000", "timeZone": "Asia/Tokyo"},
+            )
+        ]
+
+        result = _call(tool_call("get_today_events"))
+
+        (event,) = result["events"]
+        assert (event["start"], event["end"]) == expected
 
     def test_get_today_events_with_all_day_event_returns_null_times_in_order(
         self, fixed_today, outlook_client

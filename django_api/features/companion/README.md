@@ -87,11 +87,11 @@ features/companion/
 |---|---|---|
 | `get_datetime` | なし | `date`（`YYYY-MM-DD`）・`time`（`HH:MM:SS`）・`day_of_week`（英語の曜日名）・`day_of_week_ja`（日本語の曜日名）・`holiday_name`（祝日でなければ `null`）。祝日を確認できなかったときは `holiday_name` を `null` にし、`holiday_lookup_failed: true` を足す |
 | `get_weather` | `day`: `0`=今日（省略時）/ `1`=明日 / `2`=明後日 | 天気予報クライアントの結果そのまま（`area_name`・`weather`・`temp_max`・`temp_min`・`pop_00_06`〜`pop_18_24` など。項目は [weather の README のレスポンス](../../integrations/weather/README.md#レスポンス)） |
-| `get_today_events` | なし | `date`（今日の `YYYY-MM-DD`）と `events`（開始時刻の順）。各予定は `subject`・`start` / `end`（`HH:MM`。終日の予定と、読めない時刻は `null`）・`is_all_day`・`location`（なければ `""`） |
+| `get_today_events` | なし | `date`（今日の `YYYY-MM-DD`）と `events`（開始時刻の順）。各予定は `subject`・`start` / `end`（今日の時刻は `HH:MM`、今日以外の日の時刻は `YYYY-MM-DD HH:MM`。終日の予定と、読めない時刻は `null`）・`is_all_day`・`location`（なければ `""`） |
 
 - 地域（予報区コード）はモデルに選ばせません。有効な設定の `area_code` を実行ごとの依存（`CompanionDeps`）で渡し、空なら天気予報 API を呼ばずに error を返します。`day` が 0〜2 以外なら引数の検証で弾き、クライアントを呼ばずにモデルへ再試行を求めます。
-- 「今日」と現在時刻は Django のタイムゾーン（`TIME_ZONE`）で決めます。予定の時刻は、Graph が返す日本時間（クライアントが `Prefer: outlook.timezone="Asia/Tokyo"` を送る）をそのまま `HH:MM` にします。予定の本文の抜粋・主催者・リンクはモデルに渡しません。
-- **失敗しても実行は止めません。** 天気予報 API と Graph（設定なし・認証・通信・取得の失敗。msal のトークン取得の通信エラーを含む）の既知の失敗は warning ログを出し、`{"error": "<短い日本語>"}` をモデルに返して実行を続けます（モデルには、応答の方針でその情報に触れないよう指示しています）。祝日 API の失敗も warning ログを出しますが、error にはせず日付と時刻を返します（あいさつは時間帯で変わるため）。想定外の例外は error にせず、実行ごと失敗させます（不具合を隠さない）。
+- 「今日」と現在時刻は Django のタイムゾーン（`TIME_ZONE`）で決めます。予定の時刻は、Graph が返す日本時間（クライアントが `Prefer: outlook.timezone="Asia/Tokyo"` を送る）のまま書きます。今日の予定には前の日から続く予定・次の日まで続く予定も入るので、今日以外の日の時刻には日付を付けます（例: 前の日の 22:00 から今日の 01:00 までの予定は `start` が `2026-11-03 22:00`、`end` が `01:00`。今日の 23:00 から 24:00 までなら `end` は次の日の `00:00` なので日付付き）。予定の本文の抜粋・主催者・リンクはモデルに渡しません。
+- **失敗しても実行は止めません。** 天気予報 API と Graph（設定なし・認証・通信・取得の失敗。msal のトークン取得の通信エラーを含む）の既知の失敗は warning ログを出し、`{"error": "<短い日本語>"}` をモデルに返して実行を続けます（モデルには、応答の方針でその情報に触れないよう指示しています）。祝日 API の失敗も warning ログを出しますが、error にはせず日付と時刻を返します（あいさつは時間帯で変わるため）。日付と時刻は 1 回だけ読み、祝日はその日付で確かめます（祝日の確認に失敗しても読み直さないので、日の境目でずれません）。想定外の例外は error にせず、実行ごと失敗させます（不具合を隠さない）。
 - ツールは async で、外部 API と Graph の設定の読み込み（ORM）は `sync_to_async` で呼び出し元のスレッドに戻して動かします（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
 ## 実行の流れ

@@ -4,7 +4,11 @@
 """
 
 from .client import HolidayClient
-from .datetime_info import DAY_OF_WEEK_JA, get_datetime_info
+from .datetime_info import (
+    DAY_OF_WEEK_JA,
+    get_datetime_info,
+    get_datetime_info_without_holiday,
+)
 from .exceptions import HolidayError, HolidayNetworkError, HolidayTimeoutError
 
 __all__ = [
@@ -14,4 +18,5 @@ __all__ = [
     "HolidayNetworkError",
     "HolidayTimeoutError",
     "get_datetime_info",
+    "get_datetime_info_without_holiday",
 ]

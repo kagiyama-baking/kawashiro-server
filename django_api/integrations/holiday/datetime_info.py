@@ -19,6 +19,26 @@ DAY_OF_WEEK_JA = {
 }
 
 
+def get_datetime_info_without_holiday() -> dict[str, Any]:
+    """現在のタイムゾーンでの本日の日時情報を、祝日名なしで返す.
+
+    現在時刻は 1 回だけ読む。祝日は呼び出し側が `date` で確かめる（読み直すと、分や日の
+    境目をまたいで値がずれる）。
+
+    Returns:
+        date（YYYY-MM-DD）/ time（HH:MM:SS）/ day_of_week（英語の曜日名）/
+        day_of_week_ja（日本語の曜日名）の dict
+    """
+    now = datetime.now(timezone.get_current_timezone())
+    day_of_week = now.strftime("%A")
+    return {
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M:%S"),
+        "day_of_week": day_of_week,
+        "day_of_week_ja": DAY_OF_WEEK_JA.get(day_of_week, day_of_week),
+    }
+
+
 def get_datetime_info(holiday_client: HolidayClient | None = None) -> dict[str, Any]:
     """現在のタイムゾーンでの本日の日時情報を返す.
 
@@ -28,26 +48,13 @@ def get_datetime_info(holiday_client: HolidayClient | None = None) -> dict[str, 
             使い回したい場合は渡す
 
     Returns:
-        date（YYYY-MM-DD）/ time（HH:MM:SS）/ day_of_week（英語の曜日名）/
-        day_of_week_ja（日本語の曜日名）/ holiday_name（祝日でなければ None）の dict
+        `get_datetime_info_without_holiday` の dict の後ろに、holiday_name
+        （祝日でなければ None）を足したもの
 
     Raises:
         HolidayNetworkError: 祝日APIへのネットワーク接続エラー
         HolidayTimeoutError: 祝日APIへのリクエストタイムアウト
     """
-    now = datetime.now(timezone.get_current_timezone())
-    date_str = now.strftime("%Y-%m-%d")
-    time_str = now.strftime("%H:%M:%S")
-    day_of_week = now.strftime("%A")
-    day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
-
+    info = get_datetime_info_without_holiday()
     client = holiday_client if holiday_client is not None else HolidayClient()
-    holiday_name = client.get_holiday_name(date_str)
-
-    return {
-        "date": date_str,
-        "time": time_str,
-        "day_of_week": day_of_week,
-        "day_of_week_ja": day_of_week_ja,
-        "holiday_name": holiday_name,
-    }
+    return {**info, "holiday_name": client.get_holiday_name(info["date"])}

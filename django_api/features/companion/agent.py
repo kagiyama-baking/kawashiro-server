@@ -21,7 +21,11 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 from pydantic_ai import Agent, RunContext
 
-from integrations.holiday import HolidayClient, HolidayError, get_datetime_info
+from integrations.holiday import (
+    HolidayClient,
+    HolidayError,
+    get_datetime_info_without_holiday,
+)
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.msgraph.exceptions import MSGraphError
 from integrations.outlook.exceptions import OutlookError
@@ -80,14 +84,6 @@ def response_policy(*, can_load_skills: bool) -> str:
     return "\n".join((_POLICY_HEADING, *rules, *_ALWAYS_RULES))
 
 
-class _NoHolidayLookup(HolidayClient):
-    """祝日 API を呼ばずに「祝日ではない」と答える（祝日を確認できないときの日時情報用）."""
-
-    def get_holiday_name(self, date_str: str) -> str | None:
-        """祝日 API を呼ばずに None を返す."""
-        return None
-
-
 def _to_json(data: dict[str, Any]) -> str:
     """モデルへ返す JSON にする（日本語はエスケープしない）."""
     return json.dumps(data, ensure_ascii=False)
@@ -101,13 +97,16 @@ def _error(message: str) -> str:
 def _read_datetime() -> dict[str, Any]:
     """今日の日時情報を返す（祝日を確認できなくても日付と時刻は返す）.
 
-    あいさつは時間帯で変わるので、祝日 API の失敗で日付と時刻まで失わない。
+    日付と時刻は 1 回だけ読み、祝日はその日付で確かめる。あいさつは時間帯で変わるので、
+    祝日 API の失敗で日付と時刻まで失わない。
     """
+    info = get_datetime_info_without_holiday()
     try:
-        return get_datetime_info(HolidayClient())
+        holiday_name = HolidayClient().get_holiday_name(info["date"])
     except HolidayError as exc:
         logger.warning("祝日を確認できませんでした（日付と時刻だけ返します）: %s", exc)
-        return {**get_datetime_info(_NoHolidayLookup()), "holiday_lookup_failed": True}
+        return {**info, "holiday_name": None, "holiday_lookup_failed": True}
+    return {**info, "holiday_name": holiday_name}
 
 
 def _read_weather(area_code: str, day: int) -> dict[str, Any]:
@@ -123,22 +122,24 @@ def _read_events(day: date) -> list[dict[str, Any]]:
     return OutlookMSGraphClient().get_calendar_events(start_date=day, end_date=day)
 
 
-def _clock_time(moment: dict[str, Any] | None) -> str | None:
-    """Graph の日時を HH:MM にする.
+def _event_time(moment: dict[str, Any] | None, today: date) -> str | None:
+    """Graph の日時を、今日なら HH:MM、ほかの日なら YYYY-MM-DD HH:MM にする.
 
     クライアントが `Prefer: outlook.timezone="Asia/Tokyo"` を送るので、`dateTime` は
-    日本時間（例: `2026-11-04T09:00:00.0000000`）。読めなければ None。
+    日本時間（例: `2026-11-04T09:00:00.0000000`）。今日の予定には前の日から続く予定や
+    次の日まで続く予定も入るので、今日の時刻と見分けられるよう日付を付ける。読めなければ None。
     """
     value = (moment or {}).get("dateTime")
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value).strftime("%H:%M")
+        at = datetime.fromisoformat(value)
     except ValueError:
         return None
+    return at.strftime("%H:%M" if at.date() == today else "%Y-%m-%d %H:%M")
 
 
-def _summarize_event(event: dict[str, Any]) -> dict[str, Any]:
+def _summarize_event(event: dict[str, Any], today: date) -> dict[str, Any]:
     """Graph の予定から、モデルに渡す項目だけを取り出す.
 
     本文の抜粋・主催者・リンクは渡さない。終日の予定は開始・終了を None にする。
@@ -146,8 +147,8 @@ def _summarize_event(event: dict[str, Any]) -> dict[str, Any]:
     is_all_day = bool(event.get("isAllDay"))
     return {
         "subject": event.get("subject") or "",
-        "start": None if is_all_day else _clock_time(event.get("start")),
-        "end": None if is_all_day else _clock_time(event.get("end")),
+        "start": None if is_all_day else _event_time(event.get("start"), today),
+        "end": None if is_all_day else _event_time(event.get("end"), today),
         "is_all_day": is_all_day,
         "location": (event.get("location") or {}).get("displayName") or "",
     }
@@ -196,6 +197,6 @@ async def get_today_events() -> str:
     return _to_json(
         {
             "date": today.isoformat(),
-            "events": [_summarize_event(event) for event in events],
+            "events": [_summarize_event(event, today) for event in events],
         }
     )

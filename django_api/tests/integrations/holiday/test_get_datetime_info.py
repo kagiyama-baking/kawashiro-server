@@ -1,4 +1,4 @@
-"""get_datetime_info（本日の日時情報の組み立て）のテスト."""
+"""本日の日時情報の組み立て（get_datetime_info / get_datetime_info_without_holiday）のテスト."""
 
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -11,6 +11,7 @@ from integrations.holiday import (
     HolidayNetworkError,
     HolidayTimeoutError,
     get_datetime_info,
+    get_datetime_info_without_holiday,
 )
 
 # 時刻の取得元と、クライアントを渡さないときに作られるクラス（patch 対象）
@@ -52,6 +53,20 @@ class TestGetDatetimeInfo:
             "day_of_week_ja": "火曜日",
             "holiday_name": None,
         }
+
+    def test_get_datetime_info_returns_keys_in_order_with_holiday_name_last(
+        self, mock_datetime
+    ):
+        """キーの順序も変えない（Talk の {{datetime}} はこの辞書を JSON にしてプロンプトへ入れる）."""
+        result = get_datetime_info(_holiday_client(None))
+
+        assert list(result) == [
+            "date",
+            "time",
+            "day_of_week",
+            "day_of_week_ja",
+            "holiday_name",
+        ]
 
     def test_get_datetime_info_on_holiday_returns_holiday_name(self, mock_datetime):
         """祝日は祝日名を返す."""
@@ -107,5 +122,36 @@ class TestGetDatetimeInfo:
 
         with timezone.override(tz):
             get_datetime_info(_holiday_client(None))
+
+        mock_datetime.now.assert_called_once_with(tz)
+
+
+@pytest.mark.unit
+class TestGetDatetimeInfoWithoutHoliday:
+    """get_datetime_info_without_holiday（祝日名を含まない日時情報）のテスト."""
+
+    def test_get_datetime_info_without_holiday_returns_only_date_time_and_weekday(
+        self, mock_datetime
+    ):
+        """日付・時刻・曜日だけを返し、祝日のクライアントは作らない."""
+        with patch(CLIENT_CLASS_TARGET) as mock_client_class:
+            result = get_datetime_info_without_holiday()
+
+        assert result == {
+            "date": "2025-01-14",
+            "time": "09:30:00",
+            "day_of_week": "Tuesday",
+            "day_of_week_ja": "火曜日",
+        }
+        mock_client_class.assert_not_called()
+
+    def test_get_datetime_info_without_holiday_reads_now_once_in_active_timezone(
+        self, mock_datetime
+    ):
+        """現在時刻は有効なタイムゾーンで 1 回だけ読む."""
+        tz = ZoneInfo("America/New_York")
+
+        with timezone.override(tz):
+            get_datetime_info_without_holiday()
 
         mock_datetime.now.assert_called_once_with(tz)
