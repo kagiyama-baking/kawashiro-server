@@ -15,6 +15,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 from django.contrib.auth import get_user_model
 from pydantic import BaseModel
 from pydantic_ai import Agent, InstrumentationSettings, PromptedOutput, RunContext
+from pydantic_ai.capabilities import Capability
 from pydantic_ai.exceptions import (
     ContentFilterError,
     ModelAPIError,
@@ -329,6 +330,140 @@ class TestRequestBodyContract:
         assert str(request.url) == f"{BASE_URL}/chat/completions"
         assert request.headers["authorization"] == "Bearer sk-test-key"
         assert request.extensions["timeout"]["read"] == 33
+
+
+@pytest.mark.unit
+class TestCapabilitiesContract:
+    """実行ごとに渡す capabilities が LiteLLM へ届く形の契約."""
+
+    @pytest.fixture
+    def deferred_greeting_run(self, fake_litellm):
+        """遅延 capability を 1 つ渡し、モデルが読み込んでから答える実行の本文と出力."""
+        fake = fake_litellm(
+            litellm_response(
+                None,
+                finish_reason="tool_calls",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "load_capability",
+                            "arguments": json.dumps({"id": "greeting"}),
+                        },
+                    }
+                ],
+            ),
+            litellm_response("こんにちは"),
+        )
+        result = run_agent_sync(
+            Agent(name="contract"),
+            _settings(),
+            user_prompt="u",
+            instructions="s",
+            capabilities=[
+                Capability(
+                    id="greeting",
+                    description="挨拶を作る",
+                    instructions="挨拶の手順",
+                    defer_loading=True,
+                )
+            ],
+        )
+        return fake.bodies, result.output
+
+    def test_capability_instructions_are_sent_as_system_before_run_instructions(
+        self, fake_litellm
+    ):
+        """遅延しない capability の指示は、実行の instructions より前の別の system になる.
+
+        PydanticAI は agent 自身・capabilities・実行の instructions の順に指示を並べ、
+        結合せずに 1 つずつ system メッセージにする。
+        """
+        fake = fake_litellm(litellm_response())
+
+        run_agent_sync(
+            Agent(name="contract"),
+            _settings(),
+            user_prompt="u",
+            instructions="s",
+            capabilities=[Capability(instructions="追加の指示")],
+        )
+
+        assert fake.bodies == [
+            {
+                "model": "gpt-4o-mini",
+                "stream": False,
+                "messages": [
+                    {"role": "system", "content": "追加の指示"},
+                    {"role": "system", "content": "s"},
+                    {"role": "user", "content": "u"},
+                ],
+                "metadata": {"service_name": "talk", "environment": "test-env"},
+            }
+        ]
+
+    def test_empty_response_with_capabilities_returns_none_without_retry(
+        self, fake_litellm
+    ):
+        """capabilities を足しても、本文のない応答の扱い（`_TreatEmptyResponseAsFinished`）は残る."""
+        fake = fake_litellm(litellm_response(None, finish_reason="length"))
+
+        result = run_agent_sync(
+            Agent(name="contract", output_type=str | None),
+            _settings(),
+            user_prompt="u",
+            capabilities=[Capability(instructions="追加の指示")],
+        )
+
+        assert result.output is None
+        assert len(fake.requests) == 1
+
+    def test_deferred_capability_before_load_sends_only_catalog_and_load_tool(
+        self, deferred_greeting_run
+    ):
+        """読み込む前は system に一覧（id と説明）だけを載せ、ツールは load_capability だけ."""
+        bodies, _ = deferred_greeting_run
+        first = bodies[0]
+        system = "\n".join(
+            message["content"]
+            for message in first["messages"]
+            if message["role"] == "system"
+        )
+
+        assert [tool["function"]["name"] for tool in first["tools"]] == [
+            "load_capability"
+        ]
+        assert "greeting" in system
+        assert "挨拶を作る" in system
+        assert "挨拶の手順" not in json.dumps(first, ensure_ascii=False)
+
+    def test_deferred_capability_after_load_sends_instructions_as_system_after_tool_result(
+        self, deferred_greeting_run
+    ):
+        """読み込むと、次のリクエストで指示が tool の結果の直後に system として届く.
+
+        `_LITELLM_PROFILE` の `supports_inline_system_prompts=True` による形で、False なら
+        `<system>` で囲んだ user メッセージになる。指示は tool の結果には入らない。
+        """
+        bodies, _ = deferred_greeting_run
+        *_, tool, loaded = bodies[1]["messages"]
+
+        assert tool["role"] == "tool"
+        assert tool["tool_call_id"] == "call_1"
+        assert "挨拶の手順" not in tool["content"]
+        assert loaded["role"] == "system"
+        assert '<context id="capability:greeting">' in loaded["content"]
+        assert "挨拶の手順" in loaded["content"]
+
+    def test_deferred_capability_after_load_returns_final_text(
+        self, deferred_greeting_run
+    ):
+        """読み込んだ後の応答の本文を出力として返す."""
+        bodies, output = deferred_greeting_run
+
+        assert len(bodies) == 2
+        assert output == "こんにちは"
 
 
 @pytest.mark.unit

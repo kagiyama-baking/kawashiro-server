@@ -200,14 +200,19 @@ def _run_options(
     max_tokens: int | None,
     conversation_id: str | None,
     reasoning_effort: str | None,
+    capabilities: Sequence[AbstractCapability[Any]] = (),
 ) -> dict[str, Any]:
-    """通常の実行とストリーミングの実行で揃える引数を組み立てる."""
+    """通常の実行とストリーミングの実行で揃える引数を組み立てる.
+
+    呼び出し側の capability は `_TreatEmptyResponseAsFinished` の後ろに足す
+    （本文のない応答の扱いは外さない）。
+    """
     return {
         "model_settings": _build_model_settings(
             settings, max_tokens=max_tokens, reasoning_effort=reasoning_effort
         ),
         "conversation_id": conversation_id or settings.service_name,
-        "capabilities": [_TreatEmptyResponseAsFinished()],
+        "capabilities": [_TreatEmptyResponseAsFinished(), *capabilities],
     }
 
 
@@ -224,6 +229,7 @@ async def arun_agent(
     retries: int | AgentRetries | None = None,
     conversation_id: str | None = None,
     reasoning_effort: str | None = None,
+    capabilities: Sequence[AbstractCapability[Any]] = (),
 ) -> AgentRunResult[Any]:
     """エージェントを LiteLLM Proxy 経由で 1 回実行する.
 
@@ -245,6 +251,9 @@ async def arun_agent(
         reasoning_effort: 推論深度（`low` / `medium` / `high` など）。`reasoning_effort`
             として送る。None や空文字なら送らない。非対応のモデルでの扱いは LiteLLM
             Proxy の設定による（`drop_params` が有効なら捨てられる）
+        capabilities: この実行だけに足す capability（実行時に組み立てるスキルなど）。
+            `defer_loading=True` のものは、モデルが `load_capability` ツールで読み込むまで
+            一覧（id と説明）だけを送る
 
     Returns:
         実行結果
@@ -269,6 +278,7 @@ async def arun_agent(
                     max_tokens=max_tokens,
                     conversation_id=conversation_id,
                     reasoning_effort=reasoning_effort,
+                    capabilities=capabilities,
                 ),
             )
 
