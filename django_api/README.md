@@ -17,6 +17,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | `features.media` | `/media/` | 画像変換・ZIP→PDF（制限値あり） | [README](features/media/README.md) |
 | `features.talk` | `/talk/` | 会話生成 + チャット履歴セッション（応答は JSON か SSE）+ 日時情報（`/talk/datetime/`） | [README](features/talk/README.md) |
 | `features.hn_agent` | `/hn-agent/` | HackerNews Agent（監視・調査・辛口分析・セキュリティ対応指針。superuser のみ） | [README](features/hn_agent/README.md) |
+| `features.companion` | `/companion/` | Companion エージェント（`/companion/run/` の発話に合うスキルでセリフを生成。音声合成が有効なら音声も。ユーザーごとの回数制限あり） | [README](features/companion/README.md) |
 
 ### 裏方のアプリ（URL なし）
 

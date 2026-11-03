@@ -198,6 +198,7 @@ except LLMClientError:
 | Langfuse 側が Chat 型プロンプト | 未対応のため警告ログを出して `fallback_text` にフォールバック（対応しているのは Text 型のみ） |
 | `langfuse` パッケージ未インストール | `ImportError` を捕捉して `fallback_text` にフォールバック |
 | Langfuse への `session_id` 付与失敗 | 警告ログのみ。会話生成本体は継続 |
+| Companion の出力（セリフと使ったスキル）を Langfuse のスパンに記録できない | 警告ログのみ。実行は続け、API はセリフを返す（[Companion の README の「トレース（Langfuse）」](../../features/companion/README.md#トレースlangfuse)） |
 | `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック。それも未設定ならプレースホルダーのキーで送信し、認証の判断は LiteLLM Proxy に任せる |
 | `LLMServiceConfig` が無い / `is_active=False` | `LLMConfigurationError`（**ここはフェイルソフトしません**。設定漏れは早期に顕在化させます） |
 
@@ -209,6 +210,6 @@ except LLMClientError:
 |---|---|
 | [../../features/hn_agent/README.md](../../features/hn_agent/README.md) | HN Agent の構成・`HNAgentConfig`・8 本のプロンプト割り当て |
 | [../../features/talk/README.md](../../features/talk/README.md) | 会話生成・チャットセッション・`TalkConfig` のプロンプト変数 |
-| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `CompanionSkill`・プロンプトの命名 |
+| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `CompanionSkill`・実行の流れと API・プロンプトの命名 |
 | [../../../docs/initial-setup.md](../../../docs/initial-setup.md) | 初回セットアップ手順（admin 設定・環境変数の投入順） |
 | [../../README.md](../../README.md) | Django API 全体構成 |

@@ -58,4 +58,6 @@ urlpatterns = [
     path("health/", include("health.urls")),
     # HN Agent API
     path("hn-agent/", include("features.hn_agent.urls")),
+    # Companion API
+    path("companion/", include("features.companion.urls")),
 ]

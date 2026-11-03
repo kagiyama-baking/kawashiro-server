@@ -333,6 +333,10 @@ SPECTACULAR_SETTINGS = {
         {"name": "weather", "description": "気象庁天気予報API"},
         {"name": "hn-agent", "description": "HN監視・分析エージェントAPI"},
         {"name": "talk", "description": "会話生成API"},
+        {
+            "name": "companion",
+            "description": "Companion エージェントAPI（発話に合うスキルでセリフを生成）",
+        },
     ],
     # Swagger UIのAPIベースURL（nginx リバースプロキシが /api/ プレフィックスを除去して転送）
     "SERVERS": [{"url": "/api", "description": "API"}],

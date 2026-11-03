@@ -140,6 +140,15 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 3. **Langfuse プロンプト参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` は手順 2 と同じ名前にし、ラベルは手順 2 で付けたものにします
 4. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`キャラクター設定` に手順 3 の `companion-system` を選び、画面下の「スキル」に名前・説明（どんな発話のときに使うか）・本文（手順 3 の参照）を 1 行ずつ追加して保存します
 5. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
+6. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・LLM サービス設定・プロンプトの本文のどれかが足りません（手順 1〜5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください
+
+   ```bash
+   curl -X POST http://localhost:8000/companion/run/ \
+     -H "Authorization: Token YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"prompt": "おはよう"}'
+   # => {"text": "おはようございます。...", "skill": "good-morning", "audio_data": null, "audio_format": null}
+   ```
 
 ## 6. 外部サービスの設定
 

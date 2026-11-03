@@ -1,8 +1,6 @@
 # Companion — キャラクター設定とスキル
 
-Companion は、全体で 1 つのエージェント設定（共通のキャラクター設定）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。呼び出し時の発話からエージェントが合うスキルを選び、その手順に従ってセリフを返す設計で、いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
-
-> **現状:** 今あるのは設定のモデルと管理画面、エージェントと常設ツール・応答の方針（`agent.py`）、スキルの読み込み（`skills.py`）、実行サービス（`services.py` の `run_companion`）です。実行 API はまだありません。
+Companion は、全体で 1 つのエージェント設定（共通のキャラクター設定）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。実行 API（`POST /companion/run/`）で受け取った発話からエージェントが合うスキルを選び、その手順に従ってセリフを返します（音声合成が有効なら音声も）。いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
 
 - キャラクター設定とスキルの本文は DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 - スキルの一覧（名前・説明・本文の参照）は admin で、設定のインラインとして管理します
@@ -17,6 +15,10 @@ features/companion/
 ├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）
 ├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・本文の解決・loaded_skill
 ├── services.py                # run_companion（1 回の実行）→ CompanionReply
+├── serializers.py             # 実行 API の入力（prompt / skill）と応答（text / skill / audio_data / audio_format）
+├── views.py                   # CompanionRunView（POST /companion/run/）・例外と HTTP ステータスの対応
+├── throttling.py              # CompanionRateThrottle（有効な設定の rate_limit で、ユーザーごとに数える）
+├── urls.py                    # app_name = "companion"（run/）
 ├── exceptions.py              # CompanionError / PromptUnavailableError / CompanionNotConfiguredError / UnknownSkillError
 └── migrations/0001_initial.py
 ```
@@ -33,7 +35,7 @@ features/companion/
 | `is_active` | Bool, `False` | 有効な設定 | 有効にして保存すると、ほかの設定は無効になる |
 | `persona_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | 全スキルに共通のキャラクター設定（system プロンプト）の参照 | 必須。参照中の `LangfusePromptRef` は削除できない |
 | `area_code` | CharField(10), `""` | 天気予報の予報区コード（例: `130010`）。空なら天気を扱わない | 空か 6 桁の半角数字（`^[0-9]{6}\Z`。全角数字・末尾の改行は通さない） |
-| `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限 | 1 以上 |
+| `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限（数え方は下の「API」の「回数制限」） | 1 以上 |
 | `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の `TalkConfig` 表](../talk/README.md#talkconfig-リファレンス) の `tts_*` 行と同じ | 同左 |
 | `created_at` / `updated_at` | DateTime（自動） | 作成・更新日時（admin では読み取りのみ） | — |
 
@@ -154,6 +156,73 @@ features/companion/
 - 出力は音声合成の前に記録するので、音声合成に失敗してもセリフは残ります（スパンはエラーになります）。記録に失敗しても warning ログを出すだけで、実行は続けます。
 - Langfuse のセッション（会話 ID）はサービス名の `companion` です（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
+## API
+
+`POST /companion/run/`（`views.py` の `CompanionRunView`）が `run_companion` を 1 回実行します。Token 認証（`Authorization: Token <token>`）＋ `IsAuthenticated` が必要で、応答は JSON だけです。実行は同期で、セリフ（と音声）ができてから応答します。
+
+### リクエスト
+
+| 項目 | 型 | 説明 |
+|---|---|---|
+| `prompt` | 文字列（必須） | 発話（例: `おはよう`）。1〜1000 文字。空白だけの発話は空とみなして 400。前後の空白・改行も除かずにそのまま渡す（Talk の発話の入力と同じ） |
+| `skill` | 文字列 / `null`（任意） | 使うスキルの名前。スキル名と同じ規則（英小文字・数字をハイフンでつないだ形、64 字以内）で、前後の空白は除く。省略か `null` ならエージェントが選ぶ（上の「スキルの指定と自動選択」） |
+
+### レスポンス（200）
+
+| 項目 | 型 | 説明 |
+|---|---|---|
+| `text` | 文字列 | セリフ（前後の空白を除いたもの） |
+| `skill` | 文字列 / `null` | 使ったスキルの名前（上の「実行の流れ」の 8） |
+| `audio_data` | 文字列 / `null` | Base64 でエンコードした音声。音声合成が無効なら `null` |
+| `audio_format` | 文字列 / `null` | 音声の形式（設定の `tts_format`: `wav` / `mp3` / `ogg`）。音声合成が無効なら `null` |
+
+- Talk の `/talk/synthesize/` とはセリフのキーが違います（`greeting_text` ではなく `text`）。
+
+### エラー
+
+本文は `{"error": "<メッセージ>"}` です。ただし、入力の不正は項目ごとのエラー（例: `{"prompt": ["この項目は空にできません。"]}`）、401・429 と JSON として読めない本文は DRF の `{"detail": "..."}` です。5xx のメッセージは決まった文で、例外の内容（接続先・設定名など）は返さずにログへ出します。
+
+| ステータス | 原因（`run_companion` の例外） | `error` |
+|---|---|---|
+| 400 | 入力の不正 | （項目ごとのエラー） |
+| 400 | 指定したスキルが登録されていないか、無効（`UnknownSkillError`） | `スキル「<名前>」は登録されていないか、無効です` |
+| 401 | トークンがない・不正 | （`detail`） |
+| 429 | 回数の上限を超えた（下の「回数制限」） | （`detail`。`Retry-After` ヘッダ付き） |
+| 503 | 有効な設定がない（`CompanionNotConfiguredError`）、LLM サービス設定 `companion` がないか無効（`LLMConfigurationError`）、キャラクター設定かスキルの本文が空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
+| 504 | LLM のタイムアウト（`LLMTimeoutError`） | `AI 生成サービスへのリクエストがタイムアウトしました` |
+| 504 | 音声合成のタイムアウト（`TTSTimeoutError`） | `音声合成サービスへのリクエストがタイムアウトしました` |
+| 502 | LLM の失敗（`LLMClientError`。上限の超過・接続や HTTP の失敗と、`LLMOutputError` の応答の不正・空の応答・ツールの失敗の連続を含む） | `AI 生成サービスでエラーが発生しました` |
+| 502 | 音声合成の失敗（`TTSNetworkError`。接続の失敗・200 以外の応答） | `音声合成サービスでエラーが発生しました` |
+| 500 | それ以外 | `セリフの生成中に問題が発生しました`（トレースバックはログへ） |
+
+- `LLMTimeoutError` は `LLMClientError` のサブクラスです。`views.py` の `_KNOWN_ERRORS` を上から順に照合するので、タイムアウトは 502 ではなく 504 になります。
+- 音声合成で失敗したときもセリフは返しません（Langfuse のスパンには残ります。上の「トレース（Langfuse）」）。
+
+### 回数制限
+
+- 上限は有効な設定の `rate_limit`（1 分あたり、既定 10 回）で、ユーザーごとに直近 1 分の回数を数えます（`throttling.py` の `CompanionRateThrottle`）。超えると 429 を返し、`Retry-After` に次の 1 回が通るまでの秒数を入れます。
+- 上限は毎回 DB から読むので、admin で変えると次のリクエストから効きます。上限を下げた直後（直近 1 分の回数が新しい上限より多いとき）も `Retry-After` を付けます（DRF の既定では付かない）。
+- **回数制限を通ったリクエストは、結果によらず 1 回と数えます。** 生成の失敗（5xx）も、入力の不正・不明なスキル（400）も数えます。数えないのは、429 で断ったリクエストと、有効な設定がないとき（503）だけです。
+- 回数の記録先は Django のキャッシュ（Redis。ルート [README](../../../README.md) の `CACHE_REDIS_URL`）で、全ワーカーが共有します。Redis に届かないときと、同時に送ったときの挙動は Talk と同じです（[Talk の README](../talk/README.md) の「上限・レート制限」）。
+
+### 使用例
+
+```bash
+# エージェントにスキルを選ばせる
+curl -X POST http://localhost:8000/companion/run/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "おはよう"}'
+# => {"text": "おはようございます。...", "skill": "good-morning", "audio_data": "UklGRi...", "audio_format": "wav"}
+
+# スキルを指定する（自動化向け。読み込みの往復がない分、速い）。音声合成が有効なら音声をファイルに書き出す
+curl -s -X POST http://localhost:8000/companion/run/ \
+  -H "Authorization: Token YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "おはよう", "skill": "good-morning"}' \
+  | jq -r .audio_data | base64 -d > reply.wav
+```
+
 ## Langfuse プロンプトの命名
 
 | 用途 | Langfuse プロンプト名 | 種類 |
@@ -167,4 +236,4 @@ features/companion/
 
 ## 初期セットアップ
 
-LLM サービス設定の有効化からプロンプト・参照・設定の登録までの順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の「Companion 設定」を参照してください。
+LLM サービス設定の有効化からプロンプト・参照・設定の登録、API での動作確認までの順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の「Companion 設定」を参照してください。
