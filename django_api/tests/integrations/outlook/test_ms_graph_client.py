@@ -175,28 +175,34 @@ class TestGetCalendarEvents:
             assert expected_msg in str(exc_info.value)
 
     @pytest.mark.parametrize(
-        "status_code, expected_exc",
+        "status_code, expected_exc, expected_token_refreshes",
         [
-            (401, AuthenticationError),
-            (500, CalendarError),
+            (401, AuthenticationError, 1),
+            (500, CalendarError, 0),
         ],
         ids=["unauthorized", "server_error"],
     )
-    def test_get_events_http_errors(self, outlook_client, status_code, expected_exc):
-        """HTTP エラー時に対応する例外を発生させること"""
+    def test_get_events_http_errors(
+        self, outlook_client, status_code, expected_exc, expected_token_refreshes
+    ):
+        """HTTP エラー時に対応する例外を発生させること（401 はトークンを取り直してから）"""
         mock_response = Mock()
         mock_response.status_code = status_code
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=mock_response
         )
 
+        # 401 ではトークンを取り直すので、本物の認証サーバーへ接続しないよう差し替える
         with (
             patch.object(outlook_client._session, "get", return_value=mock_response),
+            patch.object(outlook_client, "acquire_token") as mock_acquire_token,
             pytest.raises(expected_exc),
         ):
             outlook_client.get_calendar_events(
                 start_date=date(2025, 12, 23), end_date=date(2025, 12, 23)
             )
+
+        assert mock_acquire_token.call_count == expected_token_refreshes
 
 
 @pytest.mark.unit
