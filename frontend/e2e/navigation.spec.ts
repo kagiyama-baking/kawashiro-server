@@ -88,6 +88,32 @@ test.describe('ナビゲーション', () => {
         ).not.toHaveAttribute('aria-current');
     });
 
+    test('サイドバーのメニューはチャットでも他のページと同じ位置と大きさで表示される', async ({
+        page,
+    }) => {
+        const menuBoxes = async () => {
+            const links = page
+                .getByRole('navigation', { name: 'メインメニュー' })
+                .getByRole('link');
+            await expect(links).toHaveCount(5);
+            await expect(links.last()).toBeVisible();
+            // 描画の後で待つ。先に待つと、まだ読み込みが始まっていない書体は待てない
+            await page.evaluate(async () => {
+                await document.fonts.ready;
+            });
+            return Promise.all(
+                (await links.all()).map((link) => link.boundingBox()),
+            );
+        };
+
+        await page.goto('/tts');
+        const onTts = await menuBoxes();
+        await page.goto('/talk');
+        const onTalk = await menuBoxes();
+
+        expect(onTalk).toEqual(onTts);
+    });
+
     test('ログアウトするとログイン画面に遷移する', async ({ page }) => {
         await page.goto('/');
         await page.getByRole('button', { name: 'ログアウト' }).click();

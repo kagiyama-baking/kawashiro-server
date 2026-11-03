@@ -36,6 +36,28 @@ function desktop() {
     return within(screen.getAllByRole('complementary')[1]);
 }
 
+// NavLink が現在地などに応じて付け外しする class。形の比較からは外す
+const STATE_CLASSES = new Set(['active', 'pending', 'transitioning']);
+
+function shapeOf(element: Element | null) {
+    return [...(element?.classList ?? [])]
+        .filter((name) => !STATE_CLASSES.has(name))
+        .sort()
+        .join(' ');
+}
+
+function menuShapes(path: string) {
+    const { unmount } = renderSidebar(path);
+    const menu = desktop().getByRole('navigation', { name: 'メインメニュー' });
+    const shapes = {
+        // メニューの位置は外枠の余白でも決まるので、外枠も比べる
+        frame: shapeOf(menu.parentElement),
+        links: within(menu).getAllByRole('link').map(shapeOf),
+    };
+    unmount();
+    return shapes;
+}
+
 describe('Sidebar', () => {
     beforeEach(() => {
         useAuthStore.setState({
@@ -47,7 +69,7 @@ describe('Sidebar', () => {
 
     describe('ナビゲーション', () => {
         it.each(NAV_ITEMS)(
-            '$ja のリンクに EN と JA の 2 段ラベルを表示する',
+            '$ja のリンクに英字と和文のラベルを表示する',
             ({ to, en, ja }) => {
                 renderSidebar();
 
@@ -79,6 +101,10 @@ describe('Sidebar', () => {
             expect(
                 desktop().getByRole('link', { name: /ホーム/ }),
             ).toHaveAttribute('aria-current', 'page');
+        });
+
+        it('メニューはチャットでも他のページと同じ形で表示する', () => {
+            expect(menuShapes('/talk')).toEqual(menuShapes('/tts'));
         });
     });
 

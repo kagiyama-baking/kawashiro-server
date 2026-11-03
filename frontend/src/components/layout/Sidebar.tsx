@@ -13,6 +13,9 @@ import { GHOST_ON_SIDEBAR } from './sidebar-styles';
 const SURFACE =
     'bg-sidebar text-sidebar-foreground [--ring:var(--sidebar-ring)]';
 
+// 欄の区切り線。チャットの履歴の上と、アカウント欄の上で同じ線にする
+const DIVIDER = 'border-sidebar-border mx-[1.4rem] border-t';
+
 function Brand() {
     return (
         <div className="flex min-w-0 items-center gap-3">
@@ -45,12 +48,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
     };
 
     return (
-        <div
-            className={cn(
-                'flex h-full flex-col overflow-y-auto pt-[1.7rem] pb-[1.2rem] select-none',
-                isChat ? 'gap-[1.2rem]' : 'gap-[2.4rem]',
-            )}
-        >
+        <div className="flex h-full flex-col gap-[1.2rem] overflow-y-auto pt-[1.7rem] pb-[1.2rem] select-none">
             <div className="flex items-center justify-between gap-2 px-[1.4rem]">
                 <Brand />
                 {onClose && (
@@ -66,6 +64,8 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                 )}
             </div>
 
+            {/* ページごとに形が変わると迷うので、メニューはどのページでも同じ形と位置にする。
+                1 行に詰めるのは、下にツール用の欄（チャットの履歴など）を出す場所を空けるため */}
             <nav aria-label="メインメニュー">
                 <ul className="flex flex-col gap-0.5 px-[0.7rem]">
                     {navItems.map(({ to, en, label }) => (
@@ -74,13 +74,7 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                                 to={to}
                                 end={to === '/'}
                                 onClick={onClose}
-                                className={cn(
-                                    'text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full rounded-md pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] aria-[current=page]:before:h-[62%]',
-                                    // チャットでは一覧の場所を空けるため 1 行に詰める
-                                    isChat
-                                        ? 'items-baseline justify-between gap-2 py-[0.35rem]'
-                                        : 'flex-col items-start gap-[3px] py-[0.7rem]',
-                                )}
+                                className="text-sidebar-muted-foreground before:bg-sidebar-primary hover:bg-sidebar-hover hover:text-sidebar-accent-foreground aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground relative flex w-full items-baseline justify-between gap-2 rounded-md py-[0.35rem] pr-[0.8rem] pl-4 transition-colors before:absolute before:top-1/2 before:left-0 before:h-0 before:w-0.5 before:-translate-y-1/2 before:transition-[height] aria-[current=page]:before:h-[62%]"
                             >
                                 <span className="font-latin text-[0.76rem] tracking-[0.22em] uppercase">
                                     {en}
@@ -94,9 +88,15 @@ function SidebarContent({ onClose }: { readonly onClose?: () => void }) {
                 </ul>
             </nav>
 
-            {isChat && <SessionNav onNavigate={onClose} />}
+            {/* ツール用の欄。今はチャットの履歴だけ */}
+            {isChat && (
+                <>
+                    <div aria-hidden className={DIVIDER} />
+                    <SessionNav onNavigate={onClose} />
+                </>
+            )}
 
-            <div className="border-sidebar-border mx-[1.4rem] mt-auto border-t pt-4">
+            <div className={cn(DIVIDER, 'mt-auto pt-4')}>
                 <p className="font-latin text-sidebar-muted-foreground truncate text-[0.7rem] tracking-[0.06em] select-text">
                     {email}
                 </p>
