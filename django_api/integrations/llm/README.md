@@ -131,7 +131,7 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 
 ## 6. LLM の呼び出し方
 
-LLM 呼び出しはすべて PydanticAI のエージェントで行います。エージェントは各機能のモジュールに定義し（`features/talk/llm_agents.py`、`features/hn_agent/orchestrator.py`、`features/hn_agent/agents/*.py`）、実行は `integrations/llm/runtime.py` を通します。モデル名も API キーもコードに書きません。
+LLM 呼び出しはすべて PydanticAI のエージェントで行います。エージェントは各機能のモジュールに定義し（`features/talk/llm_agents.py`、`features/hn_agent/orchestrator.py`、`features/hn_agent/agents/*.py`、`features/companion/agent.py`）、実行は `integrations/llm/runtime.py` を通します。モデル名も API キーもコードに書きません。
 
 ```python
 from pydantic_ai import Agent

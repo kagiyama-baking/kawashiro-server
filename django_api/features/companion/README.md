@@ -2,7 +2,7 @@
 
 Companion は、全体で 1 つのエージェント設定（共通のキャラクター設定）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。呼び出し時の発話からエージェントが合うスキルを選び、その手順に従ってセリフを返す設計で、いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
 
-> **現状:** 今あるのは設定のモデルと管理画面だけです。これらの設定を使うエージェント・実行 API はまだありません。
+> **現状:** 今あるのは設定のモデルと管理画面、エージェントと常設ツール（`agent.py`）です。スキルの読み込み・実行サービス・実行 API はまだありません。
 
 - キャラクター設定とスキルの本文は DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 - スキルの一覧（名前・説明・本文の参照）は admin で、設定のインラインとして管理します
@@ -14,6 +14,7 @@ features/companion/
 ├── apps.py                    # CompanionAppConfig（label: companion。モデル名と重ならないよう AppConfig を付ける）
 ├── models.py                  # CompanionConfig / CompanionSkill
 ├── admin.py                   # 設定 + スキルのインライン + 有効化アクション
+├── agent.py                   # COMPANION_AGENT と常設ツール（get_datetime / get_weather / get_today_events）
 └── migrations/0001_initial.py
 ```
 
@@ -59,6 +60,23 @@ features/companion/
 - 設定の節: 基本設定 / キャラクター / 天気 / 回数制限 / 音声（畳んで表示）/ メタ情報（畳んで表示）
 - キャラクター設定とスキル本文の参照は、`LangfusePromptRef` を検索して選びます（識別名・Langfuse プロンプト名・説明が検索対象）
 - 一覧のアクション「選択した設定を有効にする」で有効な設定を切り替えられます（1 件だけ選ぶ。2 件以上選ぶとエラーになり、何も変わりません）
+
+## ツール
+
+エージェント（`agent.py` の `COMPANION_AGENT`）が常に持つツールです。どのスキルを使うときも呼べます。
+
+> **ツール名・引数名・説明（docstring）・返す JSON のキーは、Langfuse に置くスキル本文との契約です。** 変えるときはスキル本文も直してください（名前・説明・引数・返す形は `tests/features/companion/test_agent.py` で固定しています）。
+
+| ツール | 引数 | 返す JSON |
+|---|---|---|
+| `get_datetime` | なし | `date`（`YYYY-MM-DD`）・`time`（`HH:MM:SS`）・`day_of_week`（英語の曜日名）・`day_of_week_ja`（日本語の曜日名）・`holiday_name`（祝日でなければ `null`）。祝日を確認できなかったときは `holiday_name` を `null` にし、`holiday_lookup_failed: true` を足す |
+| `get_weather` | `day`: `0`=今日（省略時）/ `1`=明日 / `2`=明後日 | 天気予報クライアントの結果そのまま（`area_name`・`weather`・`temp_max`・`temp_min`・`pop_00_06`〜`pop_18_24` など。項目は [weather の README のレスポンス](../../integrations/weather/README.md#レスポンス)） |
+| `get_today_events` | なし | `date`（今日の `YYYY-MM-DD`）と `events`（開始時刻の順）。各予定は `subject`・`start` / `end`（`HH:MM`。終日の予定と、読めない時刻は `null`）・`is_all_day`・`location`（なければ `""`） |
+
+- 地域（予報区コード）はモデルに選ばせません。有効な設定の `area_code` を実行ごとの依存（`CompanionDeps`）で渡し、空なら天気予報 API を呼ばずに error を返します。`day` が 0〜2 以外なら引数の検証で弾き、クライアントを呼ばずにモデルへ再試行を求めます。
+- 「今日」と現在時刻は Django のタイムゾーン（`TIME_ZONE`）で決めます。予定の時刻は、Graph が返す日本時間（クライアントが `Prefer: outlook.timezone="Asia/Tokyo"` を送る）をそのまま `HH:MM` にします。予定の本文の抜粋・主催者・リンクはモデルに渡しません。
+- **失敗しても実行は止めません。** 天気予報 API と Graph（設定なし・認証・通信・取得の失敗。msal のトークン取得の通信エラーを含む）の既知の失敗は warning ログを出し、`{"error": "<短い日本語>"}` をモデルに返して実行を続けます。祝日 API の失敗も warning ログを出しますが、error にはせず日付と時刻を返します（あいさつは時間帯で変わるため）。想定外の例外は error にせず、実行ごと失敗させます（不具合を隠さない）。
+- ツールは async で、外部 API と Graph の設定の読み込み（ORM）は `sync_to_async` で呼び出し元のスレッドに戻して動かします（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
 ## Langfuse プロンプトの命名
 
