@@ -62,10 +62,15 @@ class TestCacheUrlFromBroker:
             pytest.param("redis://redis:6379?db=0", id="db_in_query"),
             pytest.param("redis://redis:6379/cache", id="non_numeric_path"),
             pytest.param("", id="empty"),
+            pytest.param("redis://redis:6379/1", id="broker_on_db1"),
+            pytest.param("redis://redis:6379/01", id="broker_on_db1_padded"),
         ],
     )
-    def test_cache_url_from_broker_without_db_in_path_raises(self, broker_url):
-        """DB 番号をパスで表さない URL は替えられないので、設定を求める."""
+    def test_cache_url_from_broker_without_separate_db_raises(self, broker_url):
+        """Celery と別の DB を指す URL を作れないときは、設定を求める.
+
+        DB 番号をパスで表さない URL は替えられず、ブローカーが DB 1 なら同じ DB になる。
+        """
         with pytest.raises(ValueError, match="CACHE_REDIS_URL"):
             cache_url_from_broker(broker_url)
 
@@ -122,7 +127,7 @@ class TestCacheSettings:
 
         assert values["CACHES"]["default"]["LOCATION"] == "redis://cache:6379/3"
 
-    def test_caches_bound_redis_waits(self, monkeypatch):
+    def test_caches_with_redis_sets_short_socket_timeouts(self, monkeypatch):
         """Redis が応答しないときに、ワーカーを待たせ続けない."""
         values = _load_settings(monkeypatch, CACHE_REDIS_URL="redis://cache:6379/3")
 
@@ -130,6 +135,6 @@ class TestCacheSettings:
         assert 0 < options["socket_connect_timeout"] <= 5
         assert 0 < options["socket_timeout"] <= 5
 
-    def test_tests_use_in_process_cache(self):
+    def test_default_cache_in_tests_is_locmem(self):
         """テストではプロセス内のキャッシュを使う（CI に Redis はない）."""
         assert isinstance(caches["default"], LocMemCache)

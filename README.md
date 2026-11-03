@@ -143,7 +143,7 @@ curl http://localhost:3000/           # Frontend
 | Django | `CSRF_TRUSTED_ORIGINS` | 本番時に Traefik 経由のドメインを指定（スキーム付き・カンマ区切り） |
 | DB | `DB_ENGINE` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_HOST` / `DB_PORT` | PostgreSQL 接続情報。`DB_ENGINE` 未設定なら SQLite にフォールバック（`DB_ENGINE` 設定時は `DB_PASSWORD` 必須） |
 | Celery | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | デフォルト `redis://redis:6379/0` |
-| キャッシュ | `CACHE_REDIS_URL` | API のレート制限の記録先（Django のキャッシュ。全ワーカーで共有）。任意。未設定なら `CELERY_BROKER_URL` の DB 番号を 1 に替えたもの（既定 `redis://redis:6379/1`）。DB 番号をパスで表さない URL（unix ソケット、`?db=` など）から替えられないときは起動時にエラーになるので、明示する |
+| キャッシュ | `CACHE_REDIS_URL` | API のレート制限の記録先（Django のキャッシュ。全ワーカーで共有）。任意。未設定なら `CELERY_BROKER_URL` の DB 番号を 1 に替えたもの（既定 `redis://redis:6379/1`）。替えられない URL（unix ソケット、`?db=` など）や、ブローカー自体が DB 1 のときは起動時にエラーになるので、明示する |
 | TTS | `TTS_SERVICE_URL` | デフォルト `http://sbv2-api:5000` |
 | TTS | `TTS_TIMEOUT` | TTS リクエストのタイムアウト秒（デフォルト `120`） |
 | LLM | `LITELLM_PROXY_URL` | LiteLLM Proxy のベース URL（デフォルト `http://litellm-proxy:4000/v1`） |
