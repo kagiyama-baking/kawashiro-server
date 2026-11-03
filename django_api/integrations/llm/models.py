@@ -63,6 +63,7 @@ class LLMServiceConfig(models.Model):
         ("devils_advocate", "HN Agent Devil's Advocate"),
         ("security_responder", "HN Agent Security Responder"),
         ("talk", "Talk Generator"),
+        ("companion", "Companion"),
     ]
 
     service_name = models.CharField(

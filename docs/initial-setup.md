@@ -54,7 +54,7 @@ docker compose exec django-api python manage.py createsuperuser
 
 ### 4-2. LLM サービス設定（`LLMServiceConfig`）
 
-どのサービスがどの LLM 設定を使うかを割り当てます。サービス名は 5 種で、それぞれ 1 レコードのみ登録できます。
+どのサービスがどの LLM 設定を使うかを割り当てます。サービス名は 6 種で、それぞれ 1 レコードのみ登録できます。
 
 | サービス名 | 用途 |
 |---|---|
@@ -63,10 +63,16 @@ docker compose exec django-api python manage.py createsuperuser
 | HN Agent Devil's Advocate | 反論・批判的検証 |
 | HN Agent Security Responder | セキュリティ観点の応答 |
 | Talk Generator | 会話生成（`/talk/`） |
+| Companion | Companion エージェント（発話に合うスキルを選んでセリフを生成） |
 
 `LLM 設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
 
-> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、5 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。
+> **Note:** 次のレコードは、マイグレーションにより**既存の設定を雛形として `is_active=False` で自動複製されます**（雛形が存在する場合のみ）。
+>
+> - `devils_advocate` / `security_responder`: `integrations/llm/migrations/0012_add_new_agent_service_choices.py` が `detective` から複製
+> - `companion`: `integrations/llm/migrations/0013_add_companion_service_choice.py` が `talk` から複製
+>
+> 新規環境で雛形を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成されたレコードを使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。
 
 ### 4-3. Langfuse プロンプト参照（`LangfusePromptRef`）
 

@@ -23,7 +23,7 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 - **`LLMProviderConfig`**（`integrations/llm/models.py`）
   モデルエイリアス + LiteLLM Virtual Key の組。複数の `LLMServiceConfig` から共有参照できます。
 - **`LLMServiceConfig`**（同上）
-  サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
+  サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk` / `companion`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
 - **`LangfusePromptRef`**（`integrations/langfuse/models.py`）
   Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` から FK で参照されます。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
@@ -39,7 +39,7 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 flowchart LR
     subgraph Admin["Django admin"]
         Provider["LLM設定<br/>model_alias + Virtual Key"]
-        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder / talk"]
+        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
         HN["HackerNews Agent設定"]
         Talk["会話生成設定（TalkConfig）"]
@@ -80,12 +80,14 @@ flowchart LR
 
 | 項目 | 説明 |
 |---|---|
-| サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` の 5 択。**unique**（1 サービス 1 レコード） |
+| サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` / `Companion` の 6 択。**unique**（1 サービス 1 レコード） |
 | LLM 設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
 | 有効（`is_active`） | 既定 `True`。**`False` のレコードは `get_llm_settings` から見えず、設定なし扱いでエラーになります** |
 | タイムアウト（`timeout`） | API リクエストのタイムアウト秒数（既定 `60`） |
 
 > **Note:** `devils_advocate` / `security_responder` のレコードは migration `llm/0012` で `detective` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**）。detective が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。
+
+> **Note:** `companion` のレコードは migration `llm/0013` で `talk` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**。`companion` が既にあれば変更しません）。talk が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。`0012` へ戻すと `companion` のレコードは削除されます。
 
 ### Langfuse プロンプト参照（`LangfusePromptRef`）
 

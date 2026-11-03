@@ -115,6 +115,19 @@ class TestLLMServiceConfig:
             )
             assert config.service_name == service
 
+    @pytest.mark.integration
+    def test_service_name_with_companion_is_valid_choice(self, provider):
+        """companion はサービス名の選択肢にあり（表示名 Companion）、検証を通る.
+
+        objects.create は choices を検証しないので、admin の入力チェックと同じ
+        full_clean で確かめる。
+        """
+        config = LLMServiceConfig(service_name="companion", provider_config=provider)
+
+        config.full_clean()
+
+        assert config.get_service_name_display() == "Companion"
+
     def test_shared_provider(self, provider):
         """複数サービスが同じプロバイダー設定を共有できる."""
         talk = LLMServiceConfig.objects.create(
