@@ -10,7 +10,7 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 |---|---|---|---|
 | **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
 | **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」+ Langfuse UI | `LangfusePromptRef` + Langfuse 側のプロンプト実体 |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」 | `HNAgentConfig` / `TalkConfig` |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 | `HNAgentConfig` / `TalkConfig` / `CompanionConfig`（スキルは `CompanionSkill`） |
 
 モデルを差し替えるときは admin の「LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
 
@@ -25,7 +25,7 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 - **`LLMServiceConfig`**（同上）
   サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk` / `companion`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
 - **`LangfusePromptRef`**（`integrations/langfuse/models.py`）
-  Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` から FK で参照されます。
+  Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` / `CompanionConfig` / `CompanionSkill` から FK で参照されます。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
   `is_active=True` の `LLMServiceConfig` を引いて `LLMSettings` を返します。該当なしなら `LLMConfigurationError`。
 - **実行基盤**（`integrations/llm/runtime.py`）
@@ -43,6 +43,7 @@ flowchart LR
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
         HN["HackerNews Agent設定"]
         Talk["会話生成設定（TalkConfig）"]
+        Companion["Companion 設定（CompanionConfig）<br/>+ スキル（CompanionSkill）"]
     end
 
     subgraph External["外部サービス"]
@@ -55,6 +56,8 @@ flowchart LR
     HN -.->|orchestrator / detective /<br/>devils_advocate / security_responder| Service
     Talk -->|2本のプロンプト参照| Ref
     Talk -.->|talk| Service
+    Companion -->|キャラクター設定 1 本 +<br/>スキルごとの本文| Ref
+    Companion -.->|companion| Service
 
     Provider ==>|Virtual Key + model_alias| LiteLLM
     Ref ==>|名前とラベルで取得| Langfuse
@@ -115,11 +118,14 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 | HN Agent Security Responder user | `hn-agent-security-responder-user` | `hn-agent-security-responder-user` |
 | Talk system | `talk-{config_name}-system` | `talk-{config_name}-system`（同名） |
 | Talk user | `talk-{config_name}-user` | `talk-{config_name}-user`（同名） |
+| Companion キャラクター設定（system） | `companion-system` | `companion-system`（同名） |
+| Companion スキルの本文 | `companion-skill-<スキル名>` | `companion-skill-<スキル名>`（同名） |
 
 **投入方法の違いに注意してください。**
 
 - **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りの `LangfusePromptRef` として自動投入されます。
 - **Talk の 2 本は自動生成されません。** migration `talk/0012` は「マイグレーション実行時点で存在した `TalkConfig`」の分だけ参照を作り、既存の `system_prompt` を `fallback_text` へ移管したものです。**その後に新しい `TalkConfig` を追加する場合は、`LangfusePromptRef` を admin で手動作成**してから FK に割り当ててください（`system_prompt_ref` / `user_prompt_ref` はどちらも必須・`PROTECT`）。
+- **Companion の参照も自動生成されません。** 本文を git に置かないため migration はなく、Langfuse の text プロンプトと `LangfusePromptRef` を手動で作成してから `CompanionConfig.persona_prompt_ref` / `CompanionSkill.prompt_ref` に割り当てます（命名とラベルの使い分けは [../../features/companion/README.md](../../features/companion/README.md)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3）。
 
 いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。未登録でも `fallback_text` で動作します。
 
@@ -203,5 +209,6 @@ except LLMClientError:
 |---|---|
 | [../../features/hn_agent/README.md](../../features/hn_agent/README.md) | HN Agent の構成・`HNAgentConfig`・8 本のプロンプト割り当て |
 | [../../features/talk/README.md](../../features/talk/README.md) | 会話生成・チャットセッション・`TalkConfig` のプロンプト変数 |
+| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `CompanionSkill`・プロンプトの命名 |
 | [../../../docs/initial-setup.md](../../../docs/initial-setup.md) | 初回セットアップ手順（admin 設定・環境変数の投入順） |
 | [../../README.md](../../README.md) | Django API 全体構成 |

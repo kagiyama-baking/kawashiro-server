@@ -84,6 +84,39 @@ class TalkConfigFactory(factory.django.DjangoModelFactory):
     )
 
 
+class CompanionConfigFactory(factory.django.DjangoModelFactory):
+    """CompanionConfig のファクトリ（既定は無効。有効にするなら is_active=True）."""
+
+    class Meta:
+        model = "companion.CompanionConfig"
+        django_get_or_create = ("name",)
+
+    name = factory.Sequence(lambda n: f"companion-config-{n}")
+    persona_prompt_ref = factory.SubFactory(
+        LangfusePromptRefFactory,
+        name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
+        fallback_text="persona fallback",
+    )
+
+
+class CompanionSkillFactory(factory.django.DjangoModelFactory):
+    """CompanionSkill のファクトリ."""
+
+    class Meta:
+        model = "companion.CompanionSkill"
+
+    config = factory.SubFactory(CompanionConfigFactory)
+    name = factory.Sequence(lambda n: f"skill-{n}")
+    description = factory.LazyAttribute(lambda o: f"{o.name} のときに使う")
+    prompt_ref = factory.SubFactory(
+        LangfusePromptRefFactory,
+        name=factory.LazyAttribute(
+            lambda o: f"{o.factory_parent.config.name}-skill-{o.factory_parent.name}"
+        ),
+        fallback_text="skill body fallback",
+    )
+
+
 class FileUploadFactory:
     """ファイルアップロードテスト用のファクトリ"""
 

@@ -16,6 +16,7 @@ ADMIN_APP_ORDER = [
     "llm_config",
     "langfuse_integration",
     "hn_agent",
+    "companion",
     "talk",
 ]
 

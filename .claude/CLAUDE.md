@@ -20,7 +20,7 @@ kawashiro-server/
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
 │   │   ├── outlook/         # Outlook Calendar連携API
-│   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
+│   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）・TTS 設定の抽象モデル
 │   │   ├── weather/         # 気象庁天気予報クライアント
 │   │   ├── holiday/         # 祝日APIクライアント・本日の日時情報（Djangoアプリではない）
 │   │   ├── hn/              # Hacker News Algolia APIクライアント
@@ -29,7 +29,8 @@ kawashiro-server/
 │   ├── features/            # ビジネス機能
 │   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
-│   │   └── hn_agent/        # HN監視・分析エージェント（PydanticAI）
+│   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
+│   │   └── companion/       # Companion エージェントの設定（キャラクター設定 + スキル）
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
 │   ├── pyproject.toml       # Python依存関係・ツール設定
@@ -64,6 +65,7 @@ kawashiro-server/
 | Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
+| Companion の設定モデル（CompanionConfig / CompanionSkill）・プロンプト命名 | `django_api/features/companion/README.md` |
 | 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
 | 音声合成 API・モデル配置・CPU/GPU 切替 | `sbv2_api/README.md` |
 | フロントエンド画面・開発コマンド | `frontend/README.md` |
@@ -178,7 +180,7 @@ django_api/tests/
 │   ├── llm/ langfuse/ msgraph/ onedrive/ outlook/ tts/
 │   └── weather/ holiday/ hn/ tavily/ slack/
 ├── features/                # ビジネス機能テスト
-│   ├── talk/ media/ hn_agent/
+│   ├── talk/ media/ hn_agent/ companion/
 ├── user/                    # ユーザー管理テスト
 └── health/                  # ヘルスチェックテスト
 ```

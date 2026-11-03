@@ -34,7 +34,7 @@ docker compose exec django-api python manage.py createsuperuser
 |---|---|---|
 | システム設定 | Core / 認証と認可 / 認証トークン | ユーザー、グループ、API トークンの管理 |
 | 外部サービス設定 | Microsoft 365 / Slack / Tavily / Celery | 外部 API の資格情報と定期タスクのスケジュール |
-| AI ツール設定 | LLM 設定 / Langfuse / HackerNews Agent / Talk Generator | LLM の割り当て、プロンプト参照、各機能の設定 |
+| AI ツール設定 | LLM 設定 / Langfuse / HackerNews Agent / Companion / Talk Generator | LLM の割り当て、プロンプト参照、各機能の設定 |
 
 「Celery」は `django-celery-beat` の表示名を変更したもので、定期タスク・インターバル・Cron スケジュール・時刻指定を扱います（太陽イベントは未使用のため非表示）。
 
@@ -94,6 +94,8 @@ Langfuse 上のプロンプトを Django 側から参照するためのマッピ
 - `talk-{設定名}-system` — システムプロンプト
 - `talk-{設定名}-user` — ユーザープロンプト
 
+**Companion 用も自動生成されません。** 作り方は手順 5-3 を参照してください。
+
 Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。
 
 LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/integrations/llm/README.md) を参照してください。
@@ -128,6 +130,16 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | フロントページ取得件数 | 30 | Algolia API 経由で最大 1000 件程度まで指定可 |
 
 加えて、**8 本のプロンプト参照を外部キーで選択します**（Orchestrator / Detective / Devil's Advocate / Security Responder × システム / ユーザー）。手順 4-3 で確認した自動投入済みのレコードをそのまま選べます。入力後、「有効」にチェックを入れて保存してください。
+
+### 5-3. Companion 設定（`CompanionConfig`）
+
+キャラクター設定 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
+
+1. **LLM サービス設定の `Companion` を有効にする** — マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
+2. **Langfuse に text プロンプトを作る** — キャラクター設定の `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトの命名) の規則に従います（開発と本番で Langfuse を共有しているため）
+3. **Langfuse プロンプト参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` は手順 2 と同じ名前にし、ラベルは手順 2 で付けたものにします
+4. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`キャラクター設定` に手順 3 の `companion-system` を選び、画面下の「スキル」に名前・説明（どんな発話のときに使うか）・本文（手順 3 の参照）を 1 行ずつ追加して保存します
+5. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
 
 ## 6. 外部サービスの設定
 

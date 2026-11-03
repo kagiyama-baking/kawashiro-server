@@ -106,6 +106,8 @@ INSTALLED_APPS = [
     "integrations.tavily",  # Tavily Web検索API連携
     "integrations.slack",  # Slack通知連携
     "features.hn_agent",  # HN監視・分析エージェント
+    # Companion
+    "features.companion",  # Companion エージェント（キャラクター設定とスキル）
 ]
 
 # ミドルウェアの設定
