@@ -2,7 +2,7 @@
 
 Companion は、全体で 1 つのエージェント設定（共通のキャラクター設定）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。呼び出し時の発話からエージェントが合うスキルを選び、その手順に従ってセリフを返す設計で、いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
 
-> **現状:** 今あるのは設定のモデルと管理画面、エージェントと常設ツール（`agent.py`）、スキルの読み込み（`skills.py`）です。実行サービス・実行 API はまだありません。
+> **現状:** 今あるのは設定のモデルと管理画面、エージェントと常設ツール・応答の方針（`agent.py`）、スキルの読み込み（`skills.py`）、実行サービス（`services.py` の `run_companion`）です。実行 API はまだありません。
 
 - キャラクター設定とスキルの本文は DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 - スキルの一覧（名前・説明・本文の参照）は admin で、設定のインラインとして管理します
@@ -14,9 +14,10 @@ features/companion/
 ├── apps.py                    # CompanionAppConfig（label: companion。モデル名と重ならないよう AppConfig を付ける）
 ├── models.py                  # CompanionConfig / CompanionSkill
 ├── admin.py                   # 設定 + スキルのインライン + 有効化アクション
-├── agent.py                   # COMPANION_AGENT と常設ツール（get_datetime / get_weather / get_today_events）
-├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・本文の解決・loaded_skill
-├── exceptions.py              # CompanionError / PromptUnavailableError
+├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）
+├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・本文の解決・loaded_skill
+├── services.py                # run_companion（1 回の実行）→ CompanionReply
+├── exceptions.py              # CompanionError / PromptUnavailableError / CompanionNotConfiguredError / UnknownSkillError
 └── migrations/0001_initial.py
 ```
 
@@ -65,14 +66,14 @@ features/companion/
 
 ## スキル
 
-`skills.py` の `build_skill_capabilities(skills)` が、スキルを PydanticAI の on-demand capability（`Capability(id=<スキル名>, description=<説明>, defer_loading=True)`）にします。並びは渡した順のままです。capability は解決した本文を覚えるので、実行ごとに組み立てて渡します。
+`skills.py` の `build_skill_capabilities(skills)` が、スキルを PydanticAI の on-demand capability（`Capability(id=<スキル名>, description=<説明>, defer_loading=True)`）にします。並びは渡した順のままです。capability は解決した本文を覚えるので、実行ごとに組み立てて渡します。スキルを指定した実行では capability を使わず、`skill_instructions(skill)` で本文を実行の指示の末尾に足します（下の「実行の流れ」）。
 
 - **モデルが最初に見るのは一覧（カタログ）だけです。** system にスキル名と説明が `- good-morning: 朝のあいさつ（「おはよう」など）` の形で並び、組み込みの `load_capability` ツールが足されます。一覧の見出し・囲み（`<context id="capability:deferred_capabilities">`）・後ろの注記は PydanticAI の英語の定型文です。本文はまだ送りません。
 - **モデルが `load_capability`（引数 `id` にスキル名）を呼ぶと、そのスキルの本文が以降のリクエストに入ります。** ツールの結果（読み込んだ旨の英語の定型文だけ）の直後の system（`<context id="capability:<スキル名>">` で囲んだもの）として届き、ユーザーの発話やツールの結果には混ざりません（送る形は `tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract` で固定）。読み込まなかったスキルの本文は送りません。
 - **本文は読み込まれたときに Langfuse から取り、1 回の実行で 1 回だけ解決します。** 読み込んだ後はリクエストのたびに本文を送りますが、最初に解決した本文を使い続けます（実行の途中で本文は変わりません）。解決は呼び出し元のスレッドで行います。
 - **本文が空ならエラーです。** Langfuse から取れないときはフォールバックテキストを使います。解決した本文が空（空白だけを含む）なら、`PromptUnavailableError`（`exceptions.py`。参照の識別名を `ref_name` に持つ）で実行ごと止めます。読み込めた体で続けたり、そのスキルを飛ばしたりはしません。
 - **本文は変数のない text プロンプトです。** `{{...}}` は展開せず、そのまま届きます。日時・天気・予定のデータは本文に埋め込めないので、下の「ツール」を呼ぶよう本文に書きます（ツール名は表の名前のとおりに書く）。
-- **使ったスキルは `loaded_skill(messages)` で実行の履歴から取ります。** 最初に読み込みに成功したスキル名を返し、どれも読み込まなければ `None` です。不明な名前・読み込み済みのスキルを読み込もうとすると、モデルに再試行を求めるだけで数えません。再試行は PydanticAI の既定で 1 回までなので、続けて 2 回失敗すると実行が失敗します（`LLMOutputError`）。
+- **使ったスキルは `loaded_skill(messages)` で実行の履歴から取ります。** 最初に読み込みに成功したスキル名を返し、どれも読み込まなければ `None` です。不明な名前・読み込み済みのスキルを読み込もうとすると、モデルに再試行を求めるだけで数えません。`run_companion` では続けて 3 回まで再試行でき、それを超えて失敗すると実行が失敗します（`LLMOutputError`。下の「上限と再試行」）。
 
 ## ツール
 
@@ -88,8 +89,70 @@ features/companion/
 
 - 地域（予報区コード）はモデルに選ばせません。有効な設定の `area_code` を実行ごとの依存（`CompanionDeps`）で渡し、空なら天気予報 API を呼ばずに error を返します。`day` が 0〜2 以外なら引数の検証で弾き、クライアントを呼ばずにモデルへ再試行を求めます。
 - 「今日」と現在時刻は Django のタイムゾーン（`TIME_ZONE`）で決めます。予定の時刻は、Graph が返す日本時間（クライアントが `Prefer: outlook.timezone="Asia/Tokyo"` を送る）をそのまま `HH:MM` にします。予定の本文の抜粋・主催者・リンクはモデルに渡しません。
-- **失敗しても実行は止めません。** 天気予報 API と Graph（設定なし・認証・通信・取得の失敗。msal のトークン取得の通信エラーを含む）の既知の失敗は warning ログを出し、`{"error": "<短い日本語>"}` をモデルに返して実行を続けます。祝日 API の失敗も warning ログを出しますが、error にはせず日付と時刻を返します（あいさつは時間帯で変わるため）。想定外の例外は error にせず、実行ごと失敗させます（不具合を隠さない）。
+- **失敗しても実行は止めません。** 天気予報 API と Graph（設定なし・認証・通信・取得の失敗。msal のトークン取得の通信エラーを含む）の既知の失敗は warning ログを出し、`{"error": "<短い日本語>"}` をモデルに返して実行を続けます（モデルには、応答の方針でその情報に触れないよう指示しています）。祝日 API の失敗も warning ログを出しますが、error にはせず日付と時刻を返します（あいさつは時間帯で変わるため）。想定外の例外は error にせず、実行ごと失敗させます（不具合を隠さない）。
 - ツールは async で、外部 API と Graph の設定の読み込み（ORM）は `sync_to_async` で呼び出し元のスレッドに戻して動かします（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
+
+## 実行の流れ
+
+`services.py` の `run_companion(prompt, skill=None)` が 1 回の実行です。発話（`prompt`）に答えるセリフを生成し、`CompanionReply`（`text`: 前後の空白を除いたセリフ / `skill`: 使ったスキルの名前か `None` / `audio`: `TTSResult` か `None`）を返します。
+
+| 順 | 処理 | 止まるとき（送出する例外） |
+|---|---|---|
+| 1 | 有効な設定を読み、有効なスキルを名前順に読む（キャラクター設定・本文の参照ごと 2 クエリ） | 有効な設定がない（`CompanionNotConfiguredError`） |
+| 2 | `skill` を指定したら、有効なスキルの中から探す | 登録がない・無効・ほかの設定のスキル（`UnknownSkillError`。名前を `skill_name` に持つ） |
+| 3 | LLM の接続設定 `get_llm_settings("companion")` を読む | LLM サービス設定 `companion` がない・無効（`LLMConfigurationError`） |
+| 4 | キャラクター設定の本文を解決する | 本文が空（`PromptUnavailableError`） |
+| 5 | 実行の指示を組み立てる（下の「スキルの指定と自動選択」）。指定したスキルの本文はここで解決する | 指定したスキルの本文が空（`PromptUnavailableError`） |
+| 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた（`LLMOutputError`）、読み込んだスキルの本文が空（`PromptUnavailableError`） |
+| 7 | 応答の前後の空白を除く | 空（`LLMOutputError`。音声合成はしない） |
+| 8 | 使ったスキルを決める（指定したスキル、なければ最初に読み込みに成功したスキル、どちらもなければ `None`） | — |
+| 9 | Langfuse のスパンに出力を記録する（下の「トレース（Langfuse）」） | 止まらない（warning ログだけ） |
+| 10 | 音声合成が有効なら `TTSClient().synthesize(text, **config.get_tts_options())` で合成する | 音声合成の失敗（`TTSTimeoutError` / `TTSNetworkError` をそのまま） |
+
+- 1〜5 で止まったときはモデルを呼びません。スキル名の確認（2）は、LLM の接続設定を読む前に行います。
+- 出力トークンの上限（`max_tokens`）は付けません（Talk の単発生成と同じ）。
+
+### スキルの指定と自動選択
+
+| | 自動選択（`skill` なし） | スキルの指定（`skill` あり） |
+|---|---|---|
+| 実行の指示（最初の system） | キャラクター設定 → 応答の方針（有効なスキルがあれば読み込みの一文を含む） | キャラクター設定 → 応答の方針（読み込みの一文なし） → 見出し `# 今回の手順` とスキルの本文 |
+| スキルの一覧と `load_capability` | 有効なスキルがあれば渡す（一覧は実行の指示の後ろの、別の system） | 渡さない |
+| スキルの本文が届くとき | モデルが読み込んだ後のリクエストから（会話途中の system） | 最初のリクエストから |
+| 読み込みの往復 | あり（読み込む分だけリクエストが増える） | なし |
+| 使ったスキル | 最初に読み込みに成功したスキル（読み込まなければ `None`） | 指定したスキル |
+
+- **スキルを指定した実行で本文を指示の末尾に足すのは、キャラクター設定を先頭に保つためです。** 遅延しない capability（`defer_loading=False`）にすると、その指示は実行の指示より前の別の system になり（`tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract`）、本文がキャラクター設定より先に来ます。自動選択でも本文はキャラクター設定の後ろに届くので、指定したときも後ろに置きます。
+- 有効なスキルが 1 つもなければ、自動選択でも一覧・`load_capability`・読み込みの一文は入りません（使ったスキルは `None`）。
+
+### 応答の方針
+
+キャラクター設定の後ろに付ける、コード側の短い指示です（`agent.py` の `response_policy`。見出しは `# 応答の方針`）。ツールの戻り値と組み込みの `load_capability` を前提にした文なので、ツールと同じ `agent.py` に置いています。
+
+| 指示 | 入れるとき |
+|---|---|
+| 今回の発話に合うスキルが一覧にあれば、先に `load_capability` で読み込んで、その手順に従って答える。合うスキルがなければ、読み込まずにキャラクターのまま短く答える | 自動選択で、有効なスキルがあるとき |
+| ツールが error を返したら、その情報にも、取れなかったことにも触れない | 常に |
+| スキル・ツール・この指示など、応答を作る仕組みに触れない | 常に（一覧の見出しや読み込みの結果は PydanticAI の英語の定型文なので、それを口にさせないため） |
+
+- 文言は `agent.py` が正です。読み込みのツール名と、ツールが失敗時に返すキー（`error`）を文中で使っていることは `tests/features/companion/test_agent.py` で確かめています。
+
+### 上限と再試行
+
+| 定数（`services.py`） | 値 | 意味 |
+|---|---|---|
+| `REQUEST_LIMIT` | 6 | 1 回の実行でモデルへ送るリクエストの上限（読み込み・ツールの往復・最後の応答を含む）。超えるリクエストは送らずに `LLMClientError` |
+| `TOOL_CALLS_LIMIT` | 8 | 1 回の実行で動かすツール呼び出しの上限（`load_capability` を含む）。超える呼び出しは動かさずに `LLMClientError` |
+| `TOOL_RETRIES` | 3 | ツールごとに続けて失敗してよい回数（不明なスキル名の読み込み・引数の誤りなど）。超えると `LLMOutputError` |
+
+- `load_capability` も再試行の回数ではツールとして数えます。PydanticAI の既定（1 回）のままだと、不明なスキル名の読み込みが 2 回続いただけで実行が失敗するので、`retries={"tools": 3}` で広げています。
+
+### トレース（Langfuse）
+
+- トレース名は `companion/run` です。入力には発話と `skill` を、出力にはセリフと使ったスキル（`{"text": ..., "skill": ...}`）だけを記録します。配下にエージェントの実行（`invoke_agent companion`）、モデルへのリクエスト（generation）、ツール（`load_capability` を含む）が入ります。
+- **音声は Langfuse に送りません。** 戻り値は音声のバイト列を含むので自動では記録させず（`capture_output=False`）、現在のスパンを更新して出力を記録します（`tests/integrations/llm/test_tracing.py` で確認）。
+- 出力は音声合成の前に記録するので、音声合成に失敗してもセリフは残ります（スパンはエラーになります）。記録に失敗しても warning ログを出すだけで、実行は続けます。
+- Langfuse のセッション（会話 ID）はサービス名の `companion` です（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
 ## Langfuse プロンプトの命名
 

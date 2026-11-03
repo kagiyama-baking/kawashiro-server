@@ -13,12 +13,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.trace_capture import COMPANION_AUDIO
+
 DJANGO_API_DIR = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(scope="module")
 def captured() -> dict:
-    """計装を有効にして HN 調査と Talk を実行し、記録されたスパンを返す."""
+    """計装を有効にして HN 調査・Talk・Companion を実行し、記録されたスパンを返す."""
     process = subprocess.run(
         [sys.executable, "-m", "tests.fixtures.trace_capture"],
         cwd=DJANGO_API_DIR,
@@ -95,8 +97,8 @@ class TestTraceStructure:
         spans = captured["spans"]
         generations = [span for span in spans if span["name"].startswith("chat ")]
 
-        # Orchestrator 2 回 + Detective 1 回 + Talk 3 回（ストリーミング）
-        assert len(generations) == 6
+        # Orchestrator 2 回 + Detective 1 回 + Talk 3 回（ストリーミング）+ Companion 2 回
+        assert len(generations) == 8
         assert {span["scope"] for span in generations} == {"pydantic-ai"}
         assert {span["scope"] for span in spans} == {"pydantic-ai", "langfuse-sdk"}
 
@@ -239,6 +241,51 @@ class TestStreamingTrace:
         assert "langfuse.observation.output" not in prepare["attributes"]
 
 
+@pytest.mark.integration
+class TestCompanionTrace:
+    """Companion の実行のトレース（音声合成した実行でも音声は送らない）."""
+
+    def test_companion_run_records_prompt_as_input_and_text_and_skill_as_output(
+        self, captured
+    ):
+        """companion/run は発話を入力に、セリフと使ったスキルだけを出力に記録する."""
+        attributes = _find(captured["spans"], "companion/run")["attributes"]
+
+        assert json.loads(attributes["langfuse.observation.input"]) == {
+            "args": ["おはよう"],
+            "kwargs": {},
+        }
+        assert json.loads(attributes["langfuse.observation.output"]) == {
+            "text": "おはよう！",
+            "skill": "good-morning",
+        }
+
+    def test_companion_trace_never_contains_audio(self, captured):
+        """トレースのどのスパンにも音声のデータは載らない."""
+        spans = captured["spans"]
+        root = _find(spans, "companion/run")
+        trace = [span for span in spans if span["trace_id"] == root["trace_id"]]
+
+        assert root["parent_id"] is None
+        assert [
+            span["name"]
+            for span in trace
+            if COMPANION_AUDIO.decode() in json.dumps(span, ensure_ascii=False)
+        ] == []
+
+    def test_companion_skill_load_is_nested_under_agent_and_companion_run(
+        self, captured
+    ):
+        """スキルの読み込みはエージェントの実行の配下、エージェントは companion/run の配下."""
+        spans = captured["spans"]
+        load = _find(spans, "execute_tool load_capability")
+
+        assert _ancestor_names(load, spans)[-2:] == [
+            "invoke_agent companion",
+            "companion/run",
+        ]
+
+
 IMPORT_CHECK_CODE = """
 import json
 import sys
@@ -248,6 +295,7 @@ import django
 django.setup()
 
 import django_api.urls
+import features.companion.services
 import features.hn_agent.orchestrator
 import features.hn_agent.tasks
 import features.talk.services

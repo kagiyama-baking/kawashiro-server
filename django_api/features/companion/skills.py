@@ -4,6 +4,9 @@ PydanticAI の on-demand capability を使う。モデルにはスキル名と�
 見せ、モデルが組み込みの `load_capability` ツールで読み込んだスキルの本文だけを、その後の
 リクエストに system として入れる。本文は読み込まれたときに Langfuse から取り、1 回の実行で
 1 回だけ解決する。
+
+スキルを指定した実行では capability を使わず、本文を実行の指示の末尾に足す
+（`skill_instructions`）。
 """
 
 from collections.abc import Sequence
@@ -22,6 +25,9 @@ from integrations.langfuse.models import LangfusePromptRef
 from .agent import CompanionDeps
 from .exceptions import PromptUnavailableError
 from .models import CompanionSkill
+
+# スキルを指定した実行で、本文の前に置く見出し
+_SKILL_SECTION_HEADING = "# 今回の手順"
 
 
 def resolve_required_prompt(ref: LangfusePromptRef) -> str:
@@ -44,6 +50,25 @@ def resolve_required_prompt(ref: LangfusePromptRef) -> str:
     if not text:
         raise PromptUnavailableError(ref.name)
     return text
+
+
+def skill_instructions(skill: CompanionSkill) -> str:
+    """指定したスキルの本文を解決し、実行の指示の末尾に足す節にする.
+
+    遅延しない capability の指示は実行の指示（キャラクター設定）より前に置かれるので、
+    スキルを指定した実行では capability にせず、この節をキャラクター設定・方針の後ろに足す。
+    Langfuse と通信する同期関数なので、イベントループの外で呼ぶ。
+
+    Args:
+        skill: 指定したスキル
+
+    Returns:
+        見出しと本文
+
+    Raises:
+        PromptUnavailableError: 本文が空（空白だけ）の場合
+    """
+    return f"{_SKILL_SECTION_HEADING}\n\n{resolve_required_prompt(skill.prompt_ref)}"
 
 
 def build_skill_capabilities(

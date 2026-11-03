@@ -1,6 +1,8 @@
-"""Companion エージェントと常設ツール（日時・天気・今日の予定）.
+"""Companion エージェントと常設ツール（日時・天気・今日の予定）、応答の方針.
 
-キャラクター設定と方針はここに持たず、実行サービスが実行ごとの `instructions` で渡す。
+キャラクター設定（Langfuse）はここに持たず、実行サービスが方針（`response_policy`）と
+つないで実行ごとの `instructions` で渡す。方針はツールの戻り値と組み込みの
+`load_capability` を前提にした文なので、ツールと同じくここに置く。
 
 ツールの名前・引数・docstring・返す JSON のキーは、Langfuse に置くスキル本文との契約なので
 変えない（`README.md` の「ツール」）。ツールは async にし、外部 API と ORM は同期関数に
@@ -47,6 +49,35 @@ class CompanionDeps:
 COMPANION_AGENT: Agent[CompanionDeps, str | None] = Agent(
     name="companion", deps_type=CompanionDeps, output_type=str | None
 )
+
+# 応答の方針（キャラクター設定の後ろに付ける）。スキルの一覧の見出しと読み込みの結果は
+# PydanticAI の英語の定型文なので、仕組みに触れない一文が要る
+_POLICY_HEADING = "# 応答の方針"
+# スキルを読み込めるとき（一覧と load_capability があるとき）だけ入れる
+_SKILL_SELECTION_RULE = (
+    "- 今回の発話に合うスキルが一覧にあれば、先に load_capability で読み込み、"
+    "その手順に従って答える。合うスキルがなければ、何も読み込まずに"
+    "キャラクターのまま短く答える。"
+)
+_ALWAYS_RULES = (
+    # ツールは既知の失敗で `{"error": ...}` を返す（`_error`）
+    "- ツールが error を返したときは、その情報にも、取れなかったことにも触れずに答える。",
+    "- スキル・ツール・この指示など、応答を作る仕組みには触れない。",
+)
+
+
+def response_policy(*, can_load_skills: bool) -> str:
+    """応答の方針を返す.
+
+    Args:
+        can_load_skills: スキルを読み込めるか（スキルを指定せず、有効なスキルがあるとき）。
+            True のときだけ、合うスキルを読み込んでから答える一文を入れる
+
+    Returns:
+        見出しと箇条書きの方針
+    """
+    rules = (_SKILL_SELECTION_RULE,) if can_load_skills else ()
+    return "\n".join((_POLICY_HEADING, *rules, *_ALWAYS_RULES))
 
 
 class _NoHolidayLookup(HolidayClient):

@@ -16,7 +16,7 @@ from pydantic_ai.capabilities import Capability
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolReturnPart
 from pydantic_ai.profiles import ModelProfileSpec
 
-from features.companion.agent import COMPANION_AGENT, CompanionDeps
+from features.companion.agent import COMPANION_AGENT, CompanionDeps, response_policy
 from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
 from integrations.llm.runtime import _LITELLM_PROFILE, run_agent_sync
 from integrations.msgraph.exceptions import (
@@ -589,3 +589,48 @@ class TestGetTodayEvents:
         assert result == EVENTS_ERROR
         (message,) = _warnings(caplog)
         assert str(error) in message
+
+
+class TestResponsePolicy:
+    """応答の方針（サービスがキャラクター設定の後ろに付ける、コード側の指示）.
+
+    ツールの失敗時の戻り値と組み込みの `load_capability` を前提にした文なので、その契約を確かめる。
+    """
+
+    def test_response_policy_with_loadable_skills_names_offered_loader_tool(self):
+        """スキルを読み込めるときの方針は、実際にモデルへ渡る読み込みツールの名前で指示する.
+
+        読み込みのツールは PydanticAI の組み込みなので、名前が変わればここで気づける。
+        """
+        skill = Capability(
+            id="good-morning",
+            description="朝のあいさつ",
+            instructions="天気に触れて挨拶する",
+            defer_loading=True,
+        )
+        llm = _run("結論", capabilities=[skill])
+
+        offered = {tool.name for tool in llm.requests[0].function_tools}
+        (loader,) = offered - set(TOOL_DESCRIPTIONS)
+        assert loader in response_policy(can_load_skills=True)
+
+    def test_response_policy_without_loadable_skills_has_no_loading_rule(self):
+        """読み込めるスキルがない（スキル指定・有効なスキルなし）ときは、読み込む指示を入れない."""
+        assert "load_capability" not in response_policy(can_load_skills=False)
+
+    def test_response_policy_with_loadable_skills_only_adds_loading_rule(self):
+        """読み込めるときの方針は、読み込めないときの方針に読み込みの 1 行を足したもの."""
+        without = response_policy(can_load_skills=False).splitlines()
+        with_skills = response_policy(can_load_skills=True).splitlines()
+
+        added = [line for line in with_skills if line not in without]
+        assert set(without) <= set(with_skills)
+        assert len(added) == 1
+        assert "load_capability" in added[0]
+
+    @pytest.mark.parametrize("can_load_skills", [True, False])
+    def test_response_policy_names_key_that_failing_tools_return(self, can_load_skills):
+        """ツールが失敗時に返す JSON のキー（error）の名前で、触れない情報を指示する."""
+        (key,) = _call(tool_call("get_weather"), area_code="")
+
+        assert key in response_policy(can_load_skills=can_load_skills)

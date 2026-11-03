@@ -27,6 +27,7 @@ from features.companion.skills import (
     build_skill_capabilities,
     loaded_skill,
     resolve_required_prompt,
+    skill_instructions,
 )
 from integrations.langfuse.client import resolve_prompt
 from integrations.llm.exceptions import LLMOutputError
@@ -167,6 +168,43 @@ class TestResolveRequiredPrompt:
             resolve_required_prompt(ref)
 
         assert exc_info.value.ref_name == "companion-system"
+
+
+@pytest.mark.unit
+class TestSkillInstructions:
+    """skill_instructions（スキルを指定したときに、本文を実行の指示に足す節にする）."""
+
+    def test_skill_instructions_puts_stripped_body_under_heading(self):
+        """見出しの下に、前後の空白を除いた本文を置く."""
+        skill = CompanionSkillFactory.build(
+            name="good-night",
+            prompt_ref=LangfusePromptRefFactory.build(
+                fallback_text=f"\n  {NIGHT_BODY}\n"
+            ),
+        )
+
+        heading, blank, body = skill_instructions(skill).split("\n")
+
+        assert heading.startswith("# ")
+        assert blank == ""
+        assert body == NIGHT_BODY
+
+    @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
+    def test_skill_instructions_with_empty_body_raises_error_with_ref_name(
+        self, fallback_text
+    ):
+        """本文が空なら、参照の識別名を持つ PromptUnavailableError を送出する."""
+        skill = CompanionSkillFactory.build(
+            name="good-night",
+            prompt_ref=LangfusePromptRefFactory.build(
+                name="companion-skill-good-night", fallback_text=fallback_text
+            ),
+        )
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            skill_instructions(skill)
+
+        assert exc_info.value.ref_name == "companion-skill-good-night"
 
 
 @pytest.mark.unit
