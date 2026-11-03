@@ -2,7 +2,7 @@
 
 Companion は、全体で 1 つのエージェント設定（共通のキャラクター設定）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。呼び出し時の発話からエージェントが合うスキルを選び、その手順に従ってセリフを返す設計で、いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
 
-> **現状:** 今あるのは設定のモデルと管理画面、エージェントと常設ツール（`agent.py`）です。スキルの読み込み・実行サービス・実行 API はまだありません。
+> **現状:** 今あるのは設定のモデルと管理画面、エージェントと常設ツール（`agent.py`）、スキルの読み込み（`skills.py`）です。実行サービス・実行 API はまだありません。
 
 - キャラクター設定とスキルの本文は DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 - スキルの一覧（名前・説明・本文の参照）は admin で、設定のインラインとして管理します
@@ -15,6 +15,8 @@ features/companion/
 ├── models.py                  # CompanionConfig / CompanionSkill
 ├── admin.py                   # 設定 + スキルのインライン + 有効化アクション
 ├── agent.py                   # COMPANION_AGENT と常設ツール（get_datetime / get_weather / get_today_events）
+├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・本文の解決・loaded_skill
+├── exceptions.py              # CompanionError / PromptUnavailableError
 └── migrations/0001_initial.py
 ```
 
@@ -60,6 +62,17 @@ features/companion/
 - 設定の節: 基本設定 / キャラクター / 天気 / 回数制限 / 音声（畳んで表示）/ メタ情報（畳んで表示）
 - キャラクター設定とスキル本文の参照は、`LangfusePromptRef` を検索して選びます（識別名・Langfuse プロンプト名・説明が検索対象）
 - 一覧のアクション「選択した設定を有効にする」で有効な設定を切り替えられます（1 件だけ選ぶ。2 件以上選ぶとエラーになり、何も変わりません）
+
+## スキル
+
+`skills.py` の `build_skill_capabilities(skills)` が、スキルを PydanticAI の on-demand capability（`Capability(id=<スキル名>, description=<説明>, defer_loading=True)`）にします。並びは渡した順のままです。capability は解決した本文を覚えるので、実行ごとに組み立てて渡します。
+
+- **モデルが最初に見るのは一覧（カタログ）だけです。** system にスキル名と説明が `- good-morning: 朝のあいさつ（「おはよう」など）` の形で並び、組み込みの `load_capability` ツールが足されます。一覧の見出し・囲み（`<context id="capability:deferred_capabilities">`）・後ろの注記は PydanticAI の英語の定型文です。本文はまだ送りません。
+- **モデルが `load_capability`（引数 `id` にスキル名）を呼ぶと、そのスキルの本文が以降のリクエストに入ります。** ツールの結果（読み込んだ旨の英語の定型文だけ）の直後の system（`<context id="capability:<スキル名>">` で囲んだもの）として届き、ユーザーの発話やツールの結果には混ざりません（送る形は `tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract` で固定）。読み込まなかったスキルの本文は送りません。
+- **本文は読み込まれたときに Langfuse から取り、1 回の実行で 1 回だけ解決します。** 読み込んだ後はリクエストのたびに本文を送りますが、最初に解決した本文を使い続けます（実行の途中で本文は変わりません）。解決は呼び出し元のスレッドで行います。
+- **本文が空ならエラーです。** Langfuse から取れないときはフォールバックテキストを使います。解決した本文が空（空白だけを含む）なら、`PromptUnavailableError`（`exceptions.py`。参照の識別名を `ref_name` に持つ）で実行ごと止めます。読み込めた体で続けたり、そのスキルを飛ばしたりはしません。
+- **本文は変数のない text プロンプトです。** `{{...}}` は展開せず、そのまま届きます。日時・天気・予定のデータは本文に埋め込めないので、下の「ツール」を呼ぶよう本文に書きます（ツール名は表の名前のとおりに書く）。
+- **使ったスキルは `loaded_skill(messages)` で実行の履歴から取ります。** 最初に読み込みに成功したスキル名を返し、どれも読み込まなければ `None` です。不明な名前・読み込み済みのスキルを読み込もうとすると、モデルに再試行を求めるだけで数えません。再試行は PydanticAI の既定で 1 回までなので、続けて 2 回失敗すると実行が失敗します（`LLMOutputError`）。
 
 ## ツール
 
