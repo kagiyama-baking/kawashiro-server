@@ -182,11 +182,6 @@ def _build_model_settings(
 
     推論深度は `reasoning_effort` として送る。空文字（admin の「無効」）は送らない。
     """
-    optional: dict[str, Any] = {}
-    if max_tokens is not None:
-        optional["max_tokens"] = max_tokens
-    if reasoning_effort:
-        optional["openai_reasoning_effort"] = reasoning_effort
     return OpenAIChatModelSettings(
         extra_body={
             "metadata": {
@@ -194,7 +189,8 @@ def _build_model_settings(
                 "environment": settings.environment,
             }
         },
-        **optional,
+        **({} if max_tokens is None else {"max_tokens": max_tokens}),
+        **({"openai_reasoning_effort": reasoning_effort} if reasoning_effort else {}),
     )
 
 
@@ -203,7 +199,7 @@ def _run_options(
     *,
     max_tokens: int | None,
     conversation_id: str | None,
-    reasoning_effort: str | None = None,
+    reasoning_effort: str | None,
 ) -> dict[str, Any]:
     """通常の実行とストリーミングの実行で揃える引数を組み立てる."""
     return {
@@ -247,8 +243,8 @@ async def arun_agent(
             伝播していればそちらを優先する）。PydanticAI の既定は実行ごとの UUID で、
             セッションが増え続けるので、省略時はサービス名にする
         reasoning_effort: 推論深度（`low` / `medium` / `high` など）。`reasoning_effort`
-            として送る。None や空文字なら送らない。モデルが非対応なら LiteLLM の
-            `drop_params` で捨てられる
+            として送る。None や空文字なら送らない。非対応のモデルでの扱いは LiteLLM
+            Proxy の設定による（`drop_params` が有効なら捨てられる）
 
     Returns:
         実行結果
@@ -364,7 +360,11 @@ def stream_text_sync(
                 message_history=message_history,
                 deps=deps,
                 **_run_options(
-                    settings, max_tokens=max_tokens, conversation_id=conversation_id
+                    settings,
+                    max_tokens=max_tokens,
+                    conversation_id=conversation_id,
+                    # 推論深度を指定するのは HN Agent の Orchestrator だけ（チャットには送らない）
+                    reasoning_effort=None,
                 ),
             ) as run,
         ):
