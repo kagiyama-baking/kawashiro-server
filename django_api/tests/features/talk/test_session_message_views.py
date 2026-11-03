@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from pydantic_ai.exceptions import ModelHTTPError, ModelTimeoutError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -26,12 +25,6 @@ User = get_user_model()
 def _disable_langfuse_client():
     with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
-
-
-@pytest.fixture(autouse=True)
-def _reset_throttle_counts():
-    """talk_chat スロットルの計数をテスト間で持ち越さない."""
-    cache.clear()
 
 
 @pytest.fixture

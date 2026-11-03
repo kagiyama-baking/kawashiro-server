@@ -163,6 +163,8 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 | `CHAT_MAX_OUTPUT_TOKENS` | 1024 | チャット応答の `max_tokens` |
 | ページネーション | `default_limit=20` / `max_limit=100` | `LimitOffsetPagination`（セッション一覧のみ） |
 
+スロットルの回数は Redis（Django のキャッシュ）に記録し、全ワーカーで共有します（接続先はルート [README.md](../../../README.md) の `CACHE_REDIS_URL`）。Redis に届かないと、スロットルの付いた API は 500 になります。
+
 **認可**: セッション・メッセージ・音声のいずれも `user=request.user` でクエリセットを絞るため、他人の `session_id` / `msg_id` を指定しても 404 になります（`ChatMessage.id` はグローバル連番のため、編集・音声系では `session_id` と所有者の二重チェックを行っています）。
 
 **エラーマッピング**（`views/_common.classify_synthesis_error`。HTTP の応答と SSE の `error` で共用）: プレースホルダー設定不足 → 400、予報区コード不明 → 404、外部 API/LLM/TTS/祝日のタイムアウト → 504、ネットワーク・パース・認証エラーと LLM の HTTP エラー（4xx / 5xx）や不正な応答 → 502、MS Graph 等の設定不備 → 503、それ以外 → 500。
