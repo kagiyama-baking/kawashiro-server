@@ -106,6 +106,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | TTS 設定 | 音声合成の有効化、モデル、スタイル、話速、フォーマット（既定 WAV） |
 | システムプロンプト | 手順 4-3 で作った `talk-{設定名}-system` を選択 |
 | ユーザープロンプト | 手順 4-3 で作った `talk-{設定名}-user` を選択 |
+| 生成回数の上限（1 分あたり） | 「回数制限」の節。`/talk/synthesize/` を 1 分間に呼べる回数（既定 10）。数え方と超えたときの応答は [Talk の README](../django_api/features/talk/README.md) の「上限・レート制限」を参照 |
 
 プロンプト参照 2 本はどちらも必須の外部キーです。`{{weather}}` `{{events}}` `{{datetime}}` はプロンプト本文に含まれていれば自動的に検出・展開されます（有効化フラグはありません）。
 

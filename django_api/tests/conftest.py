@@ -5,6 +5,7 @@ import os
 import pydantic_ai.models
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from pydantic_ai.models import override_allow_model_requests
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -19,6 +20,25 @@ os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
 
 User = get_user_model()
+
+
+@pytest.fixture(autouse=True)
+def _in_process_cache(settings):
+    """キャッシュを Redis からプロセス内のものに替え、テストの前後で空にする.
+
+    CI の django-api-test に Redis はない。LocMemCache は LOCATION が同じなら
+    インスタンスをまたいで中身を共有するので、空にしないとスロットルの計数が
+    次のテストへ持ち越される。
+    """
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "kawashiro-tests",
+        }
+    }
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture

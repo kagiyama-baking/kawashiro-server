@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.core.files.base import ContentFile
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -77,8 +76,7 @@ def media_root(settings, tmp_path):
 
 @pytest.fixture
 def chat_turn_env(media_root):
-    """Langfuse から切り離し、スロットルの計数を持ち越さない環境にする."""
-    cache.clear()
+    """Langfuse から切り離す（スロットルの計数は `tests/conftest.py` が毎回空にする）."""
     with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
         yield
 

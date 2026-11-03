@@ -22,6 +22,7 @@ from ..serializers import (
     TodayInfoResponseSerializer,
 )
 from ..services import TalkService
+from ..throttling import TalkConfigRateThrottle
 from ._common import handle_synthesis_error
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class TalkSynthesizeView(APIView):
 
     authentication_classes = (authentication.TokenAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
+    throttle_classes = (TalkConfigRateThrottle,)
     renderer_classes = [JSONRenderer]
 
     @extend_schema(
@@ -76,6 +78,12 @@ class TalkSynthesizeView(APIView):
 
 管理画面でTTSが有効になっている場合、音声データを直接返します（デフォルト: WAV形式）。
 TTS無効の場合はJSONでテキストのみ返します。
+
+## 回数制限
+
+設定ごとに 1 分あたりの上限があり（管理画面の「生成回数の上限」、既定 10 回）、
+ユーザーと設定の組で数えます。超えると 429 を返し、`Retry-After` に
+次に生成できるまでの秒数が入ります。失敗した生成も 1 回と数えます。
 """,
         request=TalkRequestSerializer,
         responses={
@@ -92,6 +100,12 @@ TTS無効の場合はJSONでテキストのみ返します。
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(
                 description="設定が見つからない / 予報区コードが見つからない"
+            ),
+            429: OpenApiResponse(
+                description=(
+                    "設定の生成回数の上限（1 分あたり）を超えた。"
+                    "Retry-After 秒後に再試行"
+                )
             ),
             502: OpenApiResponse(description="外部APIへの接続エラー"),
             503: OpenApiResponse(description="サービス設定エラー"),

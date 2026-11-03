@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 from django.conf import settings
-from django.core.validators import RegexValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 
 
@@ -105,6 +105,19 @@ class TalkConfig(models.Model):
         related_name="+",
         verbose_name="ユーザープロンプト",
         help_text="ユーザープロンプトテンプレートの Langfuse参照",
+    )
+
+    # 回数制限
+    # db_default は、この列を知らない旧版（イメージだけ戻したとき）でも行を作れるようにする
+    synthesize_rate_limit = models.PositiveIntegerField(
+        default=10,
+        db_default=10,
+        validators=[MinValueValidator(1)],
+        verbose_name="生成回数の上限（1 分あたり）",
+        help_text=(
+            "`/talk/synthesize/` を 1 分間に呼べる回数（ユーザーとプリセットの組で"
+            "数える）。超えると 429 を返す。この API にだけ効き、チャットには効かない"
+        ),
     )
 
     class Meta:

@@ -93,7 +93,7 @@ Tavily Web 検索の API キー（暗号化保存）とタイムアウト（既�
 | LLM設定 / LLMサービス設定 | モデルエイリアス + Virtual Key、サービスへの割り当て | [integrations/llm/README.md](integrations/llm/README.md) |
 | Langfuseプロンプト参照 | Langfuse プロンプトのマッピング + フォールバック（HN 用 8 本は migration で自動投入、**Talk 用は手動作成**） | [integrations/llm/README.md](integrations/llm/README.md) |
 | HackerNews Agent設定 | 閾値・ポーリング・プロンプト 8 本の割り当て | [features/hn_agent/README.md](features/hn_agent/README.md) |
-| 会話生成設定（TalkConfig） | プリセットごとの動作パラメータ + プロンプト 2 本 + TTS | [features/talk/README.md](features/talk/README.md) |
+| 会話生成設定（TalkConfig） | プリセットごとの動作パラメータ + プロンプト 2 本 + TTS + 生成回数の上限 | [features/talk/README.md](features/talk/README.md) |
 | HNスレッド / チャットセッション | 収集データ・会話履歴の閲覧と削除 | — |
 
 ## テストの実行

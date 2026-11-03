@@ -11,7 +11,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
@@ -344,6 +346,49 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+# ============================================================
+# キャッシュ設定（レート制限の記録先）
+# ============================================================
+# DRF のスロットルは回数をキャッシュに記録する。プロセス内のキャッシュだと gunicorn の
+# ワーカーごとに別々に数え、実効の上限がワーカー数倍になるので、Redis で共有する。
+
+
+def cache_url_from_broker(broker_url: str, cache_db: int = 1) -> str:
+    """Celery のブローカー URL の DB 番号を cache_db に替え、キャッシュの接続先にする.
+
+    Celery の DB と分けるのは、`cache.clear()` が DB を丸ごと消す（FLUSHDB）ため。
+    パスの DB 番号だけを替え、認証情報・ホスト・クエリはそのまま残す。DB 番号を
+    パスで表さない URL は替えられず、ブローカーが cache_db を使っていると同じ DB に
+    なるので、どちらも CACHE_REDIS_URL の設定を求める（URL は秘密を含み得るので、
+    文言には出さない）。
+    """
+    parts = urlsplit(broker_url)
+    path = re.fullmatch(r"/*([0-9]*)/*", parts.path)
+    if (
+        parts.scheme not in ("redis", "rediss")
+        or path is None
+        or "db" in parse_qs(parts.query)
+        or int(path.group(1) or 0) == cache_db
+    ):
+        raise ValueError(
+            "CELERY_BROKER_URL から、Celery と別の Redis の DB を指す URL を"
+            "作れません。CACHE_REDIS_URL を設定してください。"
+        )
+    return urlunsplit(parts._replace(path=f"/{cache_db}"))
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": (
+            os.getenv("CACHE_REDIS_URL") or cache_url_from_broker(CELERY_BROKER_URL)
+        ),
+        "KEY_PREFIX": "kawashiro",
+        # Redis が応答しないとき、ワーカーを待たせ続けずにすぐ失敗させる（秒）
+        "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
+    }
+}
 
 # ============================================================
 # TTS設定

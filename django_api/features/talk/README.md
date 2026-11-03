@@ -25,6 +25,7 @@ features/talk/
 │   └── audio.py         # ChatSessionMessageAudioView, ChatSessionAudioBulkDeleteView
 ├── signals.py           # post_delete で音声ファイルを物理削除（apps.ready() で登録）
 ├── permissions.py       # IsSessionOwner（session / session 経由オブジェクトの所有者判定）
+├── throttling.py        # TalkConfigRateThrottle（/talk/synthesize/ のプリセットごとの回数制限）
 ├── holiday_client.py    # holidays-jp API クライアント（インスタンス内キャッシュ）
 ├── constants.py         # DAY_OF_WEEK_JA（曜日の日本語マッピング）
 ├── admin.py             # TalkConfig / ChatSession / ChatMessage の管理画面
@@ -53,10 +54,12 @@ features/talk/
 | `tts_format` | choices `wav` / `mp3` / `ogg`, 既定 `wav` | 出力音声フォーマット |
 | `system_prompt_ref` | FK → `LangfusePromptRef` (PROTECT) | システムプロンプトの参照。必須 |
 | `user_prompt_ref` | FK → `LangfusePromptRef` (PROTECT) | ユーザープロンプトテンプレートの参照。必須 |
+| `synthesize_rate_limit` | PositiveInteger, `10`（1 以上） | `/talk/synthesize/` を 1 分間に呼べる回数。ユーザーとプリセットの組で数え、超えると 429（下の「上限・レート制限」）。この API にだけ効き、チャットには効かない |
 
 - `save()` は `full_clean()` を呼ぶため、`area_code` の 6 桁チェックは admin 経由でもコード経由でも必ず走ります。
 - `on_delete=PROTECT` のため、`TalkConfig` から参照されている `LangfusePromptRef` は削除できません。
 - TTS 設定は `get_tts_options()` でまとめて辞書化され、`tts_enabled=False` のときは `None`（＝音声生成をスキップ）になります。
+- `synthesize_rate_limit` は DB 側にも既定値（10）を持つので、イメージだけ前の版に戻しても（[../../../docs/deployment.md](../../../docs/deployment.md) のロールバック）、admin でプリセットを作れます。
 
 > **Note (廃止フィールド):** かつて存在した `use_weather` / `use_events` / `use_datetime` は **migration `0014_remove_talkconfig_use_datetime_and_more` で削除済み**です。現在はプロンプト本文中の `{{placeholder}}` を自動検出する方式で、フラグによる有効・無効の切り替えはありません。
 
@@ -92,7 +95,7 @@ features/talk/
 
 | メソッド | パス | 用途 |
 |---|---|---|
-| `POST` | `/talk/synthesize/` | `config_name` のプリセットで会話を生成。任意の `user_prompt`（最大 4000 文字）を渡すと `user_prompt_ref` の代わりにその文字列を使う |
+| `POST` | `/talk/synthesize/` | `config_name` のプリセットで会話を生成。任意の `user_prompt`（最大 4000 文字）を渡すと `user_prompt_ref` の代わりにその文字列を使う。プリセットの回数制限を超えると 429（下の「上限・レート制限」） |
 | `GET` | `/talk/datetime/` | 本日の日付・時刻・曜日・祝日名を返す |
 | `GET` | `/talk/configs/` | 登録済みプリセット一覧（`name` / `display_name` / `tts_enabled`） |
 
@@ -158,10 +161,13 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 | 項目 | 値 | 備考 |
 |---|---|---|
 | throttle scope `talk_chat` | 20 リクエスト/分 | `ScopedRateThrottle`。メッセージ送信と編集再送に適用（`settings.py` の `DEFAULT_THROTTLE_RATES`） |
+| `/talk/synthesize/` の回数 | プリセットごと（`TalkConfig.synthesize_rate_limit`、既定 10 回/分） | `TalkConfigRateThrottle`。ユーザーとプリセットの組で直近 1 分を数え、超えると 429 + `Retry-After`（次に通るまでの秒数）。失敗した生成も 1 回と数える。上限は毎回 DB から読むので、admin で変えると次のリクエストから効く。`config_name` を検証できない本文（400）とプリセットがないもの（404）は数えない（生成を始めてからの 400 / 404、たとえばプレースホルダーの設定不足や予報区コード不明は数える） |
 | `SESSION_MAX_MESSAGES` | 50 | user + assistant の合計。到達後の送信は 400。編集再送は対象以降を置き換えるので確認しない。確認は事前検証で行うので、同時送信や編集で少し超えることがある |
 | `content` 最大長 | 4000 文字 | 送信・編集どちらも同じ |
 | `CHAT_MAX_OUTPUT_TOKENS` | 1024 | チャット応答の `max_tokens` |
 | ページネーション | `default_limit=20` / `max_limit=100` | `LimitOffsetPagination`（セッション一覧のみ） |
+
+スロットルの回数は Redis（Django のキャッシュ）に記録し、全ワーカーで共有します（接続先はルート [README.md](../../../README.md) の `CACHE_REDIS_URL`）。Redis に届かないと、スロットルの付いた API は 500 になります。記録の読み書きは原子的でないので、同時に送ると、同時に処理される数（ワーカー数）まで上限を超えて通ることがあります。
 
 **認可**: セッション・メッセージ・音声のいずれも `user=request.user` でクエリセットを絞るため、他人の `session_id` / `msg_id` を指定しても 404 になります（`ChatMessage.id` はグローバル連番のため、編集・音声系では `session_id` と所有者の二重チェックを行っています）。
 

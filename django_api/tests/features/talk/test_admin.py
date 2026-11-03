@@ -35,6 +35,16 @@ class TestTalkConfigAdmin:
         assert "天気設定" in fieldset_names
         assert "TTS設定" in fieldset_names
         assert "プロンプト参照（Langfuse）" in fieldset_names
+        assert "回数制限" in fieldset_names
+
+    def test_rate_limit_fieldset_shows_synthesize_rate_limit(self):
+        """回数制限の節に生成回数の上限があり、畳まずに見せる."""
+        admin_instance = TalkConfigAdmin(TalkConfig, AdminSite())
+
+        options = dict(admin_instance.fieldsets)["回数制限"]
+
+        assert options["fields"] == ("synthesize_rate_limit",)
+        assert "collapse" not in options.get("classes", ())
 
     def test_tts_fieldset_has_collapse_class(self):
         """TTS設定セクションは collapse クラスを持つ"""
