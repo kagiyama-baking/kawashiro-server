@@ -133,12 +133,22 @@ class Orchestrator:
         devils_advocate_agent: DevilsAdvocateAgent | None = None,
         security_responder_agent: SecurityResponderAgent | None = None,
         reporter: Reporter | None = None,
+        notify: bool = True,
     ):
-        """初期化."""
+        """初期化.
+
+        Args:
+            detective_agent: Detective Agent（省略時は遅延生成）
+            devils_advocate_agent: Devil's Advocate Agent（省略時は遅延生成）
+            security_responder_agent: Security Responder Agent（省略時は遅延生成）
+            reporter: 通知に使う Reporter（省略時は遅延生成）
+            notify: False なら調査結果を Slack へ送らない（Reporter も作らない）
+        """
         self._detective_agent = detective_agent
         self._devils_advocate_agent = devils_advocate_agent
         self._security_responder_agent = security_responder_agent
         self._reporter = reporter
+        self._notify = notify
 
     @property
     def detective_agent(self) -> DetectiveAgent:
@@ -351,7 +361,10 @@ class Orchestrator:
             pass  # Langfuse未設定時は無視
 
     def _send_notifications(self, results: dict[str, Any]) -> None:
-        """調査結果をSlackに通知."""
+        """調査結果をSlackに通知（notify=False なら何もしない）."""
+        if not self._notify:
+            logger.info("Slack通知を抑止: [%d]", results["thread_hn_id"])
+            return
         if results.get("detective_result"):
             self.reporter.report_detective(results["detective_result"])
         if results.get("devils_advocate_result"):

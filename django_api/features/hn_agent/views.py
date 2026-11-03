@@ -196,10 +196,8 @@ def _run_all_impl() -> dict:
 def _investigate_impl(thread: HNThread, skip_notify: bool) -> dict:
     """investigateの実装（Langfuseトレース対応）."""
     from .orchestrator import Orchestrator
-    from .reporter import Reporter
 
-    reporter = None if skip_notify else Reporter()
-    orchestrator = Orchestrator(reporter=reporter)
+    orchestrator = Orchestrator(notify=not skip_notify)
     result = orchestrator.investigate(thread)
     _flush_langfuse()
     return result

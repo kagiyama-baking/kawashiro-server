@@ -401,6 +401,45 @@ class TestOrchestrator:
 
         mock_reporter.report_detective.assert_called_once()
 
+    def test_investigate_by_default_creates_reporter_and_notifies(
+        self, mock_detective_agent, orchestrator_llm, thread
+    ):
+        """既定では Reporter を遅延生成して通知する（定期実行と一括実行）."""
+        orchestrator = Orchestrator(detective_agent=mock_detective_agent)
+        orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
+
+        with patch("features.hn_agent.orchestrator.Reporter") as reporter_class:
+            orchestrator.investigate(thread)
+
+        reporter_class.assert_called_once_with()
+        reporter_class.return_value.report_detective.assert_called_once()
+
+    def test_investigate_with_notify_false_does_not_create_reporter(
+        self, mock_detective_agent, orchestrator_llm, thread
+    ):
+        """notify=False なら結果があっても Reporter を作らない（Slack へ送らない）."""
+        orchestrator = Orchestrator(detective_agent=mock_detective_agent, notify=False)
+        orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
+
+        with patch("features.hn_agent.orchestrator.Reporter") as reporter_class:
+            result = orchestrator.investigate(thread)
+
+        assert result["detective_result"] is not None
+        reporter_class.assert_not_called()
+
+    def test_investigate_with_notify_false_does_not_use_given_reporter(
+        self, mock_detective_agent, mock_reporter, orchestrator_llm, thread
+    ):
+        """notify=False なら渡された Reporter も呼ばない."""
+        orchestrator = Orchestrator(
+            detective_agent=mock_detective_agent, reporter=mock_reporter, notify=False
+        )
+        orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
+
+        orchestrator.investigate(thread)
+
+        mock_reporter.report_detective.assert_not_called()
+
     def test_orchestrator_calls_detective_and_devils_advocate(
         self, orchestrator, orchestrator_llm, thread, mock_reporter
     ):
