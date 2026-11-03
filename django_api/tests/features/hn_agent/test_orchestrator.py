@@ -401,6 +401,45 @@ class TestOrchestrator:
 
         mock_reporter.report_detective.assert_called_once()
 
+    def test_investigate_by_default_creates_reporter_and_notifies(
+        self, mock_detective_agent, orchestrator_llm, thread
+    ):
+        """既定では Reporter を遅延生成して通知する（定期実行と一括実行）."""
+        orchestrator = Orchestrator(detective_agent=mock_detective_agent)
+        orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
+
+        with patch("features.hn_agent.orchestrator.Reporter") as reporter_class:
+            orchestrator.investigate(thread)
+
+        reporter_class.assert_called_once_with()
+        reporter_class.return_value.report_detective.assert_called_once()
+
+    def test_investigate_with_notify_false_does_not_create_reporter(
+        self, mock_detective_agent, orchestrator_llm, thread
+    ):
+        """notify=False なら結果があっても Reporter を作らない（Slack へ送らない）."""
+        orchestrator = Orchestrator(detective_agent=mock_detective_agent, notify=False)
+        orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
+
+        with patch("features.hn_agent.orchestrator.Reporter") as reporter_class:
+            result = orchestrator.investigate(thread)
+
+        assert result["detective_result"] is not None
+        reporter_class.assert_not_called()
+
+    def test_investigate_with_notify_false_does_not_use_given_reporter(
+        self, mock_detective_agent, mock_reporter, orchestrator_llm, thread
+    ):
+        """notify=False なら渡された Reporter も呼ばない."""
+        orchestrator = Orchestrator(
+            detective_agent=mock_detective_agent, reporter=mock_reporter, notify=False
+        )
+        orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
+
+        orchestrator.investigate(thread)
+
+        mock_reporter.report_detective.assert_not_called()
+
     def test_orchestrator_calls_detective_and_devils_advocate(
         self, orchestrator, orchestrator_llm, thread, mock_reporter
     ):
@@ -529,6 +568,29 @@ class TestOrchestrator:
         settings = request.model_settings
         assert settings["extra_body"]["metadata"]["service_name"] == "orchestrator"
         assert "max_tokens" not in settings
+
+    @pytest.mark.parametrize(
+        ("configured", "expected"),
+        [("low", "low"), ("medium", "medium"), ("high", "high"), ("", None)],
+    )
+    def test_request_uses_configured_reasoning_effort(
+        self,
+        orchestrator,
+        orchestrator_llm,
+        thread,
+        hn_agent_config,
+        configured,
+        expected,
+    ):
+        """推論深度は有効な HNAgentConfig の値を使い、「無効」なら指定しない."""
+        hn_agent_config.reasoning_effort = configured
+        hn_agent_config.save()
+        orchestrator_llm.enqueue("結論")
+
+        orchestrator.investigate(thread)
+
+        settings = orchestrator_llm.requests[0].model_settings
+        assert settings.get("openai_reasoning_effort") == expected
 
     def test_tool_names_and_descriptions_match_prompt_contract(
         self, orchestrator, orchestrator_llm, thread
@@ -694,6 +756,60 @@ class TestOrchestratorThroughHTTP:
         mock_reporter.report_detective.assert_not_called()
         thread.refresh_from_db()
         assert thread.is_investigated is False
+
+    def test_reasoning_effort_is_sent_only_in_orchestrator_requests(
+        self,
+        fake_litellm,
+        thread,
+        mock_reporter,
+        hn_llm_services,
+        hn_agent_config,
+    ):
+        """推論深度は Orchestrator の送信本文にだけ載り、サブエージェントには送らない."""
+        hn_agent_config.reasoning_effort = "medium"
+        hn_agent_config.save()
+        hn_client = MagicMock()
+        hn_client.get_comments.return_value = []
+        hn_client.flatten_comments.return_value = []
+        tavily_client = MagicMock()
+        tavily_client.search_context.return_value = []
+        orchestrator = Orchestrator(
+            detective_agent=DetectiveAgent(
+                hn_client=hn_client, tavily_client=tavily_client
+            ),
+            reporter=mock_reporter,
+        )
+        fake = fake_litellm(
+            litellm_response(
+                None,
+                finish_reason="tool_calls",
+                tool_calls=[
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "detective_investigate",
+                            "arguments": "{}",
+                        },
+                    }
+                ],
+            ),
+            litellm_response('{"title_ja": "和訳", "comment_highlights": []}'),
+            litellm_response("結論"),
+        )
+
+        result = orchestrator.investigate(thread)
+
+        assert result["detective_result"] is not None
+        sent = [
+            (body["metadata"]["service_name"], body.get("reasoning_effort"))
+            for body in fake.bodies
+        ]
+        assert sent == [
+            ("orchestrator", "medium"),
+            ("detective", None),
+            ("orchestrator", "medium"),
+        ]
 
 
 @pytest.mark.integration
@@ -898,6 +1014,8 @@ class TestRunOrchestratorTask:
 
         assert result["hn_id"] == 800
         assert result["steps"] == 1
+        # 定期実行は通知する（notify=False を渡さない）
+        mock_orch_class.assert_called_once_with()
         mock_orch_class.return_value.investigate.assert_called_once_with(thread)
 
     def test_run_orchestrator_thread_not_found(self):

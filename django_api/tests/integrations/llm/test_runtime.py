@@ -114,6 +114,98 @@ class TestRequestBodyContract:
         assert "max_tokens" not in fake.bodies[0]
         assert "max_completion_tokens" not in fake.bodies[0]
 
+    @pytest.mark.parametrize("alias", ALIASES)
+    @pytest.mark.parametrize("effort", ["low", "medium", "high"])
+    def test_reasoning_effort_any_alias_is_sent_and_rest_is_unchanged(
+        self, fake_litellm, alias, effort
+    ):
+        """推論深度はどのエイリアスでも reasoning_effort で送り、他の項目は変えない."""
+        fake = fake_litellm(litellm_response())
+
+        run_agent_sync(
+            Agent(name="contract"),
+            _settings(alias),
+            user_prompt="u",
+            instructions="s",
+            max_tokens=1024,
+            reasoning_effort=effort,
+        )
+
+        assert fake.bodies == [
+            {
+                "model": alias,
+                "stream": False,
+                "messages": [
+                    {"role": "system", "content": "s"},
+                    {"role": "user", "content": "u"},
+                ],
+                "max_tokens": 1024,
+                "reasoning_effort": effort,
+                "metadata": {"service_name": "talk", "environment": "test-env"},
+            }
+        ]
+
+    @pytest.mark.parametrize("alias", ALIASES)
+    @pytest.mark.parametrize("effort", ["low", "medium", "high"])
+    def test_reasoning_effort_with_tools_any_alias_changes_only_reasoning_effort(
+        self, fake_litellm, alias, effort
+    ):
+        """ツールを使う実行（Orchestrator と同じ形）でも、変わるのは reasoning_effort だけ.
+
+        PydanticAI には推論を有効にしたときだけ通る分岐（ツールの強制・思考の補完・
+        構造化出力の選択）があるので、ツール結果を返す 2 回目の本文まで比べる。
+        """
+
+        def bodies(**options: object) -> list[dict]:
+            agent = Agent(name="contract", output_type=str | None)
+
+            @agent.tool
+            async def lookup(ctx: RunContext[None]) -> str:
+                """調べる."""
+                return "結果"
+
+            fake = fake_litellm(
+                litellm_response(
+                    None,
+                    finish_reason="tool_calls",
+                    tool_calls=[
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "lookup", "arguments": "{}"},
+                        }
+                    ],
+                ),
+                litellm_response("完了"),
+            )
+            run_agent_sync(
+                agent, _settings(alias), user_prompt="u", instructions="s", **options
+            )
+            return fake.bodies
+
+        with_effort = bodies(reasoning_effort=effort)
+        without_effort = bodies()
+
+        assert [body["reasoning_effort"] for body in with_effort] == [effort, effort]
+        assert [
+            {key: value for key, value in body.items() if key != "reasoning_effort"}
+            for body in with_effort
+        ] == without_effort
+
+    @pytest.mark.parametrize("effort", [None, ""])
+    def test_reasoning_effort_unset_or_empty_is_not_sent(self, fake_litellm, effort):
+        """推論深度が未指定・空文字（admin の「無効」）なら本文に載せない."""
+        fake = fake_litellm(litellm_response())
+
+        run_agent_sync(
+            Agent(name="contract"),
+            _settings(),
+            user_prompt="u",
+            reasoning_effort=effort,
+        )
+
+        assert "reasoning_effort" not in fake.bodies[0]
+
     def test_user_text_with_system_tag_is_sent_unescaped(self, fake_litellm):
         """ユーザー入力の <system> を書き換えない（vendor 付きエイリアスでも）."""
         fake = fake_litellm(litellm_response())

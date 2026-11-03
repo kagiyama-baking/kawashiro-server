@@ -8,22 +8,16 @@ from features.hn_agent.tasks import poll_front_page
 class Command(BaseCommand):
     """HNフロントページのポーリングを手動実行."""
 
-    help = "HNフロントページをポーリングしてスナップショットを記録する"
-
-    def add_arguments(self, parser):
-        """コマンド引数を追加."""
-        parser.add_argument(
-            "--sync",
-            action="store_true",
-            default=False,
-            help="Celeryを経由せず同期的に実行する（デフォルト）",
-        )
+    help = (
+        "HNフロントページをポーリングしてスナップショットを記録する（ポーリングのみ。"
+        "トリガーされたスレッドの調査は run_hn_investigation --hn-id <hn_id> で行う）"
+    )
 
     def handle(self, *args, **options):
         """コマンドを実行."""
         self.stdout.write("HN Watcherを実行中...")
 
-        # 同期実行、Orchestrator自動起動はスキップ
+        # Celeryを経由せず同期実行し、Orchestratorの自動起動はしない
         result = poll_front_page(auto_investigate=False)
 
         self.stdout.write(

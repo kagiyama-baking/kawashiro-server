@@ -84,8 +84,9 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
   5. `run_agent_sync` で実行（同期の `investigate()` から呼ぶ）。`UsageLimits(request_limit=11, tool_calls_limit=10)` で打ち切り、超過時は `final_summary` が固定文になる
   6. 各ツールの docstring（発火条件を含む）を見て LLM がどのツールを何回呼ぶかを判断。同じステップで複数のツールを呼ぶと並行に動く
   7. いずれかのエージェントが結果を返した場合のみ `HNThread.is_investigated = True` を一元的に更新
-  8. Reporter に結果を渡して Slack 通知
+  8. Reporter に結果を渡して Slack 通知（送らない入口は下の「Slack 通知の有無」）
 - **ツールの契約**: `detective_investigate` / `devils_advocate_analyze` / `security_responder_analyze` の関数名と docstring は Langfuse 上のプロンプトが前提にしているので、変えるときはプロンプトも直します（`test_tool_names_and_descriptions_match_prompt_contract` で固定）。ツール内の例外は `{"error": ...}` の JSON にして LLM へ返し、そのステップは `success: False` になります。どのツールも引数を取らないので、モデルが付けた引数は検証せず無視します。未知のツール名はモデルへ伝えて続行します（打ち切りは上の `UsageLimits`）
+- **推論深度**: 有効な `HNAgentConfig.reasoning_effort`（`low` / `medium` / `high`）を、Orchestrator のリクエストにだけ `reasoning_effort` として載せます（サブエージェントには送りません）。「無効」（空文字）なら載せません。モデルが受け付けないときの扱いと選び方は [docs/initial-setup.md](../../../docs/initial-setup.md) の 5-2 を参照してください。送信本文は `tests/integrations/llm/test_runtime.py` と `tests/features/hn_agent/test_orchestrator.py` で固定しています
 - **ツール選択の判断基準（System Prompt）**
   1. セキュリティ話題（脆弱性/CVE/情報漏洩/ハッキング/0-day） → `security_responder_analyze` 単独
   2. 新技術・プロダクト発表（Show HN/アーキテクチャ論争） → `detective_investigate` + `devils_advocate_analyze`
@@ -204,12 +205,18 @@ Celery タスクとして次の 3 本が登録されています（`tasks.py` �
 コンテナ内から管理コマンドでも手動実行できます。
 
 ```bash
-# Watcher（--sync でトリガーされた調査も同期実行）
-docker compose exec django-api python manage.py run_hn_watcher --sync
+# Watcher（ポーリングのみ。トリガーされたスレッドの手動の調査は下の run_hn_investigation で行う）
+docker compose exec django-api python manage.py run_hn_watcher
 
 # 指定スレッドの調査（--skip-notify で Slack 通知を抑止）
 docker compose exec django-api python manage.py run_hn_investigation --hn-id 12345678 --skip-notify
 ```
+
+### Slack 通知の有無
+
+定期実行（Celery タスク）と `POST /hn-agent/run-all/` は、調査結果を Slack に送ります。`POST /hn-agent/investigate/` は `skip_notify`（**既定 `true`**）、`run_hn_investigation` は `--skip-notify` で送信を止められます（`Orchestrator(notify=False)`）。
+
+通知を止めても、調査と調査済みマークは同じです。そのため、通知を止めて調査したスレッドは、以後の定期実行でも Slack に送られません。
 
 ## API エンドポイント
 
@@ -219,6 +226,8 @@ docker compose exec django-api python manage.py run_hn_investigation --hn-id 123
 | `POST` | `/hn-agent/watcher/run/` | Watcher のみ手動実行 |
 | `POST` | `/hn-agent/investigate/` | 指定 `hn_id` を Orchestrator 調査 |
 | `GET` | `/hn-agent/threads/` | 監視中スレッド一覧 |
+
+Slack に送るかどうかは、上の「Slack 通知の有無」を参照してください。
 
 ## ファイル構成
 
@@ -240,7 +249,7 @@ features/hn_agent/
 │   └── security_responder.py # Security Responder Agent（CVE / パッチ整理）
 └── management/
     └── commands/
-        ├── run_hn_watcher.py       # Watcher 手動実行
+        ├── run_hn_watcher.py       # Watcher 手動実行（ポーリングのみ）
         └── run_hn_investigation.py # Orchestrator 手動実行
 ```
 

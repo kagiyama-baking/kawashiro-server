@@ -143,6 +143,24 @@ class TestPollFrontPage:
         triggered_ids = [t["hn_id"] for t in result["triggered_threads"]]
         assert 100 not in triggered_ids
 
+    @patch("features.hn_agent.tasks._get_score_threshold", return_value=100)
+    @patch("features.hn_agent.tasks.HNAlgoliaClient")
+    def test_poll_front_page_with_triggered_thread_investigates_with_notification(
+        self, mock_client_class, _mock_threshold, _mock_delay, sample_stories
+    ):
+        """閾値超えスレッドは通知ありの Orchestrator で調査する（notify=False を渡さない）."""
+        mock_client_class.return_value.get_front_page_stories.return_value = (
+            sample_stories
+        )
+
+        with patch("features.hn_agent.orchestrator.Orchestrator") as mock_orch_class:
+            poll_front_page(auto_investigate=True)
+
+        mock_orch_class.assert_called_once_with()
+        mock_orch_class.return_value.investigate.assert_called_once_with(
+            HNThread.objects.get(hn_id=100)
+        )
+
     @patch("features.hn_agent.tasks.HNAlgoliaClient")
     def test_poll_front_page_empty_stories(self, mock_client_class, _mock_delay):
         """空のストーリーリストを正しく処理する."""
