@@ -207,7 +207,8 @@ features/companion/
 
 - 上限は有効な設定の `rate_limit`（1 分あたり、既定 10 回）で、ユーザーごとに直近 1 分の回数を数えます（`throttling.py` の `CompanionRateThrottle`）。超えると 429 を返し、`Retry-After` に次の 1 回が通るまでの秒数を入れます。
 - 上限は毎回 DB から読むので、admin で変えると次のリクエストから効きます。上限を下げた直後（直近 1 分の回数が新しい上限より多いとき）も `Retry-After` を付けます（DRF の既定では付かない）。
-- **回数制限を通ったリクエストは、結果によらず 1 回と数えます。** 生成の失敗（5xx）も、入力の不正・不明なスキル（400）も数えます。数えないのは、429 で断ったリクエストと、有効な設定がないとき（503）だけです。
+- **回数制限を通ったリクエストは、結果によらず 1 回と数えます。** 生成の失敗（5xx）も、入力の不正・不明なスキル（400）も数えます。数えないのは、回数制限より前に断ったリクエスト（DRF は認証と権限の確認を先に行うので、401 は数えない）、429 で断ったリクエスト、有効な設定がないとき（503）です。
+- 有効な設定が複数あるとき（上の「CompanionConfig リファレンス」）は、そのうち id が最も小さい設定の `rate_limit` で数えてから 503 を返します（この 503 は数えます）。
 - 回数の記録先は Django のキャッシュ（Redis。ルート [README](../../../README.md) の `CACHE_REDIS_URL`）で、全ワーカーが共有します。Redis に届かないときと、同時に送ったときの挙動は Talk と同じです（[Talk の README](../talk/README.md) の「上限・レート制限」）。
 
 ### 使用例
@@ -228,16 +229,10 @@ curl -s -X POST http://localhost:8000/companion/run/ \
   | jq -r .audio_data | base64 -d > reply.wav
 ```
 
-## Langfuse プロンプトの命名
+## Langfuse プロンプトのラベル
 
-| 用途 | Langfuse プロンプト名 | 種類 |
-|---|---|---|
-| キャラクター設定（全スキル共通） | `companion-system` | text |
-| スキルの本文 | `companion-skill-<スキル名>`（例: `companion-skill-good-morning`） | text（変数なし） |
-
-- `LangfusePromptRef` の識別名も、Langfuse プロンプト名と同じ名前にします。
-- どちらも **migration では作りません**（リポジトリは公開しているので、本文を git に置かない）。Langfuse のプロンプトと `LangfusePromptRef` は手で作ります。Chat 型のプロンプトは未対応です（`fallback_text` に落ちます）。
 - **開発と本番は 1 つの Langfuse を共有しています。** 開発の参照はラベル `staging` を使い、確定した版にだけ `production` を付けます。
+- プロンプト名と参照の識別名の付け方は [LLM の README の §5](../../integrations/llm/README.md#5-langfuse-プロンプト命名規約) を参照してください。
 
 ## 初期セットアップ
 

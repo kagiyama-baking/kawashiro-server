@@ -237,7 +237,7 @@ Playwright E2E などの詳細は [docs/development.md](docs/development.md) を
 | 会話生成・チャットセッションの仕様 | [django_api/features/talk/README.md](django_api/features/talk/README.md) |
 | メディア変換の制限値と仕様 | [django_api/features/media/README.md](django_api/features/media/README.md) |
 | HN Agent のアーキテクチャとプロンプト | [django_api/features/hn_agent/README.md](django_api/features/hn_agent/README.md) |
-| Companion の設定（キャラクター設定・スキル）・実行 API とプロンプトの命名 | [django_api/features/companion/README.md](django_api/features/companion/README.md) |
+| Companion の設定（キャラクター設定・スキル）・実行 API・Langfuse プロンプトのラベル | [django_api/features/companion/README.md](django_api/features/companion/README.md) |
 | 気象庁天気予報クライアント | [django_api/integrations/weather/README.md](django_api/integrations/weather/README.md) |
 | 音声合成 API・モデル配置・CPU/GPU 切替 | [sbv2_api/README.md](sbv2_api/README.md) |
 | フロントエンドの画面構成・開発コマンド | [frontend/README.md](frontend/README.md) |

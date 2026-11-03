@@ -67,12 +67,7 @@ docker compose exec django-api python manage.py createsuperuser
 
 `LLM 設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
 
-> **Note:** 次のレコードは、マイグレーションにより**既存の設定を雛形として `is_active=False` で自動複製されます**（雛形が存在する場合のみ）。
->
-> - `devils_advocate` / `security_responder`: `integrations/llm/migrations/0012_add_new_agent_service_choices.py` が `detective` から複製
-> - `companion`: `integrations/llm/migrations/0013_add_companion_service_choice.py` が `talk` から複製
->
-> 新規環境で雛形を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成されたレコードを使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。
+> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。`companion` の自動複製（マイグレーション `llm/0013`）は [LLM の README の §4（LLM サービス設定）](../django_api/integrations/llm/README.md#llm-サービス設定llmserviceconfig) を参照してください。
 
 ### 4-3. Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -136,7 +131,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 キャラクター設定 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
 
 1. **LLM サービス設定の `Companion` を有効にする** — マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
-2. **Langfuse に text プロンプトを作る** — キャラクター設定の `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトの命名) の規則に従います（開発と本番で Langfuse を共有しているため）
+2. **Langfuse に text プロンプトを作る** — キャラクター設定の `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
 3. **Langfuse プロンプト参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` は手順 2 と同じ名前にし、ラベルは手順 2 で付けたものにします
 4. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`キャラクター設定` に手順 3 の `companion-system` を選び、画面下の「スキル」に名前・説明（どんな発話のときに使うか）・本文（手順 3 の参照）を 1 行ずつ追加して保存します
 5. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）

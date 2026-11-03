@@ -125,7 +125,7 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 
 - **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りの `LangfusePromptRef` として自動投入されます。
 - **Talk の 2 本は自動生成されません。** migration `talk/0012` は「マイグレーション実行時点で存在した `TalkConfig`」の分だけ参照を作り、既存の `system_prompt` を `fallback_text` へ移管したものです。**その後に新しい `TalkConfig` を追加する場合は、`LangfusePromptRef` を admin で手動作成**してから FK に割り当ててください（`system_prompt_ref` / `user_prompt_ref` はどちらも必須・`PROTECT`）。
-- **Companion の参照も自動生成されません。** 本文を git に置かないため migration はなく、Langfuse の text プロンプトと `LangfusePromptRef` を手動で作成してから `CompanionConfig.persona_prompt_ref` / `CompanionSkill.prompt_ref` に割り当てます（命名とラベルの使い分けは [../../features/companion/README.md](../../features/companion/README.md)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3）。
+- **Companion の参照も自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `LangfusePromptRef` を手動で作成してから `CompanionConfig.persona_prompt_ref` / `CompanionSkill.prompt_ref` に割り当てます（ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3）。
 
 いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。未登録でも `fallback_text` で動作します。
 
@@ -210,6 +210,6 @@ except LLMClientError:
 |---|---|
 | [../../features/hn_agent/README.md](../../features/hn_agent/README.md) | HN Agent の構成・`HNAgentConfig`・8 本のプロンプト割り当て |
 | [../../features/talk/README.md](../../features/talk/README.md) | 会話生成・チャットセッション・`TalkConfig` のプロンプト変数 |
-| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `CompanionSkill`・実行の流れと API・プロンプトの命名 |
+| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `CompanionSkill`・実行の流れと API・Langfuse プロンプトのラベル |
 | [../../../docs/initial-setup.md](../../../docs/initial-setup.md) | 初回セットアップ手順（admin 設定・環境変数の投入順） |
 | [../../README.md](../../README.md) | Django API 全体構成 |
