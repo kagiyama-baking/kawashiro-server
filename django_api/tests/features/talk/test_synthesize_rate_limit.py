@@ -217,16 +217,28 @@ class TestSynthesizeRateLimitChangedInAdmin:
     def test_synthesize_lowered_limit_applies_to_next_request(
         self, authenticated_client, admin_site_client, make_config
     ):
-        """上限を直近の回数より下げると、次は 429 になり Retry-After も付く."""
-        config = make_config(synthesize_rate_limit=3)
-        assert _synthesize(authenticated_client).status_code == 200
-        assert _synthesize(authenticated_client).status_code == 200
+        """上限を直近の回数より下げると次は 429 になり、通るまでの秒数が付く.
 
-        _change_limit_in_admin(admin_site_client, config, 1)
-        blocked = _synthesize(authenticated_client)
+        上限 1 なら、最も新しい記録（1_020）が 1 分の窓から抜ける 1_080 に通る。
+        """
+        config = make_config(synthesize_rate_limit=3)
+
+        with patch.object(TalkConfigRateThrottle, "timer") as timer:
+            for now in (1_000.0, 1_010.0, 1_020.0):
+                timer.return_value = now
+                assert _synthesize(authenticated_client).status_code == 200
+            _change_limit_in_admin(admin_site_client, config, 1)
+            timer.return_value = 1_030.0
+            blocked = _synthesize(authenticated_client)
+            timer.return_value = 1_079.0
+            still_blocked = _synthesize(authenticated_client)
+            timer.return_value = 1_080.0
+            allowed = _synthesize(authenticated_client)
 
         assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert 0 < int(blocked["Retry-After"]) <= 60
+        assert blocked["Retry-After"] == "50"
+        assert still_blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert allowed.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
