@@ -32,10 +32,11 @@ description: コード変更に伴うドキュメント更新チェック。コ�
 | `django_api/*/urls.py`・views の追加・削除 | `django_api/README.md` 機能一覧表 + 該当機能 README の API 表 |
 | `django_api/integrations/` 配下の新アプリ追加 | `.claude/CLAUDE.md` リポジトリ構造 + `django_api/README.md` 機能一覧表 |
 | `django_api/integrations/llm/`・`langfuse/`（モデル・クライアント・config） | `django_api/integrations/llm/README.md`（3レイヤ表・admin 表・命名規約） |
-| `django_api/features/talk/`（モデル・constants・views・services） | `django_api/features/talk/README.md`（TalkConfig 表・API 表・上限値） |
+| `django_api/features/talk/`（モデル・views・services） | `django_api/features/talk/README.md`（TalkConfig 表・API 表・上限値） |
 | `django_api/features/media/views.py`（`MAX_*` 等の制限値） | `django_api/features/media/README.md` 制限値表 |
 | `django_api/features/hn_agent/` | `django_api/features/hn_agent/README.md` |
 | `django_api/integrations/weather/` | `django_api/integrations/weather/README.md` |
+| `django_api/integrations/holiday/`（日時情報のキー・祝日 API のタイムアウト） | `django_api/features/talk/README.md`（プレースホルダー表の `{{datetime}}` 行） |
 | admin 設定モデルの migration（フィールド増減・seed 投入） | 該当 README + `docs/initial-setup.md` の投入手順 |
 | `@shared_task` の追加・改名 | 該当機能 README + `docs/initial-setup.md`（PeriodicTask 登録名） |
 | `management/commands/` の追加・変更 | 該当機能 README の運用節（開発ツールなら `docs/development.md`） |

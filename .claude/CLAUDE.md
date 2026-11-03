@@ -22,6 +22,7 @@ kawashiro-server/
 │   │   ├── outlook/         # Outlook Calendar連携API
 │   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
 │   │   ├── weather/         # 気象庁天気予報クライアント
+│   │   ├── holiday/         # 祝日APIクライアント・本日の日時情報（Djangoアプリではない）
 │   │   ├── hn/              # Hacker News Algolia APIクライアント
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
@@ -175,7 +176,7 @@ django_api/tests/
 ├── core/                    # admin並び順等のコアテスト
 ├── integrations/            # 外部サービス連携テスト
 │   ├── llm/ langfuse/ msgraph/ onedrive/ outlook/ tts/
-│   └── weather/ hn/ tavily/ slack/
+│   └── weather/ holiday/ hn/ tavily/ slack/
 ├── features/                # ビジネス機能テスト
 │   ├── talk/ media/ hn_agent/
 ├── user/                    # ユーザー管理テスト

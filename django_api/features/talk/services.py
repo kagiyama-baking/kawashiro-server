@@ -5,13 +5,13 @@ import logging
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from django.utils import timezone
 from langfuse import observe
 
+from integrations.holiday import HolidayClient, get_datetime_info
 from integrations.langfuse.client import (
     extract_variables,
     get_prompt_with_variables,
@@ -23,9 +23,7 @@ from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
 from integrations.weather.client import WeatherClient
 
-from .constants import DAY_OF_WEEK_JA
 from .exceptions import PlaceholderDataMissingError
-from .holiday_client import HolidayClient
 from .llm_agents import (
     TALK_CHAT_AGENT,
     TALK_SYNTHESIZE_AGENT,
@@ -389,26 +387,8 @@ class TalkService:
                 end_date=today,
             )
         if "datetime" in required_keys:
-            tasks["datetime"] = self._get_datetime_info
+            tasks["datetime"] = partial(get_datetime_info, self.holiday_client)
         return tasks
-
-    def _get_datetime_info(self) -> dict[str, Any]:
-        """日時情報を取得."""
-        now = datetime.now(timezone.get_current_timezone())
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%H:%M:%S")
-        day_of_week = now.strftime("%A")
-        day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
-
-        holiday_name = self.holiday_client.get_holiday_name(date_str)
-
-        return {
-            "date": date_str,
-            "time": time_str,
-            "day_of_week": day_of_week,
-            "day_of_week_ja": day_of_week_ja,
-            "holiday_name": holiday_name,
-        }
 
     def _build_prompt_variables(self, data: dict[str, Any]) -> dict[str, str]:
         """プレースホルダーデータを LangfusePromptRef 用変数に変換する.

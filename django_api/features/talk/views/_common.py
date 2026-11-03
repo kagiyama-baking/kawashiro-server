@@ -6,6 +6,7 @@ from django.core.files.base import ContentFile
 from rest_framework import status
 from rest_framework.response import Response
 
+from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
 from integrations.llm.exceptions import LLMClientError, LLMTimeoutError
 from integrations.msgraph.exceptions import (
     AuthenticationError,
@@ -20,11 +21,7 @@ from integrations.weather.exceptions import (
     WeatherTimeoutError,
 )
 
-from ..exceptions import (
-    HolidayNetworkError,
-    HolidayTimeoutError,
-    PlaceholderDataMissingError,
-)
+from ..exceptions import PlaceholderDataMissingError
 from ..models import ChatMessage, ChatSession
 
 logger = logging.getLogger(__name__)
