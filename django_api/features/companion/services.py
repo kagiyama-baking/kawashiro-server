@@ -74,7 +74,7 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         セリフ・使ったスキル・音声
 
     Raises:
-        CompanionNotConfiguredError: 有効な設定がない場合
+        CompanionNotConfiguredError: 有効な設定がないか、複数ある場合
         UnknownSkillError: 指定したスキルが有効な設定にないか、無効な場合
         LLMConfigurationError: companion の LLM サービス設定がない場合
         PromptUnavailableError: キャラクター設定か、使うスキルの本文が空の場合
@@ -119,11 +119,19 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
 
 
 def _active_config() -> CompanionConfig:
-    """有効な設定を返す（キャラクター設定の参照ごと）."""
+    """有効な設定を返す（キャラクター設定の参照ごと）.
+
+    有効な設定が複数ある（2 件を同時に有効にすると起こりうる）ときは、どれかを選ばずに
+    設定の不備として止め、原因を error ログに出す。
+    """
     try:
         return CompanionConfig.objects.get_active_config()
     except CompanionConfig.DoesNotExist as exc:
         raise CompanionNotConfiguredError() from exc
+    except CompanionConfig.MultipleObjectsReturned as exc:
+        error = CompanionNotConfiguredError(multiple=True)
+        logger.error("%s", error)
+        raise error from exc
 
 
 def _find_skill(skills: Sequence[CompanionSkill], name: str) -> CompanionSkill:

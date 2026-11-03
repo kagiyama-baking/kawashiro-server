@@ -155,12 +155,12 @@ def _catalog_entries(request: RecordedRequest) -> list[str]:
     ]
 
 
-def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
-    """サービスのモジュールが出した warning のメッセージを返す."""
+def _logged(caplog: pytest.LogCaptureFixture, level: int) -> list[str]:
+    """サービスのモジュールが出した、指定したレベルのログのメッセージを返す."""
     return [
         record.getMessage()
         for record in caplog.records
-        if record.name == SERVICES and record.levelno == logging.WARNING
+        if record.name == SERVICES and record.levelno == level
     ]
 
 
@@ -343,6 +343,17 @@ class TestSkillSpecified:
 class TestBeforeModelErrors:
     """モデルを呼ぶ前に止まる失敗."""
 
+    @pytest.fixture
+    def two_active_configs(self, db) -> None:
+        """有効な設定が 2 件ある DB（2 件を同時に有効にしたときに起こりうる）.
+
+        save() はほかの設定を無効にするので、update で 2 件とも有効にする。
+        """
+        CompanionConfigFactory.create_batch(
+            2, persona_prompt_ref__fallback_text=PERSONA
+        )
+        CompanionConfig.objects.update(is_active=True)
+
     def test_run_companion_without_active_config_raises_not_configured_error(
         self, db, llm_settings
     ):
@@ -355,6 +366,29 @@ class TestBeforeModelErrors:
 
         assert llm.requests == []
         llm_settings.assert_not_called()
+
+    def test_run_companion_with_two_active_configs_raises_not_configured_error(
+        self, two_active_configs, llm_settings
+    ):
+        """有効な設定が複数あれば、どれも使わずに CompanionNotConfiguredError（LLM の設定も読まない）."""
+        llm = _scripted("こんにちは")
+
+        with pytest.raises(CompanionNotConfiguredError) as exc_info:
+            _run(llm)
+
+        assert exc_info.value.multiple is True
+        assert llm.requests == []
+        llm_settings.assert_not_called()
+
+    def test_run_companion_with_two_active_configs_logs_error_naming_cause(
+        self, two_active_configs, caplog
+    ):
+        """有効な設定が複数あることを error ログに出す（503 の原因を追えるように）."""
+        with pytest.raises(CompanionNotConfiguredError):
+            _run(_scripted("こんにちは"))
+
+        (message,) = _logged(caplog, logging.ERROR)
+        assert "有効な Companion 設定が複数あります" in message
 
     def test_run_companion_without_llm_settings_propagates_configuration_error(
         self, config, llm_settings
@@ -551,5 +585,5 @@ class TestLangfuseOutput:
         reply = _run(_scripted("おはよう！"))
 
         assert reply.text == "おはよう！"
-        (message,) = _warnings(caplog)
+        (message,) = _logged(caplog, logging.WARNING)
         assert "Langfuse に送れません" in message

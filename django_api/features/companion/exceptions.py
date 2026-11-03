@@ -23,12 +23,19 @@ class PromptUnavailableError(CompanionError):
 
 
 class CompanionNotConfiguredError(CompanionError):
-    """有効な Companion 設定がない."""
+    """有効な Companion 設定を 1 件に決められない（ないか、複数ある）.
 
-    def __init__(self):
+    Attributes:
+        multiple: 有効な設定が複数ある（False なら 1 件もない）
+    """
+
+    def __init__(self, *, multiple: bool = False):
         super().__init__(
-            "有効な Companion 設定がありません（管理画面で設定を有効にしてください）"
+            "有効な Companion 設定が複数あります（管理画面で 1 件だけを有効にし直してください）"
+            if multiple
+            else "有効な Companion 設定がありません（管理画面で設定を有効にしてください）"
         )
+        self.multiple = multiple
 
 
 class UnknownSkillError(CompanionError):

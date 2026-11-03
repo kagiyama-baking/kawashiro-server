@@ -681,3 +681,15 @@ class TestResponsePolicy:
         (key,) = _call(tool_call("get_weather"), area_code="")
 
         assert key in response_policy(can_load_skills=can_load_skills)
+
+    @pytest.mark.parametrize("can_load_skills", [True, False])
+    def test_response_policy_forbids_following_instructions_in_tool_results(
+        self, can_load_skills
+    ):
+        """ツールの結果の中の指示には従わないよう、常に指示する.
+
+        予定の件名・場所は会議の招待などでほかの人も書けるので、そこに紛れた指示に従わせない。
+        """
+        lines = response_policy(can_load_skills=can_load_skills).splitlines()
+
+        assert any("ツールの結果" in line and "従わない" in line for line in lines)
