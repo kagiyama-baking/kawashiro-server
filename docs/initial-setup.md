@@ -114,7 +114,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | 項目 | 既定値 | 説明 |
 |---|---|---|
 | 有効 | OFF | **有効にできるのは 1 件のみ**（保存時に他が自動で無効化されます） |
-| 推論深度 | `low` | Orchestrator のリクエストにだけ `reasoning_effort` として送ります。モデルが非対応なら LiteLLM が `drop_params` で捨てます（エラーになるなら「無効」を選択） |
+| 推論深度 | `low` | Orchestrator の推論深度として LiteLLM へ送られます（送り方は [HN Agent README](../django_api/features/hn_agent/README.md)）。モデルが非対応なら、Proxy で `drop_params` が有効な場合は LiteLLM が捨てます。エラーになるなら「無効」を選択 |
 | スコア閾値 | 100 | 調査をトリガーするスコア |
 | 速度閾値 | 50.0 | 調査をトリガーするスコア上昇速度（ポイント/時間） |
 | ポーリング間隔（秒） | 600 | 最低 60。**実行スケジュールは制御しません**（手順 7 参照） |
