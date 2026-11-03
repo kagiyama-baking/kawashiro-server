@@ -1,24 +1,24 @@
-import { Outlet } from 'react-router';
+import { Outlet, useMatch } from 'react-router';
 import { Sidebar } from './Sidebar';
 
 export function AppLayout() {
+    // チャットは自前でスクロールし、余白も持つ
+    const isChat = useMatch('/talk/*') !== null;
+
     return (
-        <div className="bg-background flex h-svh overflow-hidden">
+        <div className="bg-background flex h-svh flex-col overflow-hidden lg:flex-row">
             <Sidebar />
-            <main className="relative flex-1 overflow-auto">
-                {/* ドットグリッド背景 */}
-                <div
-                    className="pointer-events-none absolute inset-0 opacity-[0.02]"
-                    style={{
-                        backgroundImage:
-                            'radial-gradient(oklch(0.75 0.20 155) 1px, transparent 1px)',
-                        backgroundSize: '24px 24px',
-                    }}
-                />
-                <div className="relative pt-16 pr-6 pb-8 pl-14 lg:px-10 lg:pt-8 lg:pb-10">
+            {isChat ? (
+                <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
                     <Outlet />
-                </div>
-            </main>
+                </main>
+            ) : (
+                <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
+                    <div className="px-(--page-pad-x) pt-(--page-pad-top) pb-(--page-pad-bottom)">
+                        <Outlet />
+                    </div>
+                </main>
+            )}
         </div>
     );
 }

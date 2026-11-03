@@ -1,5 +1,6 @@
 import { Upload } from 'lucide-react';
-import { type ChangeEvent, useRef } from 'react';
+import { type ChangeEvent, useRef, useState } from 'react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,22 +19,27 @@ export function PdfFileUploader({
     disabled,
 }: PdfFileUploaderProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // 上限を超えたファイルは、続行の確認が取れるまでここで保留する
+    const [oversizedFile, setOversizedFile] = useState<File | null>(null);
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         if (file.size > SOFT_LIMIT_BYTES) {
-            const mb = Math.round(file.size / (1024 * 1024));
-            const proceed = window.confirm(
-                `ファイルサイズが${mb}MBあります（推奨: 200MB以下）。\n` +
-                    `処理は試みますが、ブラウザが重くなる可能性があります。続行しますか？`,
-            );
-            if (!proceed) {
-                e.target.value = '';
-                return;
-            }
+            setOversizedFile(file);
+            return;
         }
         onFileSelected(file);
+    };
+
+    const handleProceed = () => {
+        if (oversizedFile) onFileSelected(oversizedFile);
+        setOversizedFile(null);
+    };
+
+    const handleAbort = () => {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setOversizedFile(null);
     };
 
     const handleClick = () => {
@@ -42,10 +48,8 @@ export function PdfFileUploader({
 
     return (
         <div className="space-y-2">
-            <Label htmlFor="pdf-file" className="text-[13px] font-medium">
-                PDFファイル
-            </Label>
-            <div className="flex items-center gap-3">
+            <Label htmlFor="pdf-file">PDFファイル</Label>
+            <div className="flex flex-wrap items-center gap-3">
                 <Input
                     id="pdf-file"
                     ref={fileInputRef}
@@ -60,15 +64,29 @@ export function PdfFileUploader({
                     variant="outline"
                     onClick={handleClick}
                     disabled={disabled}
-                    className="transition-all duration-200 hover:shadow-[0_0_12px_oklch(0.75_0.20_155/0.15)]"
                 >
-                    <Upload className="mr-2 h-4 w-4" />
+                    <Upload />
                     PDFを選択
                 </Button>
-                <p className="text-muted-foreground text-[11px]">
+                <p className="text-muted-foreground text-xs">
                     クライアント側で処理（ファイルはサーバーに送信されません）
                 </p>
             </div>
+
+            <ConfirmDialog
+                open={oversizedFile !== null}
+                title="大きなファイルです"
+                confirmLabel="続行"
+                onConfirm={handleProceed}
+                onCancel={handleAbort}
+            >
+                ファイルサイズが
+                {oversizedFile
+                    ? Math.round(oversizedFile.size / (1024 * 1024))
+                    : 0}
+                MBあります（推奨:
+                200MB以下）。処理は試みますが、ブラウザが重くなる可能性があります。続行しますか？
+            </ConfirmDialog>
         </div>
     );
 }

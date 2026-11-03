@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
-import { TerminalText } from '@/components/common/TerminalText';
+import { PageHeader } from '@/components/common/PageHeader';
 import {
     Card,
     CardContent,
@@ -53,20 +53,17 @@ export function PdfEditPage() {
     }, [reset]);
 
     return (
-        <div className="mx-auto max-w-6xl space-y-6">
-            <div className="animate-slide-up">
-                <h1 className="font-heading text-foreground text-2xl font-bold tracking-tight">
-                    PDF編集
-                </h1>
-                <TerminalText text="pdf-edit --pages" />
-            </div>
+        <div className="max-w-(--page-max-width)">
+            <PageHeader
+                eyebrow="PDF"
+                title="PDF編集"
+                lead="ページの並び替えや削除をブラウザの中だけで行います"
+            />
 
-            <Card className="animate-slide-up neon-border">
+            <Card>
                 <CardHeader>
-                    <CardTitle className="font-heading font-semibold">
-                        ページ編集
-                    </CardTitle>
-                    <CardDescription className="text-[13px]">
+                    <CardTitle>ページ編集</CardTitle>
+                    <CardDescription>
                         並び替え・削除・分割・余白トリミングを1画面で行います。クリック=単一選択
                         / Shift+クリック=範囲選択 /
                         Ctrl(Cmd)+クリック=トグル選択。
@@ -79,7 +76,7 @@ export function PdfEditPage() {
                     />
 
                     {isLoading && (
-                        <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
+                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             {progress
                                 ? `サムネイル生成中… ${progress.current} / ${progress.total}`
@@ -91,7 +88,7 @@ export function PdfEditPage() {
 
                     {editorPages.length > 0 && (
                         <>
-                            <Separator className="opacity-30" />
+                            <Separator />
                             <EditToolbar
                                 onCropClick={() => setCropDialogOpen(true)}
                                 sourceBytes={sourceBytes}

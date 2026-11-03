@@ -118,21 +118,25 @@ function CropDialogContent({
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="bg-background/50 flex flex-1 items-center justify-center overflow-auto rounded-lg p-4">
+                {/* 中央寄せは m-auto で行う。items-center だと高さがあふれたときに上端へスクロールできない */}
+                <div className="bg-background flex min-h-0 flex-1 overflow-auto rounded-md p-4">
                     {preview.status === 'loading' && (
-                        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                        <div className="text-muted-foreground m-auto flex items-center gap-2 text-sm">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             高解像度プレビューを生成中…
                         </div>
                     )}
                     {preview.status === 'error' && (
-                        <p className="text-destructive text-sm">
+                        <p className="text-destructive m-auto text-sm">
                             {preview.errorMessage ??
                                 'プレビューの生成に失敗しました'}
                         </p>
                     )}
                     {preview.status === 'ready' && preview.url && (
+                        // ReactCrop.css が img の max-height を inherit で上書きするので、親で制限する。
+                        // 15rem はダイアログの見出し・ボタン・余白の分。低い画面では 20rem を保ちスクロールさせる
                         <ReactCrop
+                            className="m-auto max-h-[max(20rem,calc(95vh-15rem))]"
                             crop={crop}
                             onChange={(_, percent) => setCrop(percent)}
                             keepSelection
@@ -141,19 +145,19 @@ function CropDialogContent({
                             <img
                                 src={preview.url}
                                 alt="トリミングプレビュー"
-                                className="max-h-[78vh] max-w-full object-contain"
+                                className="object-contain"
                             />
                         </ReactCrop>
                     )}
                 </div>
 
-                <DialogFooter className="gap-2">
+                <DialogFooter>
                     <Button
                         variant="ghost"
                         onClick={handleClear}
-                        className="mr-auto text-[oklch(0.65_0.25_25)]"
+                        className="text-destructive hover:text-destructive sm:mr-auto"
                     >
-                        <Trash2 className="mr-1.5 h-4 w-4" />
+                        <Trash2 />
                         トリミングをクリア
                     </Button>
                     <Button variant="outline" onClick={onClose}>

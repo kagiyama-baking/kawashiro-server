@@ -159,6 +159,13 @@ uv run pytest tests/ -m unit                                # マーカー指定
 
 テストの命名規則・ファクトリ・共通フィクスチャなどの規約は [../.claude/CLAUDE.md](../.claude/CLAUDE.md) を参照してください。
 
+### 4.6 レート制限の記録先（Redis）
+
+API のレート制限（ログイン・チャット・`/talk/synthesize/`）は回数を Django のキャッシュに記録し、`settings.py` はその記録先を Redis にしています（全ワーカーで共有するため。接続先はルート [README.md](../README.md) の `CACHE_REDIS_URL`）。
+
+- **テストでは Redis は要りません。** `tests/conftest.py` の autouse フィクスチャがプロセス内の `LocMemCache` に差し替え、テストの前後で空にします（CI の `django-api-test` にも Redis はありません）
+- **ホストで `runserver` を動かすなら Redis が要ります。** `redis` コンテナはホストへポートを公開していないので、届く Redis を `CACHE_REDIS_URL` で指定してください。届かないと、レート制限の付いた API が 500 になります
+
 ## 5. リント・フォーマット
 
 ### Python（django_api / sbv2_api）
@@ -241,6 +248,10 @@ uv run ruff check . && uv run ruff format --check .
 ### ホストから pytest すると DB 接続で失敗する
 
 `.env` の `DB_ENGINE` が有効なままです。[4.1](#41-最大の落とし穴ホストからは-db-に繋がらない) を参照してください。
+
+### ホストで runserver するとログインやチャットが 500 になる
+
+レート制限の記録先の Redis に届いていません。[4.6](#46-レート制限の記録先redis) を参照してください。
 
 ### 実行中コンテナのコードとリポジトリのブランチは別物になりうる
 

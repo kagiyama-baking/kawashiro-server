@@ -8,7 +8,8 @@ import {
     expect,
     it,
 } from 'vitest';
-import { convertImage, extractApiErrorMessage, zipToPdf } from '@/lib/api/media';
+import { extractApiErrorMessage } from '@/lib/api/errors';
+import { convertImage, zipToPdf } from '@/lib/api/media';
 
 const server = setupServer(
     http.post('*/api/media/convert-image/', () => {

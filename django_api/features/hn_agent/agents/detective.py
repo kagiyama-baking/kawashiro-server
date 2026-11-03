@@ -1,22 +1,47 @@
 """Detective Agent — スレッド急上昇の原因を調査."""
 
-import json
 import logging
 from typing import Any
 
+from asgiref.sync import sync_to_async
 from langfuse import observe
+from pydantic_ai import Agent, PromptedOutput
 
 from integrations.hn.client import HNAlgoliaClient
 from integrations.langfuse.client import resolve_prompt
-from integrations.llm.client import LLMClient
+from integrations.llm.config import get_llm_settings
 from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
 from ..models import HNAgentConfig, HNThread
+from . import (
+    PreparedAnalysis,
+    fetch_comments_text,
+    hn_conversation_id,
+    run_analysis,
+)
+from .schemas import DetectiveAnalysis
 
 logger = logging.getLogger(__name__)
 
 MAX_COMMENTS_FOR_ANALYSIS = 50
+
+DETECTIVE_AGENT = Agent(
+    name="hn-detective",
+    # Langfuse のプロンプトが JSON の形を指示するので、スキーマは送らず検証にだけ使う
+    output_type=PromptedOutput(DetectiveAnalysis, template=False),
+)
+
+
+def _fallback_analysis(raw: str) -> dict[str, Any]:
+    """応答を読めなかったときの分析結果."""
+    return {
+        "title_ja": "",
+        "why_trending": raw[:500],
+        "background": "",
+        "comment_highlights": [],
+        "summary": "",
+    }
 
 
 class DetectiveAgent:
@@ -24,21 +49,12 @@ class DetectiveAgent:
 
     def __init__(
         self,
-        llm_client: LLMClient | None = None,
         hn_client: HNAlgoliaClient | None = None,
         tavily_client: TavilyClient | None = None,
     ):
         """初期化."""
-        self._llm_client = llm_client
         self._hn_client = hn_client
         self._tavily_client = tavily_client
-
-    @property
-    def llm_client(self) -> LLMClient:
-        """LLMクライアントを取得（遅延初期化）."""
-        if self._llm_client is None:
-            self._llm_client = LLMClient(service_name="detective")
-        return self._llm_client
 
     @property
     def hn_client(self) -> HNAlgoliaClient:
@@ -60,8 +76,6 @@ class DetectiveAgent:
 
     def _fetch_comments_text(self, thread: HNThread) -> str:
         """スレッドのコメントをテキストとして取得."""
-        from . import fetch_comments_text
-
         return fetch_comments_text(
             self.hn_client, thread, max_comments=MAX_COMMENTS_FOR_ANALYSIS
         )
@@ -94,18 +108,8 @@ class DetectiveAgent:
             logger.warning("Tavily検索に失敗: [%d] %s", thread.hn_id, thread.title)
             return []
 
-    @observe(name="hn-agent/detective", as_type="tool")
-    def investigate(self, thread: HNThread) -> dict:
-        """スレッドの調査を実行.
-
-        Args:
-            thread: 調査対象スレッド
-
-        Returns:
-            調査結果
-        """
-        logger.info("Detective調査開始: [%d] %s", thread.hn_id, thread.title)
-
+    def _prepare(self, thread: HNThread) -> PreparedAnalysis:
+        """LLM を呼ぶ前の同期処理（ORM・HN/Tavily 取得・プロンプト解決）."""
         comments_text = self._fetch_comments_text(thread)
         background = self._search_background(thread)
 
@@ -129,22 +133,47 @@ class DetectiveAgent:
         )
         system_prompt = resolve_prompt(agent_config.detective_system_prompt)
 
-        raw_analysis = self.llm_client.generate_text(
-            prompt=user_prompt,
+        return PreparedAnalysis(
+            settings=get_llm_settings("detective"),
             system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            score_info=score_info,
+            comments_text=comments_text,
+            sources=background,
         )
 
-        analysis = self._parse_analysis(raw_analysis)
+    @observe(name="hn-agent/detective", as_type="tool")
+    async def investigate(self, thread: HNThread) -> dict:
+        """スレッドの調査を実行.
+
+        Args:
+            thread: 調査対象スレッド
+
+        Returns:
+            調査結果
+        """
+        logger.info("Detective調査開始: [%d] %s", thread.hn_id, thread.title)
+
+        prepared = await sync_to_async(self._prepare)(thread)
+
+        analysis = await run_analysis(
+            DETECTIVE_AGENT,
+            prepared.settings,
+            prepared.system_prompt,
+            prepared.user_prompt,
+            _fallback_analysis,
+            conversation_id=hn_conversation_id(thread),
+        )
 
         result = {
             "thread_hn_id": thread.hn_id,
             "thread_title": thread.title,
             "thread_url": thread.url,
-            "score_info": score_info,
+            "score_info": prepared.score_info,
             "analysis": analysis,
-            "background_sources": background,
+            "background_sources": prepared.sources,
             "comments_analyzed": min(
-                len(comments_text.split("\n\n")), MAX_COMMENTS_FOR_ANALYSIS
+                len(prepared.comments_text.split("\n\n")), MAX_COMMENTS_FOR_ANALYSIS
             ),
         }
 
@@ -171,38 +200,3 @@ class DetectiveAgent:
             f"{comments_text[:3000]}\n"
             "</hn_comments>"
         )
-
-    def _parse_analysis(self, raw: str) -> dict[str, Any]:
-        """LLMのJSON応答をパース.
-
-        Args:
-            raw: LLMの生テキスト応答
-
-        Returns:
-            パース済み辞書。失敗時はフォールバック形式
-        """
-        # ```json ... ``` で囲まれている場合を処理
-        text = raw.strip()
-        if text.startswith("```"):
-            lines = text.split("\n")
-            lines = lines[1:]  # ```json 行を除去
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            text = "\n".join(lines)
-
-        try:
-            parsed = json.loads(text)
-            # 必須キーの存在確認
-            if "title_ja" in parsed and "comment_highlights" in parsed:
-                return parsed
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        logger.warning("Detective分析結果のJSONパースに失敗、フォールバック形式を使用")
-        return {
-            "title_ja": "",
-            "why_trending": raw[:500],
-            "background": "",
-            "comment_highlights": [],
-            "summary": "",
-        }

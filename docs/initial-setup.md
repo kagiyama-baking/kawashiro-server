@@ -106,6 +106,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | TTS 設定 | 音声合成の有効化、モデル、スタイル、話速、フォーマット（既定 WAV） |
 | システムプロンプト | 手順 4-3 で作った `talk-{設定名}-system` を選択 |
 | ユーザープロンプト | 手順 4-3 で作った `talk-{設定名}-user` を選択 |
+| 生成回数の上限（1 分あたり） | 「回数制限」の節。`/talk/synthesize/` を 1 分間に呼べる回数（既定 10）。数え方と超えたときの応答は [Talk の README](../django_api/features/talk/README.md) の「上限・レート制限」を参照 |
 
 プロンプト参照 2 本はどちらも必須の外部キーです。`{{weather}}` `{{events}}` `{{datetime}}` はプロンプト本文に含まれていれば自動的に検出・展開されます（有効化フラグはありません）。
 
@@ -114,7 +115,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | 項目 | 既定値 | 説明 |
 |---|---|---|
 | 有効 | OFF | **有効にできるのは 1 件のみ**（保存時に他が自動で無効化されます） |
-| 推論深度 | `low` | Orchestrator の reasoning 量。モデルが非対応なら「無効」を選択 |
+| 推論深度 | `low` | Orchestrator の推論深度として LiteLLM へ送られます（送り方は [HN Agent README](../django_api/features/hn_agent/README.md)）。モデルが非対応なら、Proxy で `drop_params` が有効な場合は LiteLLM が捨てます。エラーになるなら「無効」を選択 |
 | スコア閾値 | 100 | 調査をトリガーするスコア |
 | 速度閾値 | 50.0 | 調査をトリガーするスコア上昇速度（ポイント/時間） |
 | ポーリング間隔（秒） | 600 | 最低 60。**実行スケジュールは制御しません**（手順 7 参照） |

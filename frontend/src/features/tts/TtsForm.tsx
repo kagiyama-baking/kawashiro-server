@@ -50,9 +50,7 @@ export function TtsForm({
     return (
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-2">
-                <Label htmlFor="tts-text" className="text-[13px] font-medium">
-                    テキスト
-                </Label>
+                <Label htmlFor="tts-text">テキスト</Label>
                 <Textarea
                     id="tts-text"
                     value={text}
@@ -63,20 +61,22 @@ export function TtsForm({
                     maxLength={500}
                     required
                 />
-                <p className="text-muted-foreground font-mono text-[11px]">
+                <p className="font-latin text-ink-subtle text-xs tabular-nums">
                     {text.length}/500文字
                 </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                    <Label
-                        htmlFor="model-select"
-                        className="text-[13px] font-medium"
+                    <Label htmlFor="model-select">モデル</Label>
+                    <Select
+                        value={selectedModel}
+                        onValueChange={(value) => {
+                            // フォーム内の Select は、選択肢が揃う前に値を受けると隠し select が
+                            // 空値を返してくる。これを採ると自動選択したモデルが消える
+                            if (value) onModelChange(value);
+                        }}
                     >
-                        モデル
-                    </Label>
-                    <Select value={selectedModel} onValueChange={onModelChange}>
                         <SelectTrigger id="model-select">
                             <SelectValue placeholder="モデルを選択" />
                         </SelectTrigger>
@@ -91,12 +91,7 @@ export function TtsForm({
                 </div>
 
                 <div className="space-y-2">
-                    <Label
-                        htmlFor="style-select"
-                        className="text-[13px] font-medium"
-                    >
-                        スタイル
-                    </Label>
+                    <Label htmlFor="style-select">スタイル</Label>
                     <Select
                         value={params.style}
                         onValueChange={(v) => setParam('style', v)}
@@ -117,12 +112,7 @@ export function TtsForm({
 
             <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-2">
-                    <Label
-                        htmlFor="format-select"
-                        className="text-[13px] font-medium"
-                    >
-                        出力形式
-                    </Label>
+                    <Label htmlFor="format-select">出力形式</Label>
                     <Select
                         value={params.format}
                         onValueChange={(v) =>
@@ -143,7 +133,7 @@ export function TtsForm({
 
             <LoadingButton
                 type="submit"
-                className="mt-1 w-full font-medium"
+                className="mt-1 w-full"
                 isLoading={isLoading}
                 loadingText="合成中..."
                 disabled={!text.trim()}

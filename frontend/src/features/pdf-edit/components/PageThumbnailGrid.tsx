@@ -18,7 +18,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Layers } from 'lucide-react';
 import { type MouseEvent, useMemo, useState } from 'react';
-import { cn } from '@/lib/utils';
 import { usePdfEditStore } from '@/stores/pdf-edit-store';
 import type { PageState, SourcePageInfo } from '@/types/pdf-edit';
 import { PageThumbnailItem } from './PageThumbnailItem';
@@ -77,11 +76,7 @@ function SortableThumbnail({
                 aria-label={`ページ ${displayIndex} をドラッグ`}
                 {...attributes}
                 {...listeners}
-                className={cn(
-                    'glass absolute top-1 right-10 cursor-grab rounded p-1 opacity-0 transition-opacity',
-                    'group-hover:opacity-100 active:cursor-grabbing',
-                    'hover:bg-[oklch(0.75_0.20_155/0.2)]',
-                )}
+                className="bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground absolute top-1 right-10 cursor-grab rounded-sm border p-1 opacity-0 transition-[opacity,color,background-color] group-hover:opacity-100 focus-visible:opacity-100 active:cursor-grabbing"
             >
                 <GripVertical className="h-3.5 w-3.5" />
             </button>
@@ -246,8 +241,8 @@ function renderDragOverlay(
               ? { clipPath: 'inset(0 0 0 50%)' }
               : undefined;
     return (
-        <div className="glass neon-border relative w-32 cursor-grabbing rounded-xl p-2 shadow-[0_0_24px_oklch(0.75_0.20_155/0.5)]">
-            <div className="bg-background/50 flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg">
+        <div className="bg-card border-primary shadow-lift relative w-32 cursor-grabbing rounded-lg border p-2">
+            <div className="bg-background flex aspect-[3/4] items-center justify-center overflow-hidden rounded-md">
                 <div
                     className="flex h-full w-full items-center justify-center"
                     style={halfStyle}
@@ -261,7 +256,7 @@ function renderDragOverlay(
                 </div>
             </div>
             {count > 1 && (
-                <div className="bg-background/90 text-foreground absolute -top-2 -right-2 flex items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] shadow-md">
+                <div className="bg-primary text-primary-foreground font-latin absolute -top-2 -right-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-xs tabular-nums">
                     <Layers className="h-3 w-3" />
                     {count}
                 </div>

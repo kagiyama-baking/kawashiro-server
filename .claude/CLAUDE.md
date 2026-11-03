@@ -15,7 +15,7 @@ kawashiro-server/
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
 │   ├── health/              # ヘルスチェック（ミドルウェア方式、ALLOWED_HOSTS検証前に応答）
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LiteLLM Proxy経由のLLMクライアント・接続設定
+│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定
 │   │   ├── langfuse/        # Langfuseプロンプト参照（LangfusePromptRef / resolve_prompt）
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
@@ -26,9 +26,9 @@ kawashiro-server/
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/            # 会話生成API + チャット履歴セッション
+│   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
-│   │   └── hn_agent/        # HN監視・分析エージェント（LangGraph ReAct）
+│   │   └── hn_agent/        # HN監視・分析エージェント（PydanticAI）
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
 │   ├── pyproject.toml       # Python依存関係・ツール設定
@@ -60,7 +60,7 @@ kawashiro-server/
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
 | LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
-| Talk・チャットセッション仕様・プレースホルダー | `django_api/features/talk/README.md` |
+| Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
 | 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
@@ -85,7 +85,7 @@ kawashiro-server/
 | データベース            | PostgreSQL 17                                     |
 | タスクキュー            | Celery + Redis（定期タスク: django-celery-beat）  |
 | LLM ゲートウェイ        | LiteLLM Proxy（OpenAI 互換・プロバイダー非依存）  |
-| LLMOps                  | Langfuse（トレース・プロンプト管理）+ LangGraph   |
+| LLMOps                  | Langfuse（トレース・プロンプト管理）+ PydanticAI  |
 | 認証                    | Token認証（rest_framework.authtoken）             |
 | テスト                  | pytest + pytest-django + pytest-cov + pytest-mock + pytest-xdist |
 | テストデータ            | factory-boy + Faker（日本語ロケール）             |
@@ -166,9 +166,12 @@ docker compose exec django-api python manage.py migrate   # 手動マイグレ�
 
 ```
 django_api/tests/
-├── conftest.py              # 共通フィクスチャ（APIClient, User, Token等）
+├── conftest.py              # 共通フィクスチャ（APIClient, User, Token等）+ 実 LLM・Langfuse へのガード
 ├── fixtures/
-│   └── factories.py         # factory-boy ファクトリ（UserFactory等）
+│   ├── factories.py         # factory-boy ファクトリ（UserFactory等）
+│   ├── llm.py               # LLM の代役（ScriptedLLM）
+│   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
+│   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
 ├── core/                    # admin並び順等のコアテスト
 ├── integrations/            # 外部サービス連携テスト
 │   ├── llm/ langfuse/ msgraph/ onedrive/ outlook/ tts/
@@ -226,6 +229,7 @@ def test_user_login_with_invalid_password_raises_error():
 | `mock_file` / `mock_pdf_file` | テスト用ファイル                   |
 | `mock_ms_graph_settings`      | MS Graph設定モック                 |
 | `ms_graph_client`             | OneDrive MSGraphClientモック       |
+| `fake_litellm`                | LiteLLM の HTTP 層の代役           |
 
 ### テストファクトリ（factory-boy）
 
@@ -237,6 +241,23 @@ admin = SuperUserFactory()                    # スーパーユーザー
 users = UserFactory.create_batch_with_tokens(5)  # トークン付き5ユーザー
 file = FileUploadFactory.create_text_file()   # テストファイル
 ```
+
+### LLM 呼び出しのテスト
+
+`tests/conftest.py` が `ALLOW_MODEL_REQUESTS=False` と `LANGFUSE_TRACING_ENABLED=false` を設定するので、テストから実 LLM と Langfuse へは送信されません。モデルは `Agent.override` で差し替えます。
+
+```python
+from tests.fixtures.llm import ScriptedLLM, tool_calls
+
+llm = ScriptedLLM(tool_calls("detective_investigate"), "結論")  # 台本どおりに応答
+with ORCHESTRATOR_AGENT.override(model=llm.model):
+    ...
+llm.requests[0].instructions  # モデルが受け取った内容を確認できる
+```
+
+`ScriptedLLM` は `OpenAIChatModel` の応答の解釈を通りません。送信本文や応答の解釈を確かめるテストでは `fake_litellm` フィクスチャ（HTTP 層だけの代役）を使います。
+
+ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
 
 ## コーディング規約
 

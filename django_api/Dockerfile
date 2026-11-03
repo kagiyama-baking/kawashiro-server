@@ -78,6 +78,7 @@ USER django
 # 必要なアプリケーションファイルのみをコピー
 # manage.pyと各アプリケーションディレクトリ
 COPY --chown=django:django manage.py .
+COPY --chown=django:django gunicorn.conf.py .
 COPY --chown=django:django django_api ./django_api
 COPY --chown=django:django core ./core
 COPY --chown=django:django user ./user

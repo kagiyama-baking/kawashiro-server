@@ -37,10 +37,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Orchestrator開始: [{thread.hn_id}] {thread.title}")
 
-        from features.hn_agent.reporter import Reporter
-
-        reporter = None if options["skip_notify"] else Reporter()
-        orchestrator = Orchestrator(reporter=reporter)
+        orchestrator = Orchestrator(notify=not options["skip_notify"])
         result = orchestrator.investigate(thread)
 
         self.stdout.write(f"  ステップ数: {len(result['steps'])}")

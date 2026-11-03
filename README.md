@@ -28,7 +28,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 
 ## サービス
 
-- 🌐 **Frontend**: React SPA（テキスト読み上げ・チャット履歴・メディア変換・**PDF 編集**の操作画面、モバイル対応 2 ペイン UI）
+- 🌐 **Frontend**: React SPA（テキスト読み上げ・**ChatGPT 風のチャット**（assistant-ui による逐次表示と Markdown）・メディア変換・**PDF 編集**の操作画面、モバイル対応）
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
@@ -45,7 +45,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
     - **features/** - ビジネス機能
         - 🎙️ **Talk**: 会話生成 API + **チャット履歴セッション**（DB + ファイル永続化、編集再送、音声配信/個別 & 一括削除、LLM タイトル要約、Langfuse Session 連携）
         - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
-        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。LangGraph ReAct Agent がスレッド性質に応じて 3 ツールを使い分け）
+        - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。PydanticAI のエージェントがスレッド性質に応じて 3 ツールを使い分け）
 - 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（CPU 推論・NVIDIA GPU はオプション）
 
 ## LLM / LiteLLM / Langfuse
@@ -70,7 +70,7 @@ LLM 周辺は「接続（どのモデル・どの鍵）」「プロンプト（�
 | `django-api` | 8000 | Django REST API（開発用 runserver 起動） |
 | `celery-worker` | — | Celery ワーカー（django-api と同一イメージ） |
 | `celery-beat` | — | Celery Beat スケジューラ（DatabaseScheduler） |
-| `redis` | （内部のみ） | Celery ブローカー |
+| `redis` | （内部のみ） | Celery ブローカー（DB 0）と API のレート制限の記録（DB 1） |
 | `app-database` | （内部のみ） | PostgreSQL 17。**ホストへポート非公開** |
 | `sbv2-api` | 5000 | Style-BERT-VITS2 音声合成（CPU 推論 / GPU 切替は [sbv2_api/README.md](sbv2_api/README.md)） |
 | `frontend` | 3000 | React SPA（nginx 配信・`/api/` を django-api へプロキシ） |
@@ -143,6 +143,7 @@ curl http://localhost:3000/           # Frontend
 | Django | `CSRF_TRUSTED_ORIGINS` | 本番時に Traefik 経由のドメインを指定（スキーム付き・カンマ区切り） |
 | DB | `DB_ENGINE` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_HOST` / `DB_PORT` | PostgreSQL 接続情報。`DB_ENGINE` 未設定なら SQLite にフォールバック（`DB_ENGINE` 設定時は `DB_PASSWORD` 必須） |
 | Celery | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | デフォルト `redis://redis:6379/0` |
+| キャッシュ | `CACHE_REDIS_URL` | API のレート制限の記録先（Django のキャッシュ。全ワーカーで共有）。任意。未設定なら `CELERY_BROKER_URL` の DB 番号を 1 に替えたもの（既定 `redis://redis:6379/1`）。替えられない URL（unix ソケット、`?db=` など）や、ブローカー自体が DB 1 のときは起動時にエラーになるので、明示する |
 | TTS | `TTS_SERVICE_URL` | デフォルト `http://sbv2-api:5000` |
 | TTS | `TTS_TIMEOUT` | TTS リクエストのタイムアウト秒（デフォルト `120`） |
 | LLM | `LITELLM_PROXY_URL` | LiteLLM Proxy のベース URL（デフォルト `http://litellm-proxy:4000/v1`） |
@@ -195,13 +196,13 @@ Playwright E2E などの詳細は [docs/development.md](docs/development.md) を
 
 - **Django 6** + **Django REST Framework**
 - **PostgreSQL 17**
-- **Celery + Redis**（非同期・定期タスク）
+- **Celery + Redis**（非同期・定期タスク。Redis は API のレート制限の記録にも使う）
 - **uv**（高速 Python パッケージマネージャ）
 
 ### LLMOps
 
 - **LiteLLM Proxy**（OpenAI 互換 + モデルルーティング）
-- **LangChain / LangGraph**（HN Agent Orchestrator の ReAct Agent）
+- **PydanticAI**（全 LLM 呼び出しのエージェント実行）
 - **Langfuse**（トレース + プロンプト管理）
 
 ### インフラ・DevOps

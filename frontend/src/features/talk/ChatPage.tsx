@@ -1,91 +1,52 @@
-import { Menu } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { fetchConfigs } from '@/lib/api/talk';
+import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import { useEffect, useLayoutEffect } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { useChatStore } from '@/stores/chat-store';
-import type { GenerateConfig } from '@/types/talk';
-import { ChatThreadView } from './ChatThreadView';
-import { NewSessionDialog } from './NewSessionDialog';
-import { SessionSidebar } from './SessionSidebar';
+import { ChatThread } from './ChatThread';
+import { useChatRuntime } from './useChatRuntime';
 
+function ChatRuntimeBoundary() {
+    const runtime = useChatRuntime();
+    return (
+        <AssistantRuntimeProvider runtime={runtime}>
+            <ChatThread />
+        </AssistantRuntimeProvider>
+    );
+}
+
+/** `/talk/:sessionId?`。URL が正で、ストアの表示中のセッションをそれに合わせる。 */
 export function ChatPage() {
-    const sessions = useChatStore((s) => s.sessions);
-    const activeSessionId = useChatStore((s) => s.activeSessionId);
-    const hasMore = useChatStore((s) => s.hasMoreSessions);
-    const isLoadingList = useChatStore((s) => s.isLoadingList);
+    const { sessionId } = useParams();
+    const navigate = useNavigate();
+    const threadKey = useChatStore((s) => s.threadKey);
     const loadSessions = useChatStore((s) => s.loadSessions);
-    const loadMoreSessions = useChatStore((s) => s.loadMoreSessions);
-    const selectSession = useChatStore((s) => s.selectSession);
-    const removeSession = useChatStore((s) => s.removeSession);
-    const createNewSession = useChatStore((s) => s.createNewSession);
+    const loadConfigs = useChatStore((s) => s.loadConfigs);
+    const openSession = useChatStore((s) => s.openSession);
+    const startNewChat = useChatStore((s) => s.startNewChat);
     const reset = useChatStore((s) => s.reset);
 
-    const [configs, setConfigs] = useState<GenerateConfig[]>([]);
-    const [isMobileOpen, setIsMobileOpen] = useState(false);
-    const [isNewOpen, setIsNewOpen] = useState(false);
-
     useEffect(() => {
-        loadSessions(true);
-        fetchConfigs()
-            .then(setConfigs)
-            .catch(() => {});
+        void loadSessions();
+        void loadConfigs();
+        return () => reset();
+    }, [loadSessions, loadConfigs, reset]);
+
+    // 新規チャットの画面が一瞬見えないよう、描画の前に読み込み中へ切り替える
+    useLayoutEffect(() => {
+        if (!sessionId) {
+            startNewChat();
+            return undefined;
+        }
+        let ignore = false;
+        void openSession(sessionId).then((result) => {
+            if (!ignore && result === 'not-found') {
+                navigate('/talk', { replace: true });
+            }
+        });
         return () => {
-            // ページ離脱時に store をクリア
-            reset();
+            ignore = true;
         };
-    }, [loadSessions, reset]);
+    }, [sessionId, openSession, startNewChat, navigate]);
 
-    const handleDeleteSession = async (id: string) => {
-        if (!confirm('このチャットを削除します。よろしいですか？')) return;
-        await removeSession(id);
-    };
-
-    const handleCreate = async (configName: string) => {
-        await createNewSession(configName);
-        setIsMobileOpen(false);
-    };
-
-    return (
-        <div className="flex h-[calc(100svh-6rem)] w-full lg:h-[calc(100svh-4.5rem)]">
-            <SessionSidebar
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                hasMore={hasMore}
-                isLoading={isLoadingList}
-                onSelect={selectSession}
-                onDelete={handleDeleteSession}
-                onLoadMore={loadMoreSessions}
-                onNew={() => setIsNewOpen(true)}
-                isOpen={isMobileOpen}
-                onClose={() => setIsMobileOpen(false)}
-            />
-
-            <main className="bg-background flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center gap-2 border-b border-[oklch(0.95_0_0/0.06)] px-3 py-2 md:hidden">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsMobileOpen(true)}
-                        aria-label="サイドバーを開く"
-                    >
-                        <Menu className="h-5 w-5" />
-                    </Button>
-                    <span className="font-heading text-[14px] font-semibold">
-                        チャット
-                    </span>
-                </div>
-                <div className="min-h-0 flex-1">
-                    <ChatThreadView />
-                </div>
-            </main>
-
-            <NewSessionDialog
-                configs={configs}
-                open={isNewOpen}
-                onClose={() => setIsNewOpen(false)}
-                onCreate={handleCreate}
-            />
-        </div>
-    );
+    return <ChatRuntimeBoundary key={threadKey} />;
 }

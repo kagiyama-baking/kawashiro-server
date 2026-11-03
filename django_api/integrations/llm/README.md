@@ -28,8 +28,8 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
   Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` から FK で参照されます。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
   `is_active=True` の `LLMServiceConfig` を引いて `LLMSettings` を返します。該当なしなら `LLMConfigurationError`。
-- **`LLMClient`**（`integrations/llm/client.py`）
-  `get_llm_settings` の結果で構成されるクライアント。
+- **実行基盤**（`integrations/llm/runtime.py`）
+  `get_llm_settings` の結果で PydanticAI のエージェントを LiteLLM Proxy 経由で実行します（§6）。
 - **`resolve_prompt(ref, **vars)` / `get_prompt_with_variables(ref)`**（`integrations/langfuse/client.py`）
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
 
@@ -121,34 +121,63 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 
 いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。未登録でも `fallback_text` で動作します。
 
-## 6. LLMClient の使い方
+## 6. LLM の呼び出し方
 
-`LLMClient(service_name=...)` は admin の設定を解決してクライアントを構成します。モデル名も API キーもコードに書きません。
+LLM 呼び出しはすべて PydanticAI のエージェントで行います。エージェントは各機能のモジュールに定義し（`features/talk/llm_agents.py`、`features/hn_agent/orchestrator.py`、`features/hn_agent/agents/*.py`）、実行は `integrations/llm/runtime.py` を通します。モデル名も API キーもコードに書きません。
 
 ```python
-from integrations.llm.client import LLMClient
-from integrations.llm.exceptions import LLMClientError, LLMConfigurationError, LLMTimeoutError
+from pydantic_ai import Agent
+
 from integrations.langfuse.client import resolve_prompt
+from integrations.llm.config import get_llm_settings
+from integrations.llm.exceptions import (
+    LLMClientError,
+    LLMConfigurationError,
+    LLMOutputError,
+    LLMTimeoutError,
+)
+from integrations.llm.runtime import run_agent_sync
+
+# None を許すと、本文のない応答を再試行せず None として受け取れる
+MY_AGENT = Agent(name="my-feature", output_type=str | None)
 
 try:
-    client = LLMClient(service_name="talk")  # admin の LLMサービス設定を解決
+    settings = get_llm_settings("talk")  # admin の LLMサービス設定を解決（DB を読む）
     system_prompt = resolve_prompt(config.system_prompt_ref)
     user_prompt = resolve_prompt(config.user_prompt_ref, weather="晴れ")
 
-    text = client.generate_text(prompt=user_prompt, system_prompt=system_prompt)
+    result = run_agent_sync(
+        MY_AGENT, settings, user_prompt=user_prompt, instructions=system_prompt
+    )
+    text = result.output or ""
 except LLMConfigurationError:
     ...  # サービス設定が無い、または is_active=False
 except LLMTimeoutError:
     ...  # timeout（既定 60 秒）超過
+except LLMOutputError:
+    ...  # 応答が期待する形にならなかった（出力リトライ後も不正など）
 except LLMClientError:
-    ...  # 接続失敗
+    ...  # 接続失敗・HTTP エラー（429 / 5xx など）・利用上限の超過
 ```
 
-- **トレーシング**: 内部クライアントは `langfuse.openai.OpenAI` のため、呼び出しは自動的に Langfuse の generation として記録されます。`service_name` と `environment` は `extra_body.metadata` に付与されます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめ、チャットは `get_client().update_current_trace(session_id=...)` で Langfuse Sessions に集約しています。
+| 関数 | 用途 |
+|---|---|
+| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries, conversation_id, reasoning_effort)` | 同期コードから実行する。Talk のタイトル・単発生成と Orchestrator はこちら |
+| `arun_agent(...)`（引数は同じ） | イベントループ上から `await` する。サブエージェントはこちら |
+| `stream_text_sync(agent, settings, *, user_prompt, deps, message_history, max_tokens, conversation_id)` | 同期コードから実行し、本文の増分を順に返すジェネレータ。Talk のチャットはこちら |
+| `open_model(settings)` | `AsyncOpenAI` を作って閉じる async context manager。接続はイベントループに属するので、実行ごとに作る |
+| `translate_llm_errors()` | PydanticAI の例外を上の 3 種へ変換する。`RunCancelled` と `UserError` は変換しない |
+
+- **`agent.run_sync` は使いません。** そちらでは `sync_to_async(thread_sensitive=True)` が呼び出し元スレッドに戻らず、別の DB 接続になります（トランザクション内のデータも見えません）。`run_agent_sync` は `asgiref.async_to_sync` で実行するので、ツール内の `sync_to_async` は呼び出し元スレッドで動きます。
+- **ストリーミングは `stream_text_sync` を通します。** `Agent.run_stream_sync` の同期ブリッジは 1 本の長寿命タスクで実行全体を動かすので、OpenTelemetry のネストとキャンセルスコープが保たれます。呼び出し元スレッドのイベントループで動くので、同じスレッドで読み進めて閉じます（`AsyncOpenAI` も同じループで閉じます）。`close()` すると LiteLLM への HTTP 接続もその場で閉じます。`run_stream_sync` に `instructions` の引数がないので、system プロンプトはエージェントの動的 instructions（`deps` を返す関数）で渡します。増分は 50 ms 幅でまとめます。
+- **イベントループ上で ORM に触れません。** async のツールやメソッドでは、ORM・HN/Tavily 取得・プロンプト解決を同期関数にまとめて `await sync_to_async(...)` で実行します（`features/hn_agent/agents/*.py` の `_prepare`）。同期のツールの中から `run_sync` は呼べないので、ツールは `async def` にします。
+- **LiteLLM との送受信**: LiteLLM のモデル名は DB 上の任意の文字列なので、名前から推定されるプロファイルに送受信を左右させません（`_LITELLM_PROFILE`）。どのエイリアスでも、出力上限は `max_tokens`（`drop_params` で `max_completion_tokens` が黙って落ちるのを避ける）で送り、`response_format`・tools の `strict`・推論テキストの送り返し・system プロンプトへの追記やロールの変更はありません。応答本文は `<think>` などの文字列も含めてそのまま受け取ります。`service_name` と `environment` は `extra_body.metadata` に付与します。推論深度は `reasoning_effort` を指定したときだけ `reasoning_effort` で送ります（PydanticAI の `openai_reasoning_effort`。`None` と空文字は送りません。今は HN Agent の Orchestrator だけが指定します）。契約は `tests/integrations/llm/test_runtime.py` で固定しています。
+- **本文のない応答**: 出力上限（`length`）やフィルター（`content_filter`）で本文がなくなった応答も例外にせず、本文なしとして扱います（`_TreatEmptyResponseAsFinished`）。`output_type` に `None` を許すエージェントはそのまま `None` を受け取り、再試行しません。`stream_text_sync` では増分なしで正常に終わります。
+- **トレーシング**: `apps.py` の `ready()` で `Agent.instrument_all(InstrumentationSettings())` を呼び、呼び出しは Langfuse の generation として記録されます（名前は `chat <model_alias>`）。設定は 1 つを共有します。引数なしの `instrument_all()` は実行のたびに設定を作り、MeterProvider が未設定の間は OpenTelemetry 側に Meter がたまり続けます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめ、チャットは `propagate_attributes(session_id=...)` で Langfuse Sessions に集約しています。`langfuse.openai` は import するだけで OpenAI SDK を書き換えて generation が二重になるので、使わないでください。
+- **Langfuse の Sessions**: Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` と `stream_text_sync` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（チャット）そちらが優先されます。
+- **usage の内訳**: LiteLLM の `text_tokens` と `reasoning_tokens` は output の内数ですが、Langfuse は usage の全項目を足して total にします。二重に数えないよう、`_LiteLLMChatModel`（ストリーミングは `_LiteLLMStreamedResponse`）で内訳を除いています。計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で書き換えても反映されません。
 - **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。コード側でハードコードしません。
-- **Function Calling**: `chat_completion(messages, tools=..., tool_choice=...)` を使います。
-- **`generate_embedding()` は現在どこからも呼ばれていません**（実装とテストのみ存在）。埋め込みを使っていた HN Agent のメモリ機能は migration `hn_agent/0009` / `0010` で削除済みです。
-- **HN Agent Orchestrator は `LLMClient` を経由しません。** LangGraph ReAct Agent を使う都合上、`get_llm_settings("orchestrator")` の結果から LangChain の `ChatOpenAI` を直接構成しています（`features/hn_agent/orchestrator.py`）。設定の解決経路は共通なので、admin の操作は他サービスと同じです。
+- **テスト**: 書き方は [../../../.claude/CLAUDE.md](../../../.claude/CLAUDE.md) の「LLM 呼び出しのテスト」を参照してください。
 
 ## 7. フェイルソフト挙動
 
@@ -160,7 +189,7 @@ except LLMClientError:
 | Langfuse 側が Chat 型プロンプト | 未対応のため警告ログを出して `fallback_text` にフォールバック（対応しているのは Text 型のみ） |
 | `langfuse` パッケージ未インストール | `ImportError` を捕捉して `fallback_text` にフォールバック |
 | Langfuse への `session_id` 付与失敗 | 警告ログのみ。会話生成本体は継続 |
-| `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック |
+| `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック。それも未設定ならプレースホルダーのキーで送信し、認証の判断は LiteLLM Proxy に任せる |
 | `LLMServiceConfig` が無い / `is_active=False` | `LLMConfigurationError`（**ここはフェイルソフトしません**。設定漏れは早期に顕在化させます） |
 
 > **Note（pgvector）**: PostgreSQL の `vector` 拡張は migration `core/0002` で有効化され、`pgvector` パッケージも依存に残っています（過去のマイグレーションが import しているため）。ただし **現在 `VectorField` を持つモデルは 1 つもありません**。ベクトル検索機能は稼働していないので、拡張の存在をもって RAG が動いていると誤解しないでください。

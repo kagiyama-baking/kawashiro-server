@@ -33,7 +33,7 @@ class RunAllView(APIView):
         summary="エージェント一括実行",
         description=(
             "HNフロントページをポーリングし、閾値超えスレッドに対して"
-            "Orchestratorを同期的に順次実行する。テスト・デバッグ用。"
+            "Orchestratorを同期的に順次実行し、調査結果をSlackに送る。テスト・デバッグ用。"
         ),
     )
     def post(self, request):
@@ -196,10 +196,8 @@ def _run_all_impl() -> dict:
 def _investigate_impl(thread: HNThread, skip_notify: bool) -> dict:
     """investigateの実装（Langfuseトレース対応）."""
     from .orchestrator import Orchestrator
-    from .reporter import Reporter
 
-    reporter = None if skip_notify else Reporter()
-    orchestrator = Orchestrator(reporter=reporter)
+    orchestrator = Orchestrator(notify=not skip_notify)
     result = orchestrator.investigate(thread)
     _flush_langfuse()
     return result

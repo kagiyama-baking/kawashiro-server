@@ -34,31 +34,38 @@ logger = logging.getLogger(__name__)
 SESSION_MAX_MESSAGES = 50
 
 
-def handle_synthesis_error(exc: Exception, *, fallback_message: str) -> Response:
-    """Talk 系ビュー共通の例外 → HTTP マッピング."""
+def classify_synthesis_error(exc: Exception, fallback: str) -> tuple[int, str]:
+    """Talk 系の例外を HTTP ステータスとクライアント向けのメッセージに分類する.
+
+    HTTP の応答と SSE の `error` イベントで共用する。ログもここで出す。
+
+    Args:
+        exc: 発生した例外
+        fallback: 想定外の例外のときに返すメッセージ
+
+    Returns:
+        (HTTP ステータス, メッセージ)
+    """
     if isinstance(exc, PlaceholderDataMissingError):
         logger.warning("プレースホルダー要求データ不足: %s", str(exc))
-        return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return status.HTTP_400_BAD_REQUEST, str(exc)
 
     if isinstance(exc, WeatherAreaNotFoundError):
         logger.warning("予報区コードが見つからない: %s", str(exc))
-        return Response(
-            {"error": "指定された予報区コードが見つかりません"},
-            status=status.HTTP_404_NOT_FOUND,
-        )
+        return status.HTTP_404_NOT_FOUND, "指定された予報区コードが見つかりません"
 
     if isinstance(exc, WeatherTimeoutError):
         logger.error("外部APIタイムアウト: %s", str(exc))
-        return Response(
-            {"error": "外部サービスへのリクエストがタイムアウトしました"},
-            status=status.HTTP_504_GATEWAY_TIMEOUT,
+        return (
+            status.HTTP_504_GATEWAY_TIMEOUT,
+            "外部サービスへのリクエストがタイムアウトしました",
         )
 
     if isinstance(exc, (LLMTimeoutError, TTSTimeoutError, HolidayTimeoutError)):
         logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(exc))
-        return Response(
-            {"error": "サービスへのリクエストがタイムアウトしました"},
-            status=status.HTTP_504_GATEWAY_TIMEOUT,
+        return (
+            status.HTTP_504_GATEWAY_TIMEOUT,
+            "サービスへのリクエストがタイムアウトしました",
         )
 
     if isinstance(
@@ -71,37 +78,28 @@ def handle_synthesis_error(exc: Exception, *, fallback_message: str) -> Response
         ),
     ):
         logger.error("外部API接続エラー: %s", str(exc))
-        return Response(
-            {"error": "外部サービスへの接続に失敗しました"},
-            status=status.HTTP_502_BAD_GATEWAY,
-        )
+        return status.HTTP_502_BAD_GATEWAY, "外部サービスへの接続に失敗しました"
 
     if isinstance(exc, (LLMClientError, TTSNetworkError)):
         logger.error("AI/TTSサービスエラー: %s", str(exc))
-        return Response(
-            {"error": "AI生成サービスへの接続に失敗しました"},
-            status=status.HTTP_502_BAD_GATEWAY,
-        )
+        return status.HTTP_502_BAD_GATEWAY, "AI生成サービスへの接続に失敗しました"
 
     if isinstance(exc, ConfigurationError):
         logger.error("サービス設定エラー: %s", str(exc))
-        return Response(
-            {"error": "サービスの設定に問題があります"},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+        return status.HTTP_503_SERVICE_UNAVAILABLE, "サービスの設定に問題があります"
 
     if isinstance(exc, AuthenticationError):
         logger.error("外部サービス認証エラー: %s", str(exc))
-        return Response(
-            {"error": "外部サービスへの認証に失敗しました"},
-            status=status.HTTP_502_BAD_GATEWAY,
-        )
+        return status.HTTP_502_BAD_GATEWAY, "外部サービスへの認証に失敗しました"
 
-    logger.exception("予期しないエラー: %s", str(exc))
-    return Response(
-        {"error": fallback_message},
-        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    )
+    logger.error("予期しないエラー: %s", str(exc), exc_info=exc)
+    return status.HTTP_500_INTERNAL_SERVER_ERROR, fallback
+
+
+def handle_synthesis_error(exc: Exception, *, fallback_message: str) -> Response:
+    """Talk 系ビュー共通の例外 → HTTP マッピング."""
+    status_code, error = classify_synthesis_error(exc, fallback_message)
+    return Response({"error": error}, status=status_code)
 
 
 def get_owned_session(request, session_id) -> ChatSession | None:
@@ -127,20 +125,45 @@ def attach_audio_to_message(
     msg: ChatMessage,
     audio_data: bytes,
     audio_format: str,
-) -> None:
+) -> bool:
     """生成済み ChatMessage に音声ファイルを保存する.
 
-    DB トランザクション commit 後に呼ぶことを想定。失敗してもテキスト応答
-    自体は残し、音声フィールドだけ未設定とする（オーファンファイル防止）。
+    DB トランザクションの外で呼ぶ（ロールバックでファイルだけが残らないように）。
+    合成の間に行が削除されていたらファイルを残さない。失敗してもテキスト応答
+    自体は残し、音声フィールドだけ未設定とする。
+
+    Returns:
+        保存できたら True、行が削除済みか保存に失敗したら False
     """
+    saved = 0
     try:
         msg.audio_file.save(
             f"{msg.sequence}.{audio_format}",
             ContentFile(audio_data),
             save=False,
         )
-        msg.audio_format = audio_format
-        msg.audio_size_bytes = len(audio_data)
-        msg.save(update_fields=["audio_file", "audio_format", "audio_size_bytes"])
+        saved = ChatMessage.objects.filter(pk=msg.pk).update(
+            audio_file=msg.audio_file.name,
+            audio_format=audio_format,
+            audio_size_bytes=len(audio_data),
+        )
+        if not saved:
+            logger.info("音声の保存先の行が削除済み: message=%s", msg.pk)
     except Exception:
         logger.exception("音声ファイル保存に失敗（テキスト応答は維持）")
+    if not saved:
+        _discard_audio_file(msg)
+        return False
+    msg.audio_format = audio_format
+    msg.audio_size_bytes = len(audio_data)
+    return True
+
+
+def _discard_audio_file(msg: ChatMessage) -> None:
+    """行に紐付かなかった音声ファイルを消す（ファイルがなければ何もしない）."""
+    if not msg.audio_file:
+        return
+    try:
+        msg.audio_file.delete(save=False)
+    except Exception:
+        logger.exception("音声ファイルの削除に失敗: %s", msg.audio_file.name)

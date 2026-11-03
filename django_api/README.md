@@ -15,7 +15,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | `integrations.tts` | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） | [sbv2_api/README.md](../sbv2_api/README.md) |
 | `integrations.weather` | `/weather/` | 気象庁天気予報 | [README](integrations/weather/README.md) |
 | `features.media` | `/media/` | 画像変換・ZIP→PDF（制限値あり） | [README](features/media/README.md) |
-| `features.talk` | `/talk/` | 会話生成 + チャット履歴セッション + 日時情報（`/talk/datetime/`） | [README](features/talk/README.md) |
+| `features.talk` | `/talk/` | 会話生成 + チャット履歴セッション（応答は JSON か SSE）+ 日時情報（`/talk/datetime/`） | [README](features/talk/README.md) |
 | `features.hn_agent` | `/hn-agent/` | HackerNews Agent（監視・調査・辛口分析・セキュリティ対応指針。superuser のみ） | [README](features/hn_agent/README.md) |
 
 ### 裏方のアプリ（URL なし）
@@ -23,7 +23,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | アプリ | 説明 | 詳細 |
 |---|---|---|
 | `core` | カスタム `User` モデル（email ログイン）・Fernet 暗号化ユーティリティ・admin 並び順制御 | — |
-| `integrations.llm` | LiteLLM Proxy 経由の LLM クライアントと接続設定（`LLMProviderConfig` / `LLMServiceConfig`） | [README](integrations/llm/README.md) |
+| `integrations.llm` | LiteLLM Proxy 経由の PydanticAI 実行基盤と接続設定（`LLMProviderConfig` / `LLMServiceConfig`） | [README](integrations/llm/README.md) |
 | `integrations.langfuse` | Langfuse プロンプト参照（`LangfusePromptRef` / `resolve_prompt`） | [README](integrations/llm/README.md) |
 | `integrations.msgraph` | Microsoft Graph の証明書認証設定・クライアント（onedrive / outlook が利用） | — |
 | `integrations.hn` | Hacker News Algolia API クライアント（hn_agent が利用。API キー不要のため設定モデルなし） | — |
@@ -93,7 +93,7 @@ Tavily Web 検索の API キー（暗号化保存）とタイムアウト（既�
 | LLM設定 / LLMサービス設定 | モデルエイリアス + Virtual Key、サービスへの割り当て | [integrations/llm/README.md](integrations/llm/README.md) |
 | Langfuseプロンプト参照 | Langfuse プロンプトのマッピング + フォールバック（HN 用 8 本は migration で自動投入、**Talk 用は手動作成**） | [integrations/llm/README.md](integrations/llm/README.md) |
 | HackerNews Agent設定 | 閾値・ポーリング・プロンプト 8 本の割り当て | [features/hn_agent/README.md](features/hn_agent/README.md) |
-| 会話生成設定（TalkConfig） | プリセットごとの動作パラメータ + プロンプト 2 本 + TTS | [features/talk/README.md](features/talk/README.md) |
+| 会話生成設定（TalkConfig） | プリセットごとの動作パラメータ + プロンプト 2 本 + TTS + 生成回数の上限 | [features/talk/README.md](features/talk/README.md) |
 | HNスレッド / チャットセッション | 収集データ・会話履歴の閲覧と削除 | — |
 
 ## テストの実行

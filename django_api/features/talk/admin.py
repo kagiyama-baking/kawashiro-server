@@ -64,6 +64,12 @@ class TalkConfigAdmin(admin.ModelAdmin):
                 ),
             },
         ),
+        (
+            "回数制限",
+            {
+                "fields": ("synthesize_rate_limit",),
+            },
+        ),
     )
 
 
