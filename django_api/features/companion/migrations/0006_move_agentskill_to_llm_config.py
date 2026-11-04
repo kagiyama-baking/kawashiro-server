@@ -6,7 +6,8 @@ llm_config の 0014 が同じ表（companion_agentskill）で AgentSkill を作�
 モデル名から決まるので変わらない。
 
 戻すときは `migrate llm_config 0013`（この 0006 も外れる）。`migrate companion 0005` だけ
-では llm_config の 0014 が当たったまま残る（状態だけなので DB に害はない）。
+では llm_config の 0014 が当たったまま残り、内容の型（ContentType）の行も llm_config のまま
+になる（古い版の管理画面では、それまでの履歴と付けた権限が見えない）。
 """
 
 from django.db import migrations, models

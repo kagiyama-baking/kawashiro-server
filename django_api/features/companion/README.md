@@ -29,7 +29,7 @@ features/companion/
     └── 0006_move_agentskill_to_llm_config.py                   # AgentSkill を llm_config へ移す（状態だけ。下記）
 ```
 
-`0006` は `AgentSkill` を llm_config アプリへ移す migration です（llm_config の `0014` の後に当たります）。どちらも状態だけで DB は変えないので、行・設定の選択・表（`companion_agentskill`）はそのまま残ります（表名の扱いは [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）。`0006` を持たない版のコードに戻すときは、先に `0006` を含む版のコードで `python manage.py migrate llm_config 0013` を実行します（llm_config の `0015`（スキル名から接頭辞 `companion-skill-` を外す。規則は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）、`0006`、llm_config の `0014` の順に外れ、`AgentSkill` は companion のモデルに戻ります）。`migrate companion 0005` だけでは llm_config の `0014` が当たったまま残ります（`0015` は外れて名前も戻ります。`0014` は状態だけなので DB に害はありません）。
+`0006` は `AgentSkill` を llm_config アプリへ移す migration です（llm_config の `0014` の後に当たります）。どちらも表は変えないので、行・設定の選択・表（`companion_agentskill`）はそのまま残ります（表名と内容の型（ContentType）の扱いは [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）。`0006` を持たない版のコードに戻すときは、先に `0006` を含む版のコードで `python manage.py migrate llm_config 0013` を実行します（llm_config の `0016`（サービス設定の表示名）、`0015`（スキル名から接頭辞 `companion-skill-` を外す。規則は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）、`0006`、llm_config の `0014`（内容の型の行も companion に戻す）の順に外れ、`AgentSkill` は companion のモデルに戻ります）。`migrate companion 0005` だけでは、`0016`・`0015` は外れますが llm_config の `0014` が当たったまま残り、内容の型の行も llm_config のままです（古い版の管理画面では、それまでの履歴と付けた権限が見えません）。戻すときは `migrate llm_config 0013` を使ってください。
 
 音声合成の項目は `integrations/tts/models.py` の抽象モデル `AbstractTTSSettings` から継承します（テーブルは持たないので tts アプリに migration はありません）。
 
@@ -67,7 +67,7 @@ features/companion/
   - 同じ名前のスキルの説明・有効・ラベルが、設定ごとに違う（スキル名が全体で一意になるため。どちらかにそろえる）
 - 旧スキルの本文の参照（`LangfusePromptRef`）は消しません。使わなくなるので、確かめてから admin で消してください。
 - `0004` を戻すと、各設定で選んでいるスキルを旧スキルとして作り直します（`0005` を当てる前で旧スキルの行が残っていれば、その行を更新します）。本文の参照は識別名 `companion-skill-<スキル名>` で探し、なければ作ります。見つかった参照が別の本文を読む（Langfuse プロンプト名かラベルがスキルと違う）ときは、行きと同じく何も戻さずに `RuntimeError` で止まります（その参照をスキルに合わせるか、消してから戻し直す）。どの設定でも選んでいないスキルは戻りません。
-- `0001` まで戻せます。戻すときは、`0002`〜`0006` を含む版のコードで `python manage.py migrate companion 0001` を実行してから（llm_config の `0015`・`0014` も外れます）、古い版のコードに切り替えてください。古い版は `0002`〜`0006` を持たないので、古い版で migrate しても戻らず、DB とモデルが食い違います（本番でイメージを戻す手順は [デプロイガイドの §7](../../../docs/deployment.md#7-ロールバック手順)）。
+- `0001` まで戻せます。戻すときは、`0002`〜`0006` を含む版のコードで `python manage.py migrate companion 0001` を実行してから（llm_config の `0016`・`0015`・`0014` も外れます）、古い版のコードに切り替えてください。古い版は `0002`〜`0006` を持たないので、古い版で migrate しても戻らず、DB とモデルが食い違います（本番でイメージを戻す手順は [デプロイガイドの §7](../../../docs/deployment.md#7-ロールバック手順)）。
 
 ## 管理画面
 

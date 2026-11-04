@@ -8,7 +8,8 @@
 
 後退では、接頭辞の付いた行の名前からだけ外す（名前の短い順）。接頭辞のない行（0015 の後に
 登録したスキル）は変えないので、戻した後は `companion-skill-<名前>` を読むようになる。外した
-名前のスキルがすでにあれば、何も変えずに RuntimeError で止める。
+名前のスキルがすでにあるか、外した名前が予約した名前（`instrumentation`）なら、何も変えずに
+RuntimeError で止める。
 """
 
 import django.core.validators
@@ -20,6 +21,9 @@ import integrations.llm.models
 PROMPT_NAME_PREFIX = "companion-skill-"
 # スキル名の上限（AgentSkill.name の max_length）
 NAME_MAX_LENGTH = 64
+# スキル名に使えない予約した名前（integrations.llm.models.RESERVED_SKILL_NAMES と同じ。
+# migration はモデルのコードに依らないので、ここに持つ）
+RESERVED_NAMES = frozenset({"instrumentation"})
 
 
 def prefix_names(apps, schema_editor):
@@ -46,30 +50,39 @@ def prefix_names(apps, schema_editor):
         AgentSkill.objects.filter(pk=pk).update(name=PROMPT_NAME_PREFIX + name)
 
 
+def _strip_problem(stripped: str, unprefixed: set[str]) -> str | None:
+    """接頭辞を外した名前を使えない理由（使えるなら None）.
+
+    重なりうるのは、接頭辞のない名前（変えない行）だけ。接頭辞が 2 つ付いた名前を外すと
+    1 つ付いた名前になるが、そちらは先に（短い順で）外している。
+    """
+    if stripped in unprefixed:
+        return "同じ名前のスキルがあります"
+    if stripped in RESERVED_NAMES:
+        return "予約した名前です"
+    return None
+
+
 def strip_prefix(apps, schema_editor):
-    """接頭辞の付いたスキル名から外す（外した名前のスキルがあれば、何も変えずに止める）."""
+    """接頭辞の付いたスキル名から外す（外せない名前があれば、何も変えずに止める）."""
     AgentSkill = apps.get_model("llm_config", "AgentSkill")
     names = set(AgentSkill.objects.values_list("name", flat=True))
     prefixed = sorted(
         (name for name in names if name.startswith(PROMPT_NAME_PREFIX)),
         key=lambda name: (len(name), name),
     )
-    # 外した名前と重なりうるのは、接頭辞のない名前（変えない行）だけ。接頭辞が 2 つ付いた
-    # 名前を外すと 1 つ付いた名前になるが、そちらは先に（短い順で）外している
     unprefixed = names - set(prefixed)
-    taken = [
-        name
-        for name in prefixed
-        if name.removeprefix(PROMPT_NAME_PREFIX) in unprefixed
-    ]
-    if taken:
+    problems = []
+    for name in prefixed:
+        stripped = name.removeprefix(PROMPT_NAME_PREFIX)
+        reason = _strip_problem(stripped, unprefixed)
+        if reason is not None:
+            problems.append(f"- {name} → {stripped}（{reason}）")
+    if problems:
         raise RuntimeError(
-            "Agent Skills のスキル名から接頭辞 companion-skill- を外すと、ほかのスキルと同じ"
-            "名前になるので、migration を止めました（何も変えていません）。どちらかのスキルの"
-            "名前を変えてから、戻し直してください:\n"
-            + "\n".join(
-                f"- {name} → {name.removeprefix(PROMPT_NAME_PREFIX)}" for name in taken
-            )
+            "Agent Skills のスキル名から接頭辞 companion-skill- を外せないスキルがあるので、"
+            "migration を止めました（何も変えていません）。次のスキルの名前を変えてから、"
+            "戻し直してください:\n" + "\n".join(problems)
         )
     for name in prefixed:
         AgentSkill.objects.filter(name=name).update(
