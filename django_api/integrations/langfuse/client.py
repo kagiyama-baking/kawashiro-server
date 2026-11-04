@@ -5,6 +5,8 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from .exceptions import LangfusePromptError
+
 if TYPE_CHECKING:
     from .models import LangfusePromptRef
 
@@ -82,6 +84,58 @@ def resolve_prompt(ref: "LangfusePromptRef", **variables: Any) -> str:
     """
     compile_fn, _ = get_prompt_with_variables(ref)
     return compile_fn(**variables)
+
+
+def fetch_text_prompt(name: str, *, label: str) -> str:
+    """Langfuse の Text 型プロンプトを名前とラベルで取り、本文をそのまま返す.
+
+    fallback を持たない取得経路（いまはスキルが使い、いずれプロジェクト全体を
+    こちらへ寄せる）。取れなければ fallback_text に落とさず例外にする。
+    本文は compile しないので、`{{x}}` は展開されずに残る。
+
+    SDK 自身のプロンプトキャッシュの挙動は変えない。TTL（既定 60 秒）を過ぎた
+    ものも返しつつ裏で取り直すので、一度取れた後は取得に失敗しても古い本文が
+    返る。例外になるのは、プロセス内のキャッシュにまだ無いとき（初回や、
+    Langfuse で見つからなくなってキャッシュから外れた後）だけ。
+
+    Args:
+        name: Langfuse 上のプロンプト名
+        label: 取得するラベル（production / staging など）
+
+    Returns:
+        プロンプト本文（未展開）
+
+    Raises:
+        LangfusePromptError: langfuse を import できない・Langfuse に届かない・
+            未登録・Text 型でないとき。取得の失敗は元の例外を __cause__ に持つ。
+    """
+    try:
+        from langfuse import get_client
+        from langfuse.model import TextPromptClient
+
+        prompt = get_client().get_prompt(name, label=label)
+    except Exception as exc:
+        logger.warning(
+            "Langfuseプロンプト取得失敗: %s (label=%s)", name, label, exc_info=True
+        )
+        raise LangfusePromptError(
+            f"Langfuse からプロンプトを取得できませんでした: {name} (label={label})"
+        ) from exc
+
+    if not isinstance(prompt, TextPromptClient):
+        prompt_type = type(prompt).__name__
+        logger.warning(
+            "Text 型ではないプロンプトは未対応: %s (label=%s, type=%s)",
+            name,
+            label,
+            prompt_type,
+        )
+        raise LangfusePromptError(
+            f"Text 型ではないプロンプトは使えません: {name} "
+            f"(label={label}, type={prompt_type})"
+        )
+
+    return prompt.prompt
 
 
 def render_template(template: str, variables: dict[str, Any]) -> str:

@@ -30,7 +30,7 @@ kawashiro-server/
 │   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
 │   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
-│   │   └── companion/       # Companion エージェント（キャラクター設定 + スキル・常設ツール。発話からセリフを生成する API）
+│   │   └── companion/       # Companion エージェント（システムプロンプト + スキル・常設ツール。発話からセリフを生成する API）
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
 │   ├── pyproject.toml       # Python依存関係・ツール設定
@@ -65,7 +65,7 @@ kawashiro-server/
 | Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
-| Companion の設定モデル（CompanionConfig / CompanionSkill）・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
+| Companion の設定モデル（CompanionConfig / AgentSkill）・スキルの本文の取得・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
 | 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
 | 音声合成 API・モデル配置・CPU/GPU 切替 | `sbv2_api/README.md` |
 | フロントエンド画面・開発コマンド | `frontend/README.md` |
@@ -267,6 +267,8 @@ llm.requests[1].system_prompts  # system の本文の並び（指示の各部分
 `ScriptedLLM` は `OpenAIChatModel` の応答の解釈を通りません。送信本文や応答の解釈を確かめるテストでは `fake_litellm` フィクスチャ（HTTP 層だけの代役）を使います。
 
 ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
+
+Companion のテスト（`tests/features/companion/`）では、`conftest.py` の autouse の `langfuse_prompts` が Langfuse のプロンプトの取得を代役にします。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
 
 ## コーディング規約
 

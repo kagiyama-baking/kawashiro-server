@@ -143,7 +143,7 @@ class TestCompanionRunViewValidation:
     def test_run_with_unknown_skill_returns_400_with_message(
         self, authenticated_client, run_companion
     ):
-        """登録がない・無効なスキルは 400 で、どのスキルかを返す."""
+        """有効な設定で選ばれていない・無効なスキルは 400 で、どのスキルかを返す."""
         run_companion.side_effect = UnknownSkillError("good-evening")
 
         response = _post(
@@ -152,7 +152,10 @@ class TestCompanionRunViewValidation:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.json() == {
-            "error": "スキル「good-evening」は登録されていないか、無効です"
+            "error": (
+                "スキル「good-evening」は有効な Companion 設定で選ばれていないか、"
+                "無効です"
+            )
         }
 
 
@@ -242,6 +245,12 @@ class TestCompanionRunViewErrors:
                 503,
                 CONFIG_ERROR,
                 id="prompt_unavailable",
+            ),
+            pytest.param(
+                PromptUnavailableError("companion-skill-good-night", reason=INTERNALS),
+                503,
+                CONFIG_ERROR,
+                id="skill_body_unavailable",
             ),
             pytest.param(
                 LLMConfigurationError(INTERNALS),

@@ -1,9 +1,10 @@
 """Companion の実行サービス（run_companion）のテスト.
 
 モデルは台本（`ScriptedLLM`）を本番のプロファイルで差し替え、`run_agent_sync` を通す。
-LLM の接続設定は DB を読まないテスト用のもの（サービス名は呼び出しのまま）にし、Langfuse の
-プロンプトは取りに行かない（本文は参照のフォールバックテキストになる）。音声合成と祝日・天気の
-クライアントは差し替えるので、外へは出ない。
+LLM の接続設定は DB を読まないテスト用のもの（サービス名は呼び出しのまま）にする。Langfuse は
+代役（conftest の `langfuse_prompts`）にし、スキルの本文は (プロンプト名, ラベル) で入れたものを
+返させる（システムプロンプトは取れずに、参照のフォールバックテキストになる）。音声合成と祝日・
+天気のクライアントは差し替えるので、外へは出ない。
 """
 
 import logging
@@ -35,7 +36,7 @@ from integrations.llm.exceptions import (
 from integrations.llm.runtime import _LITELLM_PROFILE
 from integrations.tts.client import TTSResult
 from integrations.tts.exceptions import TTSNetworkError
-from tests.fixtures.factories import CompanionConfigFactory, CompanionSkillFactory
+from tests.fixtures.factories import AgentSkillFactory, CompanionConfigFactory
 from tests.fixtures.llm import (
     RecordedRequest,
     ScriptedLLM,
@@ -50,7 +51,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 SERVICES = "features.companion.services"
 AREA_CODE = "130010"
-PERSONA = "キャラクター設定"
+SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
 HOME_BODY = "おかえりのあいさつをする"
@@ -60,13 +61,6 @@ LEAKED_TOOL_CALL = '<parameter name="id">good-morning</parameter>'
 AUDIO = TTSResult(
     audio_data=b"RIFF-test-audio", content_type="audio/mpeg", format="mp3"
 )
-
-
-@pytest.fixture(autouse=True)
-def _langfuse_prompts_unreachable():
-    """Langfuse のプロンプトを取りに行かない（本文は参照のフォールバックテキストになる）."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture(autouse=True)
@@ -92,27 +86,36 @@ def _no_holiday_lookup():
         yield
 
 
+def _skill(langfuse_prompts, name: str, body: str, **fields):
+    """スキルを登録し、本文を Langfuse の代役にスキルのラベルで置く."""
+    skill = AgentSkillFactory(name=name, **fields)
+    langfuse_prompts[(skill.prompt_name, skill.label)] = body
+    return skill
+
+
 @pytest.fixture
-def config(db) -> CompanionConfig:
-    """有効な設定と、名前順と逆に登録したスキル 3 件（welcome-home は無効）."""
-    config = CompanionConfigFactory(
-        is_active=True,
-        area_code=AREA_CODE,
-        persona_prompt_ref__fallback_text=PERSONA,
-    )
-    for name, description, body, is_enabled in [
-        ("welcome-home", "帰宅のあいさつ（「ただいま」など）", HOME_BODY, False),
-        ("good-night", "夜のあいさつ（「おやすみ」など）", NIGHT_BODY, True),
-        ("good-morning", "朝のあいさつ（「おはよう」など）", MORNING_BODY, True),
-    ]:
-        CompanionSkillFactory(
-            config=config,
-            name=name,
+def config(db, langfuse_prompts) -> CompanionConfig:
+    """有効な設定と、名前順と逆に選んだスキル 3 件（welcome-home は無効）."""
+    skills = [
+        _skill(
+            langfuse_prompts,
+            name,
+            body,
             description=description,
-            prompt_ref__fallback_text=body,
             is_enabled=is_enabled,
         )
-    return config
+        for name, description, body, is_enabled in [
+            ("welcome-home", "帰宅のあいさつ（「ただいま」など）", HOME_BODY, False),
+            ("good-night", "夜のあいさつ（「おやすみ」など）", NIGHT_BODY, True),
+            ("good-morning", "朝のあいさつ（「おはよう」など）", MORNING_BODY, True),
+        ]
+    ]
+    return CompanionConfigFactory(
+        is_active=True,
+        area_code=AREA_CODE,
+        system_prompt_ref__fallback_text=SYSTEM_PROMPT,
+        skills=skills,
+    )
 
 
 @pytest.fixture
@@ -144,14 +147,14 @@ def _tool_names(request: RecordedRequest) -> set[str]:
 
 
 def _catalog_entries(request: RecordedRequest) -> list[str]:
-    """キャラクター設定を含まない system に載った、スキルの一覧の項目行（`- 名前: 説明`）.
+    """システムプロンプトを含まない system に載った、スキルの一覧の項目行（`- 名前: 説明`）.
 
     一覧の見出しと `<context>` の囲みは PydanticAI の定型文なので、ここでは見ない。
     """
     return [
         line
         for text in request.system_prompts
-        if PERSONA not in text
+        if SYSTEM_PROMPT not in text
         for line in text.splitlines()
         if line.startswith("- ")
     ]
@@ -184,24 +187,24 @@ class TestAutoSelection:
         )
         assert len(llm.requests) == 3
 
-    def test_run_companion_first_system_is_persona_then_policy_with_loading_rule(
+    def test_run_companion_first_system_is_system_prompt_then_policy_with_loading_rule(
         self, config
     ):
-        """最初の system はキャラクター設定、その後ろに読み込みの一文を含む方針."""
+        """最初の system はシステムプロンプト、その後ろに読み込みの一文を含む方針."""
         llm = _scripted("こんにちは")
 
         _run(llm)
 
         first = llm.requests[0]
         assert first.system_prompts[0] == (
-            f"{PERSONA}\n\n{response_policy(can_load_skills=True)}"
+            f"{SYSTEM_PROMPT}\n\n{response_policy(can_load_skills=True)}"
         )
         assert "load_capability" in _tool_names(first)
 
     def test_run_companion_catalog_lists_only_enabled_skills_in_name_order(
         self, config
     ):
-        """一覧（キャラクター設定の後ろの別の system）には、有効なスキルだけが名前順に載る."""
+        """一覧（システムプロンプトの後ろの別の system）には、有効なスキルだけが名前順に載る."""
         llm = _scripted("こんにちは")
 
         _run(llm)
@@ -246,27 +249,49 @@ class TestAutoSelection:
 
     def test_run_companion_without_enabled_skills_offers_no_skills(self, db):
         """有効なスキルがなければ、一覧も読み込みのツールも、方針の読み込みの一文も入れない."""
-        config = CompanionConfigFactory(
-            is_active=True, persona_prompt_ref__fallback_text=PERSONA
+        CompanionConfigFactory(
+            is_active=True,
+            system_prompt_ref__fallback_text=SYSTEM_PROMPT,
+            skills=[AgentSkillFactory(name="good-morning", is_enabled=False)],
         )
-        CompanionSkillFactory(config=config, name="good-morning", is_enabled=False)
         llm = _scripted("こんにちは")
 
         reply = _run(llm)
 
         first = llm.requests[0]
         assert first.system_prompts == [
-            f"{PERSONA}\n\n{response_policy(can_load_skills=False)}"
+            f"{SYSTEM_PROMPT}\n\n{response_policy(can_load_skills=False)}"
         ]
         assert "load_capability" not in _tool_names(first)
         assert reply.skill is None
 
-    def test_run_companion_reads_config_and_skills_with_refs_in_two_queries(
+    def test_run_companion_reads_config_and_skills_in_two_queries(
         self, config, django_assert_num_queries
     ):
-        """有効な設定とスキルは、キャラクター設定・本文の参照ごと 2 クエリで読む."""
+        """DB は 2 クエリだけ読む（スキルを読み込んで本文を取っても増えない）.
+
+        有効な設定はシステムプロンプトの参照ごと 1 クエリ、設定で選んだ有効なスキルは
+        1 クエリ（中間表との結合）。スキルの本文は Langfuse から取るので DB を読まない。
+        """
         with django_assert_num_queries(2):
-            _run(_scripted("こんにちは"))
+            reply = _run(_scripted(load_capability("good-morning"), "おはよう！"))
+
+        assert reply.skill == "good-morning"
+
+    def test_run_companion_when_loaded_skill_body_unavailable_raises_error_after_one_request(
+        self, config, langfuse_unreachable
+    ):
+        """読み込んだスキルの本文を Langfuse から取れなければ、続けずに PromptUnavailableError.
+
+        モデルへのリクエストは読み込みを決めた 1 回だけ（本文のない手順で答えさせない）。
+        """
+        llm = _scripted(load_capability("good-morning"), "おはよう！")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            _run(llm)
+
+        assert exc_info.value.ref_name == "companion-skill-good-morning"
+        assert len(llm.requests) == 1
 
 
 class TestSkillSpecified:
@@ -286,10 +311,10 @@ class TestSkillSpecified:
         assert len(llm.requests) == 1
         assert "load_capability" not in _tool_names(llm.requests[0])
 
-    def test_run_companion_with_skill_appends_its_body_after_persona_and_policy(
+    def test_run_companion_with_skill_appends_its_body_after_system_prompt_and_policy(
         self, config
     ):
-        """system は 1 つだけで、キャラクター設定 → 読み込みの一文のない方針 → スキルの本文の順."""
+        """system は 1 つだけで、システムプロンプト → 読み込みの一文のない方針 → スキルの本文の順."""
         llm = _scripted("おやすみ！")
 
         _run(llm, skill="good-night")
@@ -298,7 +323,7 @@ class TestSkillSpecified:
         assert llm.requests[0].system_prompts == [
             "\n\n".join(
                 [
-                    PERSONA,
+                    SYSTEM_PROMPT,
                     response_policy(can_load_skills=False),
                     skill_instructions(night),
                 ]
@@ -317,32 +342,66 @@ class TestSkillSpecified:
         assert reply.text == "おやすみ！"
         assert len(llm.requests) == 2
 
-    @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
+    @pytest.mark.parametrize("body", EMPTY_TEXTS)
     def test_run_companion_with_skill_with_empty_body_raises_error_before_llm(
-        self, config, fallback_text
+        self, config, langfuse_prompts, body
     ):
         """指定したスキルの本文が空なら、モデルを呼ばずに PromptUnavailableError を送出する."""
-        skill = CompanionSkillFactory(
-            config=config, name="good-evening", prompt_ref__fallback_text=fallback_text
-        )
+        config.skills.add(_skill(langfuse_prompts, "good-evening", body))
         llm = _scripted("こんばんは")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm, skill="good-evening")
 
-        assert exc_info.value.ref_name == skill.prompt_ref.name
+        assert exc_info.value.ref_name == "companion-skill-good-evening"
         assert llm.requests == []
+
+    def test_run_companion_with_skill_when_body_unavailable_raises_error_before_llm(
+        self, config, langfuse_unreachable
+    ):
+        """指定したスキルの本文を Langfuse から取れなければ、モデルを呼ばずに PromptUnavailableError.
+
+        システムプロンプトは参照のフォールバックテキストに落ちるが、スキルの本文には
+        フォールバックがない。
+        """
+        llm = _scripted("おやすみ！")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            _run(llm, skill="good-night")
+
+        assert exc_info.value.ref_name == "companion-skill-good-night"
+        assert llm.requests == []
+
+    def test_run_companion_with_skill_uses_body_for_label_of_skill(
+        self, config, langfuse_prompts
+    ):
+        """本文はスキルのラベルのプロンプトから取る（ほかのラベルの本文は使わない）."""
+        night = config.skills.get(name="good-night")
+        night.label = "production"
+        night.save()
+        langfuse_prompts[(night.prompt_name, "production")] = "本番の本文"
+        llm = _scripted("おやすみ！")
+
+        _run(llm, skill="good-night")
+
+        (system_prompt,) = llm.requests[0].system_prompts
+        assert system_prompt.endswith("本番の本文")
+        assert NIGHT_BODY not in system_prompt
 
     @pytest.mark.parametrize(
         "skill",
-        ["good-evening", "welcome-home", "other-skill"],
-        ids=["unregistered", "disabled", "other-config"],
+        ["good-evening", "welcome-home", "unselected-skill", "other-skill"],
+        ids=["unregistered", "disabled", "unselected", "other-config"],
     )
     def test_run_companion_with_unavailable_skill_raises_error_before_llm(
         self, config, llm_settings, skill
     ):
-        """登録がない・無効・ほかの設定のスキルは、LLM の設定を読む前に UnknownSkillError."""
-        CompanionSkillFactory(config=CompanionConfigFactory(), name="other-skill")
+        """有効な設定で選んだ有効なスキルでなければ、LLM の設定を読む前に UnknownSkillError.
+
+        登録がない・無効・登録はあるがどの設定でも選んでいない・ほかの設定だけが選んでいる。
+        """
+        AgentSkillFactory(name="unselected-skill")
+        CompanionConfigFactory(skills=[AgentSkillFactory(name="other-skill")])
         llm = _scripted("こんにちは")
 
         with pytest.raises(UnknownSkillError, match=skill) as exc_info:
@@ -363,7 +422,7 @@ class TestBeforeModelErrors:
         save() はほかの設定を無効にするので、update で 2 件とも有効にする。
         """
         CompanionConfigFactory.create_batch(
-            2, persona_prompt_ref__fallback_text=PERSONA
+            2, system_prompt_ref__fallback_text=SYSTEM_PROMPT
         )
         CompanionConfig.objects.update(is_active=True)
 
@@ -418,19 +477,19 @@ class TestBeforeModelErrors:
         assert llm.requests == []
 
     @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
-    def test_run_companion_with_empty_persona_raises_prompt_unavailable_error(
+    def test_run_companion_with_empty_system_prompt_raises_prompt_unavailable_error(
         self, db, fallback_text
     ):
-        """キャラクター設定の本文が空なら、モデルを呼ばずに PromptUnavailableError."""
+        """システムプロンプトの本文が空なら、モデルを呼ばずに PromptUnavailableError."""
         config = CompanionConfigFactory(
-            is_active=True, persona_prompt_ref__fallback_text=fallback_text
+            is_active=True, system_prompt_ref__fallback_text=fallback_text
         )
         llm = _scripted("こんにちは")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm)
 
-        assert exc_info.value.ref_name == config.persona_prompt_ref.name
+        assert exc_info.value.ref_name == config.system_prompt_ref.name
         assert llm.requests == []
 
 

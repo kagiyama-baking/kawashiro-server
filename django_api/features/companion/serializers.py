@@ -4,7 +4,7 @@ import base64
 
 from rest_framework import serializers
 
-from .models import SKILL_NAME_PATTERN, CompanionSkill
+from .models import SKILL_NAME_PATTERN, AgentSkill
 from .services import CompanionReply
 
 # 発話の最大文字数
@@ -25,7 +25,7 @@ class CompanionRunRequestSerializer(serializers.Serializer):
     )
     skill = serializers.RegexField(
         SKILL_NAME_PATTERN,
-        max_length=CompanionSkill._meta.get_field("name").max_length,
+        max_length=AgentSkill._meta.get_field("name").max_length,
         required=False,
         allow_null=True,
         error_messages={

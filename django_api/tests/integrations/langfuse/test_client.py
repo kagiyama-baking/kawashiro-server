@@ -1,10 +1,17 @@
-"""resolve_prompt のテスト."""
+"""integrations.langfuse.client のテスト."""
 
+import logging
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from integrations.langfuse.client import get_prompt_with_variables, resolve_prompt
+from integrations.langfuse.client import (
+    fetch_text_prompt,
+    get_prompt_with_variables,
+    resolve_prompt,
+)
+from integrations.langfuse.exceptions import LangfusePromptError
 from integrations.langfuse.models import LangfusePromptRef
 
 pytestmark = pytest.mark.django_db
@@ -18,6 +25,40 @@ def ref(db):
         langfuse_prompt_name="test-prompt",
         label="production",
         fallback_text="fallback: {{name}} ({{count}})",
+    )
+
+
+def _text_prompt(body):
+    """SDK が返すのと同じ Text 型プロンプト（実物）を作る."""
+    from langfuse.model import Prompt_Text, TextPromptClient
+
+    return TextPromptClient(
+        Prompt_Text(
+            name="skill-greeting",
+            prompt=body,
+            version=1,
+            config={},
+            labels=["staging"],
+            tags=[],
+            type="text",
+        )
+    )
+
+
+def _chat_prompt():
+    """SDK が返すのと同じ Chat 型プロンプト（実物）を作る."""
+    from langfuse.model import ChatPromptClient, Prompt_Chat
+
+    return ChatPromptClient(
+        Prompt_Chat(
+            name="skill-greeting",
+            prompt=[{"role": "system", "content": "本文"}],
+            version=1,
+            config={},
+            labels=["staging"],
+            tags=[],
+            type="chat",
+        )
     )
 
 
@@ -197,6 +238,119 @@ class TestGetPromptWithVariables:
         # ChatPromptClient は未サポートのため fallback_text から変数抽出される
         assert variables == {"name", "count"}
         assert compile_fn(name="alice", count=3) == "fallback: alice (3)"
+
+
+@pytest.mark.unit
+class TestFetchTextPrompt:
+    """fetch_text_prompt のテスト（fallback を持たない取得経路）."""
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_with_text_prompt_returns_body(self, mock_get_client):
+        """Text 型プロンプトが取れたら本文を返す."""
+        mock_get_client.return_value.get_prompt.return_value = _text_prompt("本文")
+
+        assert fetch_text_prompt("skill-greeting", label="staging") == "本文"
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_passes_only_name_and_label_to_sdk(self, mock_get_client):
+        """SDK には名前とラベルだけを渡す（fallback を渡さない）."""
+        mock_client = mock_get_client.return_value
+        mock_client.get_prompt.return_value = _text_prompt("本文")
+
+        fetch_text_prompt("skill-greeting", label="staging")
+
+        mock_client.get_prompt.assert_called_once_with(
+            "skill-greeting", label="staging"
+        )
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_with_placeholders_returns_them_unexpanded(
+        self, mock_get_client
+    ):
+        """本文の `{{x}}` は展開も書き換えもせずに残す."""
+        body = "{{name}} さん、{{ topic }} について"
+        mock_get_client.return_value.get_prompt.return_value = _text_prompt(body)
+
+        assert fetch_text_prompt("skill-greeting", label="staging") == body
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_when_get_client_fails_raises_prompt_error(
+        self, mock_get_client
+    ):
+        """クライアントを用意できないときは LangfusePromptError にする."""
+        mock_get_client.side_effect = RuntimeError("connection failed")
+
+        with pytest.raises(LangfusePromptError):
+            fetch_text_prompt("skill-greeting", label="staging")
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_when_get_prompt_fails_raises_prompt_error(
+        self, mock_get_client
+    ):
+        """未登録・接続失敗などで取れないときは LangfusePromptError にする."""
+        mock_get_client.return_value.get_prompt.side_effect = Exception(
+            "Prompt not found"
+        )
+
+        with pytest.raises(LangfusePromptError):
+            fetch_text_prompt("skill-greeting", label="staging")
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_with_chat_prompt_raises_prompt_error(
+        self, mock_get_client
+    ):
+        """Chat 型プロンプトは本文が 1 つの文字列でないので LangfusePromptError にする."""
+        mock_get_client.return_value.get_prompt.return_value = _chat_prompt()
+
+        with pytest.raises(LangfusePromptError):
+            fetch_text_prompt("skill-greeting", label="staging")
+
+    def test_fetch_text_prompt_without_langfuse_installed_raises_prompt_error(
+        self, monkeypatch
+    ):
+        """langfuse を import できないときも LangfusePromptError にする."""
+        monkeypatch.setitem(sys.modules, "langfuse", None)
+
+        with pytest.raises(LangfusePromptError):
+            fetch_text_prompt("skill-greeting", label="staging")
+
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_on_failure_chains_original_error(self, mock_get_client):
+        """元の例外を __cause__ に残し、呼び出し側が理由を記録できるようにする."""
+        error = Exception("Prompt not found")
+        mock_get_client.return_value.get_prompt.side_effect = error
+
+        with pytest.raises(LangfusePromptError) as exc_info:
+            fetch_text_prompt("skill-greeting", label="staging")
+
+        assert exc_info.value.__cause__ is error
+
+    @pytest.mark.parametrize(
+        "get_prompt",
+        [
+            pytest.param(
+                MagicMock(side_effect=Exception("Prompt not found")),
+                id="fetch-error",
+            ),
+            pytest.param(MagicMock(return_value=_chat_prompt()), id="chat-prompt"),
+        ],
+    )
+    @patch("langfuse.get_client")
+    def test_fetch_text_prompt_on_failure_logs_warning_with_name_and_label(
+        self, mock_get_client, get_prompt, caplog
+    ):
+        """失敗したらプロンプト名とラベルを WARNING で残す."""
+        mock_get_client.return_value.get_prompt = get_prompt
+
+        with pytest.raises(LangfusePromptError):
+            fetch_text_prompt("skill-greeting", label="staging")
+
+        [record] = [
+            r for r in caplog.records if r.name == "integrations.langfuse.client"
+        ]
+        assert record.levelno == logging.WARNING
+        assert "skill-greeting" in record.getMessage()
+        assert "staging" in record.getMessage()
 
 
 class TestExtractVariables:

@@ -71,7 +71,8 @@ class CompanionRunView(APIView):
         summary="発話に答えるセリフを生成（音声合成が有効なら音声も）",
         description="""有効な Companion 設定で、発話に答えるセリフを生成します。
 
-設定とスキルの一覧は Django 管理画面で、キャラクター設定とスキルの本文は Langfuse で管理します。
+設定は Django 管理画面の Companion 設定で、スキルの一覧は管理画面の Agent Skills で管理します（設定で使うスキルを選びます）。
+システムプロンプトとスキルの本文は Langfuse で管理します。
 エージェントは発話に合うスキルを選び、その手順に従って日時・天気・今日の予定をツールで取得して答えます。
 
 ## リクエストボディ
@@ -105,7 +106,7 @@ class CompanionRunView(APIView):
             400: OpenApiResponse(
                 description=(
                     "入力が不正（項目ごとのエラー）、または指定したスキルが"
-                    "登録されていないか無効"
+                    "有効な Companion 設定で選ばれていないか無効"
                 )
             ),
             401: OpenApiResponse(description="認証エラー"),
@@ -121,7 +122,7 @@ class CompanionRunView(APIView):
             503: OpenApiResponse(
                 description=(
                     "有効な Companion 設定・LLM サービス設定がない、"
-                    "またはプロンプトの本文が空"
+                    "またはプロンプトの本文を取得できないか空"
                 )
             ),
             504: OpenApiResponse(

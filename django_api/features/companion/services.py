@@ -1,6 +1,6 @@
 """Companion の実行サービス.
 
-有効な設定・スキル・キャラクター設定から実行の指示を組み立て、COMPANION_AGENT を 1 回
+有効な設定・スキル・システムプロンプトから実行の指示を組み立て、COMPANION_AGENT を 1 回
 実行してセリフを返す（音声合成が有効なら音声も）。流れと各段階で送出する例外は
 `README.md` の「実行の流れ」。
 """
@@ -20,7 +20,7 @@ from integrations.tts.client import TTSClient, TTSResult
 
 from .agent import COMPANION_AGENT, CompanionDeps, response_policy
 from .exceptions import CompanionNotConfiguredError, UnknownSkillError
-from .models import CompanionConfig, CompanionSkill
+from .models import AgentSkill, CompanionConfig
 from .skills import (
     build_skill_capabilities,
     loaded_skill,
@@ -63,21 +63,23 @@ class CompanionReply:
 def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
     """発話に答えるセリフを生成する（音声合成が有効なら音声も）.
 
-    設定・スキル・LLM の接続設定・キャラクター設定の確認で止まったときは、モデルを呼ばない。
+    設定・スキル・LLM の接続設定・システムプロンプトの確認で止まったときは、モデルを呼ばない。
     Langfuse のスパンの出力には、セリフと使ったスキルだけを記録する（音声は送らない）。
 
     Args:
         prompt: 発話（例: 「おはよう」）
-        skill: 使うスキルの名前。指定するとモデルに選ばせず、一覧も読み込みも使わない
+        skill: 使うスキルの名前（有効な設定で選んだ有効なスキル）。指定するとモデルに
+            選ばせず、一覧も読み込みも使わない
 
     Returns:
         セリフ・使ったスキル・音声
 
     Raises:
         CompanionNotConfiguredError: 有効な設定がないか、複数ある場合
-        UnknownSkillError: 指定したスキルが有効な設定にないか、無効な場合
+        UnknownSkillError: 指定したスキルが、有効な設定で選ばれていないか、無効な場合
         LLMConfigurationError: companion の LLM サービス設定がない場合
-        PromptUnavailableError: キャラクター設定か、使うスキルの本文が空の場合
+        PromptUnavailableError: システムプロンプトの本文が空の場合か、使うスキルの本文を
+            Langfuse から取れないか、空の場合
         LLMOutputError: 応答の本文が空の場合・読み込みなどのツールの失敗が続いた場合・
             本文に漏れたツール呼び出しの書式が作り直させても直らなかった場合
         LLMTimeoutError: リクエストごとのタイムアウトか、実行全体の RUN_TIMEOUT を過ぎた場合
@@ -85,12 +87,12 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         TTSError: 音声合成に失敗した場合
     """
     config = _active_config()
-    skills = list(config.skills.filter(is_enabled=True).select_related("prompt_ref"))
+    skills = list(config.skills.filter(is_enabled=True))
     selected = None if skill is None else _find_skill(skills, skill)
     settings = get_llm_settings("companion")
-    persona = resolve_required_prompt(config.persona_prompt_ref)
+    system_prompt = resolve_required_prompt(config.system_prompt_ref)
     instructions, capabilities = _instructions_and_capabilities(
-        persona, skills, selected
+        system_prompt, skills, selected
     )
 
     result = run_agent_sync(
@@ -121,7 +123,7 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
 
 
 def _active_config() -> CompanionConfig:
-    """有効な設定を返す（キャラクター設定の参照ごと）.
+    """有効な設定を返す（システムプロンプトの参照ごと）.
 
     有効な設定が複数ある（2 件を同時に有効にすると起こりうる）ときは、どれかを選ばずに
     設定の不備として止め、原因を error ログに出す。
@@ -136,8 +138,8 @@ def _active_config() -> CompanionConfig:
         raise error from exc
 
 
-def _find_skill(skills: Sequence[CompanionSkill], name: str) -> CompanionSkill:
-    """有効なスキルの中から、指定された名前のスキルを返す."""
+def _find_skill(skills: Sequence[AgentSkill], name: str) -> AgentSkill:
+    """有効な設定で選んだ有効なスキルの中から、指定された名前のスキルを返す."""
     for candidate in skills:
         if candidate.name == name:
             return candidate
@@ -145,22 +147,25 @@ def _find_skill(skills: Sequence[CompanionSkill], name: str) -> CompanionSkill:
 
 
 def _instructions_and_capabilities(
-    persona: str, skills: Sequence[CompanionSkill], selected: CompanionSkill | None
+    system_prompt: str,
+    skills: Sequence[AgentSkill],
+    selected: AgentSkill | None,
 ) -> tuple[str, list[Capability[CompanionDeps]]]:
     """実行の指示と、実行に渡す capability を決める.
 
-    指示はキャラクター設定 → 方針の順。スキルを指定したときは、その本文の節
-    （`skill_instructions`）を末尾に足し、capability は渡さない。指定しないときは有効な
-    スキルを一覧（遅延 capability）にし、スキルがあるときだけ方針に読み込みの一文を入れる。
+    指示はシステムプロンプト → 方針の順。スキルを指定したときは、その本文の節
+    （`skill_instructions`。ここで本文を Langfuse から取る）を末尾に足し、capability は
+    渡さない。指定しないときは設定で選んだ有効なスキルを一覧（遅延 capability）にし、
+    スキルがあるときだけ方針に読み込みの一文を入れる。
     """
     if selected is not None:
         sections = (
-            persona,
+            system_prompt,
             response_policy(can_load_skills=False),
             skill_instructions(selected),
         )
         return "\n\n".join(sections), []
-    sections = (persona, response_policy(can_load_skills=bool(skills)))
+    sections = (system_prompt, response_policy(can_load_skills=bool(skills)))
     return "\n\n".join(sections), build_skill_capabilities(skills)
 
 

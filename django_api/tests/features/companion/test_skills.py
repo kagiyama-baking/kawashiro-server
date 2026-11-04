@@ -1,8 +1,9 @@
-"""スキル（CompanionSkill を実行ごとの遅延 capability にする）のテスト.
+"""スキル（AgentSkill を実行ごとの遅延 capability にする）のテスト.
 
-Langfuse からは切り離し、本文は参照のフォールバックテキストで解決する（`resolve_prompt` は
-本物のまま通し、呼び出しだけを記録する）。モデルは台本（`ScriptedLLM`）で差し替え、
-本番のプロファイルで `run_agent_sync` を通す。天気の地域は空にするので、ツールも外へ出ない。
+Langfuse は代役（`langfuse_prompts`。conftest）にし、スキルの本文は (プロンプト名, ラベル) で
+入れたものを返させる（`fetch_text_prompt` は本物のまま通し、呼び出しだけを記録する）。
+モデルは台本（`ScriptedLLM`）で差し替え、本番のプロファイルで `run_agent_sync` を通す。
+天気の地域は空にするので、ツールも外へ出ない。
 """
 
 import threading
@@ -27,16 +28,14 @@ from features.companion.skills import (
     build_skill_capabilities,
     loaded_skill,
     resolve_required_prompt,
+    resolve_skill_body,
     skill_instructions,
 )
-from integrations.langfuse.client import resolve_prompt
+from integrations.langfuse.client import fetch_text_prompt
+from integrations.langfuse.exceptions import LangfusePromptError
 from integrations.llm.exceptions import LLMOutputError
 from integrations.llm.runtime import _LITELLM_PROFILE, run_agent_sync
-from tests.fixtures.factories import (
-    CompanionConfigFactory,
-    CompanionSkillFactory,
-    LangfusePromptRefFactory,
-)
+from tests.fixtures.factories import AgentSkillFactory, LangfusePromptRefFactory
 from tests.fixtures.llm import (
     RecordedRequest,
     ScriptedLLM,
@@ -45,22 +44,25 @@ from tests.fixtures.llm import (
     tool_call,
 )
 
-PERSONA = "キャラクター設定"
+SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
+# スキルの本文を置く Langfuse のプロンプト名（companion-skill-<スキル名>）
+MORNING_PROMPT = "companion-skill-good-morning"
+NIGHT_PROMPT = "companion-skill-good-night"
 EMPTY_TEXTS = ["", " \n\t "]
 
 
 def _run(
     llm: ScriptedLLM, capabilities: Sequence[AbstractCapability[CompanionDeps]]
 ) -> AgentRunResult:
-    """台本のモデルで COMPANION_AGENT を 1 回実行する（キャラクター設定は実行の指示で渡す）."""
+    """台本のモデルで COMPANION_AGENT を 1 回実行する（システムプロンプトは実行の指示で渡す）."""
     with COMPANION_AGENT.override(model=llm.model):
         return run_agent_sync(
             COMPANION_AGENT,
             make_llm_settings("companion"),
             user_prompt="おはよう",
-            instructions=PERSONA,
+            instructions=SYSTEM_PROMPT,
             deps=CompanionDeps(area_code=""),
             capabilities=capabilities,
         )
@@ -90,42 +92,30 @@ def _sent(request: RecordedRequest) -> str:
     return repr(request)
 
 
-@pytest.fixture(autouse=True)
-def _langfuse_unreachable():
-    """Langfuse から切り離す（本文は参照のフォールバックテキストになる）."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
-
-
 @pytest.fixture
-def resolutions():
-    """スキルの本文の解決を（参照の識別名, 解決したスレッド）の順で記録する."""
-    calls: list[tuple[str, int]] = []
+def fetches():
+    """スキルの本文の取得を（プロンプト名, ラベル, 取得したスレッド）の順で記録する."""
+    calls: list[tuple[str, str, int]] = []
 
-    def record(ref, **variables):
-        calls.append((ref.name, threading.get_ident()))
-        return resolve_prompt(ref, **variables)
+    def record(name, *, label):
+        calls.append((name, label, threading.get_ident()))
+        return fetch_text_prompt(name, label=label)
 
-    with patch("features.companion.skills.resolve_prompt", side_effect=record):
+    with patch("features.companion.skills.fetch_text_prompt", side_effect=record):
         yield calls
 
 
 @pytest.fixture
-def skills(db):
-    """名前順と逆に並べたスキル 2 件（おやすみ → おはよう）."""
-    config = CompanionConfigFactory()
+def skills(langfuse_prompts):
+    """名前順と逆に並べたスキル 2 件（おやすみ → おはよう。本文は staging に置く）."""
+    langfuse_prompts[(NIGHT_PROMPT, "staging")] = NIGHT_BODY
+    langfuse_prompts[(MORNING_PROMPT, "staging")] = MORNING_BODY
     return [
-        CompanionSkillFactory(
-            config=config,
-            name="good-night",
-            description="夜のあいさつ（「おやすみ」など）",
-            prompt_ref__fallback_text=NIGHT_BODY,
+        AgentSkillFactory.build(
+            name="good-night", description="夜のあいさつ（「おやすみ」など）"
         ),
-        CompanionSkillFactory(
-            config=config,
-            name="good-morning",
-            description="朝のあいさつ（「おはよう」など）",
-            prompt_ref__fallback_text=MORNING_BODY,
+        AgentSkillFactory.build(
+            name="good-morning", description="朝のあいさつ（「おはよう」など）"
         ),
     ]
 
@@ -140,15 +130,15 @@ def morning_run(skills):
 
 @pytest.mark.unit
 class TestResolveRequiredPrompt:
-    """resolve_required_prompt（本文が空なら読めた体で続けない）."""
+    """resolve_required_prompt（システムプロンプト。本文が空なら読めた体で続けない）."""
 
     def test_resolve_required_prompt_with_text_returns_stripped_text(self):
         """前後の空白を除いた本文を返す."""
         ref = LangfusePromptRefFactory.build(
-            name="companion-skill-good-morning", fallback_text=f"\n  {MORNING_BODY}\n"
+            name="companion-system", fallback_text=f"\n  {SYSTEM_PROMPT}\n"
         )
 
-        assert resolve_required_prompt(ref) == MORNING_BODY
+        assert resolve_required_prompt(ref) == SYSTEM_PROMPT
 
     @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
     def test_resolve_required_prompt_with_empty_text_raises_error_with_ref_name(
@@ -167,44 +157,115 @@ class TestResolveRequiredPrompt:
         ) as exc_info:
             resolve_required_prompt(ref)
 
-        assert exc_info.value.ref_name == "companion-system"
+        assert (exc_info.value.ref_name, exc_info.value.reason) == (
+            "companion-system",
+            "本文が空です",
+        )
+
+
+@pytest.mark.unit
+class TestResolveSkillBody:
+    """resolve_skill_body（スキルの本文を Langfuse から取る。フォールバックはない）."""
+
+    def test_resolve_skill_body_returns_stripped_body_of_prompt_with_skill_label(
+        self, langfuse_prompts
+    ):
+        """companion-skill-<名前> をスキルのラベルで取り、前後の空白を除いて返す."""
+        langfuse_prompts[(MORNING_PROMPT, "staging")] = f"\n  {MORNING_BODY}\n"
+        langfuse_prompts[(MORNING_PROMPT, "production")] = "production の本文"
+        skill = AgentSkillFactory.build(name="good-morning", label="staging")
+
+        assert resolve_skill_body(skill) == MORNING_BODY
+
+    @pytest.mark.parametrize("body", EMPTY_TEXTS)
+    def test_resolve_skill_body_with_empty_body_raises_error_with_prompt_name(
+        self, langfuse_prompts, body
+    ):
+        """本文が空（空白だけ）なら、プロンプト名を持つ PromptUnavailableError を送出する."""
+        langfuse_prompts[(MORNING_PROMPT, "staging")] = body
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            resolve_skill_body(AgentSkillFactory.build(name="good-morning"))
+
+        assert (exc_info.value.ref_name, exc_info.value.reason) == (
+            MORNING_PROMPT,
+            "本文が空です",
+        )
+
+    def test_resolve_skill_body_without_prompt_for_label_raises_error_with_cause(
+        self, langfuse_prompts
+    ):
+        """スキルのラベルのプロンプトがなければ PromptUnavailableError（ほかのラベルは使わない）.
+
+        取得の失敗（LangfusePromptError）はそのまま出さず、原因（`__cause__`）として持つ。
+        """
+        langfuse_prompts[(MORNING_PROMPT, "production")] = MORNING_BODY
+        skill = AgentSkillFactory.build(name="good-morning", label="staging")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            resolve_skill_body(skill)
+
+        assert exc_info.value.ref_name == MORNING_PROMPT
+        assert isinstance(exc_info.value.__cause__, LangfusePromptError)
+
+    def test_resolve_skill_body_when_langfuse_unreachable_raises_error_with_reason(
+        self, langfuse_unreachable
+    ):
+        """Langfuse に届かなければ PromptUnavailableError（理由に取得の失敗を書く）."""
+        with pytest.raises(PromptUnavailableError, match=MORNING_PROMPT) as exc_info:
+            resolve_skill_body(AgentSkillFactory.build(name="good-morning"))
+
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, LangfusePromptError)
+        assert exc_info.value.reason == str(cause)
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_resolve_skill_body_when_langfuse_unreachable_never_uses_ref_fallback(
+    langfuse_unreachable,
+):
+    """Langfuse に届かなくても、同じ名前の参照（移行で残った旧スキルの参照）の本文は使わない."""
+    LangfusePromptRefFactory(
+        name=MORNING_PROMPT,
+        langfuse_prompt_name=MORNING_PROMPT,
+        label="staging",
+        fallback_text=MORNING_BODY,
+    )
+
+    with pytest.raises(PromptUnavailableError):
+        resolve_skill_body(AgentSkillFactory(name="good-morning"))
 
 
 @pytest.mark.unit
 class TestSkillInstructions:
     """skill_instructions（スキルを指定したときに、本文を実行の指示に足す節にする）."""
 
-    def test_skill_instructions_puts_stripped_body_under_heading(self):
+    def test_skill_instructions_puts_stripped_body_under_heading(
+        self, langfuse_prompts
+    ):
         """見出しの下に、前後の空白を除いた本文を置く."""
-        skill = CompanionSkillFactory.build(
-            name="good-night",
-            prompt_ref=LangfusePromptRefFactory.build(
-                fallback_text=f"\n  {NIGHT_BODY}\n"
-            ),
-        )
+        langfuse_prompts[(NIGHT_PROMPT, "staging")] = f"\n  {NIGHT_BODY}\n"
 
-        heading, blank, body = skill_instructions(skill).split("\n")
+        heading, blank, body = skill_instructions(
+            AgentSkillFactory.build(name="good-night")
+        ).split("\n")
 
         assert heading.startswith("# ")
         assert blank == ""
         assert body == NIGHT_BODY
 
-    @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
-    def test_skill_instructions_with_empty_body_raises_error_with_ref_name(
-        self, fallback_text
+    @pytest.mark.parametrize("body", EMPTY_TEXTS)
+    def test_skill_instructions_with_empty_body_raises_error_with_prompt_name(
+        self, langfuse_prompts, body
     ):
-        """本文が空なら、参照の識別名を持つ PromptUnavailableError を送出する."""
-        skill = CompanionSkillFactory.build(
-            name="good-night",
-            prompt_ref=LangfusePromptRefFactory.build(
-                name="companion-skill-good-night", fallback_text=fallback_text
-            ),
-        )
+        """本文が空なら、プロンプト名を持つ PromptUnavailableError を送出する."""
+        langfuse_prompts[(NIGHT_PROMPT, "staging")] = body
 
         with pytest.raises(PromptUnavailableError) as exc_info:
-            skill_instructions(skill)
+            skill_instructions(AgentSkillFactory.build(name="good-night"))
 
-        assert exc_info.value.ref_name == "companion-skill-good-night"
+        assert exc_info.value.ref_name == NIGHT_PROMPT
 
 
 @pytest.mark.unit
@@ -213,8 +274,7 @@ def test_build_skill_capabilities_without_skills_returns_empty_list():
     assert build_skill_capabilities([]) == []
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
+@pytest.mark.unit
 class TestBuildSkillCapabilities:
     """スキルの capability を実際の実行に渡したときの振る舞い."""
 
@@ -258,12 +318,13 @@ class TestBuildSkillCapabilities:
         assert len(llm.requests) == 2
         assert result.output == "おはよう！"
 
-    def test_skill_capabilities_resolve_body_once_across_requests_after_load(
-        self, skills, resolutions
+    def test_skill_capabilities_fetch_body_once_with_skill_label_after_load(
+        self, skills, fetches
     ):
-        """読み込んだ後はリクエストのたびに本文を送るが、解決は実行ごとに 1 回だけ.
+        """読み込んだ後はリクエストのたびに本文を送るが、取るのは実行ごとに 1 回だけ.
 
-        読み込まなかったスキルの本文は解決しない（Langfuse へ取りに行かない）。
+        取るのは読み込んだスキルのプロンプトを、そのスキルのラベルで。読み込まなかった
+        スキルの本文は取りに行かない。
         """
         llm = _scripted(
             load_capability("good-morning"),
@@ -277,43 +338,47 @@ class TestBuildSkillCapabilities:
         after_load = llm.requests[1:]
         assert len(after_load) == 3
         assert all(_has_in_system(request, MORNING_BODY) for request in after_load)
-        assert [name for name, _ in resolutions] == [skills[1].prompt_ref.name]
+        assert [(name, label) for name, label, _ in fetches] == [
+            (MORNING_PROMPT, "staging")
+        ]
 
-    def test_skill_capabilities_resolve_body_on_calling_thread(
-        self, skills, resolutions
-    ):
-        """本文は呼び出し元のスレッドで解決する（呼び出し元の DB 接続を使う）."""
+    def test_skill_capabilities_fetch_body_on_calling_thread(self, skills, fetches):
+        """本文は呼び出し元のスレッドで取る（システムプロンプトと同じスレッド）."""
         llm = _scripted(load_capability("good-morning"), "おはよう！")
 
         _run(llm, build_skill_capabilities(skills))
 
-        assert [thread for _, thread in resolutions] == [threading.get_ident()]
+        assert [thread for _, _, thread in fetches] == [threading.get_ident()]
 
-    def test_skill_capabilities_without_load_never_resolve_bodies(
-        self, skills, resolutions
-    ):
-        """読み込まれなければ、どの本文も解決しない."""
+    def test_skill_capabilities_without_load_never_fetch_bodies(self, skills, fetches):
+        """読み込まれなければ、どの本文も取りに行かない."""
         _run(_scripted("こんにちは"), build_skill_capabilities(skills))
 
-        assert resolutions == []
+        assert fetches == []
 
-    @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
-    def test_skill_capabilities_with_empty_body_raise_prompt_unavailable_error(
-        self, resolutions, fallback_text
+    @pytest.mark.parametrize(
+        "body", [*EMPTY_TEXTS, None], ids=["empty", "whitespace", "unregistered"]
+    )
+    def test_skill_capabilities_with_unavailable_body_raise_prompt_unavailable_error(
+        self, langfuse_prompts, body
     ):
-        """本文が空なら PromptUnavailableError をそのまま送出し、読めた体でモデルへ続けない.
+        """本文が空か取れなければ PromptUnavailableError をそのまま送出し、読めた体で続けない.
 
         LLM の失敗（`translate_llm_errors` の LLMClientError）に変えず、ExceptionGroup にも包まない。
         """
-        skill = CompanionSkillFactory(
-            name="good-morning", prompt_ref__fallback_text=fallback_text
-        )
+        if body is not None:
+            langfuse_prompts[(MORNING_PROMPT, "staging")] = body
         llm = _scripted(load_capability("good-morning"), "おはよう！")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
-            _run(llm, build_skill_capabilities([skill]))
+            _run(
+                llm,
+                build_skill_capabilities(
+                    [AgentSkillFactory.build(name="good-morning")]
+                ),
+            )
 
-        assert exc_info.value.ref_name == skill.prompt_ref.name
+        assert exc_info.value.ref_name == MORNING_PROMPT
         assert len(llm.requests) == 1
 
     def test_loaded_skill_with_skill_capabilities_returns_loaded_skill_name(

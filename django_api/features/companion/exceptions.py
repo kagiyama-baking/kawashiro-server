@@ -6,20 +6,23 @@ class CompanionError(Exception):
 
 
 class PromptUnavailableError(CompanionError):
-    """プロンプト（キャラクター設定・スキルの本文）の本文が空で、使えない.
+    """プロンプト（システムプロンプト・スキルの本文）を使えない.
 
-    Langfuse から取れないときはフォールバックテキストに落ちるが、それも空のことがある。
+    システムプロンプトは Langfuse から取れないとフォールバックテキストに落ちるので、使えない
+    のは本文が空のときだけ。スキルの本文にはフォールバックがないので、Langfuse から取れない
+    ときも使えない（`reason` に取得の失敗を書き、元の例外を `__cause__` に持つ）。
 
     Attributes:
-        ref_name: 本文が空だったプロンプト参照の識別名（`LangfusePromptRef.name`）
+        ref_name: 使えなかったプロンプトの名前（システムプロンプトは参照の識別名
+            `LangfusePromptRef.name`、スキルの本文は Langfuse のプロンプト名
+            `companion-skill-<スキル名>`）
+        reason: 使えなかった理由（本文が空・取得の失敗）
     """
 
-    def __init__(self, ref_name: str):
-        super().__init__(
-            f"プロンプト「{ref_name}」の本文が空です"
-            "（Langfuse のプロンプトとフォールバックテキストを確認してください）"
-        )
+    def __init__(self, ref_name: str, *, reason: str = "本文が空です"):
+        super().__init__(f"プロンプト「{ref_name}」を使えません（{reason}）")
         self.ref_name = ref_name
+        self.reason = reason
 
 
 class CompanionNotConfiguredError(CompanionError):
@@ -39,12 +42,16 @@ class CompanionNotConfiguredError(CompanionError):
 
 
 class UnknownSkillError(CompanionError):
-    """指定したスキルが、有効な設定に登録されていないか、無効.
+    """指定したスキルが、有効な設定で選ばれていないか、無効.
+
+    Agent Skills に登録がない・登録はあるが有効な設定で選んでいない・無効のどれか。
 
     Attributes:
         skill_name: 指定されたスキル名
     """
 
     def __init__(self, skill_name: str):
-        super().__init__(f"スキル「{skill_name}」は登録されていないか、無効です")
+        super().__init__(
+            f"スキル「{skill_name}」は有効な Companion 設定で選ばれていないか、無効です"
+        )
         self.skill_name = skill_name
