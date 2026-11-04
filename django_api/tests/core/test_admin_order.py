@@ -21,6 +21,17 @@ def test_admin_app_list_follows_configured_order(superuser):
 
 
 @pytest.mark.django_db
+def test_admin_app_list_companion_follows_hn_agent(superuser):
+    """Companion は AI ツール設定の中で HackerNews Agent の直後に並ぶ."""
+    req = RequestFactory().get("/admin/")
+    req.user = superuser
+
+    labels = [entry["app_label"] for entry in admin.site.get_app_list(req)]
+
+    assert labels.index("companion") == labels.index("hn_agent") + 1
+
+
+@pytest.mark.django_db
 def test_celery_beat_label_is_celery(superuser):
     """django-celery-beat の表示名が「Celery」に変更されている."""
     req = RequestFactory().get("/admin/")
@@ -48,3 +59,4 @@ def test_renamed_verbose_names_applied(superuser):
     assert names.get("langfuse_integration") == "Langfuse"
     assert names.get("hn_agent") == "HackerNews Agent"
     assert names.get("talk") == "Talk Generator"
+    assert names.get("companion") == "Companion"

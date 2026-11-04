@@ -6,17 +6,14 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db.models.query import QuerySet
 
-from features.talk.exceptions import (
-    HolidayNetworkError,
-    HolidayTimeoutError,
-    PlaceholderDataMissingError,
-)
+from features.talk.exceptions import PlaceholderDataMissingError
 from features.talk.models import ChatMessage, ChatSession
 from features.talk.views._common import (
     attach_audio_to_message,
     classify_synthesis_error,
     handle_synthesis_error,
 )
+from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,

@@ -34,7 +34,7 @@ docker compose exec django-api python manage.py createsuperuser
 |---|---|---|
 | システム設定 | Core / 認証と認可 / 認証トークン | ユーザー、グループ、API トークンの管理 |
 | 外部サービス設定 | Microsoft 365 / Slack / Tavily / Celery | 外部 API の資格情報と定期タスクのスケジュール |
-| AI ツール設定 | LLM 設定 / Langfuse / HackerNews Agent / Talk Generator | LLM の割り当て、プロンプト参照、各機能の設定 |
+| AI ツール設定 | LLM 設定 / Langfuse / HackerNews Agent / Companion / Talk Generator | LLM の割り当て、プロンプト参照、各機能の設定 |
 
 「Celery」は `django-celery-beat` の表示名を変更したもので、定期タスク・インターバル・Cron スケジュール・時刻指定を扱います（太陽イベントは未使用のため非表示）。
 
@@ -54,7 +54,7 @@ docker compose exec django-api python manage.py createsuperuser
 
 ### 4-2. LLM サービス設定（`LLMServiceConfig`）
 
-どのサービスがどの LLM 設定を使うかを割り当てます。サービス名は 5 種で、それぞれ 1 レコードのみ登録できます。
+どのサービスがどの LLM 設定を使うかを割り当てます。サービス名は 6 種で、それぞれ 1 レコードのみ登録できます。
 
 | サービス名 | 用途 |
 |---|---|
@@ -63,10 +63,11 @@ docker compose exec django-api python manage.py createsuperuser
 | HN Agent Devil's Advocate | 反論・批判的検証 |
 | HN Agent Security Responder | セキュリティ観点の応答 |
 | Talk Generator | 会話生成（`/talk/`） |
+| Companion | Companion エージェント（発話に合うスキルを選んでセリフを生成） |
 
 `LLM 設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
 
-> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、5 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。
+> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。`companion` の自動複製（マイグレーション `llm/0013`）は [LLM の README の §4（LLM サービス設定）](../django_api/integrations/llm/README.md#llm-サービス設定llmserviceconfig) を参照してください。
 
 ### 4-3. Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -87,6 +88,8 @@ Langfuse 上のプロンプトを Django 側から参照するためのマッピ
 
 - `talk-{設定名}-system` — システムプロンプト
 - `talk-{設定名}-user` — ユーザープロンプト
+
+**Companion 用も自動生成されません。** 作り方は手順 5-3 を参照してください。
 
 Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。
 
@@ -122,6 +125,25 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | フロントページ取得件数 | 30 | Algolia API 経由で最大 1000 件程度まで指定可 |
 
 加えて、**8 本のプロンプト参照を外部キーで選択します**（Orchestrator / Detective / Devil's Advocate / Security Responder × システム / ユーザー）。手順 4-3 で確認した自動投入済みのレコードをそのまま選べます。入力後、「有効」にチェックを入れて保存してください。
+
+### 5-3. Companion 設定（`CompanionConfig`）
+
+キャラクター設定 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
+
+1. **LLM サービス設定の `Companion` を有効にする** — マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
+2. **Langfuse に text プロンプトを作る** — キャラクター設定の `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
+3. **Langfuse プロンプト参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` は手順 2 と同じ名前にし、ラベルは手順 2 で付けたものにします
+4. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`キャラクター設定` に手順 3 の `companion-system` を選び、画面下の「スキル」に名前・説明（どんな発話のときに使うか）・本文（手順 3 の参照）を 1 行ずつ追加して保存します
+5. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
+6. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・LLM サービス設定・プロンプトの本文のどれかが足りません（手順 1〜5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください
+
+   ```bash
+   curl -X POST http://localhost:8000/companion/run/ \
+     -H "Authorization: Token YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"prompt": "おはよう"}'
+   # => {"text": "おはようございます。...", "skill": "good-morning", "audio_data": null, "audio_format": null}
+   ```
 
 ## 6. 外部サービスの設定
 

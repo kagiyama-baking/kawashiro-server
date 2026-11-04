@@ -1,4 +1,4 @@
-"""実際に Langfuse の計装を有効にして HN 調査と Talk を実行し、スパンを JSON で出力する.
+"""実際に Langfuse の計装を有効にして HN 調査・Talk・Companion を実行し、スパンを JSON で出力する.
 
 `tests/integrations/llm/test_tracing.py` がサブプロセスで実行する。Langfuse のクライアントは
 プロセス内で共有され、テストのプロセスではトレースを無効にしているので分離する。
@@ -9,6 +9,9 @@ LLM にも Langfuse にも送信しない。
 import json
 import sys
 from unittest.mock import MagicMock, patch
+
+# Companion の音声合成の代役が返す音声（UTF-8 として読めるので、記録されれば文字列で現れる）
+COMPANION_AUDIO = b"RIFF-companion-trace-audio"
 
 
 def _span_to_dict(span) -> dict:
@@ -30,7 +33,7 @@ def _create_fixtures():
     from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
 
     provider = LLMProviderConfig.objects.create(name="trace", model_alias="test-alias")
-    for service_name in ("orchestrator", "detective", "talk"):
+    for service_name in ("orchestrator", "detective", "talk", "companion"):
         LLMServiceConfig.objects.create(
             service_name=service_name, provider_config=provider
         )
@@ -146,6 +149,38 @@ def _run_talk_through_litellm():
         stream.close()
 
 
+def _run_companion():
+    """Companion をスキルの読み込みと音声合成つきで実行する（音声は代役が返す）."""
+    from features.companion.agent import COMPANION_AGENT
+    from features.companion.models import CompanionConfig, CompanionSkill
+    from features.companion.services import run_companion
+    from integrations.langfuse.models import LangfusePromptRef
+    from integrations.llm.runtime import _LITELLM_PROFILE
+    from integrations.tts.client import TTSResult
+    from tests.fixtures.llm import ScriptedLLM, load_capability
+
+    ref = LangfusePromptRef.objects.create(
+        name="trace-companion", langfuse_prompt_name="trace-companion"
+    )
+    config = CompanionConfig.objects.create(
+        name="trace", is_active=True, persona_prompt_ref=ref, tts_enabled=True
+    )
+    CompanionSkill.objects.create(
+        config=config, name="good-morning", description="朝のあいさつ", prompt_ref=ref
+    )
+    llm = ScriptedLLM(
+        load_capability("good-morning"), "おはよう！", profile=_LITELLM_PROFILE
+    )
+    with (
+        COMPANION_AGENT.override(model=llm.model),
+        patch("features.companion.services.TTSClient") as tts_client,
+    ):
+        tts_client.return_value.synthesize.return_value = TTSResult(
+            audio_data=COMPANION_AUDIO, content_type="audio/wav", format="wav"
+        )
+        run_companion("おはよう")
+
+
 def main() -> None:
     """スパンを収集して標準出力へ JSON で書く."""
     import django
@@ -176,6 +211,7 @@ def main() -> None:
         result = _run_investigation(thread)
         _run_talk()
         _run_talk_through_litellm()
+        _run_companion()
 
     client.flush()
     json.dump(

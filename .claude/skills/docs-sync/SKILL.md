@@ -32,10 +32,14 @@ description: コード変更に伴うドキュメント更新チェック。コ�
 | `django_api/*/urls.py`・views の追加・削除 | `django_api/README.md` 機能一覧表 + 該当機能 README の API 表 |
 | `django_api/integrations/` 配下の新アプリ追加 | `.claude/CLAUDE.md` リポジトリ構造 + `django_api/README.md` 機能一覧表 |
 | `django_api/integrations/llm/`・`langfuse/`（モデル・クライアント・config） | `django_api/integrations/llm/README.md`（3レイヤ表・admin 表・命名規約） |
-| `django_api/features/talk/`（モデル・constants・views・services） | `django_api/features/talk/README.md`（TalkConfig 表・API 表・上限値） |
+| `django_api/features/talk/`（モデル・views・services） | `django_api/features/talk/README.md`（TalkConfig 表・API 表・上限値） |
 | `django_api/features/media/views.py`（`MAX_*` 等の制限値） | `django_api/features/media/README.md` 制限値表 |
 | `django_api/features/hn_agent/` | `django_api/features/hn_agent/README.md` |
-| `django_api/integrations/weather/` | `django_api/integrations/weather/README.md` |
+| `django_api/features/companion/` | `django_api/features/companion/README.md`（`models.py` → CompanionConfig / CompanionSkill 表、`admin.py` → 「管理画面」、`agent.py` → 「ツール」「応答の方針」、`skills.py` → 「スキル」、`services.py` → 「実行の流れ」の各節（スキルの指定と自動選択・上限と再試行・トレース）、`serializers.py`・`views.py`・`throttling.py`・`urls.py` → 「API」（リクエスト・レスポンス・エラー・回数制限）、ファイルの増減 → 「構成」） |
+| `django_api/integrations/tts/models.py`（`AbstractTTSSettings` の項目・`get_tts_options()`） | `django_api/features/companion/README.md`（`tts_*` の行と `get_tts_options()` の説明） |
+| `django_api/integrations/weather/` | `django_api/integrations/weather/README.md`（返す辞書の形を変えたら `django_api/features/companion/README.md` の「ツール」の `get_weather` も） |
+| `django_api/integrations/holiday/`（日時情報のキー・祝日 API のタイムアウト） | `django_api/features/talk/README.md`（プレースホルダー表の `{{datetime}}` 行）+ `django_api/features/companion/README.md`（「ツール」の `get_datetime`） |
+| `django_api/integrations/msgraph/outlook.py`（`get_calendar_events` の引数・取得範囲・返す予定の項目・タイムゾーン） | `django_api/features/companion/README.md`（「ツール」の `get_today_events`） |
 | admin 設定モデルの migration（フィールド増減・seed 投入） | 該当 README + `docs/initial-setup.md` の投入手順 |
 | `@shared_task` の追加・改名 | 該当機能 README + `docs/initial-setup.md`（PeriodicTask 登録名） |
 | `management/commands/` の追加・変更 | 該当機能 README の運用節（開発ツールなら `docs/development.md`） |

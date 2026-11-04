@@ -10,7 +10,7 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 |---|---|---|---|
 | **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
 | **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」+ Langfuse UI | `LangfusePromptRef` + Langfuse 側のプロンプト実体 |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」 | `HNAgentConfig` / `TalkConfig` |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 | `HNAgentConfig` / `TalkConfig` / `CompanionConfig`（スキルは `CompanionSkill`） |
 
 モデルを差し替えるときは admin の「LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
 
@@ -23,9 +23,9 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 - **`LLMProviderConfig`**（`integrations/llm/models.py`）
   モデルエイリアス + LiteLLM Virtual Key の組。複数の `LLMServiceConfig` から共有参照できます。
 - **`LLMServiceConfig`**（同上）
-  サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
+  サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk` / `companion`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
 - **`LangfusePromptRef`**（`integrations/langfuse/models.py`）
-  Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` から FK で参照されます。
+  Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` / `CompanionConfig` / `CompanionSkill` から FK で参照されます。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
   `is_active=True` の `LLMServiceConfig` を引いて `LLMSettings` を返します。該当なしなら `LLMConfigurationError`。
 - **実行基盤**（`integrations/llm/runtime.py`）
@@ -39,10 +39,11 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 flowchart LR
     subgraph Admin["Django admin"]
         Provider["LLM設定<br/>model_alias + Virtual Key"]
-        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder / talk"]
+        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
         HN["HackerNews Agent設定"]
         Talk["会話生成設定（TalkConfig）"]
+        Companion["Companion 設定（CompanionConfig）<br/>+ スキル（CompanionSkill）"]
     end
 
     subgraph External["外部サービス"]
@@ -55,6 +56,8 @@ flowchart LR
     HN -.->|orchestrator / detective /<br/>devils_advocate / security_responder| Service
     Talk -->|2本のプロンプト参照| Ref
     Talk -.->|talk| Service
+    Companion -->|キャラクター設定 1 本 +<br/>スキルごとの本文| Ref
+    Companion -.->|companion| Service
 
     Provider ==>|Virtual Key + model_alias| LiteLLM
     Ref ==>|名前とラベルで取得| Langfuse
@@ -80,12 +83,14 @@ flowchart LR
 
 | 項目 | 説明 |
 |---|---|
-| サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` の 5 択。**unique**（1 サービス 1 レコード） |
+| サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` / `Companion` の 6 択。**unique**（1 サービス 1 レコード） |
 | LLM 設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
 | 有効（`is_active`） | 既定 `True`。**`False` のレコードは `get_llm_settings` から見えず、設定なし扱いでエラーになります** |
 | タイムアウト（`timeout`） | API リクエストのタイムアウト秒数（既定 `60`） |
 
 > **Note:** `devils_advocate` / `security_responder` のレコードは migration `llm/0012` で `detective` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**）。detective が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。
+
+> **Note:** `companion` のレコードは migration `llm/0013` で `talk` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**。`companion` が既にあれば変更しません）。talk が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。`0012` へ戻すと `companion` のレコードは削除されます。
 
 ### Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -113,17 +118,20 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 | HN Agent Security Responder user | `hn-agent-security-responder-user` | `hn-agent-security-responder-user` |
 | Talk system | `talk-{config_name}-system` | `talk-{config_name}-system`（同名） |
 | Talk user | `talk-{config_name}-user` | `talk-{config_name}-user`（同名） |
+| Companion キャラクター設定（system） | `companion-system` | `companion-system`（同名） |
+| Companion スキルの本文 | `companion-skill-<スキル名>` | `companion-skill-<スキル名>`（同名） |
 
 **投入方法の違いに注意してください。**
 
 - **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りの `LangfusePromptRef` として自動投入されます。
 - **Talk の 2 本は自動生成されません。** migration `talk/0012` は「マイグレーション実行時点で存在した `TalkConfig`」の分だけ参照を作り、既存の `system_prompt` を `fallback_text` へ移管したものです。**その後に新しい `TalkConfig` を追加する場合は、`LangfusePromptRef` を admin で手動作成**してから FK に割り当ててください（`system_prompt_ref` / `user_prompt_ref` はどちらも必須・`PROTECT`）。
+- **Companion の参照も自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `LangfusePromptRef` を手動で作成してから `CompanionConfig.persona_prompt_ref` / `CompanionSkill.prompt_ref` に割り当てます（ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3）。
 
 いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。未登録でも `fallback_text` で動作します。
 
 ## 6. LLM の呼び出し方
 
-LLM 呼び出しはすべて PydanticAI のエージェントで行います。エージェントは各機能のモジュールに定義し（`features/talk/llm_agents.py`、`features/hn_agent/orchestrator.py`、`features/hn_agent/agents/*.py`）、実行は `integrations/llm/runtime.py` を通します。モデル名も API キーもコードに書きません。
+LLM 呼び出しはすべて PydanticAI のエージェントで行います。エージェントは各機能のモジュールに定義し（`features/talk/llm_agents.py`、`features/hn_agent/orchestrator.py`、`features/hn_agent/agents/*.py`、`features/companion/agent.py`）、実行は `integrations/llm/runtime.py` を通します。モデル名も API キーもコードに書きません。
 
 ```python
 from pydantic_ai import Agent
@@ -153,7 +161,7 @@ try:
 except LLMConfigurationError:
     ...  # サービス設定が無い、または is_active=False
 except LLMTimeoutError:
-    ...  # timeout（既定 60 秒）超過
+    ...  # timeout（既定 60 秒）か run_timeout の超過
 except LLMOutputError:
     ...  # 応答が期待する形にならなかった（出力リトライ後も不正など）
 except LLMClientError:
@@ -162,7 +170,7 @@ except LLMClientError:
 
 | 関数 | 用途 |
 |---|---|
-| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries, conversation_id, reasoning_effort)` | 同期コードから実行する。Talk のタイトル・単発生成と Orchestrator はこちら |
+| `run_agent_sync(agent, settings, *, user_prompt, instructions, message_history, deps, usage_limits, max_tokens, retries, conversation_id, reasoning_effort, capabilities, run_timeout)` | 同期コードから実行する。Talk のタイトル・単発生成、Orchestrator、Companion はこちら |
 | `arun_agent(...)`（引数は同じ） | イベントループ上から `await` する。サブエージェントはこちら |
 | `stream_text_sync(agent, settings, *, user_prompt, deps, message_history, max_tokens, conversation_id)` | 同期コードから実行し、本文の増分を順に返すジェネレータ。Talk のチャットはこちら |
 | `open_model(settings)` | `AsyncOpenAI` を作って閉じる async context manager。接続はイベントループに属するので、実行ごとに作る |
@@ -173,10 +181,11 @@ except LLMClientError:
 - **イベントループ上で ORM に触れません。** async のツールやメソッドでは、ORM・HN/Tavily 取得・プロンプト解決を同期関数にまとめて `await sync_to_async(...)` で実行します（`features/hn_agent/agents/*.py` の `_prepare`）。同期のツールの中から `run_sync` は呼べないので、ツールは `async def` にします。
 - **LiteLLM との送受信**: LiteLLM のモデル名は DB 上の任意の文字列なので、名前から推定されるプロファイルに送受信を左右させません（`_LITELLM_PROFILE`）。どのエイリアスでも、出力上限は `max_tokens`（`drop_params` で `max_completion_tokens` が黙って落ちるのを避ける）で送り、`response_format`・tools の `strict`・推論テキストの送り返し・system プロンプトへの追記やロールの変更はありません。応答本文は `<think>` などの文字列も含めてそのまま受け取ります。`service_name` と `environment` は `extra_body.metadata` に付与します。推論深度は `reasoning_effort` を指定したときだけ `reasoning_effort` で送ります（PydanticAI の `openai_reasoning_effort`。`None` と空文字は送りません。今は HN Agent の Orchestrator だけが指定します）。契約は `tests/integrations/llm/test_runtime.py` で固定しています。
 - **本文のない応答**: 出力上限（`length`）やフィルター（`content_filter`）で本文がなくなった応答も例外にせず、本文なしとして扱います（`_TreatEmptyResponseAsFinished`）。`output_type` に `None` を許すエージェントはそのまま `None` を受け取り、再試行しません。`stream_text_sync` では増分なしで正常に終わります。
+- **実行ごとの capability**: `run_agent_sync` / `arun_agent` の `capabilities` は `_TreatEmptyResponseAsFinished` の後ろに足すので、本文のない応答の扱いは変わりません。遅延しないものの指示は、実行の `instructions` より前の別の system メッセージになります。`defer_loading=True`（オンデマンド）のものは、system には一覧（PydanticAI の英語の定型文と id・説明）だけが載り、モデルが組み込みの `load_capability` ツールで読み込みます。このプロジェクトのプロファイル（`supports_inline_system_prompts=True`）では、読み込んだ指示は tool の結果の直後に会話途中の `role: system` メッセージとして送られます（tool の結果には入りません）。契約は `tests/integrations/llm/test_runtime.py` で固定しています。
 - **トレーシング**: `apps.py` の `ready()` で `Agent.instrument_all(InstrumentationSettings())` を呼び、呼び出しは Langfuse の generation として記録されます（名前は `chat <model_alias>`）。設定は 1 つを共有します。引数なしの `instrument_all()` は実行のたびに設定を作り、MeterProvider が未設定の間は OpenTelemetry 側に Meter がたまり続けます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめ、チャットは `propagate_attributes(session_id=...)` で Langfuse Sessions に集約しています。`langfuse.openai` は import するだけで OpenAI SDK を書き換えて generation が二重になるので、使わないでください。
 - **Langfuse の Sessions**: Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` と `stream_text_sync` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（チャット）そちらが優先されます。
 - **usage の内訳**: LiteLLM の `text_tokens` と `reasoning_tokens` は output の内数ですが、Langfuse は usage の全項目を足して total にします。二重に数えないよう、`_LiteLLMChatModel`（ストリーミングは `_LiteLLMStreamedResponse`）で内訳を除いています。計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で書き換えても反映されません。
-- **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。コード側でハードコードしません。
+- **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。1 リクエストごとの上限で、コード側でハードコードしません。ツールを使う実行はリクエストを何度も送るので、合計に上限が要る呼び出し側は、`run_agent_sync` / `arun_agent` の `run_timeout`（秒。PydanticAI の `timeout=`）で実行全体の制限時間を指定します（省略時は制限なし。今は Companion だけが指定します）。過ぎると `LLMTimeoutError` です。モデルの応答待ちはその場で止まりますが、ツールが `sync_to_async` で動かしている同期処理は途中で止められないので、それが終わってから止まります。`stream_text_sync` には実行全体の制限はありません。
 - **テスト**: 書き方は [../../../.claude/CLAUDE.md](../../../.claude/CLAUDE.md) の「LLM 呼び出しのテスト」を参照してください。
 
 ## 7. フェイルソフト挙動
@@ -189,6 +198,7 @@ except LLMClientError:
 | Langfuse 側が Chat 型プロンプト | 未対応のため警告ログを出して `fallback_text` にフォールバック（対応しているのは Text 型のみ） |
 | `langfuse` パッケージ未インストール | `ImportError` を捕捉して `fallback_text` にフォールバック |
 | Langfuse への `session_id` 付与失敗 | 警告ログのみ。会話生成本体は継続 |
+| Companion の出力（セリフと使ったスキル）を Langfuse のスパンに記録できない | 警告ログのみ。実行は続け、API はセリフを返す（[Companion の README の「トレース（Langfuse）」](../../features/companion/README.md#トレースlangfuse)） |
 | `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック。それも未設定ならプレースホルダーのキーで送信し、認証の判断は LiteLLM Proxy に任せる |
 | `LLMServiceConfig` が無い / `is_active=False` | `LLMConfigurationError`（**ここはフェイルソフトしません**。設定漏れは早期に顕在化させます） |
 
@@ -200,5 +210,6 @@ except LLMClientError:
 |---|---|
 | [../../features/hn_agent/README.md](../../features/hn_agent/README.md) | HN Agent の構成・`HNAgentConfig`・8 本のプロンプト割り当て |
 | [../../features/talk/README.md](../../features/talk/README.md) | 会話生成・チャットセッション・`TalkConfig` のプロンプト変数 |
+| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `CompanionSkill`・実行の流れと API・Langfuse プロンプトのラベル |
 | [../../../docs/initial-setup.md](../../../docs/initial-setup.md) | 初回セットアップ手順（admin 設定・環境変数の投入順） |
 | [../../README.md](../../README.md) | Django API 全体構成 |

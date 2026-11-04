@@ -20,15 +20,17 @@ kawashiro-server/
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
 │   │   ├── outlook/         # Outlook Calendar連携API
-│   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）
+│   │   ├── tts/             # Text-to-Speech クライアント（SBV2連携）・TTS 設定の抽象モデル
 │   │   ├── weather/         # 気象庁天気予報クライアント
+│   │   ├── holiday/         # 祝日APIクライアント・本日の日時情報（Djangoアプリではない）
 │   │   ├── hn/              # Hacker News Algolia APIクライアント
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
 │   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
-│   │   └── hn_agent/        # HN監視・分析エージェント（PydanticAI）
+│   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
+│   │   └── companion/       # Companion エージェント（キャラクター設定 + スキル・常設ツール。発話からセリフを生成する API）
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
 │   ├── pyproject.toml       # Python依存関係・ツール設定
@@ -63,6 +65,7 @@ kawashiro-server/
 | Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
+| Companion の設定モデル（CompanionConfig / CompanionSkill）・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
 | 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
 | 音声合成 API・モデル配置・CPU/GPU 切替 | `sbv2_api/README.md` |
 | フロントエンド画面・開発コマンド | `frontend/README.md` |
@@ -175,9 +178,9 @@ django_api/tests/
 ├── core/                    # admin並び順等のコアテスト
 ├── integrations/            # 外部サービス連携テスト
 │   ├── llm/ langfuse/ msgraph/ onedrive/ outlook/ tts/
-│   └── weather/ hn/ tavily/ slack/
+│   └── weather/ holiday/ hn/ tavily/ slack/
 ├── features/                # ビジネス機能テスト
-│   ├── talk/ media/ hn_agent/
+│   ├── talk/ media/ hn_agent/ companion/
 ├── user/                    # ユーザー管理テスト
 └── health/                  # ヘルスチェックテスト
 ```
@@ -247,12 +250,18 @@ file = FileUploadFactory.create_text_file()   # テストファイル
 `tests/conftest.py` が `ALLOW_MODEL_REQUESTS=False` と `LANGFUSE_TRACING_ENABLED=false` を設定するので、テストから実 LLM と Langfuse へは送信されません。モデルは `Agent.override` で差し替えます。
 
 ```python
-from tests.fixtures.llm import ScriptedLLM, tool_calls
+from integrations.llm.runtime import _LITELLM_PROFILE
+from tests.fixtures.llm import ScriptedLLM, load_capability, tool_call, tool_calls
 
 llm = ScriptedLLM(tool_calls("detective_investigate"), "結論")  # 台本どおりに応答
 with ORCHESTRATOR_AGENT.override(model=llm.model):
     ...
 llm.requests[0].instructions  # モデルが受け取った内容を確認できる
+
+tool_call("get_weather", day=1)  # 引数付きで 1 つ呼ぶ（tool_calls は引数なしで複数。ID は呼び出しごとに一意）
+load_capability("good-morning")  # 組み込みの load_capability でスキル（遅延 capability）を読み込む
+ScriptedLLM(..., profile=_LITELLM_PROFILE)  # 本番のプロファイル（runtime）。既定では読み込んだ指示が <system> 付きの user になり conversation に混ざる
+llm.requests[1].system_prompts  # system の本文の並び（指示の各部分 → 会話の途中の system）
 ```
 
 `ScriptedLLM` は `OpenAIChatModel` の応答の解釈を通りません。送信本文や応答の解釈を確かめるテストでは `fake_litellm` フィクスチャ（HTTP 層だけの代役）を使います。

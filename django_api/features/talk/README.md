@@ -26,13 +26,11 @@ features/talk/
 ├── signals.py           # post_delete で音声ファイルを物理削除（apps.ready() で登録）
 ├── permissions.py       # IsSessionOwner（session / session 経由オブジェクトの所有者判定）
 ├── throttling.py        # TalkConfigRateThrottle（/talk/synthesize/ のプリセットごとの回数制限）
-├── holiday_client.py    # holidays-jp API クライアント（インスタンス内キャッシュ）
-├── constants.py         # DAY_OF_WEEK_JA（曜日の日本語マッピング）
 ├── admin.py             # TalkConfig / ChatSession / ChatMessage の管理画面
 └── management/commands/cleanup_orphan_audio.py
 ```
 
-`TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。LLM は `llm_agents.py` の 3 エージェントを、チャットは `stream_text_sync`、タイトルと単発生成は `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストでは LLM を `TALK_CHAT_AGENT.override(model=...)` で差し替えます（`tests/features/talk/conftest.py` の `chat_llm` / `title_llm`）。
+`TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。祝日クライアント（holidays-jp API。インスタンス内キャッシュ）と日時情報の組み立て（`get_datetime_info`。`{{datetime}}` と `GET /talk/datetime/` が共用）は `integrations/holiday/` にあります。LLM は `llm_agents.py` の 3 エージェントを、チャットは `stream_text_sync`、タイトルと単発生成は `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストでは LLM を `TALK_CHAT_AGENT.override(model=...)` で差し替えます（`tests/features/talk/conftest.py` の `chat_llm` / `title_llm`）。
 
 ## TalkConfig リファレンス
 

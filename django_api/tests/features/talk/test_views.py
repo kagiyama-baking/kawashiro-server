@@ -50,7 +50,7 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @patch("features.talk.views.synthesize.HolidayClient")
-    @patch("features.talk.views.synthesize.datetime")
+    @patch("integrations.holiday.datetime_info.datetime")
     def test_today_info_success_weekday(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -72,7 +72,7 @@ class TestTodayInfoView:
         assert response.data["holiday_name"] is None
 
     @patch("features.talk.views.synthesize.HolidayClient")
-    @patch("features.talk.views.synthesize.datetime")
+    @patch("integrations.holiday.datetime_info.datetime")
     def test_today_info_success_holiday(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
@@ -90,12 +90,12 @@ class TestTodayInfoView:
         assert response.data["holiday_name"] == "元日"
 
     @patch("features.talk.views.synthesize.HolidayClient")
-    @patch("features.talk.views.synthesize.datetime")
+    @patch("integrations.holiday.datetime_info.datetime")
     def test_today_info_holiday_api_network_error(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
         """祝日APIネットワークエラー時は502エラー."""
-        from features.talk.exceptions import HolidayNetworkError
+        from integrations.holiday import HolidayNetworkError
 
         mock_now = datetime(2025, 1, 14, 9, 30, 0)
         mock_datetime.now.return_value = mock_now
@@ -108,12 +108,12 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
     @patch("features.talk.views.synthesize.HolidayClient")
-    @patch("features.talk.views.synthesize.datetime")
+    @patch("integrations.holiday.datetime_info.datetime")
     def test_today_info_holiday_api_timeout(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
         """祝日APIタイムアウト時は504エラー."""
-        from features.talk.exceptions import HolidayTimeoutError
+        from integrations.holiday import HolidayTimeoutError
 
         mock_now = datetime(2025, 1, 14, 9, 30, 0)
         mock_datetime.now.return_value = mock_now
@@ -126,7 +126,7 @@ class TestTodayInfoView:
         assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
 
     @patch("features.talk.views.synthesize.HolidayClient")
-    @patch("features.talk.views.synthesize.datetime")
+    @patch("integrations.holiday.datetime_info.datetime")
     def test_today_info_unexpected_error(
         self, mock_datetime, mock_holiday_client_class, authenticated_client, url
     ):
