@@ -15,7 +15,7 @@ kawashiro-server/
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
 │   ├── health/              # ヘルスチェック（ミドルウェア方式、ALLOWED_HOSTS検証前に応答）
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のスキル（Agent Skills）
+│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のスキル（Agent Skills）。admin のグループ「AI設定」
 │   │   ├── langfuse/        # Langfuseプロンプト参照（LangfusePromptRef / resolve_prompt）
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API

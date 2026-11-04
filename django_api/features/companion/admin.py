@@ -30,7 +30,7 @@ class CompanionConfigAdmin(admin.ModelAdmin):
                 "fields": ("name", "is_active"),
                 "description": (
                     "有効にできるのは 1 つの設定だけです。"
-                    "LLM の接続先は「LLMサービス設定」の Companion で管理します。"
+                    "LLM の接続先は「AI設定 → サービス設定」の Companion で管理します。"
                 ),
             },
         ),

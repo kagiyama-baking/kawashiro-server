@@ -34,7 +34,7 @@ def test_admin_app_list_companion_follows_hn_agent(superuser):
 @pytest.mark.integration
 @pytest.mark.django_db
 def test_admin_app_list_shows_agent_skills_under_llm_config_not_companion(superuser):
-    """Agent Skills は LLM 設定のアプリに出て、Companion には出ない（全エージェントで共有）."""
+    """Agent Skills は AI設定のアプリに出て、Companion には出ない（全エージェントで共有）."""
     req = RequestFactory().get("/admin/")
     req.user = superuser
 
@@ -72,6 +72,7 @@ def test_renamed_verbose_names_applied(superuser):
         entry["app_label"]: entry["name"] for entry in admin.site.get_app_list(req)
     }
     assert names.get("msgraph_config") == "Microsoft 365"
+    assert names.get("llm_config") == "AI設定"
     assert names.get("langfuse_integration") == "Langfuse"
     assert names.get("hn_agent") == "HackerNews Agent"
     assert names.get("talk") == "Talk Generator"

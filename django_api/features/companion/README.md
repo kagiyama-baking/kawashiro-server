@@ -54,7 +54,7 @@ features/companion/
 
 ## スキルの登録（Agent Skills）
 
-スキルは、全エージェントで共有する Agent Skills（`integrations/llm/models.py` の `AgentSkill`）に登録します。管理画面の「AI ツール設定 → LLM設定 → Agent Skills」で登録し、Companion 設定の「スキル」で使うものを選びます（1 つのスキルを複数の設定で選べます）。項目・入力チェック・予約した名前・表名は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill) を参照してください。
+スキルは、全エージェントで共有する Agent Skills（`integrations/llm/models.py` の `AgentSkill`）に登録します。管理画面の「AI ツール設定 → AI設定 → Agent Skills」で登録し、Companion 設定の「スキル」で使うものを選びます（1 つのスキルを複数の設定で選べます）。項目・入力チェック・予約した名前・表名は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill) を参照してください。
 
 スキル名は、そのまま本文を読む Langfuse の text プロンプトの名前で、capability の id（下の「スキル」）と、実行 API の `skill` に指定する値も兼ねます（下の「API」）。
 
@@ -71,7 +71,7 @@ features/companion/
 
 ## 管理画面
 
-- スキルは「AI ツール設定 → LLM設定 → Agent Skills」で登録します（画面は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）
+- スキルは「AI ツール設定 → AI設定 → Agent Skills」で登録します（画面は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）
 - 設定の節: 基本設定 / システムプロンプト / スキル / 天気 / 回数制限 / 音声（畳んで表示）/ メタ情報（畳んで表示）
 - 設定の「スキル」では、Agent Skills に登録したスキルを左右の一覧で選びます（`filter_horizontal`）。設定の画面でスキルを追加・編集するインラインはありません
 - システムプロンプトの参照は、`LangfusePromptRef` を検索して選びます（識別名・Langfuse プロンプト名・説明が検索対象）
@@ -114,7 +114,7 @@ features/companion/
 |---|---|---|
 | 1 | 有効な設定と、その設定で選んだ有効なスキルを名前順に読む（2 クエリ。有効な設定をシステムプロンプトの参照ごと 1 回、選んだ有効なスキルを中間表との結合で 1 回。スキルの本文は Langfuse から取るので DB を読まない） | 有効な設定がないか、複数ある（`CompanionNotConfiguredError`。複数のときはどれも使わず、原因を error ログに出す） |
 | 2 | `skill` を指定したら、1 で読んだスキルの中から探す | 有効な設定で選ばれていない（Agent Skills に登録がない・登録はあるが選んでいない・ほかの設定だけが選んでいる）か、無効（`UnknownSkillError`。名前を `skill_name` に持つ） |
-| 3 | LLM の接続設定 `get_llm_settings("companion")` を読む | LLM サービス設定 `companion` がない・無効（`LLMConfigurationError`） |
+| 3 | LLM の接続設定 `get_llm_settings("companion")` を読む | サービス設定 `companion` がない・無効（`LLMConfigurationError`） |
 | 4 | システムプロンプトの本文を解決する | 本文が空（`PromptUnavailableError`） |
 | 5 | 実行の指示を組み立てる（下の「スキルの指定と自動選択」）。指定したスキルの本文はここで Langfuse から取る | 指定したスキルの本文を取れないか、空（`PromptUnavailableError`） |
 | 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`。1 リクエストごとのタイムアウトか、実行全体の `RUN_TIMEOUT` を過ぎた）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた・本文に漏れたツール呼び出しの書式が作り直させても直らない（`LLMOutputError`。下の「出力の検証」）、読み込んだスキルの本文を取れないか、空（`PromptUnavailableError`。モデルへのリクエストは、読み込みを決めた 1 回で止まる） |
@@ -174,7 +174,7 @@ features/companion/
 
 - `load_capability` も再試行の回数ではツールとして数えます。PydanticAI の既定（1 回）のままだと、不明なスキル名の読み込みが 2 回続いただけで実行が失敗するので、`retries={"tools": 3}` で広げています。
 - 出力の検証（上の「出力の検証」）で作り直させるのは 1 回までです。`retries` で変えているのはツールの回数だけなので、出力の再試行は PydanticAI の既定（1 回）のままです。作り直しの 1 回も `REQUEST_LIMIT` の 1 回に数えます。
-- **`RUN_TIMEOUT` は、本番の nginx が応答を待つ 120 秒（`frontend/nginx.conf` の `proxy_read_timeout`）に音声合成まで収めるための上限です。** 1 リクエストごとのタイムアウト（LLM サービス設定 `companion` の `timeout`）だけでは、合計が `REQUEST_LIMIT` 回分まで延び、その間 gunicorn のワーカーを 1 つ占有し続けます。音声合成は `RUN_TIMEOUT` に含めず、その上限は環境変数 `TTS_TIMEOUT`（ルート [README](../../../README.md)）です。
+- **`RUN_TIMEOUT` は、本番の nginx が応答を待つ 120 秒（`frontend/nginx.conf` の `proxy_read_timeout`）に音声合成まで収めるための上限です。** 1 リクエストごとのタイムアウト（サービス設定 `companion` の `timeout`）だけでは、合計が `REQUEST_LIMIT` 回分まで延び、その間 gunicorn のワーカーを 1 つ占有し続けます。音声合成は `RUN_TIMEOUT` に含めず、その上限は環境変数 `TTS_TIMEOUT`（ルート [README](../../../README.md)）です。
 - 期限が来ると、モデルの応答待ちはその場で止まります。ツールの取得（天気・祝日・Graph）は途中で止められないので、取得中ならそれが終わってから止まります（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
 ### トレース（Langfuse）
@@ -216,7 +216,7 @@ features/companion/
 | 400 | 指定したスキルが有効な Companion 設定で選ばれていないか、無効（`UnknownSkillError`） | `スキル「<名前>」は有効な Companion 設定で選ばれていないか、無効です` |
 | 401 | トークンがない・不正 | （`detail`） |
 | 429 | 回数の上限を超えた（下の「回数制限」） | （`detail`。`Retry-After` ヘッダ付き） |
-| 503 | 有効な設定がないか複数ある（`CompanionNotConfiguredError`）、LLM サービス設定 `companion` がないか無効（`LLMConfigurationError`）、システムプロンプトの本文が空か、スキルの本文を取れないか空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
+| 503 | 有効な設定がないか複数ある（`CompanionNotConfiguredError`）、サービス設定 `companion` がないか無効（`LLMConfigurationError`）、システムプロンプトの本文が空か、スキルの本文を取れないか空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
 | 504 | LLM のタイムアウト（`LLMTimeoutError`。実行全体の `RUN_TIMEOUT` の超過を含む） | `AI 生成サービスへのリクエストがタイムアウトしました` |
 | 504 | 音声合成のタイムアウト（`TTSTimeoutError`） | `音声合成サービスへのリクエストがタイムアウトしました` |
 | 502 | LLM の失敗（`LLMClientError`。上限の超過・接続や HTTP の失敗と、`LLMOutputError` の応答の不正・空の応答・ツールの失敗の連続・直らない呼び出しの書式の漏れを含む） | `AI 生成サービスでエラーが発生しました` |
@@ -261,4 +261,4 @@ curl -s -X POST http://localhost:8000/companion/run/ \
 
 ## 初期セットアップ
 
-LLM サービス設定の有効化から、Langfuse のプロンプト・システムプロンプトの参照・Agent Skills・設定の登録、API での動作確認までの順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3「Companion 設定」を参照してください。
+サービス設定の有効化から、Langfuse のプロンプト・システムプロンプトの参照・Agent Skills・設定の登録、API での動作確認までの順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3「Companion 設定」を参照してください。

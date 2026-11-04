@@ -1,4 +1,4 @@
-"""LLM API設定と Agent Skills の管理画面."""
+"""AI設定（LLM設定・サービス設定・Agent Skills）の管理画面."""
 
 from django import forms
 from django.contrib import admin
@@ -96,7 +96,7 @@ class LLMProviderConfigAdmin(admin.ModelAdmin):
 
 @admin.register(LLMServiceConfig)
 class LLMServiceConfigAdmin(admin.ModelAdmin):
-    """LLMサービス設定管理画面."""
+    """サービス設定管理画面（サービスごとに使う LLM設定を割り当てる）."""
 
     list_display = [
         "service_name",

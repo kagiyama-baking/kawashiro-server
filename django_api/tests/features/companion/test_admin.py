@@ -78,6 +78,16 @@ class TestCompanionConfigAdminPages:
         assert response.context["inline_admin_formsets"] == []
         assert 'name="skills-TOTAL_FORMS"' not in _content(response)
 
+    def test_add_page_points_llm_connection_to_service_settings(
+        self, admin_site_client
+    ):
+        """基本設定の説明で、LLM の接続先は「AI設定 → サービス設定」で管理すると案内する."""
+        response = admin_site_client.get(reverse("admin:companion_companionconfig_add"))
+
+        content = _content(response)
+        assert "「AI設定 → サービス設定」の Companion で管理します" in content
+        assert "LLMサービス設定" not in content
+
     def test_change_page_skills_use_filtered_select_multiple(self, admin_site_client):
         """スキルは、登録済みのスキルから左右の一覧で選ぶ."""
         config = CompanionConfigFactory()

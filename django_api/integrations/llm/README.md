@@ -8,13 +8,13 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 
 | レイヤ | 責務 | 管理場所 | 実体 |
 |---|---|---|---|
-| **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
-| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」「Agent Skills」+ Langfuse UI | `LangfusePromptRef` / `AgentSkill`（全エージェントで共有するスキル）+ Langfuse 側のプロンプト実体 |
+| **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「AI設定」の「LLM設定」「サービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
+| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」と「AI設定」の「Agent Skills」+ Langfuse UI | `LangfusePromptRef` / `AgentSkill`（全エージェントで共有するスキル）+ Langfuse 側のプロンプト実体 |
 | **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 | `HNAgentConfig` / `TalkConfig` / `CompanionConfig` |
 
 スキル（Agent Skills）の本文だけは参照（`LangfusePromptRef`）を通さず、スキル名とラベルで Langfuse から直接取ります（§4 の「Agent Skills」と §5）。各機能の設定は、登録したスキルから使うものを選びます（いまは Companion 設定だけ）。
 
-モデルを差し替えるときは admin の「LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
+モデルを差し替えるときは admin の「AI設定 → LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
 
 ## 2. 構成要素
 
@@ -44,9 +44,9 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 ```mermaid
 flowchart LR
     subgraph Admin["Django admin"]
-        subgraph LLMApp["LLM設定（llm_config）"]
+        subgraph LLMApp["AI設定（llm_config）"]
             Provider["LLM設定<br/>model_alias + Virtual Key"]
-            Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
+            Service["サービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
             Skills["Agent Skills（AgentSkill）<br/>name + label"]
         end
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
@@ -74,14 +74,14 @@ flowchart LR
     Skills ==>|name@label| Langfuse
 ```
 
-- **枠「LLM設定（llm_config）」**: admin で同じアプリに並ぶモデル。Agent Skills は全エージェントで共有するので、機能のアプリではなくここに置く
+- **枠「AI設定（llm_config）」**: admin で同じグループ（アプリ）に並ぶモデル。Agent Skills は全エージェントで共有するので、機能のアプリではなくここに置く
 - **実線**（admin 内）: FK 参照（設定 → Agent Skills は M2M）
 - **破線**（admin 内）: `service_name` 経由の紐付け（FK ではなく文字列一致）
 - **太線**（admin → 外部）: ランタイムで実際に叩く API
 
 ## 4. admin モデルリファレンス
 
-### LLM 設定（`LLMProviderConfig`）
+### LLM設定（`LLMProviderConfig`）
 
 | 項目 | 説明 |
 |---|---|
@@ -91,18 +91,20 @@ flowchart LR
 
 > **Note:** Virtual Key を空にすると環境変数 `LITELLM_MASTER_KEY` にフォールバックします。マスターキーではなくサービス専用の Virtual Key を使うと、コスト上限の設定とアクセスログの識別が可能になります。
 
-### LLM サービス設定（`LLMServiceConfig`）
+### サービス設定（`LLMServiceConfig`）
 
 | 項目 | 説明 |
 |---|---|
 | サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` / `Companion` の 6 択。**unique**（1 サービス 1 レコード） |
-| LLM 設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
+| LLM設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
 | 有効（`is_active`） | 既定 `True`。**`False` のレコードは `get_llm_settings` から見えず、設定なし扱いでエラーになります** |
 | タイムアウト（`timeout`） | API リクエストのタイムアウト秒数（既定 `60`） |
 
 > **Note:** `devils_advocate` / `security_responder` のレコードは migration `llm/0012` で `detective` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**）。detective が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。
 
 > **Note:** `companion` のレコードは migration `llm/0013` で `talk` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**。`companion` が既にあれば変更しません）。talk が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。`0012` へ戻すと `companion` のレコードは削除されます。
+
+> **Note（表示名）:** admin のグループ名は `apps.py` の `verbose_name`（「AI設定」。以前は「LLM設定」）で、migration はありません。サービス設定の表示名は migration `llm/0016` で「LLMサービス設定」から「サービス設定」に変えました（`AlterModelOptions`。表示名だけで DB は変えません）。「LLM設定」（`LLMProviderConfig`）とサービス設定の項目名「LLM設定」はそのままです。
 
 ### Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -116,7 +118,7 @@ flowchart LR
 
 ### Agent Skills（`AgentSkill`）
 
-全エージェントで共有するスキル（用途ごとの手順）です。admin の「AI ツール設定 → LLM設定 → Agent Skills」で登録し、各機能の設定はその中から使うものを選びます（いまは Companion 設定の「スキル」。1 つのスキルを複数の設定で選べます）。スキルは設定への外部キーを持ちません。並び順は名前順です。
+全エージェントで共有するスキル（用途ごとの手順）です。admin の「AI ツール設定 → AI設定 → Agent Skills」で登録し、各機能の設定はその中から使うものを選びます（いまは Companion 設定の「スキル」。1 つのスキルを複数の設定で選べます）。スキルは設定への外部キーを持ちません。並び順は名前順です。
 
 | 項目 | 説明 |
 |---|---|
@@ -186,7 +188,7 @@ from integrations.llm.runtime import run_agent_sync
 MY_AGENT = Agent(name="my-feature", output_type=str | None)
 
 try:
-    settings = get_llm_settings("talk")  # admin の LLMサービス設定を解決（DB を読む）
+    settings = get_llm_settings("talk")  # admin のサービス設定を解決（DB を読む）
     system_prompt = resolve_prompt(config.system_prompt_ref)
     user_prompt = resolve_prompt(config.user_prompt_ref, weather="晴れ")
 

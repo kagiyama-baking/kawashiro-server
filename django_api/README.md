@@ -91,8 +91,8 @@ Tavily Web 検索の API キー（暗号化保存）とタイムアウト（既�
 
 | 管理画面 | 内容 | 詳細 |
 |---|---|---|
-| LLM設定 / LLMサービス設定 | モデルエイリアス + Virtual Key、サービスへの割り当て | [integrations/llm/README.md](integrations/llm/README.md) |
-| Agent Skills（AgentSkill） | 全エージェントで共有するスキル（名前・説明・Langfuse のラベル・有効）。LLM設定のアプリに並び、いまは Companion 設定が選ぶ。本文はスキル名と同じ名前の Langfuse の text プロンプトから読む（参照は作らない） | [integrations/llm/README.md](integrations/llm/README.md) |
+| AI設定 → LLM設定 / サービス設定 | モデルエイリアス + Virtual Key、サービスへの割り当て | [integrations/llm/README.md](integrations/llm/README.md) |
+| AI設定 → Agent Skills（AgentSkill） | 全エージェントで共有するスキル（名前・説明・Langfuse のラベル・有効）。いまは Companion 設定が選ぶ。本文はスキル名と同じ名前の Langfuse の text プロンプトから読む（参照は作らない） | [integrations/llm/README.md](integrations/llm/README.md) |
 | Langfuseプロンプト参照 | Langfuse プロンプトのマッピング + フォールバック（HN 用 8 本は migration で自動投入、**Talk 用と Companion のシステムプロンプト用は手動作成**。Companion のスキルの本文には作らない） | [integrations/llm/README.md](integrations/llm/README.md) |
 | HackerNews Agent設定 | 閾値・ポーリング・プロンプト 8 本の割り当て | [features/hn_agent/README.md](features/hn_agent/README.md) |
 | Companion 設定（CompanionConfig） | 有効な 1 件の設定（システムプロンプト・予報区・回数の上限・TTS）。スキルは Agent Skills に登録したものから選ぶだけ | [features/companion/README.md](features/companion/README.md) |

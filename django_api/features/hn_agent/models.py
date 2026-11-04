@@ -115,7 +115,7 @@ class HNAgentConfig(models.Model):
     """HN Agent設定モデル.
 
     エージェントの動作パラメータ（閾値、ポーリング間隔等）を管理画面から設定する。
-    LLMのAPIキーやモデル名はOpenAI API設定で管理する。
+    LLMのAPIキーやモデル名は管理画面の「AI設定」（LLM設定・サービス設定）で管理する。
     """
 
     name = models.CharField(

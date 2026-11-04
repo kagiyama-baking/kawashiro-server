@@ -95,8 +95,8 @@ class LLMServiceConfig(models.Model):
     updated_at = models.DateTimeField("更新日時", auto_now=True)
 
     class Meta:
-        verbose_name = "LLMサービス設定"
-        verbose_name_plural = "LLMサービス設定"
+        verbose_name = "サービス設定"
+        verbose_name_plural = "サービス設定"
 
     def __str__(self):
         return f"{self.get_service_name_display()} → {self.provider_config.name}"

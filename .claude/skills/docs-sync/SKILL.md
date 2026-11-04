@@ -31,7 +31,7 @@ description: コード変更に伴うドキュメント更新チェック。コ�
 | `django_api/django_api/settings.py`（INSTALLED_APPS・スロットリング・上限値） | `.claude/CLAUDE.md` リポジトリ構造 + `django_api/README.md` 機能一覧表 + 該当機能 README |
 | `django_api/*/urls.py`・views の追加・削除 | `django_api/README.md` 機能一覧表 + 該当機能 README の API 表 |
 | `django_api/integrations/` 配下の新アプリ追加 | `.claude/CLAUDE.md` リポジトリ構造 + `django_api/README.md` 機能一覧表 |
-| `django_api/integrations/llm/`・`langfuse/`（モデル・admin・クライアント・config） | `django_api/integrations/llm/README.md`（3レイヤ表・admin 表（Agent Skills の `AgentSkill` 表を含む）・命名規約。`fetch_text_prompt` の取得・キャッシュの扱いを変えたら `django_api/features/companion/README.md` の「スキル」も） |
+| `django_api/integrations/llm/`・`langfuse/`（モデル・admin・クライアント・config） | `django_api/integrations/llm/README.md`（3レイヤ表・admin 表（Agent Skills の `AgentSkill` 表を含む）・命名規約。`apps.py` の `verbose_name`（admin のグループ名「AI設定」）やモデルの表示名を変えたら、管理画面の経路を書いた `docs/initial-setup.md`・`django_api/README.md`・ルート `README.md`・各機能の README も。`fetch_text_prompt` の取得・キャッシュの扱いを変えたら `django_api/features/companion/README.md` の「スキル」も） |
 | `django_api/features/talk/`（モデル・views・services） | `django_api/features/talk/README.md`（TalkConfig 表・API 表・上限値） |
 | `django_api/features/media/views.py`（`MAX_*` 等の制限値） | `django_api/features/media/README.md` 制限値表 |
 | `django_api/features/hn_agent/` | `django_api/features/hn_agent/README.md` |

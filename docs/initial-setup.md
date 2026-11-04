@@ -34,15 +34,15 @@ docker compose exec django-api python manage.py createsuperuser
 |---|---|---|
 | システム設定 | Core / 認証と認可 / 認証トークン | ユーザー、グループ、API トークンの管理 |
 | 外部サービス設定 | Microsoft 365 / Slack / Tavily / Celery | 外部 API の資格情報と定期タスクのスケジュール |
-| AI ツール設定 | LLM 設定 / Langfuse / HackerNews Agent / Companion / Talk Generator | LLM の割り当て、プロンプト参照、各機能の設定 |
+| AI ツール設定 | AI設定 / Langfuse / HackerNews Agent / Companion / Talk Generator | LLM の割り当てとスキル（Agent Skills）、プロンプト参照、各機能の設定 |
 
 「Celery」は `django-celery-beat` の表示名を変更したもので、定期タスク・インターバル・Cron スケジュール・時刻指定を扱います（太陽イベントは未使用のため非表示）。
 
 ## 4. AI 基盤の設定
 
-### 4-1. LLM 設定（`LLMProviderConfig`）
+### 4-1. LLM設定（`LLMProviderConfig`）
 
-「AI ツール設定 → LLM 設定 → LLM 設定」から作成します。モデルエイリアスと認証キーの組で、複数の LLM サービス設定から共有されます。
+「AI ツール設定 → AI設定 → LLM設定」から作成します。モデルエイリアスと認証キーの組で、複数のサービス設定から共有されます。
 
 | 項目 | 説明 |
 |---|---|
@@ -52,9 +52,9 @@ docker compose exec django-api python manage.py createsuperuser
 
 一覧の「Virtual Key」列で設定済みかどうかを確認できます。入力欄はパスワード形式で、保存済みの値は再表示されません（変更時のみ入力）。
 
-### 4-2. LLM サービス設定（`LLMServiceConfig`）
+### 4-2. サービス設定（`LLMServiceConfig`）
 
-どのサービスがどの LLM 設定を使うかを割り当てます。サービス名は 6 種で、それぞれ 1 レコードのみ登録できます。
+「AI ツール設定 → AI設定 → サービス設定」で、どのサービスがどの LLM設定を使うかを割り当てます。サービス名は 6 種で、それぞれ 1 レコードのみ登録できます。
 
 | サービス名 | 用途 |
 |---|---|
@@ -65,9 +65,9 @@ docker compose exec django-api python manage.py createsuperuser
 | Talk Generator | 会話生成（`/talk/`） |
 | Companion | Companion エージェント（発話に合うスキルを選んでセリフを生成） |
 
-`LLM 設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
+`LLM設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
 
-> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。`companion` の自動複製（マイグレーション `llm/0013`）は [LLM の README の §4（LLM サービス設定）](../django_api/integrations/llm/README.md#llm-サービス設定llmserviceconfig) を参照してください。
+> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。`companion` の自動複製（マイグレーション `llm/0013`）は [LLM の README の §4（サービス設定）](../django_api/integrations/llm/README.md#サービス設定llmserviceconfig) を参照してください。
 
 ### 4-3. Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -130,13 +130,13 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 システムプロンプト 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
 
-1. **LLM サービス設定の `Companion` を有効にする** — マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
+1. **サービス設定の `Companion` を有効にする** — 「AI ツール設定 → AI設定 → サービス設定」で、マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
 2. **Langfuse に text プロンプトを作る** — システムプロンプトの `companion-system` と、スキルごとの本文（名前は自由。例: `good-morning`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内にします）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
 3. **システムプロンプトの参照を作る**（手順 4-3）— 作る参照は `companion-system` の 1 本だけです。識別名と `Langfuse プロンプト名` を `companion-system` にし、ラベルは手順 2 で付けたものにします。スキルの本文には参照を作りません（スキル名と同じ名前のプロンプトを直接引きます）
-4. **スキルを登録する** — 「AI ツール設定 → LLM 設定 → Agent Skills」（全エージェントで共有するスキルの登録先）から、スキルごとに名前（手順 2 のプロンプト名そのもの）・説明（どんな発話のときに使うか）・ラベル（手順 2 で付けたもの。既定は `production`）・有効を入れて保存します。一覧の名前とラベルが、手順 2 のプロンプトの名前とラベルに合っていることを確かめます
+4. **スキルを登録する** — 「AI ツール設定 → AI設定 → Agent Skills」（全エージェントで共有するスキルの登録先）から、スキルごとに名前（手順 2 のプロンプト名そのもの）・説明（どんな発話のときに使うか）・ラベル（手順 2 で付けたもの。既定は `production`）・有効を入れて保存します。一覧の名前とラベルが、手順 2 のプロンプトの名前とラベルに合っていることを確かめます
 5. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`システムプロンプト` に手順 3 の `companion-system` を選び、「スキル」で手順 4 のスキルを選んで保存します
 6. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
-7. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・LLM サービス設定・プロンプトの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜6）。`skill` を指定して 400 なら、そのスキルが設定で選ばれていて、有効かを確かめます（手順 4・5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください
+7. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・サービス設定・プロンプトの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜6）。`skill` を指定して 400 なら、そのスキルが設定で選ばれていて、有効かを確かめます（手順 4・5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください
 
    ```bash
    curl -X POST http://localhost:8000/companion/run/ \
