@@ -10,8 +10,11 @@ AgentSkill の本文は、Langfuse の text プロンプト `companion-skill-<�
 
 旧スキルの本文の参照（LangfusePromptRef）は消さない（戻すときに使い直す）。
 
-戻すときは、各設定で選んでいるスキルを旧スキルとして作り直す。本文の参照は識別名
-`companion-skill-<スキル名>` で探し、なければ作る。どの設定でも選んでいないスキルは戻らない。
+戻すときは、各設定で選んでいるスキルを旧スキルとして作り直す（0005 の前で旧スキルの行が
+残っていれば、その行を更新する）。本文の参照は識別名 `companion-skill-<スキル名>` で探し、
+なければ作る。見つかった参照が別の本文を読む（Langfuse プロンプト名かラベルがスキルと違う）
+なら、何も戻さずに RuntimeError で止める（行きと同じく、黙って別の本文を読ませない）。
+どの設定でも選んでいないスキルは戻らない。
 """
 
 from django.db import migrations
@@ -94,30 +97,76 @@ def migrate_forward(apps, schema_editor):
         legacy.config.skills.add(skill)
 
 
+def _rollback_ref_problems(skills, refs_by_name) -> list[str]:
+    """戻すと、スキルと別の本文を読む旧スキルになるスキルを挙げる.
+
+    規則どおりの識別名の参照があり、その Langfuse プロンプト名かラベルがスキルと違うとき。
+    """
+    problems = []
+    for skill in skills:
+        prompt_name = _prompt_name(skill.name)
+        ref = refs_by_name.get(prompt_name)
+        if ref is None or (ref.langfuse_prompt_name, ref.label) == (
+            prompt_name,
+            skill.label,
+        ):
+            continue
+        problems.append(
+            f"スキル「{skill.name}」: 参照「{ref.name}」は"
+            f"「{ref.langfuse_prompt_name}@{ref.label}」を読みますが、スキルの本文は"
+            f"「{prompt_name}@{skill.label}」です"
+        )
+    return problems
+
+
 def migrate_backward(apps, schema_editor):
-    """各設定で選んでいるスキルを、本文の参照ごと旧スキルに作り直す."""
+    """各設定で選んでいるスキルを、本文の参照ごと旧スキルに戻す（別の本文を読むなら止める）."""
     CompanionConfig = apps.get_model("companion", "CompanionConfig")
     CompanionSkill = apps.get_model("companion", "CompanionSkill")
     LangfusePromptRef = apps.get_model("langfuse_integration", "LangfusePromptRef")
 
-    for config in CompanionConfig.objects.prefetch_related("skills"):
-        for skill in config.skills.all():
-            prompt_name = _prompt_name(skill.name)
-            prompt_ref, _ = LangfusePromptRef.objects.get_or_create(
-                name=prompt_name,
-                defaults={
-                    "langfuse_prompt_name": prompt_name,
-                    "label": skill.label,
-                    "description": ROLLBACK_REF_DESCRIPTION,
-                },
-            )
-            CompanionSkill.objects.create(
-                config=config,
-                name=skill.name,
-                description=skill.description,
-                is_enabled=skill.is_enabled,
-                prompt_ref=prompt_ref,
-            )
+    selections = [
+        (config, skill)
+        for config in CompanionConfig.objects.prefetch_related("skills").order_by(
+            "name"
+        )
+        for skill in config.skills.all()
+    ]
+    skills = sorted(
+        {skill.pk: skill for _, skill in selections}.values(),
+        key=lambda skill: skill.name,
+    )
+    refs_by_name = LangfusePromptRef.objects.in_bulk(
+        [_prompt_name(skill.name) for skill in skills], field_name="name"
+    )
+    problems = _rollback_ref_problems(skills, refs_by_name)
+    if problems:
+        raise RuntimeError(
+            "Agent Skills を旧 Companion スキルに戻すと、スキルと別の本文を読むので、"
+            "migration を止めました（何も変えていません）。次の参照の Langfuse "
+            "プロンプト名・ラベルをスキルに合わせるか、参照を消してから戻し直して"
+            "ください:\n" + "\n".join(f"- {problem}" for problem in problems)
+        )
+
+    for config, skill in selections:
+        prompt_name = _prompt_name(skill.name)
+        prompt_ref, _ = LangfusePromptRef.objects.get_or_create(
+            name=prompt_name,
+            defaults={
+                "langfuse_prompt_name": prompt_name,
+                "label": skill.label,
+                "description": ROLLBACK_REF_DESCRIPTION,
+            },
+        )
+        CompanionSkill.objects.update_or_create(
+            config=config,
+            name=skill.name,
+            defaults={
+                "description": skill.description,
+                "is_enabled": skill.is_enabled,
+                "prompt_ref": prompt_ref,
+            },
+        )
 
 
 class Migration(migrations.Migration):

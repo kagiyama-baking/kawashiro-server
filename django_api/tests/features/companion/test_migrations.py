@@ -5,6 +5,9 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
+from features.companion.models import AgentSkill
+from integrations.langfuse.models import LangfusePromptRef
+
 BEFORE_RENAME = [("companion", "0001_initial")]
 AFTER_RENAME = [("companion", "0002_rename_persona_prompt_ref_to_system_prompt_ref")]
 # 旧 CompanionSkill だけがある時点（0003 で AgentSkill を足す前）
@@ -20,12 +23,13 @@ CONFIG_NAMES = (CONFIG_NAME, OTHER_CONFIG_NAME)
 PROMPT_REF_NAME = "companion-migration-test-system"
 MORNING = "migration-test-morning"
 NIGHT = "migration-test-night"
+TEST_SKILL_NAMES = (MORNING, NIGHT)
 # 規則（companion-skill-<スキル名>）に合わせない参照の識別名
 CUSTOM_REF_NAME = "companion-migration-test-custom"
 TEST_REF_NAMES = (
     PROMPT_REF_NAME,
     CUSTOM_REF_NAME,
-    *(f"companion-skill-{name}" for name in (MORNING, NIGHT)),
+    *(f"companion-skill-{name}" for name in TEST_SKILL_NAMES),
 )
 
 # 収集時（テスト DB を作る前）の接続先。pytest-django は、DB を使うと宣言した
@@ -42,8 +46,9 @@ def migrator(django_db_setup, django_db_blocker):
     スキーマを変えるので、テストのトランザクションの外で動かす（transactional_db を
     使わない理由は tests/features/talk/test_migrations.py の migrator と同じ）。
     DB の遮断を自分で外すので、テスト DB ができていなければ触る前に中止する。
-    作った行は、旧スキルのモデルがある 0002 の時点へ戻してから消す（規則に合わない
-    旧スキルを残したまま当て直すと、0004 が止まる）。
+    後始末では、いま当たっている時点のモデルで作った設定（旧スキル・スキルの選択ごと）を
+    先に消してから当て直す。0004 は行き・戻りとも、設定が持つ旧スキル・選んだスキルを
+    確かめて止まることがあるため。スキルと参照は、すべて当てた後で消す。
     """
     if connection.settings_dict["NAME"] == CONFIGURED_DB_NAME:
         pytest.fail(
@@ -54,9 +59,13 @@ def migrator(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         executor = MigrationExecutor(connection)
         yield executor
-        _delete_test_rows(_migrate(executor, BEFORE_AGENT_SKILL))
+        _applied_apps(executor).get_model(
+            "companion", "CompanionConfig"
+        ).objects.filter(name__in=CONFIG_NAMES).delete()
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
+        AgentSkill.objects.filter(name__in=TEST_SKILL_NAMES).delete()
+        LangfusePromptRef.objects.filter(name__in=TEST_REF_NAMES).delete()
 
 
 def _migrate(migrator, targets):
@@ -66,17 +75,16 @@ def _migrate(migrator, targets):
     return migrator.loader.project_state(targets).apps
 
 
-def _delete_test_rows(apps) -> None:
-    """0002 の時点のモデルで、テストで作った設定（旧スキルごと）と参照を消す.
+def _applied_apps(migrator):
+    """DB に当たっている companion の最後の migration の時点のモデルを引ける apps を返す.
 
-    参照は設定・旧スキルから PROTECT で参照されるので、設定から消す。
+    止まった migration があると、テストが指定した時点とは限らない。
     """
-    apps.get_model("companion", "CompanionConfig").objects.filter(
-        name__in=CONFIG_NAMES
-    ).delete()
-    apps.get_model("langfuse_integration", "LangfusePromptRef").objects.filter(
-        name__in=TEST_REF_NAMES
-    ).delete()
+    migrator.loader.build_graph()
+    applied = [
+        key for key in migrator.loader.applied_migrations if key[0] == "companion"
+    ]
+    return migrator.loader.project_state([max(applied)]).apps
 
 
 def _create_config_before_rename(apps) -> int:
@@ -343,3 +351,84 @@ def test_0005_reverse_creates_prompt_ref_following_rule_for_new_skill(migrator):
         legacy.prompt_ref.langfuse_prompt_name,
         legacy.prompt_ref.label,
     ) == (prompt_name, prompt_name, "staging")
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("langfuse_prompt_name", "label"),
+    [
+        pytest.param("custom-morning", "staging", id="other_prompt_name"),
+        pytest.param(f"companion-skill-{MORNING}", "production", id="other_label"),
+    ],
+)
+def test_0004_reverse_with_ref_reading_other_body_stops_and_restores_nothing(
+    migrator, langfuse_prompt_name, label
+):
+    """戻すとき、規則どおりの識別名の参照が別の本文を読むなら止め、何も作り直さない.
+
+    別の本文は、Langfuse プロンプト名かラベルがスキルと違うこと。黙ってその参照で
+    旧スキルを作り直すと、戻す前と違う本文を読むようになる。エラーには、直すべき
+    スキル・参照と、読む本文の違いを挙げる。
+    """
+    new_apps = _migrate(migrator, AFTER_AGENT_SKILL)
+    agent_skill = new_apps.get_model("companion", "AgentSkill")
+    _create_config(new_apps).skills.add(
+        agent_skill.objects.create(name=MORNING, description="朝", label="staging"),
+        agent_skill.objects.create(name=NIGHT, description="夜", label="staging"),
+    )
+    refs = new_apps.get_model("langfuse_integration", "LangfusePromptRef").objects
+    refs.create(
+        name=f"companion-skill-{MORNING}",
+        langfuse_prompt_name=langfuse_prompt_name,
+        label=label,
+    )
+    ref_count = refs.count()
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _migrate(migrator, BEFORE_SKILL_COPY)
+
+    message = str(exc_info.value)
+    for expected in (
+        MORNING,
+        f"{langfuse_prompt_name}@{label}",
+        f"companion-skill-{MORNING}@staging",
+    ):
+        assert expected in message
+    assert NIGHT not in message
+    assert SKILL_COPY in MigrationRecorder(connection).applied_migrations()
+    stopped_apps = migrator.loader.project_state([SKILL_COPY]).apps
+    assert not stopped_apps.get_model("companion", "CompanionSkill").objects.exists()
+    assert (
+        stopped_apps.get_model(
+            "langfuse_integration", "LangfusePromptRef"
+        ).objects.count()
+        == ref_count
+    )
+
+
+@pytest.mark.integration
+def test_0004_round_trip_twice_without_0005_keeps_one_legacy_skill_each(migrator):
+    """0005 を当てずに 0004 を 2 回行き来しても、旧スキルは 1 件ずつのまま（内容も参照も同じ）.
+
+    0005 の前は旧スキルの行が残っているので、戻すときは作り直さずに更新する。
+    """
+    old_apps = _migrate(migrator, BEFORE_SKILL_COPY)
+    config = _create_config(old_apps)
+    morning = _create_legacy_skill(old_apps, config, MORNING, description="朝")
+    night = _create_legacy_skill(
+        old_apps, config, NIGHT, description="夜", is_enabled=False
+    )
+
+    for _ in range(2):
+        _migrate(migrator, [SKILL_COPY])
+        reverted_apps = _migrate(migrator, BEFORE_SKILL_COPY)
+
+    skills = (
+        reverted_apps.get_model("companion", "CompanionSkill")
+        .objects.filter(config__name=CONFIG_NAME)
+        .order_by("name")
+    )
+    assert [(s.name, s.description, s.is_enabled, s.prompt_ref_id) for s in skills] == [
+        (MORNING, "朝", True, morning.prompt_ref_id),
+        (NIGHT, "夜", False, night.prompt_ref_id),
+    ]
