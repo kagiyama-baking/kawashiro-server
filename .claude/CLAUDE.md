@@ -30,7 +30,7 @@ kawashiro-server/
 │   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
 │   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
-│   │   └── companion/       # Companion エージェント（キャラクター設定 + スキル・常設ツール。発話からセリフを生成する API）
+│   │   └── companion/       # Companion エージェント（システムプロンプト + スキル・常設ツール。発話からセリフを生成する API）
 │   ├── django_api/          # Djangoプロジェクト設定（settings.py, urls.py, celery.py）
 │   ├── tests/               # テストディレクトリ（pytestベース）
 │   ├── pyproject.toml       # Python依存関係・ツール設定

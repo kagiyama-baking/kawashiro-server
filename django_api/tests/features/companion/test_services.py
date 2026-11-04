@@ -50,7 +50,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 SERVICES = "features.companion.services"
 AREA_CODE = "130010"
-PERSONA = "キャラクター設定"
+SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
 HOME_BODY = "おかえりのあいさつをする"
@@ -98,7 +98,7 @@ def config(db) -> CompanionConfig:
     config = CompanionConfigFactory(
         is_active=True,
         area_code=AREA_CODE,
-        persona_prompt_ref__fallback_text=PERSONA,
+        system_prompt_ref__fallback_text=SYSTEM_PROMPT,
     )
     for name, description, body, is_enabled in [
         ("welcome-home", "帰宅のあいさつ（「ただいま」など）", HOME_BODY, False),
@@ -144,14 +144,14 @@ def _tool_names(request: RecordedRequest) -> set[str]:
 
 
 def _catalog_entries(request: RecordedRequest) -> list[str]:
-    """キャラクター設定を含まない system に載った、スキルの一覧の項目行（`- 名前: 説明`）.
+    """システムプロンプトを含まない system に載った、スキルの一覧の項目行（`- 名前: 説明`）.
 
     一覧の見出しと `<context>` の囲みは PydanticAI の定型文なので、ここでは見ない。
     """
     return [
         line
         for text in request.system_prompts
-        if PERSONA not in text
+        if SYSTEM_PROMPT not in text
         for line in text.splitlines()
         if line.startswith("- ")
     ]
@@ -184,24 +184,24 @@ class TestAutoSelection:
         )
         assert len(llm.requests) == 3
 
-    def test_run_companion_first_system_is_persona_then_policy_with_loading_rule(
+    def test_run_companion_first_system_is_system_prompt_then_policy_with_loading_rule(
         self, config
     ):
-        """最初の system はキャラクター設定、その後ろに読み込みの一文を含む方針."""
+        """最初の system はシステムプロンプト、その後ろに読み込みの一文を含む方針."""
         llm = _scripted("こんにちは")
 
         _run(llm)
 
         first = llm.requests[0]
         assert first.system_prompts[0] == (
-            f"{PERSONA}\n\n{response_policy(can_load_skills=True)}"
+            f"{SYSTEM_PROMPT}\n\n{response_policy(can_load_skills=True)}"
         )
         assert "load_capability" in _tool_names(first)
 
     def test_run_companion_catalog_lists_only_enabled_skills_in_name_order(
         self, config
     ):
-        """一覧（キャラクター設定の後ろの別の system）には、有効なスキルだけが名前順に載る."""
+        """一覧（システムプロンプトの後ろの別の system）には、有効なスキルだけが名前順に載る."""
         llm = _scripted("こんにちは")
 
         _run(llm)
@@ -247,7 +247,7 @@ class TestAutoSelection:
     def test_run_companion_without_enabled_skills_offers_no_skills(self, db):
         """有効なスキルがなければ、一覧も読み込みのツールも、方針の読み込みの一文も入れない."""
         config = CompanionConfigFactory(
-            is_active=True, persona_prompt_ref__fallback_text=PERSONA
+            is_active=True, system_prompt_ref__fallback_text=SYSTEM_PROMPT
         )
         CompanionSkillFactory(config=config, name="good-morning", is_enabled=False)
         llm = _scripted("こんにちは")
@@ -256,7 +256,7 @@ class TestAutoSelection:
 
         first = llm.requests[0]
         assert first.system_prompts == [
-            f"{PERSONA}\n\n{response_policy(can_load_skills=False)}"
+            f"{SYSTEM_PROMPT}\n\n{response_policy(can_load_skills=False)}"
         ]
         assert "load_capability" not in _tool_names(first)
         assert reply.skill is None
@@ -264,7 +264,7 @@ class TestAutoSelection:
     def test_run_companion_reads_config_and_skills_with_refs_in_two_queries(
         self, config, django_assert_num_queries
     ):
-        """有効な設定とスキルは、キャラクター設定・本文の参照ごと 2 クエリで読む."""
+        """有効な設定とスキルは、システムプロンプト・本文の参照ごと 2 クエリで読む."""
         with django_assert_num_queries(2):
             _run(_scripted("こんにちは"))
 
@@ -286,10 +286,10 @@ class TestSkillSpecified:
         assert len(llm.requests) == 1
         assert "load_capability" not in _tool_names(llm.requests[0])
 
-    def test_run_companion_with_skill_appends_its_body_after_persona_and_policy(
+    def test_run_companion_with_skill_appends_its_body_after_system_prompt_and_policy(
         self, config
     ):
-        """system は 1 つだけで、キャラクター設定 → 読み込みの一文のない方針 → スキルの本文の順."""
+        """system は 1 つだけで、システムプロンプト → 読み込みの一文のない方針 → スキルの本文の順."""
         llm = _scripted("おやすみ！")
 
         _run(llm, skill="good-night")
@@ -298,7 +298,7 @@ class TestSkillSpecified:
         assert llm.requests[0].system_prompts == [
             "\n\n".join(
                 [
-                    PERSONA,
+                    SYSTEM_PROMPT,
                     response_policy(can_load_skills=False),
                     skill_instructions(night),
                 ]
@@ -363,7 +363,7 @@ class TestBeforeModelErrors:
         save() はほかの設定を無効にするので、update で 2 件とも有効にする。
         """
         CompanionConfigFactory.create_batch(
-            2, persona_prompt_ref__fallback_text=PERSONA
+            2, system_prompt_ref__fallback_text=SYSTEM_PROMPT
         )
         CompanionConfig.objects.update(is_active=True)
 
@@ -418,19 +418,19 @@ class TestBeforeModelErrors:
         assert llm.requests == []
 
     @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
-    def test_run_companion_with_empty_persona_raises_prompt_unavailable_error(
+    def test_run_companion_with_empty_system_prompt_raises_prompt_unavailable_error(
         self, db, fallback_text
     ):
-        """キャラクター設定の本文が空なら、モデルを呼ばずに PromptUnavailableError."""
+        """システムプロンプトの本文が空なら、モデルを呼ばずに PromptUnavailableError."""
         config = CompanionConfigFactory(
-            is_active=True, persona_prompt_ref__fallback_text=fallback_text
+            is_active=True, system_prompt_ref__fallback_text=fallback_text
         )
         llm = _scripted("こんにちは")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm)
 
-        assert exc_info.value.ref_name == config.persona_prompt_ref.name
+        assert exc_info.value.ref_name == config.system_prompt_ref.name
         assert llm.requests == []
 
 

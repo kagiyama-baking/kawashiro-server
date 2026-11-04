@@ -128,12 +128,12 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 ### 5-3. Companion 設定（`CompanionConfig`）
 
-キャラクター設定 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
+システムプロンプト 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
 
 1. **LLM サービス設定の `Companion` を有効にする** — マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
-2. **Langfuse に text プロンプトを作る** — キャラクター設定の `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
+2. **Langfuse に text プロンプトを作る** — システムプロンプトの `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
 3. **Langfuse プロンプト参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` は手順 2 と同じ名前にし、ラベルは手順 2 で付けたものにします
-4. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`キャラクター設定` に手順 3 の `companion-system` を選び、画面下の「スキル」に名前・説明（どんな発話のときに使うか）・本文（手順 3 の参照）を 1 行ずつ追加して保存します
+4. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`システムプロンプト` に手順 3 の `companion-system` を選び、画面下の「スキル」に名前・説明（どんな発話のときに使うか）・本文（手順 3 の参照）を 1 行ずつ追加して保存します
 5. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
 6. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・LLM サービス設定・プロンプトの本文のどれかが足りません（手順 1〜5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください
 

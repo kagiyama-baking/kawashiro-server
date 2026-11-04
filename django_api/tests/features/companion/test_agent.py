@@ -252,10 +252,10 @@ class TestCompanionAgent:
         } == TOOL_PARAMETERS
 
     def test_agent_without_own_instructions_sends_only_run_instructions(self):
-        """エージェント自身は指示を持たない（キャラクター設定と方針は実行ごとに渡す）."""
-        llm = _run("結論", instructions="キャラクター設定")
+        """エージェント自身は指示を持たない（システムプロンプトと方針は実行ごとに渡す）."""
+        llm = _run("結論", instructions="システムプロンプト")
 
-        assert llm.requests[0].system_prompts == ["キャラクター設定"]
+        assert llm.requests[0].system_prompts == ["システムプロンプト"]
 
     def test_agent_with_empty_response_returns_none_without_retry(self):
         """本文のない応答は再試行せず None として受け取る（空かどうかはサービスが判断する）."""
@@ -698,7 +698,7 @@ class TestOutputValidation:
 
 
 class TestResponsePolicy:
-    """応答の方針（サービスがキャラクター設定の後ろに付ける、コード側の指示）.
+    """応答の方針（サービスがシステムプロンプトの後ろに付ける、コード側の指示）.
 
     ツールの失敗時の戻り値と組み込みの `load_capability` を前提にした文なので、その契約を確かめる。
     """

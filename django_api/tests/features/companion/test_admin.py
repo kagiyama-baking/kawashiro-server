@@ -37,11 +37,11 @@ def admin_site_client(client, superuser):
     return client
 
 
-def _config_form_data(persona_prompt_ref, **fields) -> dict:
+def _config_form_data(system_prompt_ref, **fields) -> dict:
     """設定の追加フォームの送信内容（スキルなし。TTS は既定値）."""
     return {
         "name": "main",
-        "persona_prompt_ref": persona_prompt_ref.pk,
+        "system_prompt_ref": system_prompt_ref.pk,
         "area_code": "130010",
         "rate_limit": 10,
         "tts_model": "",
@@ -122,7 +122,7 @@ class TestCompanionConfigAdminPages:
         assert '<textarea name="skills-0-description"' in content
 
     def test_change_page_prompt_refs_use_autocomplete(self, admin_site_client):
-        """キャラクター設定とスキル本文の参照は検索して選ぶ."""
+        """システムプロンプトとスキル本文の参照は検索して選ぶ."""
         skill = CompanionSkillFactory()
 
         response = admin_site_client.get(
@@ -134,15 +134,30 @@ class TestCompanionConfigAdminPages:
             0
         ].formset.form.base_fields
         assert isinstance(
-            config_fields["persona_prompt_ref"].widget.widget, AutocompleteSelect
+            config_fields["system_prompt_ref"].widget.widget, AutocompleteSelect
         )
         assert isinstance(skill_fields["prompt_ref"].widget.widget, AutocompleteSelect)
         assert isinstance(skill_fields["description"].widget, forms.Textarea)
 
+    def test_change_page_shows_system_prompt_section_with_same_label(
+        self, admin_site_client
+    ):
+        """「システムプロンプト」の節に、同じ名前の項目（参照）だけがある."""
+        config = CompanionConfigFactory()
+
+        response = admin_site_client.get(
+            reverse("admin:companion_companionconfig_change", args=[config.pk])
+        )
+
+        adminform = response.context["adminform"]
+        sections = {name: options["fields"] for name, options in adminform.fieldsets}
+        assert sections["システムプロンプト"] == ("system_prompt_ref",)
+        assert adminform.form.fields["system_prompt_ref"].label == "システムプロンプト"
+
     @pytest.mark.parametrize(
         ("model_name", "field_name"),
         [
-            pytest.param("companionconfig", "persona_prompt_ref", id="persona"),
+            pytest.param("companionconfig", "system_prompt_ref", id="system_prompt"),
             pytest.param("companionskill", "prompt_ref", id="skill_body"),
         ],
     )
@@ -174,10 +189,10 @@ class TestCompanionConfigAdminSave:
 
     def test_add_with_skill_inline_creates_config_and_skill(self, admin_site_client):
         """追加画面から設定とスキルを一度に登録できる."""
-        persona = LangfusePromptRefFactory(name="companion-system")
+        system_prompt = LangfusePromptRefFactory(name="companion-system")
         body = LangfusePromptRefFactory(name="companion-skill-good-morning")
         data = _config_form_data(
-            persona,
+            system_prompt,
             **{"skills-TOTAL_FORMS": 1},
             **_skill_form_data(0, "good-morning", body),
         )
@@ -188,7 +203,7 @@ class TestCompanionConfigAdminSave:
 
         assert response.status_code == 302
         config = CompanionConfig.objects.get(name="main")
-        assert config.persona_prompt_ref == persona
+        assert config.system_prompt_ref == system_prompt
         assert [(s.name, s.prompt_ref, s.is_enabled) for s in config.skills.all()] == [
             ("good-morning", body, True)
         ]
@@ -197,10 +212,10 @@ class TestCompanionConfigAdminSave:
         self, admin_site_client
     ):
         """同じ名前のスキルを 2 行入れると、エラーを表示して何も保存しない."""
-        persona = LangfusePromptRefFactory(name="companion-system")
+        system_prompt = LangfusePromptRefFactory(name="companion-system")
         body = LangfusePromptRefFactory(name="companion-skill-good-morning")
         data = _config_form_data(
-            persona,
+            system_prompt,
             **{"skills-TOTAL_FORMS": 2},
             **_skill_form_data(0, "good-morning", body),
             **_skill_form_data(1, "good-morning", body),

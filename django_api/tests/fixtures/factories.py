@@ -92,10 +92,10 @@ class CompanionConfigFactory(factory.django.DjangoModelFactory):
         django_get_or_create = ("name",)
 
     name = factory.Sequence(lambda n: f"companion-config-{n}")
-    persona_prompt_ref = factory.SubFactory(
+    system_prompt_ref = factory.SubFactory(
         LangfusePromptRefFactory,
         name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
-        fallback_text="persona fallback",
+        fallback_text="system prompt fallback",
     )
 
 

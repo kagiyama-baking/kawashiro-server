@@ -1,6 +1,6 @@
 """Companion エージェントと常設ツール（日時・天気・今日の予定）、応答の方針、出力の検証.
 
-キャラクター設定（Langfuse）はここに持たず、実行サービスが方針（`response_policy`）と
+システムプロンプト（Langfuse）はここに持たず、実行サービスが方針（`response_policy`）と
 つないで実行ごとの `instructions` で渡す。方針はツールの戻り値と組み込みの
 `load_capability` を前提にした文なので、ツールと同じくここに置く。
 
@@ -56,7 +56,7 @@ COMPANION_AGENT: Agent[CompanionDeps, str | None] = Agent(
     name="companion", deps_type=CompanionDeps, output_type=str | None
 )
 
-# 応答の方針（キャラクター設定の後ろに付ける）。スキルの一覧の見出しと読み込みの結果は
+# 応答の方針（システムプロンプトの後ろに付ける）。スキルの一覧の見出しと読み込みの結果は
 # PydanticAI の英語の定型文なので、仕組みに触れない一文が要る
 _POLICY_HEADING = "# 応答の方針"
 # スキルを読み込めるとき（一覧と load_capability があるとき）だけ入れる

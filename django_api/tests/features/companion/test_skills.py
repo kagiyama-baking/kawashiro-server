@@ -45,7 +45,7 @@ from tests.fixtures.llm import (
     tool_call,
 )
 
-PERSONA = "キャラクター設定"
+SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
 EMPTY_TEXTS = ["", " \n\t "]
@@ -54,13 +54,13 @@ EMPTY_TEXTS = ["", " \n\t "]
 def _run(
     llm: ScriptedLLM, capabilities: Sequence[AbstractCapability[CompanionDeps]]
 ) -> AgentRunResult:
-    """台本のモデルで COMPANION_AGENT を 1 回実行する（キャラクター設定は実行の指示で渡す）."""
+    """台本のモデルで COMPANION_AGENT を 1 回実行する（システムプロンプトは実行の指示で渡す）."""
     with COMPANION_AGENT.override(model=llm.model):
         return run_agent_sync(
             COMPANION_AGENT,
             make_llm_settings("companion"),
             user_prompt="おはよう",
-            instructions=PERSONA,
+            instructions=SYSTEM_PROMPT,
             deps=CompanionDeps(area_code=""),
             capabilities=capabilities,
         )

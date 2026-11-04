@@ -27,7 +27,7 @@ from tests.fixtures.llm import ScriptedLLM, make_llm_settings
 def _unsaved_config(**fields) -> CompanionConfig:
     """保存前の設定（指定しない項目は正しい値）."""
     return CompanionConfig(
-        persona_prompt_ref=LangfusePromptRefFactory(name="companion-system"),
+        system_prompt_ref=LangfusePromptRefFactory(name="companion-system"),
         **{"name": "main", **fields},
     )
 
@@ -81,18 +81,18 @@ class TestCompanionConfigActivation:
         with pytest.raises(CompanionConfig.DoesNotExist):
             CompanionConfig.objects.get_active_config()
 
-    def test_get_active_config_with_active_config_prefetches_persona_prompt_ref(
+    def test_get_active_config_with_active_config_prefetches_system_prompt_ref(
         self, django_assert_num_queries
     ):
-        """キャラクター設定の参照は同じクエリで読む（追加のクエリなし）."""
+        """システムプロンプトの参照は同じクエリで読む（追加のクエリなし）."""
         CompanionConfigFactory(
             is_active=True,
-            persona_prompt_ref=LangfusePromptRefFactory(name="companion-system"),
+            system_prompt_ref=LangfusePromptRefFactory(name="companion-system"),
         )
 
         with django_assert_num_queries(1):
             config = CompanionConfig.objects.get_active_config()
-            assert config.persona_prompt_ref.name == "companion-system"
+            assert config.system_prompt_ref.name == "companion-system"
 
     def test_config_str_when_active_marks_active(self):
         """有効な設定は名前に「（有効）」が付く."""
@@ -172,12 +172,12 @@ class TestCompanionConfigValidation:
 
         assert not CompanionConfig.objects.exists()
 
-    def test_persona_prompt_ref_delete_while_referenced_raises_protected_error(self):
-        """設定が参照しているキャラクター設定の参照は消せない."""
+    def test_system_prompt_ref_delete_while_referenced_raises_protected_error(self):
+        """設定が参照しているシステムプロンプトの参照は消せない."""
         config = CompanionConfigFactory()
 
         with pytest.raises(ProtectedError):
-            config.persona_prompt_ref.delete()
+            config.system_prompt_ref.delete()
 
 
 @pytest.mark.integration

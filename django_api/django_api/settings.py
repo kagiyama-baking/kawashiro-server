@@ -107,7 +107,7 @@ INSTALLED_APPS = [
     "integrations.slack",  # Slack通知連携
     "features.hn_agent",  # HN監視・分析エージェント
     # Companion
-    "features.companion",  # Companion エージェント（キャラクター設定とスキル）
+    "features.companion",  # Companion エージェント（システムプロンプトとスキル）
 ]
 
 # ミドルウェアの設定

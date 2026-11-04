@@ -55,8 +55,8 @@ def resolve_required_prompt(ref: LangfusePromptRef) -> str:
 def skill_instructions(skill: CompanionSkill) -> str:
     """指定したスキルの本文を解決し、実行の指示の末尾に足す節にする.
 
-    遅延しない capability の指示は実行の指示（キャラクター設定）より前に置かれるので、
-    スキルを指定した実行では capability にせず、この節をキャラクター設定・方針の後ろに足す。
+    遅延しない capability の指示は実行の指示（システムプロンプト）より前に置かれるので、
+    スキルを指定した実行では capability にせず、この節をシステムプロンプト・方針の後ろに足す。
     Langfuse と通信する同期関数なので、イベントループの外で呼ぶ。
 
     Args:

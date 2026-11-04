@@ -33,7 +33,7 @@ class CompanionConfigManager(models.Manager):
     def get_active_config(self) -> "CompanionConfig":
         """有効な設定を取得.
 
-        キャラクター設定の参照を先読みする。
+        システムプロンプトの参照を先読みする。
 
         Returns:
             CompanionConfig インスタンス
@@ -41,13 +41,13 @@ class CompanionConfigManager(models.Manager):
         Raises:
             CompanionConfig.DoesNotExist: 有効な設定が存在しない場合
         """
-        return self.select_related("persona_prompt_ref").get(is_active=True)
+        return self.select_related("system_prompt_ref").get(is_active=True)
 
 
 class CompanionConfig(AbstractTTSSettings):
     """Companion 設定（有効にできるのは 1 件だけ）.
 
-    全スキルに共通のキャラクター設定・天気の予報区・回数の上限・音声合成を持つ。
+    全スキルに共通のシステムプロンプト・天気の予報区・回数の上限・音声合成を持つ。
     スキルは `CompanionSkill`（`skills`）として設定ごとに登録する。
     """
 
@@ -62,12 +62,12 @@ class CompanionConfig(AbstractTTSSettings):
         default=False,
         help_text="この設定を有効にする（有効にできるのは1つの設定のみ）",
     )
-    persona_prompt_ref = models.ForeignKey(
+    system_prompt_ref = models.ForeignKey(
         "langfuse_integration.LangfusePromptRef",
         on_delete=models.PROTECT,
         related_name="+",
-        verbose_name="キャラクター設定",
-        help_text="全スキルに共通のキャラクター設定（system プロンプト）の Langfuse参照",
+        verbose_name="システムプロンプト",
+        help_text="全スキルに共通のシステムプロンプトの Langfuse参照",
     )
     area_code = models.CharField(
         "予報区コード",

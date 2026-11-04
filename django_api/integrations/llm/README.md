@@ -56,7 +56,7 @@ flowchart LR
     HN -.->|orchestrator / detective /<br/>devils_advocate / security_responder| Service
     Talk -->|2本のプロンプト参照| Ref
     Talk -.->|talk| Service
-    Companion -->|キャラクター設定 1 本 +<br/>スキルごとの本文| Ref
+    Companion -->|システムプロンプト 1 本 +<br/>スキルごとの本文| Ref
     Companion -.->|companion| Service
 
     Provider ==>|Virtual Key + model_alias| LiteLLM
@@ -118,14 +118,14 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 | HN Agent Security Responder user | `hn-agent-security-responder-user` | `hn-agent-security-responder-user` |
 | Talk system | `talk-{config_name}-system` | `talk-{config_name}-system`（同名） |
 | Talk user | `talk-{config_name}-user` | `talk-{config_name}-user`（同名） |
-| Companion キャラクター設定（system） | `companion-system` | `companion-system`（同名） |
+| Companion system | `companion-system` | `companion-system`（同名） |
 | Companion スキルの本文 | `companion-skill-<スキル名>` | `companion-skill-<スキル名>`（同名） |
 
 **投入方法の違いに注意してください。**
 
 - **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りの `LangfusePromptRef` として自動投入されます。
 - **Talk の 2 本は自動生成されません。** migration `talk/0012` は「マイグレーション実行時点で存在した `TalkConfig`」の分だけ参照を作り、既存の `system_prompt` を `fallback_text` へ移管したものです。**その後に新しい `TalkConfig` を追加する場合は、`LangfusePromptRef` を admin で手動作成**してから FK に割り当ててください（`system_prompt_ref` / `user_prompt_ref` はどちらも必須・`PROTECT`）。
-- **Companion の参照も自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `LangfusePromptRef` を手動で作成してから `CompanionConfig.persona_prompt_ref` / `CompanionSkill.prompt_ref` に割り当てます（ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3）。
+- **Companion の参照も自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `LangfusePromptRef` を手動で作成してから `CompanionConfig.system_prompt_ref` / `CompanionSkill.prompt_ref` に割り当てます（ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3）。
 
 いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。未登録でも `fallback_text` で動作します。
 

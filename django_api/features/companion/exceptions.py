@@ -6,7 +6,7 @@ class CompanionError(Exception):
 
 
 class PromptUnavailableError(CompanionError):
-    """プロンプト（キャラクター設定・スキルの本文）の本文が空で、使えない.
+    """プロンプト（システムプロンプト・スキルの本文）の本文が空で、使えない.
 
     Langfuse から取れないときはフォールバックテキストに落ちるが、それも空のことがある。
 

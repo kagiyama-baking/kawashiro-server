@@ -1,8 +1,8 @@
-# Companion — キャラクター設定とスキル
+# Companion — システムプロンプトとスキル
 
-Companion は、全体で 1 つのエージェント設定（共通のキャラクター設定）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。実行 API（`POST /companion/run/`）で受け取った発話からエージェントが合うスキルを選び、その手順に従ってセリフを返します（音声合成が有効なら音声も）。いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
+Companion は、全体で 1 つのエージェント設定（共通のシステムプロンプト）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。実行 API（`POST /companion/run/`）で受け取った発話からエージェントが合うスキルを選び、その手順に従ってセリフを返します（音声合成が有効なら音声も）。いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
 
-- キャラクター設定とスキルの本文は DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
+- システムプロンプトとスキルの本文は DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 - スキルの一覧（名前・説明・本文の参照）は admin で、設定のインラインとして管理します
 
 ## 構成
@@ -20,7 +20,7 @@ features/companion/
 ├── throttling.py              # CompanionRateThrottle（有効な設定の rate_limit で、ユーザーごとに数える）
 ├── urls.py                    # app_name = "companion"（run/）
 ├── exceptions.py              # CompanionError / PromptUnavailableError / CompanionNotConfiguredError / UnknownSkillError
-└── migrations/0001_initial.py
+└── migrations/                # 0001_initial・0002（persona_prompt_ref → system_prompt_ref の改名。手書き）
 ```
 
 音声合成の項目は `integrations/tts/models.py` の抽象モデル `AbstractTTSSettings` から継承します（テーブルは持たないので tts アプリに migration はありません）。
@@ -33,14 +33,14 @@ features/companion/
 |---|---|---|---|
 | `name` | CharField(255) | 設定の識別名 | 一意 |
 | `is_active` | Bool, `False` | 有効な設定 | 有効にして保存すると、ほかの設定は無効になる |
-| `persona_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | 全スキルに共通のキャラクター設定（system プロンプト）の参照 | 必須。参照中の `LangfusePromptRef` は削除できない |
+| `system_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | 全スキルに共通のシステムプロンプトの参照 | 必須。参照中の `LangfusePromptRef` は削除できない |
 | `area_code` | CharField(10), `""` | 天気予報の予報区コード（例: `130010`）。空なら天気を扱わない | 空か 6 桁の半角数字（`^[0-9]{6}\Z`。全角数字・末尾の改行は通さない） |
 | `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限（数え方は下の「API」の「回数制限」） | 1 以上 |
 | `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の `TalkConfig` 表](../talk/README.md#talkconfig-リファレンス) の `tts_*` 行と同じ | 同左 |
 | `created_at` / `updated_at` | DateTime（自動） | 作成・更新日時（admin では読み取りのみ） | — |
 
 - `save()` は `full_clean()` を呼ぶため、上の入力チェックは admin 経由でもコード経由でも必ず走ります。ほかの設定の無効化と保存は 1 つのトランザクションで行いますが、2 件を同時に有効にすると、両方が有効のまま残ることがあります（そのあいだ実行は 503。下の「実行の流れ」）。管理画面で 1 件だけを有効にし直すと解消します。
-- `CompanionConfig.objects.get_active_config()` は有効な設定を `persona_prompt_ref` ごと 1 クエリで返し、有効な設定がなければ `CompanionConfig.DoesNotExist`、複数あれば `CompanionConfig.MultipleObjectsReturned` を送出します。
+- `CompanionConfig.objects.get_active_config()` は有効な設定を `system_prompt_ref` ごと 1 クエリで返し、有効な設定がなければ `CompanionConfig.DoesNotExist`、複数あれば `CompanionConfig.MultipleObjectsReturned` を送出します。
 - `get_tts_options()` は TTS の項目を `TTSClient.synthesize` のキーワード引数の辞書にまとめます。`tts_enabled=False` なら `None`、`tts_model` が空なら `model` は `None`（SBV2 側の既定モデル）です。
 
 ## CompanionSkill リファレンス
@@ -62,8 +62,8 @@ features/companion/
 
 ## 管理画面
 
-- 設定の節: 基本設定 / キャラクター / 天気 / 回数制限 / 音声（畳んで表示）/ メタ情報（畳んで表示）
-- キャラクター設定とスキル本文の参照は、`LangfusePromptRef` を検索して選びます（識別名・Langfuse プロンプト名・説明が検索対象）
+- 設定の節: 基本設定 / システムプロンプト / 天気 / 回数制限 / 音声（畳んで表示）/ メタ情報（畳んで表示）
+- システムプロンプトとスキル本文の参照は、`LangfusePromptRef` を検索して選びます（識別名・Langfuse プロンプト名・説明が検索対象）
 - 一覧のアクション「選択した設定を有効にする」で有効な設定を切り替えられます（1 件だけ選ぶ。2 件以上選ぶとエラーになり、何も変わりません）
 
 ## スキル
@@ -100,10 +100,10 @@ features/companion/
 
 | 順 | 処理 | 止まるとき（送出する例外） |
 |---|---|---|
-| 1 | 有効な設定を読み、有効なスキルを名前順に読む（キャラクター設定・本文の参照ごと 2 クエリ） | 有効な設定がないか、複数ある（`CompanionNotConfiguredError`。複数のときはどれも使わず、原因を error ログに出す） |
+| 1 | 有効な設定を読み、有効なスキルを名前順に読む（システムプロンプト・本文の参照ごと 2 クエリ） | 有効な設定がないか、複数ある（`CompanionNotConfiguredError`。複数のときはどれも使わず、原因を error ログに出す） |
 | 2 | `skill` を指定したら、有効なスキルの中から探す | 登録がない・無効・ほかの設定のスキル（`UnknownSkillError`。名前を `skill_name` に持つ） |
 | 3 | LLM の接続設定 `get_llm_settings("companion")` を読む | LLM サービス設定 `companion` がない・無効（`LLMConfigurationError`） |
-| 4 | キャラクター設定の本文を解決する | 本文が空（`PromptUnavailableError`） |
+| 4 | システムプロンプトの本文を解決する | 本文が空（`PromptUnavailableError`） |
 | 5 | 実行の指示を組み立てる（下の「スキルの指定と自動選択」）。指定したスキルの本文はここで解決する | 指定したスキルの本文が空（`PromptUnavailableError`） |
 | 6 | エージェントを 1 回実行する（下の「上限と再試行」） | タイムアウト（`LLMTimeoutError`。1 リクエストごとのタイムアウトか、実行全体の `RUN_TIMEOUT` を過ぎた）、上限の超過・接続や HTTP の失敗（`LLMClientError`）、ツールの失敗が続いた・本文に漏れたツール呼び出しの書式が作り直させても直らない（`LLMOutputError`。下の「出力の検証」）、読み込んだスキルの本文が空（`PromptUnavailableError`） |
 | 7 | 応答の前後の空白を除く | 空（`LLMOutputError`。音声合成はしない） |
@@ -118,19 +118,19 @@ features/companion/
 
 | | 自動選択（`skill` なし） | スキルの指定（`skill` あり） |
 |---|---|---|
-| 実行の指示（最初の system） | キャラクター設定 → 応答の方針（有効なスキルがあれば読み込みの一文を含む） | キャラクター設定 → 応答の方針（読み込みの一文なし） → 見出し `# 今回の手順` とスキルの本文 |
+| 実行の指示（最初の system） | システムプロンプト → 応答の方針（有効なスキルがあれば読み込みの一文を含む） | システムプロンプト → 応答の方針（読み込みの一文なし） → 見出し `# 今回の手順` とスキルの本文 |
 | スキルの一覧と `load_capability` | 有効なスキルがあれば渡す（一覧は実行の指示の後ろの、別の system） | 渡さない |
 | スキルの本文が届くとき | モデルが読み込んだ後のリクエストから（会話途中の system） | 最初のリクエストから |
 | 読み込みの往復 | あり（読み込む分だけリクエストが増える） | なし |
 | 使ったスキル | 最初に読み込みに成功したスキル（読み込まなければ `None`） | 指定したスキル |
 
-- **スキルを指定した実行で本文を指示の末尾に足すのは、キャラクター設定を先頭に保つためです。** 遅延しない capability（`defer_loading=False`）にすると、その指示は実行の指示より前の別の system になり（`tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract`）、本文がキャラクター設定より先に来ます。自動選択でも本文はキャラクター設定の後ろに届くので、指定したときも後ろに置きます。
+- **スキルを指定した実行で本文を指示の末尾に足すのは、システムプロンプトを先頭に保つためです。** 遅延しない capability（`defer_loading=False`）にすると、その指示は実行の指示より前の別の system になり（`tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract`）、本文がシステムプロンプトより先に来ます。自動選択でも本文はシステムプロンプトの後ろに届くので、指定したときも後ろに置きます。
 - 有効なスキルが 1 つもなければ、自動選択でも一覧・`load_capability`・読み込みの一文は入りません（使ったスキルは `None`）。
 - **自動選択は、いつも合うスキルを読み込むとは限りません。** 開発の実機（LiteLLM → Bedrock の Kimi K2.5）で約 30 回試したところ、合うスキルを読み込んだのは 85〜95% ほどでした。読み込まなかったときもエラーにはならず、キャラクターのまま短く答えます（API の `skill` は `null`。ツールを呼ばずに「調べますね」とだけ答えることもあります）。読み込みを促す一文を応答の方針に足しても改善しなかったので、方針には入れていません。毎朝のあいさつのように決まったスキルを必ず使う自動化では、`skill` を指定してください（指定した実行では、どの回も指定したスキルの手順どおりに答えました）。
 
 ### 応答の方針
 
-キャラクター設定の後ろに付ける、コード側の短い指示です（`agent.py` の `response_policy`。見出しは `# 応答の方針`）。ツールの戻り値と組み込みの `load_capability` を前提にした文なので、ツールと同じ `agent.py` に置いています。
+システムプロンプトの後ろに付ける、コード側の短い指示です（`agent.py` の `response_policy`。見出しは `# 応答の方針`）。ツールの戻り値と組み込みの `load_capability` を前提にした文なので、ツールと同じ `agent.py` に置いています。
 
 | 指示 | 入れるとき |
 |---|---|
@@ -204,7 +204,7 @@ features/companion/
 | 400 | 指定したスキルが登録されていないか、無効（`UnknownSkillError`） | `スキル「<名前>」は登録されていないか、無効です` |
 | 401 | トークンがない・不正 | （`detail`） |
 | 429 | 回数の上限を超えた（下の「回数制限」） | （`detail`。`Retry-After` ヘッダ付き） |
-| 503 | 有効な設定がないか複数ある（`CompanionNotConfiguredError`）、LLM サービス設定 `companion` がないか無効（`LLMConfigurationError`）、キャラクター設定かスキルの本文が空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
+| 503 | 有効な設定がないか複数ある（`CompanionNotConfiguredError`）、LLM サービス設定 `companion` がないか無効（`LLMConfigurationError`）、システムプロンプトかスキルの本文が空（`PromptUnavailableError`） | `Companion の設定に問題があります` |
 | 504 | LLM のタイムアウト（`LLMTimeoutError`。実行全体の `RUN_TIMEOUT` の超過を含む） | `AI 生成サービスへのリクエストがタイムアウトしました` |
 | 504 | 音声合成のタイムアウト（`TTSTimeoutError`） | `音声合成サービスへのリクエストがタイムアウトしました` |
 | 502 | LLM の失敗（`LLMClientError`。上限の超過・接続や HTTP の失敗と、`LLMOutputError` の応答の不正・空の応答・ツールの失敗の連続・直らない呼び出しの書式の漏れを含む） | `AI 生成サービスでエラーが発生しました` |

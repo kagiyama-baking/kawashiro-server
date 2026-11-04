@@ -163,7 +163,7 @@ def _run_companion():
         name="trace-companion", langfuse_prompt_name="trace-companion"
     )
     config = CompanionConfig.objects.create(
-        name="trace", is_active=True, persona_prompt_ref=ref, tts_enabled=True
+        name="trace", is_active=True, system_prompt_ref=ref, tts_enabled=True
     )
     CompanionSkill.objects.create(
         config=config, name="good-morning", description="朝のあいさつ", prompt_ref=ref

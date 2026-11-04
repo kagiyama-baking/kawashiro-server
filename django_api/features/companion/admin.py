@@ -34,7 +34,7 @@ class CompanionConfigAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "is_active",
-        "persona_prompt_ref",
+        "system_prompt_ref",
         "area_code",
         "rate_limit",
         "tts_enabled",
@@ -42,7 +42,7 @@ class CompanionConfigAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_active", "tts_enabled")
     readonly_fields = ("created_at", "updated_at")
-    autocomplete_fields = ("persona_prompt_ref",)
+    autocomplete_fields = ("system_prompt_ref",)
     inlines = (CompanionSkillInline,)
 
     fieldsets = (
@@ -57,11 +57,11 @@ class CompanionConfigAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "キャラクター",
+            "システムプロンプト",
             {
-                "fields": ("persona_prompt_ref",),
+                "fields": ("system_prompt_ref",),
                 "description": (
-                    "全スキルに共通のキャラクター設定（Langfuse の text プロンプト）を"
+                    "全スキルに共通のシステムプロンプト（Langfuse の text プロンプト）を"
                     "Langfuseプロンプト参照から選択します。"
                 ),
             },
