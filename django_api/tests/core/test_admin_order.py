@@ -31,6 +31,22 @@ def test_admin_app_list_companion_follows_hn_agent(superuser):
     assert labels.index("companion") == labels.index("hn_agent") + 1
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_admin_app_list_shows_agent_skills_under_llm_config_not_companion(superuser):
+    """Agent Skills は AI設定のアプリに出て、Companion には出ない（全エージェントで共有）."""
+    req = RequestFactory().get("/admin/")
+    req.user = superuser
+
+    models_by_app = {
+        entry["app_label"]: [model["object_name"] for model in entry["models"]]
+        for entry in admin.site.get_app_list(req)
+    }
+
+    assert "AgentSkill" in models_by_app["llm_config"]
+    assert "AgentSkill" not in models_by_app["companion"]
+
+
 @pytest.mark.django_db
 def test_celery_beat_label_is_celery(superuser):
     """django-celery-beat の表示名が「Celery」に変更されている."""
@@ -56,6 +72,7 @@ def test_renamed_verbose_names_applied(superuser):
         entry["app_label"]: entry["name"] for entry in admin.site.get_app_list(req)
     }
     assert names.get("msgraph_config") == "Microsoft 365"
+    assert names.get("llm_config") == "AI設定"
     assert names.get("langfuse_integration") == "Langfuse"
     assert names.get("hn_agent") == "HackerNews Agent"
     assert names.get("talk") == "Talk Generator"

@@ -69,14 +69,17 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
             "基本設定",
             {
                 "fields": ("name", "is_active"),
-                "description": "設定の名前と有効/無効を設定します。LLMモデルやAPIキーはOpenAI API設定で管理してください。",
+                "description": "設定の名前と有効/無効を設定します。LLMモデルやAPIキーは「AI設定」で管理してください。",
             },
         ),
         (
             "LLM設定",
             {
                 "fields": ("reasoning_effort",),
-                "description": "モデルやAPIキーはLLMサービス設定で管理。ここでは推論深度を設定。",
+                "description": (
+                    "モデルとAPIキーは「AI設定 → LLM設定」で作り、"
+                    "「サービス設定」で各サービスに割り当てます。ここでは推論深度を設定します。"
+                ),
             },
         ),
         (

@@ -1,6 +1,6 @@
 # LLM / Langfuse 統合（integrations/llm + integrations/langfuse）
 
-LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）** です。`integrations/llm`（Django アプリラベル `llm_config`）と `integrations/langfuse`（同 `langfuse_integration`）の 2 アプリをまとめて扱います。
+LLM 接続・プロンプト管理・観測と、全エージェントで共有するスキル（Agent Skills）に関する **唯一の正（SSOT）** です。`integrations/llm`（Django アプリラベル `llm_config`）と `integrations/langfuse`（同 `langfuse_integration`）の 2 アプリをまとめて扱います。
 
 ## 1. 概要と 3 レイヤ責務分離
 
@@ -8,13 +8,13 @@ LLM 接続・プロンプト管理・観測に関する **唯一の正（SSOT）
 
 | レイヤ | 責務 | 管理場所 | 実体 |
 |---|---|---|---|
-| **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
-| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」+ Langfuse UI | `LangfusePromptRef` + Langfuse 側のプロンプト実体 |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」「Agent Skills」 | `HNAgentConfig` / `TalkConfig` / `CompanionConfig` / `AgentSkill`（Companion のスキル） |
+| **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「AI設定」の「LLM設定」「サービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
+| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」と「AI設定」の「Agent Skills」+ Langfuse UI | `LangfusePromptRef` / `AgentSkill`（全エージェントで共有するスキル）+ Langfuse 側のプロンプト実体 |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 | `HNAgentConfig` / `TalkConfig` / `CompanionConfig` |
 
-Companion のスキルの本文だけは「プロンプト管理」の参照を通さず、Agent Skills のスキル名とラベルで Langfuse から直接取ります（§5）。
+スキル（Agent Skills）の本文だけは参照（`LangfusePromptRef`）を通さず、スキル名とラベルで Langfuse から直接取ります（§4 の「Agent Skills」と §5）。各機能の設定は、登録したスキルから使うものを選びます（いまは Companion 設定だけ）。
 
-モデルを差し替えるときは admin の「LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
+モデルを差し替えるときは admin の「AI設定 → LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
 
 ## 2. 構成要素
 
@@ -26,6 +26,8 @@ Companion のスキルの本文だけは「プロンプト管理」の参照を�
   モデルエイリアス + LiteLLM Virtual Key の組。複数の `LLMServiceConfig` から共有参照できます。
 - **`LLMServiceConfig`**（同上）
   サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk` / `companion`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
+- **`AgentSkill`**（同上）
+  全エージェントで共有するスキル（Agent Skills）。名前・説明・Langfuse のラベル・有効を持ち、各機能の設定が M2M で選びます（いまは `CompanionConfig.skills`）。本文は、スキル名と同じ名前の Langfuse の text プロンプトを `fetch_text_prompt` で直接取ります（§4）。
 - **`LangfusePromptRef`**（`integrations/langfuse/models.py`）
   Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` / `CompanionConfig`（システムプロンプト）から FK で参照されます。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
@@ -42,13 +44,15 @@ Companion のスキルの本文だけは「プロンプト管理」の参照を�
 ```mermaid
 flowchart LR
     subgraph Admin["Django admin"]
-        Provider["LLM設定<br/>model_alias + Virtual Key"]
-        Service["LLMサービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
+        subgraph LLMApp["AI設定（llm_config）"]
+            Provider["LLM設定<br/>model_alias + Virtual Key"]
+            Service["サービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
+            Skills["Agent Skills（AgentSkill）<br/>name + label"]
+        end
         Ref["Langfuseプロンプト参照<br/>langfuse_prompt_name + label"]
         HN["HackerNews Agent設定"]
         Talk["会話生成設定（TalkConfig）"]
         Companion["Companion 設定（CompanionConfig）"]
-        Skills["Agent Skills（AgentSkill）<br/>name + label"]
     end
 
     subgraph External["外部サービス"]
@@ -67,16 +71,17 @@ flowchart LR
 
     Provider ==>|Virtual Key + model_alias| LiteLLM
     Ref ==>|名前とラベルで取得| Langfuse
-    Skills ==>|"companion-skill-#lt;name#gt;@label"| Langfuse
+    Skills ==>|name@label| Langfuse
 ```
 
+- **枠「AI設定（llm_config）」**: admin で同じグループ（アプリ）に並ぶモデル。Agent Skills は全エージェントで共有するので、機能のアプリではなくここに置く
 - **実線**（admin 内）: FK 参照（設定 → Agent Skills は M2M）
 - **破線**（admin 内）: `service_name` 経由の紐付け（FK ではなく文字列一致）
 - **太線**（admin → 外部）: ランタイムで実際に叩く API
 
 ## 4. admin モデルリファレンス
 
-### LLM 設定（`LLMProviderConfig`）
+### LLM設定（`LLMProviderConfig`）
 
 | 項目 | 説明 |
 |---|---|
@@ -86,18 +91,20 @@ flowchart LR
 
 > **Note:** Virtual Key を空にすると環境変数 `LITELLM_MASTER_KEY` にフォールバックします。マスターキーではなくサービス専用の Virtual Key を使うと、コスト上限の設定とアクセスログの識別が可能になります。
 
-### LLM サービス設定（`LLMServiceConfig`）
+### サービス設定（`LLMServiceConfig`）
 
 | 項目 | 説明 |
 |---|---|
 | サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` / `Companion` の 6 択。**unique**（1 サービス 1 レコード） |
-| LLM 設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
+| LLM設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
 | 有効（`is_active`） | 既定 `True`。**`False` のレコードは `get_llm_settings` から見えず、設定なし扱いでエラーになります** |
 | タイムアウト（`timeout`） | API リクエストのタイムアウト秒数（既定 `60`） |
 
 > **Note:** `devils_advocate` / `security_responder` のレコードは migration `llm/0012` で `detective` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**）。detective が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。
 
 > **Note:** `companion` のレコードは migration `llm/0013` で `talk` を雛形として複製生成されます（`provider_config` と `timeout` を引き継ぎ、**`is_active=False`**。`companion` が既にあれば変更しません）。talk が未設定の環境では何も生成されないため、admin から手動作成してください。いずれの場合も、使う前に有効化とプロバイダーの見直しが必要です。`0012` へ戻すと `companion` のレコードは削除されます。
+
+> **Note（表示名）:** admin のグループ名は `apps.py` の `verbose_name`（「AI設定」。以前は「LLM設定」）で、migration はありません。サービス設定の表示名は migration `llm/0016` で「LLMサービス設定」から「サービス設定」に変えました（`AlterModelOptions`。表示名だけで DB は変えません）。「LLM設定」（`LLMProviderConfig`）とサービス設定の項目名「LLM設定」はそのままです。
 
 ### Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -108,6 +115,29 @@ flowchart LR
 | ラベル（`label`） | Langfuse のプロンプトラベル（既定 `production`。`staging` 等に切り替え可能） |
 | フォールバックテキスト（`fallback_text`） | Langfuse 不達・未登録時に使うテキスト。`{{key}}` は呼び出し側の変数で簡易置換 |
 | 説明（`description`） | 用途説明（admin 一覧に表示） |
+
+### Agent Skills（`AgentSkill`）
+
+全エージェントで共有するスキル（用途ごとの手順）です。admin の「AI ツール設定 → AI設定 → Agent Skills」で登録し、各機能の設定はその中から使うものを選びます（いまは Companion 設定の「スキル」。1 つのスキルを複数の設定で選べます）。スキルは設定への外部キーを持ちません。並び順は名前順です。
+
+| 項目 | 説明 |
+|---|---|
+| スキル名（`name`） | capability の id で、本文を読む Langfuse の text プロンプトの名前そのもの（例: `good-morning`）。**unique**。英小文字・数字をハイフンでつないだ形（`^[a-z0-9]+(-[a-z0-9]+)*\Z`）で 64 字以内。大文字・`_`・`:`・空白、先頭・末尾・連続のハイフンは不可。`instrumentation` は予約（下記） |
+| 説明（`description`） | どんな発話のときに使うスキルか。モデルが読んでスキルを選ぶための文なので、発話の例を含める。必須、1024 字以内（admin では複数行の入力欄） |
+| ラベル（`label`） | 本文を取る Langfuse のプロンプトのラベル（既定 `production`。使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)） |
+| 有効（`is_enabled`） | 既定 `True`。無効にしたスキルは、設定で選んでいても使わない |
+
+- **スキル名がそのまま本文のプロンプト名です。** 本文は、スキル名と同じ名前の Langfuse の text プロンプトをスキルのラベルで読みます（接頭辞などは付けません）。名前を変えると本文を読むプロンプトも変わるので、Langfuse 側のプロンプト名も合わせてください。名前は capability の id と実行 API の `skill` の値も兼ねるので、変えると API で指定する値も変わります。本文の取り方（フォールバックなし・SDK のキャッシュ）は [Companion の README の「スキル」](../../features/companion/README.md#スキル) を参照してください。
+- 表示（`__str__`）は `good-morning@staging`（スキル名@ラベル。本文を読むプロンプトとその版）です。設定のスキルの選択欄にそのまま出ます。
+- 名前の規則は Agent Skills の命名規則（英小文字・数字・ハイフン、64 字以内）に合わせています。`:` を含められないので、PydanticAI の capability の id（`:` は使えない。予約の `deferred_capabilities` も `_` を含むので通らない）にそのまま使えます。Langfuse のプロンプト名にはこの規則より多くの文字を使えるので、スキルの本文のプロンプトは、この規則に合う名前で作ってください。
+- **`instrumentation` は予約しています。** `apps.py` の `Agent.instrument_all` により、どの実行にも PydanticAI の Instrumentation（id: `instrumentation`）が入るため、同じ id のスキルを渡すと id の衝突で実行そのものが失敗します（`tests/integrations/llm/test_agent_skill.py` で確認）。
+- 説明を `TextField` ではなく `CharField` にしているのは、`full_clean()` で字数の上限を確かめるためです（`TextField` の `max_length` はフォームの入力欄にしか効きません）。
+- `save()` は `full_clean()` を呼びます。登録済みの名前で追加すると、admin では名前の欄のエラーになり保存されません。
+- admin の一覧には名前・ラベル・有効が並び、有効とラベルで絞り込め、名前と説明で検索できます（名前がそのままプロンプト名なので、プロンプト名の列はありません）。
+
+> **Note（表名と内容の型）:** `AgentSkill` は Companion のアプリから移したモデルです（migration `llm/0014` と `companion/0006`。どちらも表は変えません）。表は companion の `0003` が作った `companion_agentskill`（`Meta.db_table`）、設定の選択の中間表は `companion_companionconfig_skills` のままです。既定の表名（`llm_config_agentskill`）にそろえるなら、後で `AlterModelTable` を足します。権限と管理画面の履歴が指す内容の型（ContentType）の行は、`llm/0014` が companion から llm_config へ付け替えます（id はそのままなので、付けた権限と履歴は移したモデルでも見えます。companion の行がなければ何もしません）。llm_config の行もあれば（戻した状態で新しいコードが作った行など）、その行を指す履歴と権限の付与（グループ・ユーザー）を元の行へ寄せてから消し、1 つにまとめます。戻すときも同じ規則で companion に戻します。移す前の版へ戻す手順は [Companion の README の「構成」](../../features/companion/README.md#構成) を参照してください。
+
+> **Note（名前の付け替え）:** migration `llm/0015` で、スキル名をプロンプト名そのものにしました。それまで本文は `companion-skill-<スキル名>` から読んでいたので、前進では、読む先を変えないよう、既存の全部の行の名前に接頭辞 `companion-skill-` を付けます（例: `good-morning` → `companion-skill-good-morning`。Langfuse 側は変えません）。付け替えると、capability の id と実行 API の `skill` の値も接頭辞付きの名前になります。接頭辞を付けると 64 字を超える名前（49 字以上）が 1 件でもあれば、何も変えずに `RuntimeError` で止まります（起動時の migrate が止まるので、その名前を 48 字以内にし、Langfuse のプロンプト名も `companion-skill-<新しい名前>` に合わせてから起動し直します）。戻すと、接頭辞の付いた名前からだけ外し、接頭辞のない名前（`0015` の後に登録したスキル）は変えません（戻した後は `companion-skill-<名前>` を読みます）。外した名前のスキルがすでにあるか、外した名前が予約した名前（`instrumentation`）になるなら、何も変えずに `RuntimeError` で止まります。
 
 ## 5. Langfuse プロンプト命名規約
 
@@ -126,16 +156,16 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 | Talk system | `talk-{config_name}-system` | `talk-{config_name}-system`（同名） |
 | Talk user | `talk-{config_name}-user` | `talk-{config_name}-user`（同名） |
 | Companion system | `companion-system` | `companion-system`（同名） |
-| Companion スキルの本文 | なし（参照を作らない） | `companion-skill-<スキル名>`（Agent Skills のスキル名から導く。ラベルはスキルの `label`） |
+| スキル（Agent Skills）の本文 | なし（参照を作らない） | スキル名そのもの（例: `good-morning`。ラベルはスキルの `label`） |
 
 **投入方法の違いに注意してください。**
 
 - **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りの `LangfusePromptRef` として自動投入されます。
 - **Talk の 2 本は自動生成されません。** migration `talk/0012` は「マイグレーション実行時点で存在した `TalkConfig`」の分だけ参照を作り、既存の `system_prompt` を `fallback_text` へ移管したものです。**その後に新しい `TalkConfig` を追加する場合は、`LangfusePromptRef` を admin で手動作成**してから FK に割り当ててください（`system_prompt_ref` / `user_prompt_ref` はどちらも必須・`PROTECT`）。
 - **Companion のシステムプロンプトの参照も自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `LangfusePromptRef`（`companion-system`）を手動で作成してから `CompanionConfig.system_prompt_ref` に割り当てます。
-- **Companion のスキルの本文には参照を作りません。** Langfuse に `companion-skill-<スキル名>` を作り、admin の Agent Skills に同じスキル名で登録します（`fetch_text_prompt` でスキルのラベルの版を取る。**フォールバックはなく**、取れなければ 503）。ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3 を参照してください。
+- **スキル（Agent Skills）の本文には参照を作りません。** Langfuse に本文の text プロンプトを作り、そのプロンプト名をスキル名として admin の Agent Skills に登録します（`fetch_text_prompt` でスキルのラベルの版を取る。**フォールバックはなく**、Companion では取れなければ 503）。ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3 を参照してください。
 
-いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。参照のプロンプトは、未登録でも `fallback_text` で動作します（Companion のスキルの本文は参照を通さないので、Langfuse への登録が必要です）。
+いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。参照のプロンプトは、未登録でも `fallback_text` で動作します（スキルの本文は参照を通さないので、Langfuse への登録が必要です）。
 
 ## 6. LLM の呼び出し方
 
@@ -158,7 +188,7 @@ from integrations.llm.runtime import run_agent_sync
 MY_AGENT = Agent(name="my-feature", output_type=str | None)
 
 try:
-    settings = get_llm_settings("talk")  # admin の LLMサービス設定を解決（DB を読む）
+    settings = get_llm_settings("talk")  # admin のサービス設定を解決（DB を読む）
     system_prompt = resolve_prompt(config.system_prompt_ref)
     user_prompt = resolve_prompt(config.user_prompt_ref, weather="晴れ")
 
@@ -219,6 +249,6 @@ except LLMClientError:
 |---|---|
 | [../../features/hn_agent/README.md](../../features/hn_agent/README.md) | HN Agent の構成・`HNAgentConfig`・8 本のプロンプト割り当て |
 | [../../features/talk/README.md](../../features/talk/README.md) | 会話生成・チャットセッション・`TalkConfig` のプロンプト変数 |
-| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig` / `AgentSkill`・スキルの本文の取得・実行の流れと API・Langfuse プロンプトのラベル |
+| [../../features/companion/README.md](../../features/companion/README.md) | Companion の `CompanionConfig`（Agent Skills から使うスキルを選ぶ）・スキルの本文の取得・実行の流れと API・Langfuse プロンプトのラベル・`AgentSkill` を移す migration の戻し方 |
 | [../../../docs/initial-setup.md](../../../docs/initial-setup.md) | 初回セットアップ手順（admin 設定・環境変数の投入順） |
 | [../../README.md](../../README.md) | Django API 全体構成 |

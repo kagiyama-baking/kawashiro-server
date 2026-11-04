@@ -2,9 +2,9 @@
 
 PydanticAI の on-demand capability を使う。モデルにはスキル名と説明の一覧（カタログ）だけを
 見せ、モデルが組み込みの `load_capability` ツールで読み込んだスキルの本文だけを、その後の
-リクエストに system として入れる。本文は読み込まれたときに Langfuse の text プロンプト
-`companion-skill-<スキル名>` をスキルのラベルで取り（`resolve_skill_body`。フォールバックは
-ない）、1 回の実行で 1 回だけ取る。
+リクエストに system として入れる。本文は読み込まれたときに、スキル名と同じ名前の Langfuse の
+text プロンプトをスキルのラベルで取り（`resolve_skill_body`。フォールバックはない）、1 回の
+実行で 1 回だけ取る。
 
 スキルを指定した実行では capability を使わず、本文を実行の指示の末尾に足す
 （`skill_instructions`）。システムプロンプトは参照（`LangfusePromptRef`）から解決する
@@ -24,10 +24,10 @@ from pydantic_ai.messages import (
 from integrations.langfuse.client import fetch_text_prompt, resolve_prompt
 from integrations.langfuse.exceptions import LangfusePromptError
 from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import AgentSkill
 
 from .agent import CompanionDeps
 from .exceptions import PromptUnavailableError
-from .models import AgentSkill
 
 # スキルを指定した実行で、本文の前に置く見出し
 _SKILL_SECTION_HEADING = "# 今回の手順"
@@ -58,10 +58,10 @@ def resolve_required_prompt(ref: LangfusePromptRef) -> str:
 def resolve_skill_body(skill: AgentSkill) -> str:
     """スキルの本文を Langfuse から取り、取れないか空なら例外にする.
 
-    Langfuse の text プロンプト `companion-skill-<スキル名>`（`skill.prompt_name`）を
-    スキルのラベルで取る。フォールバックはない（同じ名前の `LangfusePromptRef` があっても
-    使わない）。SDK のキャッシュ（既定 60 秒。取り直しに失敗したら期限切れの本文を返す）は
-    そのまま使う。Langfuse と通信する同期関数なので、イベントループの外で呼ぶ。
+    スキル名と同じ名前の Langfuse の text プロンプトを、スキルのラベルで取る。フォールバックは
+    ない（同じ名前の `LangfusePromptRef` があっても使わない）。SDK のキャッシュ（既定 60 秒。
+    取り直しに失敗したら期限切れの本文を返す）はそのまま使う。Langfuse と通信する同期関数
+    なので、イベントループの外で呼ぶ。
 
     Args:
         skill: 本文を取るスキル
@@ -74,12 +74,12 @@ def resolve_skill_body(skill: AgentSkill) -> str:
             持つ）か、本文が空（空白だけ）の場合
     """
     try:
-        text = fetch_text_prompt(skill.prompt_name, label=skill.label)
+        text = fetch_text_prompt(skill.name, label=skill.label)
     except LangfusePromptError as exc:
-        raise PromptUnavailableError(skill.prompt_name, reason=str(exc)) from exc
+        raise PromptUnavailableError(skill.name, reason=str(exc)) from exc
     text = text.strip()
     if not text:
-        raise PromptUnavailableError(skill.prompt_name, reason="本文が空です")
+        raise PromptUnavailableError(skill.name, reason="本文が空です")
     return text
 
 

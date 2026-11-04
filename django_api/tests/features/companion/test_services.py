@@ -89,7 +89,7 @@ def _no_holiday_lookup():
 def _skill(langfuse_prompts, name: str, body: str, **fields):
     """スキルを登録し、本文を Langfuse の代役にスキルのラベルで置く."""
     skill = AgentSkillFactory(name=name, **fields)
-    langfuse_prompts[(skill.prompt_name, skill.label)] = body
+    langfuse_prompts[(skill.name, skill.label)] = body
     return skill
 
 
@@ -290,7 +290,7 @@ class TestAutoSelection:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm)
 
-        assert exc_info.value.ref_name == "companion-skill-good-morning"
+        assert exc_info.value.ref_name == "good-morning"
         assert len(llm.requests) == 1
 
 
@@ -353,7 +353,7 @@ class TestSkillSpecified:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm, skill="good-evening")
 
-        assert exc_info.value.ref_name == "companion-skill-good-evening"
+        assert exc_info.value.ref_name == "good-evening"
         assert llm.requests == []
 
     def test_run_companion_with_skill_when_body_unavailable_raises_error_before_llm(
@@ -369,7 +369,7 @@ class TestSkillSpecified:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm, skill="good-night")
 
-        assert exc_info.value.ref_name == "companion-skill-good-night"
+        assert exc_info.value.ref_name == "good-night"
         assert llm.requests == []
 
     def test_run_companion_with_skill_uses_body_for_label_of_skill(
@@ -379,7 +379,7 @@ class TestSkillSpecified:
         night = config.skills.get(name="good-night")
         night.label = "production"
         night.save()
-        langfuse_prompts[(night.prompt_name, "production")] = "本番の本文"
+        langfuse_prompts[(night.name, "production")] = "本番の本文"
         llm = _scripted("おやすみ！")
 
         _run(llm, skill="good-night")

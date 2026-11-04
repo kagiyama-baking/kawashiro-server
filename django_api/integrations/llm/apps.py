@@ -9,7 +9,8 @@ class LlmConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "integrations.llm"
     label = "llm_config"
-    verbose_name = "LLM設定"
+    # 管理画面のグループ名（LLM設定・サービス設定・Agent Skills をまとめる）
+    verbose_name = "AI設定"
 
     def ready(self):
         """全エージェントの実行を OpenTelemetry へ記録する（Langfuse が受け取る）.

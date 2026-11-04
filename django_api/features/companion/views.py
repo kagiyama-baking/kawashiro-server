@@ -121,7 +121,7 @@ class CompanionRunView(APIView):
             ),
             503: OpenApiResponse(
                 description=(
-                    "有効な Companion 設定・LLM サービス設定がない、"
+                    "有効な Companion 設定か、サービス設定（AI設定）の companion がない、"
                     "またはプロンプトの本文を取得できないか空"
                 )
             ),

@@ -111,6 +111,28 @@ def superuser_client(api_client, superuser_token):
 
 
 @pytest.fixture
+def _static_storage_without_manifest(settings):
+    """管理画面のテンプレートを描画できるよう、manifest を使わない保存先にする.
+
+    テストの前に collectstatic はしないので、本番と同じ manifest 付きの保存先では
+    テンプレートの `{% static %}` が manifest にない名前で失敗する。
+    """
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    }
+
+
+@pytest.fixture
+def admin_site_client(client, superuser, _static_storage_without_manifest):
+    """管理画面にスーパーユーザーでログインしたクライアント（画面を描画できる）."""
+    client.force_login(superuser)
+    return client
+
+
+@pytest.fixture
 def mock_file():
     """テスト用ファイルオブジェクトのフィクスチャ"""
     from django.core.files.uploadedfile import SimpleUploadedFile

@@ -1,104 +1,10 @@
 """Companion の設定モデル."""
 
-from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models, transaction
 
+from integrations.llm.models import AgentSkill
 from integrations.tts.models import AbstractTTSSettings
-
-# スキル名の規則（Agent Skills の命名: 英小文字・数字・ハイフン。先頭・末尾・連続のハイフンは不可）。
-# スキル名は PydanticAI の capability の id になるので、id に使えない `:` も、予約の
-# `deferred_capabilities` も通らない。`$` は末尾の改行も通すので `\Z` で終える。
-SKILL_NAME_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*\Z"
-
-# 毎回の実行に入る組み込みの capability の id（`integrations/llm/apps.py` の
-# `Agent.instrument_all` が入れる Instrumentation）。スキル名が同じだと id が衝突し、
-# そのスキルを渡した実行は始まる前に失敗する。
-RESERVED_SKILL_NAMES = frozenset({"instrumentation"})
-
-
-def validate_skill_name_not_reserved(value: str) -> None:
-    """組み込みの capability と同じ id になるスキル名を拒む."""
-    if value in RESERVED_SKILL_NAMES:
-        raise ValidationError(
-            "「%(value)s」は予約されているため、スキル名に使えません",
-            code="reserved",
-            params={"value": value},
-        )
-
-
-# スキルの本文を置く Langfuse の text プロンプトの名前の接頭辞（プロンプト名 = 接頭辞 + スキル名）
-SKILL_PROMPT_NAME_PREFIX = "companion-skill-"
-
-
-class AgentSkill(models.Model):
-    """Companion のスキル（Agent Skills。用途ごとの手順）.
-
-    名前と説明はモデルに見せる一覧になり、本文はそのスキルを使うときだけ、Langfuse の
-    text プロンプト `companion-skill-<スキル名>`（`prompt_name`）を `label` で取る
-    （フォールバックはない）。Companion 設定は、登録したスキルから使うものを選ぶ
-    （`CompanionConfig.skills`）。
-    """
-
-    name = models.CharField(
-        "スキル名",
-        max_length=64,
-        unique=True,
-        validators=[
-            RegexValidator(
-                regex=SKILL_NAME_PATTERN,
-                message=(
-                    "スキル名は英小文字・数字をハイフンでつないだ形で入力してください"
-                    "（例: good-morning）"
-                ),
-            ),
-            validate_skill_name_not_reserved,
-        ],
-        # help_text は管理画面で HTML として出るので、山かっこを書かない
-        help_text=(
-            "英小文字・数字・ハイフン（例: good-morning）、64 字以内。"
-            "先頭・末尾・連続のハイフンは使えない。本文は、名前の前に companion-skill- を"
-            "付けた Langfuse の text プロンプト（例: companion-skill-good-morning）から"
-            "読むので、名前を変えると本文を読む先も変わる"
-        ),
-    )
-    description = models.CharField(
-        "説明",
-        max_length=1024,
-        help_text=(
-            "どんな発話のときに使うスキルか（例: 朝のあいさつ。「おはよう」など）。"
-            "モデルはこの説明を読んで使うスキルを選ぶ。1024 字以内"
-        ),
-    )
-    label = models.CharField(
-        "ラベル",
-        max_length=50,
-        default="production",
-        help_text="本文を取る Langfuse のプロンプトのラベル（staging / production）",
-    )
-    is_enabled = models.BooleanField(
-        "有効",
-        default=True,
-        help_text="無効にしたスキルは、設定で選んでいても使わない",
-    )
-
-    class Meta:
-        verbose_name = "Agent Skill"
-        verbose_name_plural = "Agent Skills"
-        ordering = ["name"]
-
-    def __str__(self) -> str:
-        return f"{self.name}（{self.prompt_name}@{self.label}）"
-
-    def save(self, *args, **kwargs):
-        """保存時にバリデーションを実行."""
-        self.full_clean()
-        super().save(*args, **kwargs)
-
-    @property
-    def prompt_name(self) -> str:
-        """本文を置く Langfuse の text プロンプトの名前（`companion-skill-<スキル名>`）."""
-        return f"{SKILL_PROMPT_NAME_PREFIX}{self.name}"
 
 
 class CompanionConfigManager(models.Manager):

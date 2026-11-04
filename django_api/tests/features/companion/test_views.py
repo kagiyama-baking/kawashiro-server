@@ -247,7 +247,7 @@ class TestCompanionRunViewErrors:
                 id="prompt_unavailable",
             ),
             pytest.param(
-                PromptUnavailableError("companion-skill-good-night", reason=INTERNALS),
+                PromptUnavailableError("good-night", reason=INTERNALS),
                 503,
                 CONFIG_ERROR,
                 id="skill_body_unavailable",
@@ -334,6 +334,16 @@ class TestCompanionRunSchema:
             "503",
             "504",
         }
+
+    def test_schema_503_names_service_settings_with_current_admin_name(
+        self, openapi_schema
+    ):
+        """503 の説明では、LLM の接続設定を今の管理画面の名前（サービス設定）で書く."""
+        operation = openapi_schema["paths"]["/companion/run/"]["post"]
+        description = operation["responses"]["503"]["description"]
+
+        assert "サービス設定" in description
+        assert "LLM サービス設定" not in description
 
     def test_schema_documents_request_and_response_fields(self, openapi_schema):
         """入力は prompt（必須・1000 字まで）と skill、応答は 4 項目（3 つは null あり）."""

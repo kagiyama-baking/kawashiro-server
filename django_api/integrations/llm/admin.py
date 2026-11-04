@@ -1,9 +1,9 @@
-"""LLM API設定管理画面."""
+"""AI設定（LLM設定・サービス設定・Agent Skills）の管理画面."""
 
 from django import forms
 from django.contrib import admin
 
-from .models import LLMProviderConfig, LLMServiceConfig
+from .models import AgentSkill, LLMProviderConfig, LLMServiceConfig
 
 
 class LLMProviderConfigForm(forms.ModelForm):
@@ -96,7 +96,7 @@ class LLMProviderConfigAdmin(admin.ModelAdmin):
 
 @admin.register(LLMServiceConfig)
 class LLMServiceConfigAdmin(admin.ModelAdmin):
-    """LLMサービス設定管理画面."""
+    """サービス設定管理画面（サービスごとに使う LLM設定を割り当てる）."""
 
     list_display = [
         "service_name",
@@ -126,6 +126,47 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
             {
                 "fields": ("created_at", "updated_at"),
                 "classes": ("collapse",),
+            },
+        ),
+    )
+
+
+class AgentSkillForm(forms.ModelForm):
+    """スキルの入力フォーム.
+
+    説明はモデルがスキルを選ぶときに読む文なので、複数行で書けるようにする。
+    """
+
+    class Meta:
+        model = AgentSkill
+        fields = ("name", "description", "label", "is_enabled")
+        widgets = {"description": forms.Textarea(attrs={"rows": 3})}
+
+
+@admin.register(AgentSkill)
+class AgentSkillAdmin(admin.ModelAdmin):
+    """Agent Skills 管理（各エージェントの設定は、ここで登録したスキルから使うものを選ぶ）."""
+
+    form = AgentSkillForm
+    list_display = ("name", "label", "is_enabled")
+    list_filter = ("is_enabled", "label")
+    search_fields = ("name", "description")
+
+    fieldsets = (
+        (
+            "スキル",
+            {
+                "fields": ("name", "description", "is_enabled"),
+                "description": (
+                    "本文は、スキル名と同じ名前の Langfuse の text プロンプトを、"
+                    "下のラベルで読みます。フォールバックはありません。"
+                ),
+            },
+        ),
+        (
+            "Langfuse",
+            {
+                "fields": ("label",),
             },
         ),
     )

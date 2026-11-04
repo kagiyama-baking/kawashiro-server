@@ -47,9 +47,9 @@ from tests.fixtures.llm import (
 SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
-# スキルの本文を置く Langfuse のプロンプト名（companion-skill-<スキル名>）
-MORNING_PROMPT = "companion-skill-good-morning"
-NIGHT_PROMPT = "companion-skill-good-night"
+# スキルの本文を置く Langfuse のプロンプト名（スキル名そのもの）
+MORNING_PROMPT = "good-morning"
+NIGHT_PROMPT = "good-night"
 EMPTY_TEXTS = ["", " \n\t "]
 
 
@@ -170,7 +170,7 @@ class TestResolveSkillBody:
     def test_resolve_skill_body_returns_stripped_body_of_prompt_with_skill_label(
         self, langfuse_prompts
     ):
-        """companion-skill-<名前> をスキルのラベルで取り、前後の空白を除いて返す."""
+        """スキル名と同じ名前のプロンプトをスキルのラベルで取り、前後の空白を除いて返す."""
         langfuse_prompts[(MORNING_PROMPT, "staging")] = f"\n  {MORNING_BODY}\n"
         langfuse_prompts[(MORNING_PROMPT, "production")] = "production の本文"
         skill = AgentSkillFactory.build(name="good-morning", label="staging")
@@ -225,7 +225,7 @@ class TestResolveSkillBody:
 def test_resolve_skill_body_when_langfuse_unreachable_never_uses_ref_fallback(
     langfuse_unreachable,
 ):
-    """Langfuse に届かなくても、同じ名前の参照（移行で残った旧スキルの参照）の本文は使わない."""
+    """Langfuse に届かなくても、同じ名前の参照（移行で残った旧スキルの参照など）の本文は使わない."""
     LangfusePromptRefFactory(
         name=MORNING_PROMPT,
         langfuse_prompt_name=MORNING_PROMPT,
