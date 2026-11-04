@@ -15,7 +15,7 @@ kawashiro-server/
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
 │   ├── health/              # ヘルスチェック（ミドルウェア方式、ALLOWED_HOSTS検証前に応答）
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定
+│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のスキル（Agent Skills）
 │   │   ├── langfuse/        # Langfuseプロンプト参照（LangfusePromptRef / resolve_prompt）
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
@@ -61,11 +61,11 @@ kawashiro-server/
 | CI/CD 詳細・デプロイ・Secrets・タグ運用・ロールバック | `docs/deployment.md` |
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
-| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
+| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
 | Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
-| Companion の設定モデル（CompanionConfig / AgentSkill）・スキルの本文の取得・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
+| Companion の設定モデル（CompanionConfig）・スキルの本文の取得・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
 | 気象庁天気予報クライアント | `django_api/integrations/weather/README.md` |
 | 音声合成 API・モデル配置・CPU/GPU 切替 | `sbv2_api/README.md` |
 | フロントエンド画面・開発コマンド | `frontend/README.md` |
@@ -233,6 +233,8 @@ def test_user_login_with_invalid_password_raises_error():
 | `mock_ms_graph_settings`      | MS Graph設定モック                 |
 | `ms_graph_client`             | OneDrive MSGraphClientモック       |
 | `fake_litellm`                | LiteLLM の HTTP 層の代役           |
+| `admin_site_client`           | 管理画面にスーパーユーザーでログインしたクライアント（`_static_storage_without_manifest` を使う） |
+| `_static_storage_without_manifest` | 静的ファイルを manifest なしの保存先にする（collectstatic なしで管理画面を描画できる） |
 
 ### テストファクトリ（factory-boy）
 

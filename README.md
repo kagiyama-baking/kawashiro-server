@@ -56,8 +56,8 @@ LLM 周辺は「接続（どのモデル・どの鍵）」「プロンプト（�
 | レイヤ | 責務 | 管理場所 |
 |---|---|---|
 | **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 |
-| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」+ Langfuse UI |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」「Agent Skills」 |
+| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」「Agent Skills」+ Langfuse UI |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 |
 
 構成要素・admin と外部サービスの対応図・プロンプト命名規約は
 [django_api/integrations/llm/README.md](django_api/integrations/llm/README.md) を参照してください。

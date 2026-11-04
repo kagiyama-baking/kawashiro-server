@@ -11,7 +11,8 @@ import django.core.validators
 import django.db.models.deletion
 from django.db import migrations, models
 
-import features.companion.models
+# validate_skill_name_not_reserved は llm_config へ移した（llm_config 0014・companion 0006）
+import integrations.llm.models
 
 
 class Migration(migrations.Migration):
@@ -62,7 +63,7 @@ class Migration(migrations.Migration):
                                 ),
                                 regex="^[a-z0-9]+(-[a-z0-9]+)*\\Z",
                             ),
-                            features.companion.models.validate_skill_name_not_reserved,
+                            integrations.llm.models.validate_skill_name_not_reserved,
                         ],
                         verbose_name="スキル名",
                     ),

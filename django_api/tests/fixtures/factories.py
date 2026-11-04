@@ -88,7 +88,7 @@ class AgentSkillFactory(factory.django.DjangoModelFactory):
     """AgentSkill のファクトリ（本文は Langfuse の companion-skill-<name>@staging）."""
 
     class Meta:
-        model = "companion.AgentSkill"
+        model = "llm_config.AgentSkill"
         django_get_or_create = ("name",)
 
     name = factory.Sequence(lambda n: f"skill-{n}")

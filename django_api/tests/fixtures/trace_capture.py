@@ -156,9 +156,10 @@ def _run_companion():
     （システムプロンプトは main の差し替えで解決する）。
     """
     from features.companion.agent import COMPANION_AGENT
-    from features.companion.models import AgentSkill, CompanionConfig
+    from features.companion.models import CompanionConfig
     from features.companion.services import run_companion
     from integrations.langfuse.models import LangfusePromptRef
+    from integrations.llm.models import AgentSkill
     from integrations.llm.runtime import _LITELLM_PROFILE
     from integrations.tts.client import TTSResult
     from tests.fixtures.llm import ScriptedLLM, load_capability

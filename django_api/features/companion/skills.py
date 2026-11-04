@@ -24,10 +24,10 @@ from pydantic_ai.messages import (
 from integrations.langfuse.client import fetch_text_prompt, resolve_prompt
 from integrations.langfuse.exceptions import LangfusePromptError
 from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import AgentSkill
 
 from .agent import CompanionDeps
 from .exceptions import PromptUnavailableError
-from .models import AgentSkill
 
 # スキルを指定した実行で、本文の前に置く見出し
 _SKILL_SECTION_HEADING = "# 今回の手順"

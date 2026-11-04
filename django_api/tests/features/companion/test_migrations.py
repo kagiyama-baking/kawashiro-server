@@ -5,8 +5,8 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
-from features.companion.models import AgentSkill
 from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import AgentSkill
 
 BEFORE_RENAME = [("companion", "0001_initial")]
 AFTER_RENAME = [("companion", "0002_rename_persona_prompt_ref_to_system_prompt_ref")]

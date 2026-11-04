@@ -15,12 +15,13 @@ from pydantic_ai.usage import UsageLimits
 
 from integrations.llm.config import get_llm_settings
 from integrations.llm.exceptions import LLMOutputError
+from integrations.llm.models import AgentSkill
 from integrations.llm.runtime import run_agent_sync
 from integrations.tts.client import TTSClient, TTSResult
 
 from .agent import COMPANION_AGENT, CompanionDeps, response_policy
 from .exceptions import CompanionNotConfiguredError, UnknownSkillError
-from .models import AgentSkill, CompanionConfig
+from .models import CompanionConfig
 from .skills import (
     build_skill_capabilities,
     loaded_skill,

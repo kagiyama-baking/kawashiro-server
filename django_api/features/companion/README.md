@@ -2,7 +2,7 @@
 
 Companion は、全体で 1 つのエージェント設定（共通のシステムプロンプト）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。実行 API（`POST /companion/run/`）で受け取った発話からエージェントが合うスキルを選び、その手順に従ってセリフを返します（音声合成が有効なら音声も）。いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
 
-- スキルは admin の「Agent Skills」（`AgentSkill`）に名前・説明・ラベル・有効を登録し、Companion 設定ではその中から使うものを選びます
+- スキルは admin の「Agent Skills」（`AgentSkill`。全エージェントで共有するモデル。項目は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）に名前・説明・ラベル・有効を登録し、Companion 設定ではその中から使うものを選びます
 - スキルの本文は DB に持たず、Langfuse の text プロンプト `companion-skill-<スキル名>` を、スキルのラベルで直接取ります。フォールバックはありません（下の「スキル」）
 - システムプロンプトは DB に持たず、`LangfusePromptRef` 経由で Langfuse 上の text プロンプトを参照します（参照の仕組みは [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 
@@ -11,8 +11,8 @@ Companion は、全体で 1 つのエージェント設定（共通のシステ�
 ```
 features/companion/
 ├── apps.py                    # CompanionAppConfig（label: companion。モデル名と重ならないよう AppConfig を付ける）
-├── models.py                  # CompanionConfig / AgentSkill（本文のプロンプト名の接頭辞 SKILL_PROMPT_NAME_PREFIX）
-├── admin.py                   # 設定（スキルの選択・有効化アクション）/ Agent Skills
+├── models.py                  # CompanionConfig（スキルは integrations/llm/models.py の AgentSkill から選ぶ）
+├── admin.py                   # 設定（スキルの選択・有効化アクション）。Agent Skills の画面は integrations/llm/admin.py
 ├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）・出力の検証
 ├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・スキルの本文の取得（resolve_skill_body）・システムプロンプトの解決（resolve_required_prompt）・loaded_skill
 ├── services.py                # run_companion（1 回の実行）→ CompanionReply
@@ -21,12 +21,15 @@ features/companion/
 ├── throttling.py              # CompanionRateThrottle（有効な設定の rate_limit で、ユーザーごとに数える）
 ├── urls.py                    # app_name = "companion"（run/）
 ├── exceptions.py              # CompanionError / PromptUnavailableError / CompanionNotConfiguredError / UnknownSkillError
-└── migrations/                # 0001_initial と次の 4 本（0001 まで戻せる）
+└── migrations/                # 0001_initial と次の 5 本（0001 まで戻せる）
     ├── 0002_rename_persona_prompt_ref_to_system_prompt_ref.py  # persona_prompt_ref → system_prompt_ref の改名（手書き）
     ├── 0003_agentskill_companionconfig_skills.py               # AgentSkill と CompanionConfig.skills を足す
     ├── 0004_migrate_companionskill_to_agentskill.py            # 旧 CompanionSkill の行を AgentSkill に写す（下の「旧 CompanionSkill からの移行」）
-    └── 0005_delete_companionskill.py                           # 旧 CompanionSkill を消す
+    ├── 0005_delete_companionskill.py                           # 旧 CompanionSkill を消す
+    └── 0006_move_agentskill_to_llm_config.py                   # AgentSkill を llm_config へ移す（状態だけ。下記）
 ```
+
+`0006` は `AgentSkill` を llm_config アプリへ移す migration です（llm_config の `0014` の後に当たります）。どちらも状態だけで DB は変えないので、行・設定の選択・表（`companion_agentskill`）はそのまま残ります（表名の扱いは [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）。`0006` を持たない版のコードに戻すときは、先に `0006` を含む版のコードで `python manage.py migrate llm_config 0013` を実行します（`0006` と llm_config の `0014` が外れ、`AgentSkill` は companion のモデルに戻ります）。`migrate companion 0005` だけでは llm_config の `0014` が当たったまま残ります（状態だけなので DB に害はありません）。
 
 音声合成の項目は `integrations/tts/models.py` の抽象モデル `AbstractTTSSettings` から継承します（テーブルは持たないので tts アプリに migration はありません）。
 
@@ -39,7 +42,7 @@ features/companion/
 | `name` | CharField(255) | 設定の識別名 | 一意 |
 | `is_active` | Bool, `False` | 有効な設定 | 有効にして保存すると、ほかの設定は無効になる |
 | `system_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | 全スキルに共通のシステムプロンプトの参照 | 必須。参照中の `LangfusePromptRef` は削除できない |
-| `skills` | M2M → `AgentSkill`（`related_name="configs"`） | この設定で使うスキル（下の「AgentSkill リファレンス」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
+| `skills` | M2M → `AgentSkill`（`related_name="configs"`） | この設定で使うスキル（下の「スキルの登録（Agent Skills）」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
 | `area_code` | CharField(10), `""` | 天気予報の予報区コード（例: `130010`）。空なら天気を扱わない | 空か 6 桁の半角数字（`^[0-9]{6}\Z`。全角数字・末尾の改行は通さない） |
 | `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限（数え方は下の「API」の「回数制限」） | 1 以上 |
 | `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の `TalkConfig` 表](../talk/README.md#talkconfig-リファレンス) の `tts_*` 行と同じ | 同左 |
@@ -49,23 +52,11 @@ features/companion/
 - `CompanionConfig.objects.get_active_config()` は有効な設定を `system_prompt_ref` ごと 1 クエリで返し、有効な設定がなければ `CompanionConfig.DoesNotExist`、複数あれば `CompanionConfig.MultipleObjectsReturned` を送出します。
 - `get_tts_options()` は TTS の項目を `TTSClient.synthesize` のキーワード引数の辞書にまとめます。`tts_enabled=False` なら `None`、`tts_model` が空なら `model` は `None`（SBV2 側の既定モデル）です。
 
-## AgentSkill リファレンス
+## スキルの登録（Agent Skills）
 
-管理画面の「AI ツール設定 → Companion → Agent Skills」で登録し、Companion 設定の「スキル」で使うものを選びます（1 つのスキルを複数の設定で選べます）。設定への外部キーは持ちません。並び順は名前順です。
+スキルは、全エージェントで共有する Agent Skills（`integrations/llm/models.py` の `AgentSkill`）に登録します。管理画面の「AI ツール設定 → LLM設定 → Agent Skills」で登録し、Companion 設定の「スキル」で使うものを選びます（1 つのスキルを複数の設定で選べます）。項目・入力チェック・予約した名前・表名は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill) を参照してください。
 
-| フィールド | 型 / 既定値 | 意味 | 入力チェック |
-|---|---|---|---|
-| `name` | CharField(64) | スキル名（例: `good-morning`）。capability の id と、本文のプロンプト名になる | 全体で一意。英小文字・数字をハイフンでつないだ形（`^[a-z0-9]+(-[a-z0-9]+)*\Z`）。大文字・`_`・`:`・空白、先頭・末尾・連続のハイフンは不可。`instrumentation` は予約（下記） |
-| `description` | CharField(1024) | どんな発話のときに使うスキルか。モデルが読んでスキルを選ぶための文なので、発話の例を含める | 必須、1024 字以内。admin では複数行の入力欄 |
-| `label` | CharField(50), `"production"` | 本文を取る Langfuse のプロンプトのラベル（`staging` / `production`。下の「Langfuse プロンプトのラベル」） | 必須 |
-| `is_enabled` | Bool, `True` | 無効にしたスキルは、設定で選んでいても使わない | — |
-
-- **本文のプロンプト名はスキル名から決まります。** `prompt_name`（プロパティ）が `companion-skill-<スキル名>` を返します（接頭辞は `models.py` の `SKILL_PROMPT_NAME_PREFIX`）。名前を変えると本文を読むプロンプトも変わるので、Langfuse 側のプロンプト名も合わせてください。
-- 表示（`__str__`）は `good-morning（companion-skill-good-morning@staging）` の形です。Companion 設定のスキルの選択欄にそのまま出ます。
-- 名前の規則は Agent Skills の命名規則（英小文字・数字・ハイフン、64 字以内）に合わせています。`:` を含められないので、PydanticAI の capability の id（`:` は使えない。予約の `deferred_capabilities` も `_` を含むので通らない）にそのまま使えます。
-- **`instrumentation` は予約しています。** `integrations/llm/apps.py` の `Agent.instrument_all` により、どの実行にも PydanticAI の Instrumentation（id: `instrumentation`）が入るため、同じ id のスキルを渡すと id の衝突で実行そのものが失敗します（`tests/features/companion/test_models.py` で確認）。
-- 説明を `TextField` ではなく `CharField` にしているのは、`full_clean()` で字数の上限を確かめるためです（`TextField` の `max_length` はフォームの入力欄にしか効きません）。
-- `save()` は `full_clean()` を呼びます。登録済みの名前で追加すると、admin では名前の欄のエラーになり保存されません。
+スキル名は、そのまま capability の id（下の「スキル」）になり、実行 API の `skill` に指定する値です（下の「API」）。
 
 ### 旧 CompanionSkill からの移行
 
@@ -76,11 +67,11 @@ features/companion/
   - 同じ名前のスキルの説明・有効・ラベルが、設定ごとに違う（スキル名が全体で一意になるため。どちらかにそろえる）
 - 旧スキルの本文の参照（`LangfusePromptRef`）は消しません。使わなくなるので、確かめてから admin で消してください。
 - `0004` を戻すと、各設定で選んでいるスキルを旧スキルとして作り直します（`0005` を当てる前で旧スキルの行が残っていれば、その行を更新します）。本文の参照は識別名 `companion-skill-<スキル名>` で探し、なければ作ります。見つかった参照が別の本文を読む（Langfuse プロンプト名かラベルがスキルと違う）ときは、行きと同じく何も戻さずに `RuntimeError` で止まります（その参照をスキルに合わせるか、消してから戻し直す）。どの設定でも選んでいないスキルは戻りません。
-- `0001` まで戻せます。戻すときは、`0002`〜`0005` を含む版のコードで `python manage.py migrate companion 0001` を実行してから、古い版のコードに切り替えてください。古い版は `0002`〜`0005` を持たないので、古い版で migrate しても戻らず、DB とモデルが食い違います（本番でイメージを戻す手順は [デプロイガイドの §7](../../../docs/deployment.md#7-ロールバック手順)）。
+- `0001` まで戻せます。戻すときは、`0002`〜`0006` を含む版のコードで `python manage.py migrate companion 0001` を実行してから（llm_config の `0014` も外れます）、古い版のコードに切り替えてください。古い版は `0002`〜`0006` を持たないので、古い版で migrate しても戻らず、DB とモデルが食い違います（本番でイメージを戻す手順は [デプロイガイドの §7](../../../docs/deployment.md#7-ロールバック手順)）。
 
 ## 管理画面
 
-- **Agent Skills**（「AI ツール設定 → Companion → Agent Skills」）: スキルの名前・説明・有効と、Langfuse のラベルを登録します。一覧には本文のプロンプト名（`companion-skill-<スキル名>`）とラベルが並び、有効とラベルで絞り込め、名前と説明で検索できます。変更画面のプロンプト名は名前から決まる読み取り専用の欄です（追加画面では規則を表示）
+- スキルは「AI ツール設定 → LLM設定 → Agent Skills」で登録します（画面は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）
 - 設定の節: 基本設定 / システムプロンプト / スキル / 天気 / 回数制限 / 音声（畳んで表示）/ メタ情報（畳んで表示）
 - 設定の「スキル」では、Agent Skills に登録したスキルを左右の一覧で選びます（`filter_horizontal`）。設定の画面でスキルを追加・編集するインラインはありません
 - システムプロンプトの参照は、`LangfusePromptRef` を検索して選びます（識別名・Langfuse プロンプト名・説明が検索対象）

@@ -2,7 +2,8 @@
 
 import django.core.validators
 import django.db.models.deletion
-import features.companion.models
+# validate_skill_name_not_reserved は llm_config へ移した（llm_config 0014・companion 0006）
+import integrations.llm.models
 from django.db import migrations, models
 
 
@@ -45,7 +46,7 @@ class Migration(migrations.Migration):
             name='CompanionSkill',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(help_text='英小文字・数字・ハイフン（例: good-morning）、64 字以内。先頭・末尾・連続のハイフンは使えない', max_length=64, validators=[django.core.validators.RegexValidator(message='スキル名は英小文字・数字をハイフンでつないだ形で入力してください（例: good-morning）', regex='^[a-z0-9]+(-[a-z0-9]+)*\\Z'), features.companion.models.validate_skill_name_not_reserved], verbose_name='スキル名')),
+                ('name', models.CharField(help_text='英小文字・数字・ハイフン（例: good-morning）、64 字以内。先頭・末尾・連続のハイフンは使えない', max_length=64, validators=[django.core.validators.RegexValidator(message='スキル名は英小文字・数字をハイフンでつないだ形で入力してください（例: good-morning）', regex='^[a-z0-9]+(-[a-z0-9]+)*\\Z'), integrations.llm.models.validate_skill_name_not_reserved], verbose_name='スキル名')),
                 ('description', models.CharField(help_text='どんな発話のときに使うスキルか（例: 朝のあいさつ。「おはよう」など）。モデルはこの説明を読んで使うスキルを選ぶ。1024 字以内', max_length=1024, verbose_name='説明')),
                 ('is_enabled', models.BooleanField(default=True, help_text='無効にしたスキルは使わない', verbose_name='有効')),
                 ('config', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='skills', to='companion.companionconfig', verbose_name='Companion 設定')),

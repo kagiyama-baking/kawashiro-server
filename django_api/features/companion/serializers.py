@@ -4,7 +4,8 @@ import base64
 
 from rest_framework import serializers
 
-from .models import SKILL_NAME_PATTERN, AgentSkill
+from integrations.llm.models import SKILL_NAME_PATTERN, AgentSkill
+
 from .services import CompanionReply
 
 # 発話の最大文字数

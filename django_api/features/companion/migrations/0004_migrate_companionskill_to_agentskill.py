@@ -19,7 +19,7 @@ AgentSkill の本文は、Langfuse の text プロンプト `companion-skill-<�
 
 from django.db import migrations
 
-# features.companion.models.SKILL_PROMPT_NAME_PREFIX と同じ（migration はモデルのコードに依らない）
+# integrations.llm.models.SKILL_PROMPT_NAME_PREFIX と同じ（migration はモデルのコードに依らない）
 SKILL_PROMPT_NAME_PREFIX = "companion-skill-"
 ROLLBACK_REF_DESCRIPTION = "Companion スキルの本文（ロールバックで再作成）"
 
