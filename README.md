@@ -33,7 +33,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
         - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）
-        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk / Companion が参照）+ Sessions 機能でチャット会話を集約観測
+        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk と Companion のシステムプロンプトが参照。Companion のスキルの本文は Langfuse から直接取る）+ Sessions 機能でチャット会話を集約観測
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
@@ -57,7 +57,7 @@ LLM 周辺は「接続（どのモデル・どの鍵）」「プロンプト（�
 |---|---|---|
 | **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 |
 | **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」+ Langfuse UI |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」「Agent Skills」 |
 
 構成要素・admin と外部サービスの対応図・プロンプト命名規約は
 [django_api/integrations/llm/README.md](django_api/integrations/llm/README.md) を参照してください。
