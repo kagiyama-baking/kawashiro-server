@@ -2,14 +2,8 @@
 
 from django import forms
 from django.contrib import admin
-from django.utils.html import format_html
 
-from .models import (
-    SKILL_PROMPT_NAME_PREFIX,
-    AgentSkill,
-    LLMProviderConfig,
-    LLMServiceConfig,
-)
+from .models import AgentSkill, LLMProviderConfig, LLMServiceConfig
 
 
 class LLMProviderConfigForm(forms.ModelForm):
@@ -137,10 +131,6 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
     )
 
 
-# スキルの本文のプロンプト名の規則（名前がまだない追加画面と、説明文に出す）
-_PROMPT_NAME_RULE = f"{SKILL_PROMPT_NAME_PREFIX}<スキル名>"
-
-
 class AgentSkillForm(forms.ModelForm):
     """スキルの入力フォーム.
 
@@ -158,21 +148,18 @@ class AgentSkillAdmin(admin.ModelAdmin):
     """Agent Skills 管理（各エージェントの設定は、ここで登録したスキルから使うものを選ぶ）."""
 
     form = AgentSkillForm
-    list_display = ("name", "langfuse_prompt_name", "label", "is_enabled")
+    list_display = ("name", "label", "is_enabled")
     list_filter = ("is_enabled", "label")
     search_fields = ("name", "description")
-    readonly_fields = ("langfuse_prompt_name",)
 
     fieldsets = (
         (
             "スキル",
             {
-                "fields": ("name", "langfuse_prompt_name", "description", "is_enabled"),
-                # 説明文は HTML として出るので、規則の山かっこはエスケープする
-                "description": format_html(
-                    "本文は Langfuse の text プロンプト {} から読みます。"
-                    "フォールバックはありません。",
-                    _PROMPT_NAME_RULE,
+                "fields": ("name", "description", "is_enabled"),
+                "description": (
+                    "本文は、スキル名と同じ名前の Langfuse の text プロンプトを、"
+                    "下のラベルで読みます。フォールバックはありません。"
                 ),
             },
         ),
@@ -183,10 +170,3 @@ class AgentSkillAdmin(admin.ModelAdmin):
             },
         ),
     )
-
-    @admin.display(description="Langfuse プロンプト名")
-    def langfuse_prompt_name(self, obj: AgentSkill | None) -> str:
-        """本文のプロンプト名（名前がまだない追加画面では、規則）."""
-        if obj is None or not obj.name:
-            return _PROMPT_NAME_RULE
-        return obj.prompt_name

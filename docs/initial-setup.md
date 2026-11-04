@@ -131,9 +131,9 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 システムプロンプト 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
 
 1. **LLM サービス設定の `Companion` を有効にする** — マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
-2. **Langfuse に text プロンプトを作る** — システムプロンプトの `companion-system` と、スキルごとの `companion-skill-<スキル名>`（例: `companion-skill-good-morning`）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
-3. **システムプロンプトの参照を作る**（手順 4-3）— 作る参照は `companion-system` の 1 本だけです。識別名と `Langfuse プロンプト名` を `companion-system` にし、ラベルは手順 2 で付けたものにします。スキルの本文には参照を作りません（スキル名から `companion-skill-<スキル名>` を直接引きます）
-4. **スキルを登録する** — 「AI ツール設定 → LLM 設定 → Agent Skills」（全エージェントで共有するスキルの登録先）から、スキルごとに名前（手順 2 のプロンプト名から `companion-skill-` を除いたもの）・説明（どんな発話のときに使うか）・ラベル（手順 2 で付けたもの。既定は `production`）・有効を入れて保存します。一覧の「Langfuse プロンプト名」とラベルが、手順 2 のプロンプトと合っていることを確かめます
+2. **Langfuse に text プロンプトを作る** — システムプロンプトの `companion-system` と、スキルごとの本文（名前は自由。例: `good-morning`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内にします）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
+3. **システムプロンプトの参照を作る**（手順 4-3）— 作る参照は `companion-system` の 1 本だけです。識別名と `Langfuse プロンプト名` を `companion-system` にし、ラベルは手順 2 で付けたものにします。スキルの本文には参照を作りません（スキル名と同じ名前のプロンプトを直接引きます）
+4. **スキルを登録する** — 「AI ツール設定 → LLM 設定 → Agent Skills」（全エージェントで共有するスキルの登録先）から、スキルごとに名前（手順 2 のプロンプト名そのもの）・説明（どんな発話のときに使うか）・ラベル（手順 2 で付けたもの。既定は `production`）・有効を入れて保存します。一覧の名前とラベルが、手順 2 のプロンプトの名前とラベルに合っていることを確かめます
 5. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`システムプロンプト` に手順 3 の `companion-system` を選び、「スキル」で手順 4 のスキルを選んで保存します
 6. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
 7. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・LLM サービス設定・プロンプトの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜6）。`skill` を指定して 400 なら、そのスキルが設定で選ばれていて、有効かを確かめます（手順 4・5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください

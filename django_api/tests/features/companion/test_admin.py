@@ -89,19 +89,17 @@ class TestCompanionConfigAdminPages:
         widget = response.context["adminform"].form.fields["skills"].widget.widget
         assert isinstance(widget, FilteredSelectMultiple)
 
-    def test_change_page_skill_choices_show_prompt_name_and_label(
-        self, admin_site_client
-    ):
-        """スキルの選択肢には、スキル名と本文のプロンプト名@ラベルが出る."""
-        AgentSkillFactory(name="good-morning", label="staging")
+    def test_change_page_skill_choices_show_name_and_label(self, admin_site_client):
+        """スキルの選択肢は「スキル名@ラベル」（本文を読むプロンプトとその版）."""
+        skill = AgentSkillFactory(name="good-morning", label="staging")
         config = CompanionConfigFactory()
 
         response = admin_site_client.get(
             reverse("admin:companion_companionconfig_change", args=[config.pk])
         )
 
-        assert "good-morning（companion-skill-good-morning@staging）" in _content(
-            response
+        assert f'<option value="{skill.pk}">good-morning@staging</option>' in (
+            _content(response)
         )
 
     def test_change_page_system_prompt_ref_uses_autocomplete(self, admin_site_client):

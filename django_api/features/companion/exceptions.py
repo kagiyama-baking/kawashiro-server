@@ -14,8 +14,7 @@ class PromptUnavailableError(CompanionError):
 
     Attributes:
         ref_name: 使えなかったプロンプトの名前（システムプロンプトは参照の識別名
-            `LangfusePromptRef.name`、スキルの本文は Langfuse のプロンプト名
-            `companion-skill-<スキル名>`）
+            `LangfusePromptRef.name`、スキルの本文は Langfuse のプロンプト名。スキル名と同じ）
         reason: 使えなかった理由（本文が空・取得の失敗）
     """
 

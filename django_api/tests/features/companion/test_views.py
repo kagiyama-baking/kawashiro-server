@@ -247,7 +247,7 @@ class TestCompanionRunViewErrors:
                 id="prompt_unavailable",
             ),
             pytest.param(
-                PromptUnavailableError("companion-skill-good-night", reason=INTERNALS),
+                PromptUnavailableError("good-night", reason=INTERNALS),
                 503,
                 CONFIG_ERROR,
                 id="skill_body_unavailable",

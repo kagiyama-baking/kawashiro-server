@@ -123,17 +123,13 @@ def validate_skill_name_not_reserved(value: str) -> None:
         )
 
 
-# スキルの本文を置く Langfuse の text プロンプトの名前の接頭辞（プロンプト名 = 接頭辞 + スキル名）
-SKILL_PROMPT_NAME_PREFIX = "companion-skill-"
-
-
 class AgentSkill(models.Model):
     """エージェントのスキル（Agent Skills。用途ごとの手順）.
 
     全エージェントで共有する（いまは Companion 設定が、登録したスキルから使うものを選ぶ。
     `CompanionConfig.skills`）。名前と説明はモデルに見せる一覧になり、本文はそのスキルを
-    使うときだけ、Langfuse の text プロンプト `companion-skill-<スキル名>`（`prompt_name`）を
-    `label` で取る（フォールバックはない）。
+    使うときだけ、スキル名と同じ名前の Langfuse の text プロンプトを `label` で取る
+    （フォールバックはない）。
     """
 
     name = models.CharField(
@@ -153,9 +149,9 @@ class AgentSkill(models.Model):
         # help_text は管理画面で HTML として出るので、山かっこを書かない
         help_text=(
             "英小文字・数字・ハイフン（例: good-morning）、64 字以内。"
-            "先頭・末尾・連続のハイフンは使えない。本文は、名前の前に companion-skill- を"
-            "付けた Langfuse の text プロンプト（例: companion-skill-good-morning）から"
-            "読むので、名前を変えると本文を読む先も変わる"
+            "先頭・末尾・連続のハイフンは使えない。名前は、本文を読む Langfuse の text "
+            "プロンプトの名前そのもの（版はラベルで選ぶ）なので、名前を変えると本文を読む先も"
+            "変わる"
         ),
     )
     description = models.CharField(
@@ -188,14 +184,9 @@ class AgentSkill(models.Model):
         db_table = "companion_agentskill"
 
     def __str__(self) -> str:
-        return f"{self.name}（{self.prompt_name}@{self.label}）"
+        return f"{self.name}@{self.label}"
 
     def save(self, *args, **kwargs):
         """保存時にバリデーションを実行."""
         self.full_clean()
         super().save(*args, **kwargs)
-
-    @property
-    def prompt_name(self) -> str:
-        """本文を置く Langfuse の text プロンプトの名前（`companion-skill-<スキル名>`）."""
-        return f"{SKILL_PROMPT_NAME_PREFIX}{self.name}"

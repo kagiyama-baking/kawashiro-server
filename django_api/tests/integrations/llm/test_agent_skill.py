@@ -86,7 +86,7 @@ class TestAgentSkillValidation:
         assert "name" in exc_info.value.message_dict
 
     def test_skill_name_duplicate_raises_validation_error(self):
-        """スキル名は全体で一意（Langfuse のプロンプト名をスキル名から決めるため）."""
+        """スキル名は全体で一意（スキル名がそのまま本文の Langfuse のプロンプト名なので）."""
         AgentSkillFactory(name="good-morning")
 
         with pytest.raises(ValidationError) as exc_info:
@@ -140,7 +140,7 @@ class TestAgentSkillValidation:
 
 @pytest.mark.unit
 class TestAgentSkillAttributes:
-    """スキルの既定値・本文のプロンプト名・表示."""
+    """スキルの既定値・表示・本文のプロンプト名（スキル名そのもの）."""
 
     def test_skill_defaults_are_production_label_and_enabled(self):
         """ラベルは既定で production、スキルは既定で有効."""
@@ -148,17 +148,22 @@ class TestAgentSkillAttributes:
 
         assert (skill.label, skill.is_enabled) == ("production", True)
 
-    def test_skill_prompt_name_is_companion_skill_prefix_and_name(self):
-        """本文の Langfuse のプロンプト名は companion-skill-<スキル名>."""
-        assert _unsaved_skill(name="good-night").prompt_name == (
-            "companion-skill-good-night"
-        )
-
-    def test_skill_str_shows_name_prompt_name_and_label(self):
-        """表示はスキル名と、本文のプロンプト名@ラベル（設定の選択欄にそのまま出る）."""
+    def test_skill_str_shows_name_and_label(self):
+        """表示は「スキル名@ラベル」（本文を読むプロンプトとその版。設定の選択欄に出る）."""
         skill = _unsaved_skill(name="good-night", label="staging")
 
-        assert str(skill) == "good-night（companion-skill-good-night@staging）"
+        assert str(skill) == "good-night@staging"
+
+    def test_skill_has_no_prompt_name_derived_from_name(self):
+        """本文のプロンプト名をスキル名から作らない（スキル名がそのままプロンプト名）."""
+        assert not hasattr(_unsaved_skill(), "prompt_name")
+
+    def test_skill_name_help_text_has_no_prompt_name_prefix(self):
+        """名前の案内は Langfuse のプロンプト名を説明し、接頭辞（companion-skill-）を書かない."""
+        help_text = AgentSkill._meta.get_field("name").help_text
+
+        assert "Langfuse" in help_text
+        assert "companion-skill-" not in help_text
 
 
 @pytest.mark.unit

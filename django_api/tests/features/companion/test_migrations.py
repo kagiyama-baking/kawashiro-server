@@ -24,6 +24,11 @@ PROMPT_REF_NAME = "companion-migration-test-system"
 MORNING = "migration-test-morning"
 NIGHT = "migration-test-night"
 TEST_SKILL_NAMES = (MORNING, NIGHT)
+# 後始末で消すスキル名（すべて当て直すと、llm_config の 0015 が名前に接頭辞を付ける）
+CLEANUP_SKILL_NAMES = (
+    *TEST_SKILL_NAMES,
+    *(f"companion-skill-{name}" for name in TEST_SKILL_NAMES),
+)
 # 規則（companion-skill-<スキル名>）に合わせない参照の識別名
 CUSTOM_REF_NAME = "companion-migration-test-custom"
 TEST_REF_NAMES = (
@@ -64,7 +69,7 @@ def migrator(django_db_setup, django_db_blocker):
         ).objects.filter(name__in=CONFIG_NAMES).delete()
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
-        AgentSkill.objects.filter(name__in=TEST_SKILL_NAMES).delete()
+        AgentSkill.objects.filter(name__in=CLEANUP_SKILL_NAMES).delete()
         LangfusePromptRef.objects.filter(name__in=TEST_REF_NAMES).delete()
 
 

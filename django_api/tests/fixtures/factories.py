@@ -85,7 +85,7 @@ class TalkConfigFactory(factory.django.DjangoModelFactory):
 
 
 class AgentSkillFactory(factory.django.DjangoModelFactory):
-    """AgentSkill のファクトリ（本文は Langfuse の companion-skill-<name>@staging）."""
+    """AgentSkill のファクトリ（名前がそのまま本文の Langfuse のプロンプト名。ラベルは staging）."""
 
     class Meta:
         model = "llm_config.AgentSkill"

@@ -19,7 +19,9 @@ AgentSkill の本文は、Langfuse の text プロンプト `companion-skill-<�
 
 from django.db import migrations
 
-# integrations.llm.models.SKILL_PROMPT_NAME_PREFIX と同じ（migration はモデルのコードに依らない）
+# この migration の時点の、本文のプロンプト名の接頭辞（プロンプト名 = 接頭辞 + スキル名）。
+# llm_config の 0015 からは、スキル名そのものがプロンプト名になる（0015 が既存の名前に
+# この接頭辞を付ける）。migration はモデルのコードに依らないので、ここに持つ。
 SKILL_PROMPT_NAME_PREFIX = "companion-skill-"
 ROLLBACK_REF_DESCRIPTION = "Companion スキルの本文（ロールバックで再作成）"
 

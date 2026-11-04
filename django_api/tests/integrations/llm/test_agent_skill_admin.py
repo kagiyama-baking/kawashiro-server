@@ -6,8 +6,8 @@ from django.urls import reverse
 from integrations.llm.models import AgentSkill
 from tests.fixtures.factories import AgentSkillFactory
 
-# 管理画面に出す、本文のプロンプト名の規則（HTML ではエスケープして出す）
-ESCAPED_PROMPT_NAME_RULE = "companion-skill-&lt;スキル名&gt;"
+# 以前の、本文のプロンプト名の接頭辞（いまはスキル名がそのままプロンプト名なので画面に出さない）
+OLD_PROMPT_NAME_PREFIX = "companion-skill-"
 
 
 def _skill_form_data(**fields) -> dict:
@@ -26,13 +26,20 @@ def _content(response) -> str:
     return response.content.decode()
 
 
+def _page_url(page: str, skill: AgentSkill) -> str:
+    """Agent Skills の一覧・追加・変更（skill の）画面の URL."""
+    if page == "change":
+        return reverse("admin:llm_config_agentskill_change", args=[skill.pk])
+    return reverse(f"admin:llm_config_agentskill_{page}")
+
+
 @pytest.mark.integration
 @pytest.mark.django_db
 class TestAgentSkillAdmin:
     """Agent Skills の一覧・追加・変更の画面."""
 
-    def test_changelist_shows_prompt_name_and_label_of_skill(self, admin_site_client):
-        """一覧に、スキルの本文のプロンプト名とラベルが並ぶ."""
+    def test_changelist_shows_label_without_prompt_name_column(self, admin_site_client):
+        """一覧には名前・ラベル・有効が並び、本文のプロンプト名の列はない（名前がプロンプト名）."""
         AgentSkillFactory(name="good-morning", label="staging")
 
         response = admin_site_client.get(
@@ -41,25 +48,41 @@ class TestAgentSkillAdmin:
 
         assert response.status_code == 200
         content = _content(response)
-        assert (
-            '<td class="field-langfuse_prompt_name">companion-skill-good-morning</td>'
-            in content
-        )
         assert '<td class="field-label">staging</td>' in content
+        assert "field-langfuse_prompt_name" not in content
 
-    def test_change_page_shows_prompt_name_as_read_only(self, admin_site_client):
-        """変更画面では、本文のプロンプト名を読み取り専用で出す（名前から決まる）."""
+    @pytest.mark.parametrize("page", ["changelist", "add", "change"])
+    def test_page_never_shows_old_prompt_name_prefix(self, admin_site_client, page):
+        """一覧・追加・変更のどの画面にも、以前のプロンプト名の接頭辞（companion-skill-）は出ない."""
+        skill = AgentSkillFactory(name="good-morning")
+
+        response = admin_site_client.get(_page_url(page, skill))
+
+        assert response.status_code == 200
+        assert OLD_PROMPT_NAME_PREFIX not in _content(response)
+
+    def test_change_page_has_no_read_only_field(self, admin_site_client):
+        """変更画面に読み取り専用の欄はない（入力するのは名前・説明・有効・ラベル）."""
         skill = AgentSkillFactory(name="good-morning")
 
         response = admin_site_client.get(
             reverse("admin:llm_config_agentskill_change", args=[skill.pk])
         )
 
-        assert response.status_code == 200
-        assert '<div class="readonly">companion-skill-good-morning</div>' in (
-            _content(response)
-        )
-        assert "langfuse_prompt_name" not in response.context["adminform"].form.fields
+        adminform = response.context["adminform"]
+        assert not adminform.readonly_fields
+        assert set(adminform.form.fields) == {
+            "name",
+            "description",
+            "label",
+            "is_enabled",
+        }
+
+    def test_add_page_explains_body_is_prompt_with_same_name(self, admin_site_client):
+        """追加画面の説明に、本文はスキル名と同じ名前の Langfuse の text プロンプトから読むと出す."""
+        response = admin_site_client.get(reverse("admin:llm_config_agentskill_add"))
+
+        assert "スキル名と同じ名前の Langfuse の text プロンプト" in _content(response)
 
     def test_change_page_renders_description_as_textarea(self, admin_site_client):
         """説明は複数行で書ける."""
@@ -70,27 +93,6 @@ class TestAgentSkillAdmin:
         )
 
         assert '<textarea name="description"' in _content(response)
-
-    def test_add_page_shows_prompt_name_rule_as_read_only(self, admin_site_client):
-        """追加画面では、名前がまだないので、プロンプト名の規則を出す."""
-        response = admin_site_client.get(reverse("admin:llm_config_agentskill_add"))
-
-        assert response.status_code == 200
-        assert f'<div class="readonly">{ESCAPED_PROMPT_NAME_RULE}</div>' in (
-            _content(response)
-        )
-
-    def test_change_page_escapes_prompt_name_rule_in_html(self, admin_site_client):
-        """説明文と入力の案内には、規則の山かっこを HTML のまま入れない（エスケープする）."""
-        skill = AgentSkillFactory(name="good-morning")
-
-        response = admin_site_client.get(
-            reverse("admin:llm_config_agentskill_change", args=[skill.pk])
-        )
-
-        content = _content(response)
-        assert ESCAPED_PROMPT_NAME_RULE in content
-        assert "companion-skill-<" not in content
 
     def test_add_with_valid_values_creates_skill(self, admin_site_client):
         """追加画面から、名前・説明・ラベル・有効を入れてスキルを登録できる."""
