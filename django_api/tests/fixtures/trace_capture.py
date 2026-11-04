@@ -150,9 +150,13 @@ def _run_talk_through_litellm():
 
 
 def _run_companion():
-    """Companion をスキルの読み込みと音声合成つきで実行する（音声は代役が返す）."""
+    """Companion をスキルの読み込みと音声合成つきで実行する（音声は代役が返す）.
+
+    スキルの本文の取得（`fetch_text_prompt`）も Langfuse サーバーへ出ないよう差し替える
+    （システムプロンプトは main の差し替えで解決する）。
+    """
     from features.companion.agent import COMPANION_AGENT
-    from features.companion.models import CompanionConfig, CompanionSkill
+    from features.companion.models import AgentSkill, CompanionConfig
     from features.companion.services import run_companion
     from integrations.langfuse.models import LangfusePromptRef
     from integrations.llm.runtime import _LITELLM_PROFILE
@@ -165,14 +169,15 @@ def _run_companion():
     config = CompanionConfig.objects.create(
         name="trace", is_active=True, system_prompt_ref=ref, tts_enabled=True
     )
-    CompanionSkill.objects.create(
-        config=config, name="good-morning", description="朝のあいさつ", prompt_ref=ref
+    config.skills.add(
+        AgentSkill.objects.create(name="good-morning", description="朝のあいさつ")
     )
     llm = ScriptedLLM(
         load_capability("good-morning"), "おはよう！", profile=_LITELLM_PROFILE
     )
     with (
         COMPANION_AGENT.override(model=llm.model),
+        patch("features.companion.skills.fetch_text_prompt", return_value="手順"),
         patch("features.companion.services.TTSClient") as tts_client,
     ):
         tts_client.return_value.synthesize.return_value = TTSResult(

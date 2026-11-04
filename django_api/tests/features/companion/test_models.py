@@ -1,9 +1,9 @@
-"""Companion の設定モデル（CompanionConfig / CompanionSkill）のテスト."""
+"""Companion の設定モデル（CompanionConfig / AgentSkill）のテスト."""
 
 import inspect
 
 import pytest
-from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
+from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import Capability
@@ -11,14 +11,14 @@ from pydantic_ai.exceptions import UserError
 
 from features.companion.models import (
     RESERVED_SKILL_NAMES,
+    AgentSkill,
     CompanionConfig,
-    CompanionSkill,
 )
 from integrations.llm.runtime import run_agent_sync
 from integrations.tts.client import TTSClient
 from tests.fixtures.factories import (
+    AgentSkillFactory,
     CompanionConfigFactory,
-    CompanionSkillFactory,
     LangfusePromptRefFactory,
 )
 from tests.fixtures.llm import ScriptedLLM, make_llm_settings
@@ -32,16 +32,14 @@ def _unsaved_config(**fields) -> CompanionConfig:
     )
 
 
-def _unsaved_skill(config: CompanionConfig | None = None, **fields) -> CompanionSkill:
+def _unsaved_skill(**fields) -> AgentSkill:
     """保存前のスキル（指定しない項目は正しい値）."""
-    return CompanionSkill(
-        config=config or CompanionConfigFactory(name="main"),
-        prompt_ref=LangfusePromptRefFactory(name="companion-skill-body"),
+    return AgentSkill(
         **{
             "name": "good-morning",
             "description": "朝のあいさつ（「おはよう」など）に使う",
             **fields,
-        },
+        }
     )
 
 
@@ -232,8 +230,8 @@ class TestCompanionConfigTTSOptions:
 
 @pytest.mark.integration
 @pytest.mark.django_db
-class TestCompanionSkillValidation:
-    """スキルの入力チェック（名前は capability の id になる）."""
+class TestAgentSkillValidation:
+    """スキルの入力チェック（名前は capability の id と Langfuse のプロンプト名になる）."""
 
     @pytest.mark.parametrize(
         "name",
@@ -279,6 +277,15 @@ class TestCompanionSkillValidation:
 
         assert "name" in exc_info.value.message_dict
 
+    def test_skill_name_duplicate_raises_validation_error(self):
+        """スキル名は全体で一意（Langfuse のプロンプト名をスキル名から決めるため）."""
+        AgentSkillFactory(name="good-morning")
+
+        with pytest.raises(ValidationError) as exc_info:
+            _unsaved_skill(name="good-morning").full_clean()
+
+        assert "name" in exc_info.value.message_dict
+
     def test_skill_description_with_1024_chars_passes_validation(self):
         """説明は 1024 字まで."""
         _unsaved_skill(description="あ" * 1024).full_clean()
@@ -297,29 +304,42 @@ class TestCompanionSkillValidation:
 
         assert "description" in exc_info.value.message_dict
 
-    def test_skill_name_duplicate_in_same_config_raises_validation_error(self):
-        """同じ設定の中でスキル名は一意."""
-        existing = CompanionSkillFactory(name="good-morning")
-
+    def test_skill_label_empty_raises_validation_error(self):
+        """ラベルは必須（本文を取る Langfuse のラベル）."""
         with pytest.raises(ValidationError) as exc_info:
-            _unsaved_skill(config=existing.config, name="good-morning").full_clean()
+            _unsaved_skill(label="").full_clean()
 
-        assert NON_FIELD_ERRORS in exc_info.value.message_dict
-
-    def test_skill_name_duplicate_in_other_config_passes_validation(self):
-        """別の設定なら同じスキル名を使える."""
-        CompanionSkillFactory(name="good-morning")
-
-        _unsaved_skill(
-            config=CompanionConfigFactory(name="other"), name="good-morning"
-        ).full_clean()
+        assert "label" in exc_info.value.message_dict
 
     def test_skill_save_with_invalid_value_raises_validation_error(self):
         """save() は保存の前に full_clean() で拒む."""
         with pytest.raises(ValidationError):
             _unsaved_skill(name="Good").save()
 
-        assert not CompanionSkill.objects.exists()
+        assert not AgentSkill.objects.exists()
+
+
+@pytest.mark.unit
+class TestAgentSkillAttributes:
+    """スキルの既定値・本文のプロンプト名・表示."""
+
+    def test_skill_defaults_are_production_label_and_enabled(self):
+        """ラベルは既定で production、スキルは既定で有効."""
+        skill = _unsaved_skill()
+
+        assert (skill.label, skill.is_enabled) == ("production", True)
+
+    def test_skill_prompt_name_is_companion_skill_prefix_and_name(self):
+        """本文の Langfuse のプロンプト名は companion-skill-<スキル名>."""
+        assert _unsaved_skill(name="good-night").prompt_name == (
+            "companion-skill-good-night"
+        )
+
+    def test_skill_str_shows_name_prompt_name_and_label(self):
+        """表示はスキル名と、本文のプロンプト名@ラベル（設定の選択欄にそのまま出る）."""
+        skill = _unsaved_skill(name="good-night", label="staging")
+
+        assert str(skill) == "good-night（companion-skill-good-night@staging）"
 
 
 @pytest.mark.unit
@@ -350,22 +370,28 @@ def test_reserved_skill_name_as_capability_id_fails_agent_run(name):
 
 @pytest.mark.integration
 @pytest.mark.django_db
-class TestCompanionSkillRelations:
-    """スキルと設定・プロンプト参照のつながり."""
+class TestCompanionConfigSkills:
+    """設定とスキル（設定は登録済みのスキルから使うものを選ぶ）."""
 
-    def test_skill_is_enabled_default_is_true(self):
-        """スキルは既定で有効."""
-        assert CompanionSkillFactory().is_enabled is True
+    def test_skills_are_ordered_by_name(self):
+        """スキルは名前順に並ぶ."""
+        for name in ("welcome-home", "good-night", "good-morning"):
+            AgentSkillFactory(name=name)
 
-    def test_skill_str_returns_name(self):
-        """表示はスキル名."""
-        assert str(CompanionSkillFactory(name="good-night")) == "good-night"
+        assert [skill.name for skill in AgentSkill.objects.all()] == [
+            "good-morning",
+            "good-night",
+            "welcome-home",
+        ]
 
     def test_config_skills_are_ordered_by_name(self):
-        """設定のスキルは名前順に並ぶ."""
-        config = CompanionConfigFactory()
-        for name in ("welcome-home", "good-night", "good-morning"):
-            CompanionSkillFactory(config=config, name=name)
+        """設定で選んだスキルは名前順に並ぶ（選んだ順ではない）."""
+        config = CompanionConfigFactory(
+            skills=[
+                AgentSkillFactory(name=name)
+                for name in ("welcome-home", "good-night", "good-morning")
+            ]
+        )
 
         assert [skill.name for skill in config.skills.all()] == [
             "good-morning",
@@ -373,17 +399,30 @@ class TestCompanionSkillRelations:
             "welcome-home",
         ]
 
-    def test_config_delete_with_skills_deletes_skills(self):
-        """設定を消すとそのスキルも消える."""
-        skill = CompanionSkillFactory()
+    def test_skill_selected_by_two_configs_is_shared(self):
+        """1 つのスキルを 2 つの設定で選べる（設定ごとに登録し直さない）."""
+        skill = AgentSkillFactory(name="good-morning")
+        first = CompanionConfigFactory(skills=[skill])
+        second = CompanionConfigFactory(skills=[skill])
 
-        skill.config.delete()
+        assert list(first.skills.all()) == list(second.skills.all()) == [skill]
+        assert set(skill.configs.all()) == {first, second}
 
-        assert not CompanionSkill.objects.exists()
+    def test_config_delete_keeps_selected_skills(self):
+        """設定を消しても、選んでいたスキルは残る."""
+        skill = AgentSkillFactory(name="good-morning")
+        config = CompanionConfigFactory(skills=[skill])
 
-    def test_skill_prompt_ref_delete_while_referenced_raises_protected_error(self):
-        """スキルが参照している本文の参照は消せない."""
-        skill = CompanionSkillFactory()
+        config.delete()
 
-        with pytest.raises(ProtectedError):
-            skill.prompt_ref.delete()
+        assert list(AgentSkill.objects.all()) == [skill]
+
+    def test_skill_delete_removes_it_from_config_selection(self):
+        """スキルを消すと、選んでいた設定の選択から外れる（設定は残る）."""
+        morning = AgentSkillFactory(name="good-morning")
+        night = AgentSkillFactory(name="good-night")
+        config = CompanionConfigFactory(skills=[morning, night])
+
+        morning.delete()
+
+        assert list(CompanionConfig.objects.get(pk=config.pk).skills.all()) == [night]

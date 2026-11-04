@@ -20,7 +20,7 @@ from integrations.tts.client import TTSClient, TTSResult
 
 from .agent import COMPANION_AGENT, CompanionDeps, response_policy
 from .exceptions import CompanionNotConfiguredError, UnknownSkillError
-from .models import CompanionConfig, CompanionSkill
+from .models import AgentSkill, CompanionConfig
 from .skills import (
     build_skill_capabilities,
     loaded_skill,
@@ -68,16 +68,18 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
 
     Args:
         prompt: 発話（例: 「おはよう」）
-        skill: 使うスキルの名前。指定するとモデルに選ばせず、一覧も読み込みも使わない
+        skill: 使うスキルの名前（有効な設定で選んだ有効なスキル）。指定するとモデルに
+            選ばせず、一覧も読み込みも使わない
 
     Returns:
         セリフ・使ったスキル・音声
 
     Raises:
         CompanionNotConfiguredError: 有効な設定がないか、複数ある場合
-        UnknownSkillError: 指定したスキルが有効な設定にないか、無効な場合
+        UnknownSkillError: 指定したスキルが、有効な設定で選ばれていないか、無効な場合
         LLMConfigurationError: companion の LLM サービス設定がない場合
-        PromptUnavailableError: システムプロンプトか、使うスキルの本文が空の場合
+        PromptUnavailableError: システムプロンプトの本文が空の場合か、使うスキルの本文を
+            Langfuse から取れないか、空の場合
         LLMOutputError: 応答の本文が空の場合・読み込みなどのツールの失敗が続いた場合・
             本文に漏れたツール呼び出しの書式が作り直させても直らなかった場合
         LLMTimeoutError: リクエストごとのタイムアウトか、実行全体の RUN_TIMEOUT を過ぎた場合
@@ -85,7 +87,7 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         TTSError: 音声合成に失敗した場合
     """
     config = _active_config()
-    skills = list(config.skills.filter(is_enabled=True).select_related("prompt_ref"))
+    skills = list(config.skills.filter(is_enabled=True))
     selected = None if skill is None else _find_skill(skills, skill)
     settings = get_llm_settings("companion")
     system_prompt = resolve_required_prompt(config.system_prompt_ref)
@@ -136,8 +138,8 @@ def _active_config() -> CompanionConfig:
         raise error from exc
 
 
-def _find_skill(skills: Sequence[CompanionSkill], name: str) -> CompanionSkill:
-    """有効なスキルの中から、指定された名前のスキルを返す."""
+def _find_skill(skills: Sequence[AgentSkill], name: str) -> AgentSkill:
+    """有効な設定で選んだ有効なスキルの中から、指定された名前のスキルを返す."""
     for candidate in skills:
         if candidate.name == name:
             return candidate
@@ -146,14 +148,15 @@ def _find_skill(skills: Sequence[CompanionSkill], name: str) -> CompanionSkill:
 
 def _instructions_and_capabilities(
     system_prompt: str,
-    skills: Sequence[CompanionSkill],
-    selected: CompanionSkill | None,
+    skills: Sequence[AgentSkill],
+    selected: AgentSkill | None,
 ) -> tuple[str, list[Capability[CompanionDeps]]]:
     """実行の指示と、実行に渡す capability を決める.
 
     指示はシステムプロンプト → 方針の順。スキルを指定したときは、その本文の節
-    （`skill_instructions`）を末尾に足し、capability は渡さない。指定しないときは有効な
-    スキルを一覧（遅延 capability）にし、スキルがあるときだけ方針に読み込みの一文を入れる。
+    （`skill_instructions`。ここで本文を Langfuse から取る）を末尾に足し、capability は
+    渡さない。指定しないときは設定で選んだ有効なスキルを一覧（遅延 capability）にし、
+    スキルがあるときだけ方針に読み込みの一文を入れる。
     """
     if selected is not None:
         sections = (

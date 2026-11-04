@@ -3,15 +3,30 @@
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-
-from features.companion.models import CompanionConfig
-from integrations.langfuse.models import LangfusePromptRef
+from django.db.migrations.recorder import MigrationRecorder
 
 BEFORE_RENAME = [("companion", "0001_initial")]
 AFTER_RENAME = [("companion", "0002_rename_persona_prompt_ref_to_system_prompt_ref")]
+# 旧 CompanionSkill だけがある時点（0003 で AgentSkill を足す前）
+BEFORE_AGENT_SKILL = AFTER_RENAME
+# AgentSkill を足し、旧 CompanionSkill の行をまだ写していない時点（0004 の前）
+BEFORE_SKILL_COPY = [("companion", "0003_agentskill_companionconfig_skills")]
+SKILL_COPY = ("companion", "0004_migrate_companionskill_to_agentskill")
+AFTER_AGENT_SKILL = [("companion", "0005_delete_companionskill")]
 
 CONFIG_NAME = "companion-migration-test"
+OTHER_CONFIG_NAME = "companion-migration-other"
+CONFIG_NAMES = (CONFIG_NAME, OTHER_CONFIG_NAME)
 PROMPT_REF_NAME = "companion-migration-test-system"
+MORNING = "migration-test-morning"
+NIGHT = "migration-test-night"
+# 規則（companion-skill-<スキル名>）に合わせない参照の識別名
+CUSTOM_REF_NAME = "companion-migration-test-custom"
+TEST_REF_NAMES = (
+    PROMPT_REF_NAME,
+    CUSTOM_REF_NAME,
+    *(f"companion-skill-{name}" for name in (MORNING, NIGHT)),
+)
 
 # 収集時（テスト DB を作る前）の接続先。pytest-django は、DB を使うと宣言した
 # テスト（django_db マーカーなど）が 1 つも収集されないとテスト DB を作らないので、
@@ -27,6 +42,8 @@ def migrator(django_db_setup, django_db_blocker):
     スキーマを変えるので、テストのトランザクションの外で動かす（transactional_db を
     使わない理由は tests/features/talk/test_migrations.py の migrator と同じ）。
     DB の遮断を自分で外すので、テスト DB ができていなければ触る前に中止する。
+    作った行は、旧スキルのモデルがある 0002 の時点へ戻してから消す（規則に合わない
+    旧スキルを残したまま当て直すと、0004 が止まる）。
     """
     if connection.settings_dict["NAME"] == CONFIGURED_DB_NAME:
         pytest.fail(
@@ -37,11 +54,9 @@ def migrator(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         executor = MigrationExecutor(connection)
         yield executor
+        _delete_test_rows(_migrate(executor, BEFORE_AGENT_SKILL))
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
-        # 参照は設定から PROTECT で参照されるので、設定から消す
-        CompanionConfig.objects.filter(name=CONFIG_NAME).delete()
-        LangfusePromptRef.objects.filter(name=PROMPT_REF_NAME).delete()
 
 
 def _migrate(migrator, targets):
@@ -49,6 +64,19 @@ def _migrate(migrator, targets):
     migrator.loader.build_graph()
     migrator.migrate(targets)
     return migrator.loader.project_state(targets).apps
+
+
+def _delete_test_rows(apps) -> None:
+    """0002 の時点のモデルで、テストで作った設定（旧スキルごと）と参照を消す.
+
+    参照は設定・旧スキルから PROTECT で参照されるので、設定から消す。
+    """
+    apps.get_model("companion", "CompanionConfig").objects.filter(
+        name__in=CONFIG_NAMES
+    ).delete()
+    apps.get_model("langfuse_integration", "LangfusePromptRef").objects.filter(
+        name__in=TEST_REF_NAMES
+    ).delete()
 
 
 def _create_config_before_rename(apps) -> int:
@@ -62,9 +90,52 @@ def _create_config_before_rename(apps) -> int:
     return prompt_ref.pk
 
 
-def _config(apps):
+def _create_config(apps, name: str = CONFIG_NAME):
+    """0002 以降の時点のモデルで、テスト用の設定を作る（システムプロンプトの参照は共有）."""
+    prompt_ref, _ = apps.get_model(
+        "langfuse_integration", "LangfusePromptRef"
+    ).objects.get_or_create(
+        name=PROMPT_REF_NAME, defaults={"langfuse_prompt_name": PROMPT_REF_NAME}
+    )
+    return apps.get_model("companion", "CompanionConfig").objects.create(
+        name=name, system_prompt_ref=prompt_ref
+    )
+
+
+def _create_legacy_skill(
+    apps,
+    config,
+    name: str,
+    *,
+    description: str = "あいさつのときに使う",
+    is_enabled: bool = True,
+    label: str = "staging",
+    ref_name: str | None = None,
+    langfuse_prompt_name: str | None = None,
+):
+    """旧 CompanionSkill を本文の参照ごと作る（参照の名前は、指定しなければ規則どおり）."""
+    prompt_name = f"companion-skill-{name}"
+    prompt_ref, _ = apps.get_model(
+        "langfuse_integration", "LangfusePromptRef"
+    ).objects.get_or_create(
+        name=ref_name or prompt_name,
+        defaults={
+            "langfuse_prompt_name": langfuse_prompt_name or prompt_name,
+            "label": label,
+        },
+    )
+    return apps.get_model("companion", "CompanionSkill").objects.create(
+        config=config,
+        name=name,
+        description=description,
+        is_enabled=is_enabled,
+        prompt_ref=prompt_ref,
+    )
+
+
+def _config(apps, name: str = CONFIG_NAME):
     """その時点のモデルで、テスト用に作った設定を読む."""
-    return apps.get_model("companion", "CompanionConfig").objects.get(name=CONFIG_NAME)
+    return apps.get_model("companion", "CompanionConfig").objects.get(name=name)
 
 
 @pytest.mark.integration
@@ -86,3 +157,189 @@ def test_0002_reverse_restores_prompt_ref_as_persona_prompt_ref(migrator):
     reverted_apps = _migrate(migrator, BEFORE_RENAME)
 
     assert _config(reverted_apps).persona_prompt_ref_id == prompt_ref_pk
+
+
+@pytest.mark.integration
+def test_0004_copies_legacy_skills_to_agent_skills_with_ref_label(migrator):
+    """旧スキルは、名前・説明・有効と、本文の参照のラベルを写した AgentSkill になる."""
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    config = _create_config(old_apps)
+    _create_legacy_skill(old_apps, config, MORNING, description="朝のあいさつ")
+    _create_legacy_skill(
+        old_apps,
+        config,
+        NIGHT,
+        description="夜のあいさつ",
+        is_enabled=False,
+        label="production",
+    )
+
+    new_apps = _migrate(migrator, AFTER_AGENT_SKILL)
+
+    skills = new_apps.get_model("companion", "AgentSkill").objects.all()
+    assert [(s.name, s.description, s.label, s.is_enabled) for s in skills] == [
+        (MORNING, "朝のあいさつ", "staging", True),
+        (NIGHT, "夜のあいさつ", "production", False),
+    ]
+
+
+@pytest.mark.integration
+def test_0004_selects_copied_skills_in_their_config(migrator):
+    """写したスキルは、旧スキルが属していた設定で選んだ状態になる."""
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    config = _create_config(old_apps)
+    _create_legacy_skill(old_apps, config, MORNING)
+    _create_legacy_skill(old_apps, config, NIGHT, is_enabled=False)
+
+    new_apps = _migrate(migrator, AFTER_AGENT_SKILL)
+
+    assert [s.name for s in _config(new_apps).skills.all()] == [MORNING, NIGHT]
+
+
+@pytest.mark.integration
+def test_0004_keeps_prompt_refs_of_legacy_skills(migrator):
+    """旧スキルの本文の参照は消さない（0004 を戻すときに使い直す）."""
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    legacy = _create_legacy_skill(old_apps, _create_config(old_apps), MORNING)
+
+    new_apps = _migrate(migrator, AFTER_AGENT_SKILL)
+
+    assert (
+        new_apps.get_model("langfuse_integration", "LangfusePromptRef")
+        .objects.filter(pk=legacy.prompt_ref_id)
+        .exists()
+    )
+
+
+@pytest.mark.integration
+def test_0004_with_same_skill_in_two_configs_shares_one_agent_skill(migrator):
+    """2 つの設定に同じ名前・同じ内容の旧スキルがあれば、1 つのスキルを両方で選ぶ."""
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    for name in CONFIG_NAMES:
+        _create_legacy_skill(old_apps, _create_config(old_apps, name), MORNING)
+
+    new_apps = _migrate(migrator, AFTER_AGENT_SKILL)
+
+    skill = new_apps.get_model("companion", "AgentSkill").objects.get(name=MORNING)
+    assert sorted(config.name for config in skill.configs.all()) == sorted(CONFIG_NAMES)
+
+
+@pytest.mark.integration
+def test_0004_with_prompt_name_not_following_rule_stops_and_copies_nothing(migrator):
+    """本文の参照の Langfuse プロンプト名が companion-skill-<名前> でなければ止め、何も写さない.
+
+    起動時の migrate が止まる（0004 は当たらない）ので、黙って別の本文を読ませることはない。
+    エラーには、直すべきスキル・参照・プロンプト名と、規則どおりの名前を挙げる。
+    """
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    config = _create_config(old_apps)
+    _create_legacy_skill(old_apps, config, MORNING)
+    _create_legacy_skill(
+        old_apps,
+        config,
+        NIGHT,
+        ref_name=CUSTOM_REF_NAME,
+        langfuse_prompt_name="custom-night",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _migrate(migrator, AFTER_AGENT_SKILL)
+
+    message = str(exc_info.value)
+    for expected in (
+        NIGHT,
+        CUSTOM_REF_NAME,
+        "custom-night",
+        f"companion-skill-{NIGHT}",
+    ):
+        assert expected in message
+    assert MORNING not in message
+    assert SKILL_COPY not in MigrationRecorder(connection).applied_migrations()
+    stopped_apps = migrator.loader.project_state(BEFORE_SKILL_COPY).apps
+    assert not stopped_apps.get_model("companion", "AgentSkill").objects.exists()
+    assert not _config(stopped_apps).skills.exists()
+
+
+@pytest.mark.integration
+def test_0004_with_same_name_and_different_content_stops(migrator):
+    """同じ名前の旧スキルの内容（説明・有効・ラベル）が設定ごとに違えば止める.
+
+    スキル名は全体で一意になるので、どちらかを選んで黙って捨てない。
+    """
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    _create_legacy_skill(old_apps, _create_config(old_apps), MORNING)
+    _create_legacy_skill(
+        old_apps,
+        _create_config(old_apps, OTHER_CONFIG_NAME),
+        MORNING,
+        label="production",
+        ref_name=CUSTOM_REF_NAME,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _migrate(migrator, AFTER_AGENT_SKILL)
+
+    message = str(exc_info.value)
+    for expected in (MORNING, CONFIG_NAME, OTHER_CONFIG_NAME):
+        assert expected in message
+    assert SKILL_COPY not in MigrationRecorder(connection).applied_migrations()
+
+
+@pytest.mark.integration
+def test_0005_reverse_restores_legacy_skills_with_their_prompt_refs(migrator):
+    """0002 へ戻すと、旧スキルが元の設定・内容・本文の参照のまま戻る（参照は増えない）."""
+    old_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+    config = _create_config(old_apps)
+    morning = _create_legacy_skill(old_apps, config, MORNING, description="朝")
+    night = _create_legacy_skill(
+        old_apps, config, NIGHT, description="夜", is_enabled=False
+    )
+    ref_count = old_apps.get_model(
+        "langfuse_integration", "LangfusePromptRef"
+    ).objects.count()
+    _migrate(migrator, AFTER_AGENT_SKILL)
+
+    reverted_apps = _migrate(migrator, BEFORE_AGENT_SKILL)
+
+    skills = _config(reverted_apps).skills.order_by("name")
+    assert [(s.name, s.description, s.is_enabled, s.prompt_ref_id) for s in skills] == [
+        (MORNING, "朝", True, morning.prompt_ref_id),
+        (NIGHT, "夜", False, night.prompt_ref_id),
+    ]
+    assert (
+        reverted_apps.get_model(
+            "langfuse_integration", "LangfusePromptRef"
+        ).objects.count()
+        == ref_count
+    )
+
+
+@pytest.mark.integration
+def test_0005_reverse_creates_prompt_ref_following_rule_for_new_skill(migrator):
+    """0005 の後に登録したスキルも、0003 へ戻すと規則どおりの参照を作って旧スキルに戻る."""
+    new_apps = _migrate(migrator, AFTER_AGENT_SKILL)
+    config = _create_config(new_apps)
+    config.skills.add(
+        new_apps.get_model("companion", "AgentSkill").objects.create(
+            name=MORNING, description="朝のあいさつ", label="staging"
+        )
+    )
+
+    reverted_apps = _migrate(migrator, BEFORE_SKILL_COPY)
+
+    legacy = (
+        reverted_apps.get_model("companion", "CompanionSkill")
+        .objects.select_related("prompt_ref")
+        .get(config__name=CONFIG_NAME)
+    )
+    assert (legacy.name, legacy.description, legacy.is_enabled) == (
+        MORNING,
+        "朝のあいさつ",
+        True,
+    )
+    prompt_name = f"companion-skill-{MORNING}"
+    assert (
+        legacy.prompt_ref.name,
+        legacy.prompt_ref.langfuse_prompt_name,
+        legacy.prompt_ref.label,
+    ) == (prompt_name, prompt_name, "staging")

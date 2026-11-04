@@ -84,12 +84,29 @@ class TalkConfigFactory(factory.django.DjangoModelFactory):
     )
 
 
+class AgentSkillFactory(factory.django.DjangoModelFactory):
+    """AgentSkill のファクトリ（本文は Langfuse の companion-skill-<name>@staging）."""
+
+    class Meta:
+        model = "companion.AgentSkill"
+        django_get_or_create = ("name",)
+
+    name = factory.Sequence(lambda n: f"skill-{n}")
+    description = factory.Sequence(lambda n: f"スキル {n} のときに使う")
+    label = "staging"
+
+
 class CompanionConfigFactory(factory.django.DjangoModelFactory):
-    """CompanionConfig のファクトリ（既定は無効。有効にするなら is_active=True）."""
+    """CompanionConfig のファクトリ（既定は無効。有効にするなら is_active=True）.
+
+    `skills=[...]` を渡すと、そのスキルを選んだ設定にする（既定はスキルなし）。
+    """
 
     class Meta:
         model = "companion.CompanionConfig"
         django_get_or_create = ("name",)
+        # 選んだスキルは M2M なので、選んだ後に設定を保存し直さない
+        skip_postgeneration_save = True
 
     name = factory.Sequence(lambda n: f"companion-config-{n}")
     system_prompt_ref = factory.SubFactory(
@@ -98,23 +115,11 @@ class CompanionConfigFactory(factory.django.DjangoModelFactory):
         fallback_text="system prompt fallback",
     )
 
-
-class CompanionSkillFactory(factory.django.DjangoModelFactory):
-    """CompanionSkill のファクトリ."""
-
-    class Meta:
-        model = "companion.CompanionSkill"
-
-    config = factory.SubFactory(CompanionConfigFactory)
-    name = factory.Sequence(lambda n: f"skill-{n}")
-    description = factory.LazyAttribute(lambda o: f"{o.name} のときに使う")
-    prompt_ref = factory.SubFactory(
-        LangfusePromptRefFactory,
-        name=factory.LazyAttribute(
-            lambda o: f"{o.factory_parent.config.name}-skill-{o.factory_parent.name}"
-        ),
-        fallback_text="skill body fallback",
-    )
+    @factory.post_generation
+    def skills(self, create, extracted, **kwargs):
+        """`skills` を渡したら、そのスキルを設定で選ぶ（保存するときだけ）."""
+        if create and extracted is not None:
+            self.skills.set(extracted)
 
 
 class FileUploadFactory:
