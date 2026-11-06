@@ -1,8 +1,9 @@
-"""Langfuseプロンプト解決ユーティリティ."""
+"""Langfuseプロンプト解決ユーティリティとセッションの伝播."""
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from .exceptions import LangfusePromptError
@@ -136,6 +137,42 @@ def fetch_text_prompt(name: str, *, label: str) -> str:
         )
 
     return prompt.prompt
+
+
+@contextmanager
+def langfuse_session(session_id: str | None) -> Iterator[None]:
+    """中で実行する処理のトレースと配下の観測に、Langfuse のセッション ID を伝播する.
+
+    Langfuse の Sessions (https://langfuse.com/docs/observability/features/sessions)
+    で、同じセッションのトレースをまとめて表示するためのもの。SDK 4 系では属性の
+    伝播が with 文（`propagate_attributes`）になったので、本処理をこの中で実行する。
+    伝播は、入った時点の現在のスパン（`@observe` の関数の中ならそのスパン）と、
+    中で始まるスパンに付く。
+
+    `session_id` が None か空文字なら何もしない。伝播の開始・解除に失敗しても
+    warning ログを出すだけで、本処理は続ける（本処理の例外はそのまま送出する）。
+
+    Args:
+        session_id: Langfuse のセッション ID（例: チャットセッションの UUID）
+    """
+    context = None
+    if session_id:
+        try:
+            from langfuse import propagate_attributes
+
+            context = propagate_attributes(session_id=str(session_id))
+            context.__enter__()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Langfuse session_id 設定失敗: %s", exc)
+            context = None
+    try:
+        yield
+    finally:
+        if context is not None:
+            try:
+                context.__exit__(None, None, None)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Langfuse session_id 解除失敗: %s", exc)
 
 
 def render_template(template: str, variables: dict[str, Any]) -> str:

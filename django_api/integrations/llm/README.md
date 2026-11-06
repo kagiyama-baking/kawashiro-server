@@ -38,6 +38,8 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
 - **`fetch_text_prompt(name, *, label)`**（同上）
   参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を compile せずにそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまは Companion のスキルの本文だけが使います。
+- **`langfuse_session(session_id)`**（同上）
+  中で実行する処理のトレースと配下の観測に、Langfuse のセッション ID（`session.id`）を伝播する with 文です（`propagate_attributes` を包む）。入った時点の現在のスパン（`@observe` の関数の中ならそのスパン）にも付きます。`None`・空文字なら何もせず、伝播の開始・解除に失敗しても警告ログだけで本処理は続けます。いまは Talk のチャットが使います（§6 の「Langfuse の Sessions」）。
 
 ## 3. admin 設定と外部サービスの対応
 

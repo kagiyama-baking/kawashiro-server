@@ -183,7 +183,7 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 
 **編集再送** — 対象より前の履歴だけを LLM に渡して応答を生成し、完了または停止した時点で、対象 `sequence` 以降のメッセージを（シグナルを確実に発火させるため）1 件ずつ削除して、同じ `sequence` で新しい user メッセージを作り直します。LLM の間に対象の行が消えていたら末尾に追加します。
 
-**Langfuse Sessions 連携** — `synthesize` / `stream_chat_reply` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では `_langfuse_session`（`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。プレースホルダーの取得（`prepare_chat_prompt`）はストリームの前に行うので、`talk/prepare_chat` という別のトレースになります（入出力は記録しません）。`talk/chat` の出力は届いた本文で、停止した場合はそこまでの本文です。
+**Langfuse Sessions 連携** — `synthesize` / `stream_chat_reply` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では共有の `langfuse_session`（`integrations/langfuse/client.py`。`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。プレースホルダーの取得（`prepare_chat_prompt`）はストリームの前に行うので、`talk/prepare_chat` という別のトレースになります（入出力は記録しません）。`talk/chat` の出力は届いた本文で、停止した場合はそこまでの本文です。
 
 ## 運用
 

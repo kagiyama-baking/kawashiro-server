@@ -9,12 +9,16 @@ import pytest
 from integrations.langfuse.client import (
     fetch_text_prompt,
     get_prompt_with_variables,
+    langfuse_session,
     resolve_prompt,
 )
 from integrations.langfuse.exceptions import LangfusePromptError
 from integrations.langfuse.models import LangfusePromptRef
 
 pytestmark = pytest.mark.django_db
+
+CLIENT_LOGGER = "integrations.langfuse.client"
+SESSION_ID = "companion/2026-11-07"
 
 
 @pytest.fixture
@@ -351,6 +355,117 @@ class TestFetchTextPrompt:
         assert record.levelno == logging.WARNING
         assert "skill-greeting" in record.getMessage()
         assert "staging" in record.getMessage()
+
+
+def _client_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """integrations.langfuse.client が出した WARNING のメッセージを返す."""
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == CLIENT_LOGGER and record.levelno == logging.WARNING
+    ]
+
+
+@pytest.mark.unit
+class TestLangfuseSession:
+    """langfuse_session のテスト（実物を使うもの以外は Langfuse の属性の伝播を差し替える）."""
+
+    @pytest.fixture
+    def propagate_attributes(self):
+        """Langfuse の属性の伝播（`langfuse.propagate_attributes`）を差し替える."""
+        with patch("langfuse.propagate_attributes") as mocked:
+            yield mocked
+
+    def test_langfuse_session_with_session_id_propagates_it_only_while_body_runs(
+        self, propagate_attributes
+    ):
+        """セッション ID の伝播を始めてから本処理を実行し、抜けるときに解除する."""
+        context = propagate_attributes.return_value
+
+        with langfuse_session(SESSION_ID):
+            propagate_attributes.assert_called_once_with(session_id=SESSION_ID)
+            context.__enter__.assert_called_once_with()
+            context.__exit__.assert_not_called()
+
+        context.__exit__.assert_called_once()
+
+    @pytest.mark.parametrize("session_id", [None, ""])
+    def test_langfuse_session_without_session_id_runs_body_without_propagation(
+        self, propagate_attributes, session_id
+    ):
+        """セッション ID がなければ（None・空文字）伝播を始めず、本処理だけを実行する."""
+        body = MagicMock()
+
+        with langfuse_session(session_id):
+            body()
+
+        body.assert_called_once_with()
+        propagate_attributes.assert_not_called()
+
+    def test_langfuse_session_when_propagation_cannot_start_warns_and_runs_body(
+        self, propagate_attributes, caplog
+    ):
+        """伝播を始められなくても warning を出すだけで本処理を実行する（解除もしない）."""
+        propagate_attributes.return_value.__enter__.side_effect = RuntimeError("boom")
+        body = MagicMock()
+
+        with langfuse_session(SESSION_ID):
+            body()
+
+        body.assert_called_once_with()
+        propagate_attributes.return_value.__exit__.assert_not_called()
+        assert _client_warnings(caplog) == ["Langfuse session_id 設定失敗: boom"]
+
+    def test_langfuse_session_without_langfuse_installed_warns_and_runs_body(
+        self, monkeypatch, caplog
+    ):
+        """langfuse を import できなくても warning を出すだけで本処理を実行する."""
+        monkeypatch.setitem(sys.modules, "langfuse", None)
+        body = MagicMock()
+
+        with langfuse_session(SESSION_ID):
+            body()
+
+        body.assert_called_once_with()
+        [message] = _client_warnings(caplog)
+        assert message.startswith("Langfuse session_id 設定失敗: ")
+
+    def test_langfuse_session_when_release_fails_only_warns(
+        self, propagate_attributes, caplog
+    ):
+        """伝播を解除できなくても warning を出すだけで、例外にしない."""
+        propagate_attributes.return_value.__exit__.side_effect = RuntimeError("boom")
+        body = MagicMock()
+
+        with langfuse_session(SESSION_ID):
+            body()
+
+        body.assert_called_once_with()
+        assert _client_warnings(caplog) == ["Langfuse session_id 解除失敗: boom"]
+
+    def test_langfuse_session_when_body_raises_releases_propagation_and_reraises(
+        self, propagate_attributes
+    ):
+        """本処理の例外はそのまま送出し、伝播は解除する."""
+        with (
+            pytest.raises(ValueError, match="本処理の失敗"),
+            langfuse_session(SESSION_ID),
+        ):
+            raise ValueError("本処理の失敗")
+
+        propagate_attributes.return_value.__exit__.assert_called_once()
+
+    def test_langfuse_session_with_real_sdk_enters_and_releases_without_warning(
+        self, caplog
+    ):
+        """実物の propagate_attributes でも、warning を出さずに入って抜けられる."""
+        body = MagicMock()
+
+        with langfuse_session(SESSION_ID):
+            body()
+
+        body.assert_called_once_with()
+        assert _client_warnings(caplog) == []
 
 
 class TestExtractVariables:
