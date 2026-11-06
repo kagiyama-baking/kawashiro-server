@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fixtures.trace_capture import COMPANION_AUDIO
+from tests.fixtures.trace_capture import COMPANION_AUDIO, COMPANION_SESSION_ID
 
 DJANGO_API_DIR = Path(__file__).resolve().parents[3]
 
@@ -284,6 +284,24 @@ class TestCompanionTrace:
             "invoke_agent companion",
             "companion/run",
         ]
+
+    def test_companion_trace_is_in_session_of_the_day(self, captured):
+        """ルートの companion/run から generation まで、トレースのどのスパンもその日のセッションに入る.
+
+        Langfuse の Sessions には session.id を持つトレースが並ぶ（会話 ID はサービス名の
+        companion のままだが、session.id が優先される）。
+        """
+        spans = captured["spans"]
+        root = _find(spans, "companion/run")
+        trace = [span for span in spans if span["trace_id"] == root["trace_id"]]
+        names = [span["name"] for span in trace]
+
+        assert {"invoke_agent companion", "execute_tool load_capability"} <= set(names)
+        # スキルの読み込みと最後の応答の 2 回
+        assert len([name for name in names if name.startswith("chat ")]) == 2
+        assert [
+            (span["name"], span["attributes"].get("session.id")) for span in trace
+        ] == [(span["name"], COMPANION_SESSION_ID) for span in trace]
 
 
 IMPORT_CHECK_CODE = """

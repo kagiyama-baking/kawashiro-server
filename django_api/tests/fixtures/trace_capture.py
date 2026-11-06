@@ -8,10 +8,14 @@ LLM にも Langfuse にも送信しない。
 
 import json
 import sys
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 # Companion の音声合成の代役が返す音声（UTF-8 として読めるので、記録されれば文字列で現れる）
 COMPANION_AUDIO = b"RIFF-companion-trace-audio"
+# Companion を実行する時刻（日本時間では 2026-11-07 12:00）と、その日の Langfuse のセッション ID
+COMPANION_NOW = datetime(2026, 11, 7, 3, 0, tzinfo=UTC)
+COMPANION_SESSION_ID = "companion/2026-11-07"
 
 
 def _span_to_dict(span) -> dict:
@@ -153,7 +157,8 @@ def _run_companion():
     """Companion をスキルの読み込みと音声合成つきで実行する（音声は代役が返す）.
 
     スキルの本文の取得（`fetch_text_prompt`）も Langfuse サーバーへ出ないよう差し替える
-    （システムプロンプトは main の差し替えで解決する）。
+    （システムプロンプトは main の差し替えで解決する）。セッション ID が決まるよう、
+    Django の現在時刻は COMPANION_NOW に固定する。
     """
     from features.companion.agent import COMPANION_AGENT
     from features.companion.models import CompanionConfig
@@ -180,6 +185,7 @@ def _run_companion():
         COMPANION_AGENT.override(model=llm.model),
         patch("features.companion.skills.fetch_text_prompt", return_value="手順"),
         patch("features.companion.services.TTSClient") as tts_client,
+        patch("django.utils.timezone.now", return_value=COMPANION_NOW),
     ):
         tts_client.return_value.synthesize.return_value = TTSResult(
             audio_data=COMPANION_AUDIO, content_type="audio/wav", format="wav"

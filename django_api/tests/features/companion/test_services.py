@@ -8,6 +8,7 @@ LLM の接続設定は DB を読まないテスト用のもの（サービス名
 """
 
 import logging
+from datetime import UTC, datetime
 from unittest.mock import call, patch
 
 import pytest
@@ -50,6 +51,7 @@ from tests.fixtures.llm import (
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 SERVICES = "features.companion.services"
+LANGFUSE_CLIENT = "integrations.langfuse.client"
 AREA_CODE = "130010"
 SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
@@ -160,12 +162,14 @@ def _catalog_entries(request: RecordedRequest) -> list[str]:
     ]
 
 
-def _logged(caplog: pytest.LogCaptureFixture, level: int) -> list[str]:
-    """サービスのモジュールが出した、指定したレベルのログのメッセージを返す."""
+def _logged(
+    caplog: pytest.LogCaptureFixture, level: int, logger: str = SERVICES
+) -> list[str]:
+    """モジュール（既定はサービス）が出した、指定したレベルのログのメッセージを返す."""
     return [
         record.getMessage()
         for record in caplog.records
-        if record.name == SERVICES and record.levelno == level
+        if record.name == logger and record.levelno == level
     ]
 
 
@@ -671,3 +675,61 @@ class TestLangfuseOutput:
         assert reply.text == "おはよう！"
         (message,) = _logged(caplog, logging.WARNING)
         assert "Langfuse に送れません" in message
+
+
+class TestLangfuseSession:
+    """Langfuse のセッション（その日の実行を 1 つのセッションにまとめる）."""
+
+    @pytest.fixture
+    def propagate_attributes(self):
+        """Langfuse の属性の伝播（`langfuse.propagate_attributes`）を差し替える."""
+        with patch("langfuse.propagate_attributes") as mocked:
+            yield mocked
+
+    @pytest.fixture
+    def after_midnight_in_japan(self):
+        """Django の現在時刻を 2026-11-07 15:30 UTC（日本時間では 11-08 の 00:30）に固定する."""
+        with patch(
+            "django.utils.timezone.now",
+            return_value=datetime(2026, 11, 7, 15, 30, tzinfo=UTC),
+        ):
+            yield
+
+    def test_run_companion_runs_in_session_of_date_in_japan(
+        self, config, propagate_attributes, after_midnight_in_japan
+    ):
+        """実行は companion/<日本時間の日付> のセッションの中で行う（UTC ではまだ前日でも）."""
+        reply = _run(_scripted("おはよう！"))
+
+        assert reply.text == "おはよう！"
+        propagate_attributes.assert_called_once_with(session_id="companion/2026-11-08")
+        propagate_attributes.return_value.__enter__.assert_called_once_with()
+        propagate_attributes.return_value.__exit__.assert_called_once()
+
+    def test_run_companion_stopped_before_model_still_runs_in_session(
+        self, db, propagate_attributes, after_midnight_in_japan
+    ):
+        """モデルを呼ぶ前に止まった実行も同じセッションに入れ、伝播は解除する."""
+        with pytest.raises(CompanionNotConfiguredError):
+            _run(_scripted("こんにちは"))
+
+        propagate_attributes.assert_called_once_with(session_id="companion/2026-11-08")
+        propagate_attributes.return_value.__exit__.assert_called_once()
+
+    def test_run_companion_when_session_propagation_fails_only_warns(
+        self, config, propagate_attributes, caplog
+    ):
+        """セッションを付けられなくても warning を出すだけで、セリフを返す.
+
+        同じロガーには、システムプロンプトのフォールバックの warning も出る。
+        """
+        propagate_attributes.return_value.__enter__.side_effect = RuntimeError(
+            "Langfuse に送れません"
+        )
+
+        reply = _run(_scripted("おはよう！"))
+
+        assert reply.text == "おはよう！"
+        assert "Langfuse session_id 設定失敗: Langfuse に送れません" in _logged(
+            caplog, logging.WARNING, logger=LANGFUSE_CLIENT
+        )

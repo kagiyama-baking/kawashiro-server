@@ -182,7 +182,8 @@ features/companion/
 - トレース名は `companion/run` です。入力には発話と `skill` を、出力にはセリフと使ったスキル（`{"text": ..., "skill": ...}`）だけを記録します。配下にエージェントの実行（`invoke_agent companion`）、モデルへのリクエスト（generation）、ツール（`load_capability` を含む）が入ります。
 - **音声は Langfuse に送りません。** 戻り値は音声のバイト列を含むので自動では記録させず（`capture_output=False`）、現在のスパンを更新して出力を記録します（`tests/integrations/llm/test_tracing.py` で確認）。
 - 出力は音声合成の前に記録するので、音声合成に失敗してもセリフは残ります（スパンはエラーになります）。記録に失敗しても warning ログを出すだけで、実行は続けます。
-- Langfuse のセッション（会話 ID）はサービス名の `companion` です（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
+- 実行は Langfuse のセッション `companion/<日本時間の日付>`（例: `companion/2026-11-07`）に入ります。セッションは 1 日に 1 つで、朝・夜の自動化などその日の実行（モデルを呼ぶ前に止まった実行も）が Langfuse の Sessions の 1 行にまとまります。`companion/run` から配下のエージェントの実行・generation・ツールまで、どのスパンにも `session.id` が付きます（`tests/integrations/llm/test_tracing.py` で確認）。
+- セッションは共有の `langfuse_session`（`integrations/langfuse/client.py`）で付けます。付けられなくても warning ログを出すだけで、実行は続けます。会話 ID（`gen_ai.conversation.id`）はサービス名の `companion` のままですが、`session.id` が優先されます（[LLM の README の §6](../../integrations/llm/README.md#6-llm-の呼び出し方)）。
 
 ## API
 
