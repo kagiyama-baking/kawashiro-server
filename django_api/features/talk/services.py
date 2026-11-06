@@ -4,7 +4,6 @@ import json
 import logging
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
-from contextlib import contextmanager
 from datetime import date
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -15,6 +14,7 @@ from integrations.holiday import HolidayClient, get_datetime_info
 from integrations.langfuse.client import (
     extract_variables,
     get_prompt_with_variables,
+    langfuse_session,
     render_template,
 )
 from integrations.llm.config import get_llm_settings
@@ -37,35 +37,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
-
-
-@contextmanager
-def _langfuse_session(session_id: str | None) -> Iterator[None]:
-    """現在のトレースと配下の観測に Langfuse セッション ID を伝播する.
-
-    Langfuse の Sessions 機能 (https://langfuse.com/docs/observability/features/sessions)
-    で同一チャットセッション内のトレースを集約表示するためのもの。SDK 4 系では
-    属性の伝播が with 文になったので、本処理をこの中で実行する。失敗しても
-    本処理は継続する。
-    """
-    context = None
-    if session_id:
-        try:
-            from langfuse import propagate_attributes
-
-            context = propagate_attributes(session_id=str(session_id))
-            context.__enter__()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Langfuse session_id 設定失敗: %s", exc)
-            context = None
-    try:
-        yield
-    finally:
-        if context is not None:
-            try:
-                context.__exit__(None, None, None)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Langfuse session_id 解除失敗: %s", exc)
 
 
 class TalkService:
@@ -242,7 +213,7 @@ class TalkService:
         """
         logger.info("チャット応答を生成: messages=%d件", len(messages))
         history, user_prompt = split_conversation(messages)
-        with _langfuse_session(session_id):
+        with langfuse_session(session_id):
             yield from stream_text_sync(
                 TALK_CHAT_AGENT,
                 get_llm_settings("talk"),
@@ -279,7 +250,7 @@ class TalkService:
 
         失敗時は空文字を返す（呼び出し側で title 設定をスキップ）。
         """
-        with _langfuse_session(session_id):
+        with langfuse_session(session_id):
             return self._generate_session_title(messages)
 
     def _generate_session_title(self, messages: list[dict[str, str]]) -> str:

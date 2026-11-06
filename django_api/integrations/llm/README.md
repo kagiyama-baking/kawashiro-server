@@ -38,6 +38,8 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
 - **`fetch_text_prompt(name, *, label)`**（同上）
   参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を compile せずにそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまは Companion のスキルの本文だけが使います。
+- **`langfuse_session(session_id)`**（同上）
+  中で実行する処理のトレースと配下の観測に、Langfuse のセッション ID（`session.id`）を伝播する with 文です（`propagate_attributes` を包む）。入った時点の現在のスパン（`@observe` の関数の中ならそのスパン）にも付きます。`None`・空文字なら何もせず、伝播の開始・解除に失敗しても警告ログだけで本処理は続けます。いまは Talk のチャットと Companion が使います（§6 の「Langfuse の Sessions」）。
 
 ## 3. admin 設定と外部サービスの対応
 
@@ -220,8 +222,8 @@ except LLMClientError:
 - **LiteLLM との送受信**: LiteLLM のモデル名は DB 上の任意の文字列なので、名前から推定されるプロファイルに送受信を左右させません（`_LITELLM_PROFILE`）。どのエイリアスでも、出力上限は `max_tokens`（`drop_params` で `max_completion_tokens` が黙って落ちるのを避ける）で送り、`response_format`・tools の `strict`・推論テキストの送り返し・system プロンプトへの追記やロールの変更はありません。応答本文は `<think>` などの文字列も含めてそのまま受け取ります。`service_name` と `environment` は `extra_body.metadata` に付与します。推論深度は `reasoning_effort` を指定したときだけ `reasoning_effort` で送ります（PydanticAI の `openai_reasoning_effort`。`None` と空文字は送りません。今は HN Agent の Orchestrator だけが指定します）。契約は `tests/integrations/llm/test_runtime.py` で固定しています。
 - **本文のない応答**: 出力上限（`length`）やフィルター（`content_filter`）で本文がなくなった応答も例外にせず、本文なしとして扱います（`_TreatEmptyResponseAsFinished`）。`output_type` に `None` を許すエージェントはそのまま `None` を受け取り、再試行しません。`stream_text_sync` では増分なしで正常に終わります。
 - **実行ごとの capability**: `run_agent_sync` / `arun_agent` の `capabilities` は `_TreatEmptyResponseAsFinished` の後ろに足すので、本文のない応答の扱いは変わりません。遅延しないものの指示は、実行の `instructions` より前の別の system メッセージになります。`defer_loading=True`（オンデマンド）のものは、system には一覧（PydanticAI の英語の定型文と id・説明）だけが載り、モデルが組み込みの `load_capability` ツールで読み込みます。このプロジェクトのプロファイル（`supports_inline_system_prompts=True`）では、読み込んだ指示は tool の結果の直後に会話途中の `role: system` メッセージとして送られます（tool の結果には入りません）。契約は `tests/integrations/llm/test_runtime.py` で固定しています。
-- **トレーシング**: `apps.py` の `ready()` で `Agent.instrument_all(InstrumentationSettings())` を呼び、呼び出しは Langfuse の generation として記録されます（名前は `chat <model_alias>`）。設定は 1 つを共有します。引数なしの `instrument_all()` は実行のたびに設定を作り、MeterProvider が未設定の間は OpenTelemetry 側に Meter がたまり続けます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめ、チャットは `propagate_attributes(session_id=...)` で Langfuse Sessions に集約しています。`langfuse.openai` は import するだけで OpenAI SDK を書き換えて generation が二重になるので、使わないでください。
-- **Langfuse の Sessions**: Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` と `stream_text_sync` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（チャット）そちらが優先されます。
+- **トレーシング**: `apps.py` の `ready()` で `Agent.instrument_all(InstrumentationSettings())` を呼び、呼び出しは Langfuse の generation として記録されます（名前は `chat <model_alias>`）。設定は 1 つを共有します。引数なしの `instrument_all()` は実行のたびに設定を作り、MeterProvider が未設定の間は OpenTelemetry 側に Meter がたまり続けます。呼び出し側の関数は `@observe(name="talk/chat")` 等でトレースをまとめます（Sessions へのまとめ方は次の項目）。`langfuse.openai` は import するだけで OpenAI SDK を書き換えて generation が二重になるので、使わないでください。
+- **Langfuse の Sessions**: `session.id` を付けたトレースは、そのセッションにまとまります。付けるには、処理を共有の `langfuse_session`（`integrations/langfuse/client.py`。§2）の中で実行します。Talk のチャットはチャットセッションの UUID、Companion は `companion/<日本時間の日付>`（1 日に 1 つ。朝・夜の自動化などその日の実行をまとめる）です。Langfuse は `gen_ai.conversation.id` もセッションとして扱います。PydanticAI の既定は実行ごとの UUID でセッションが増え続けるので、`arun_agent` と `stream_text_sync` の `conversation_id` は省略時にサービス名とし、HN Agent は `hn-thread/<hn_id>` を渡して 1 スレッドの調査を 1 セッションにまとめます。`session.id` を伝播していれば（Talk のチャット・Companion）そちらが優先されます。
 - **usage の内訳**: LiteLLM の `text_tokens` と `reasoning_tokens` は output の内数ですが、Langfuse は usage の全項目を足して total にします。二重に数えないよう、`_LiteLLMChatModel`（ストリーミングは `_LiteLLMStreamedResponse`）で内訳を除いています。計装はプロバイダーとの境界の usage を読むので、capability の `after_model_request` で書き換えても反映されません。
 - **タイムアウト**: `LLMServiceConfig.timeout`（既定 60 秒）が OpenAI クライアントに渡ります。1 リクエストごとの上限で、コード側でハードコードしません。ツールを使う実行はリクエストを何度も送るので、合計に上限が要る呼び出し側は、`run_agent_sync` / `arun_agent` の `run_timeout`（秒。PydanticAI の `timeout=`）で実行全体の制限時間を指定します（省略時は制限なし。今は Companion だけが指定します）。過ぎると `LLMTimeoutError` です。モデルの応答待ちはその場で止まりますが、ツールが `sync_to_async` で動かしている同期処理は途中で止められないので、それが終わってから止まります。`stream_text_sync` には実行全体の制限はありません。
 - **テスト**: 書き方は [../../../.claude/CLAUDE.md](../../../.claude/CLAUDE.md) の「LLM 呼び出しのテスト」を参照してください。
@@ -235,7 +237,7 @@ except LLMClientError:
 | Langfuse 未設定 / 接続失敗 / プロンプト未登録（`LangfusePromptRef` 経由のプロンプト） | `fallback_text` を使用し、`{{key}}` を `render_template` で簡易置換。警告ログのみで処理継続 |
 | Langfuse 側が Chat 型プロンプト | 未対応のため警告ログを出して `fallback_text` にフォールバック（対応しているのは Text 型のみ） |
 | `langfuse` パッケージ未インストール | `ImportError` を捕捉して `fallback_text` にフォールバック |
-| Langfuse への `session_id` 付与失敗 | 警告ログのみ。会話生成本体は継続 |
+| Langfuse への `session_id` 付与失敗 | 警告ログのみ。Talk のチャットも Companion の実行も継続 |
 | Agent Skill（Companion のスキル）の本文を Langfuse から取れない（届かない・未登録・Chat 型）か、空 | **フェイルソフトしません。** `PromptUnavailableError` で実行を止め、API は 503（フォールバックなし）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける（[Companion の README の「スキル」](../../features/companion/README.md#スキル)） |
 | Companion の出力（セリフと使ったスキル）を Langfuse のスパンに記録できない | 警告ログのみ。実行は続け、API はセリフを返す（[Companion の README の「トレース（Langfuse）」](../../features/companion/README.md#トレースlangfuse)） |
 | `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック。それも未設定ならプレースホルダーのキーで送信し、認証の判断は LiteLLM Proxy に任せる |

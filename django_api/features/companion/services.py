@@ -9,10 +9,12 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from django.utils import timezone
 from langfuse import get_client, observe
 from pydantic_ai.capabilities import Capability
 from pydantic_ai.usage import UsageLimits
 
+from integrations.langfuse.client import langfuse_session
 from integrations.llm.config import get_llm_settings
 from integrations.llm.exceptions import LLMOutputError
 from integrations.llm.models import AgentSkill
@@ -66,6 +68,8 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
 
     設定・スキル・LLM の接続設定・システムプロンプトの確認で止まったときは、モデルを呼ばない。
     Langfuse のスパンの出力には、セリフと使ったスキルだけを記録する（音声は送らない）。
+    実行は、止まったときも含めて、その日の Langfuse のセッション（`companion/<日本時間の日付>`）
+    に入れる。
 
     Args:
         prompt: 発話（例: 「おはよう」）
@@ -87,6 +91,21 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         LLMClientError: そのほか LLM の実行に失敗した場合（上限の超過を含む）
         TTSError: 音声合成に失敗した場合
     """
+    with langfuse_session(_session_id()):
+        return _run_companion(prompt, skill)
+
+
+def _session_id() -> str:
+    """その日の実行をまとめる Langfuse のセッション ID（`companion/<日本時間の日付>`）を返す.
+
+    朝・夜の自動化など 1 日の実行が、Langfuse の Sessions で 1 つにまとまる。日付は
+    Django の TIME_ZONE（Asia/Tokyo）で決める。
+    """
+    return f"companion/{timezone.localdate().isoformat()}"
+
+
+def _run_companion(prompt: str, skill: str | None) -> CompanionReply:
+    """run_companion の本体（その日の Langfuse のセッションの中で実行する）."""
     config = _active_config()
     skills = list(config.skills.filter(is_enabled=True))
     selected = None if skill is None else _find_skill(skills, skill)
