@@ -12,8 +12,9 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import UsageLimits
 
-from integrations.langfuse.client import resolve_prompt
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.config import get_llm_settings
+from integrations.llm.prompts import resolve_prompt_text
 from integrations.llm.runtime import run_agent_sync
 
 from .agents import hn_conversation_id
@@ -26,6 +27,10 @@ from .reporter import Reporter
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 10
+
+# 調査を中断したときの final_summary（LLM の失敗と、プロンプトを Langfuse から取れないとき）
+LLM_ERROR_SUMMARY = "LLM呼び出しエラーにより調査を中断しました。"
+PROMPT_UNAVAILABLE_SUMMARY = "プロンプトを取得できないため調査を中断しました。"
 
 # ツール呼び出しステップから結果キーへの対応（失敗判定に使う）
 _TOOL_RESULT_KEYS = {
@@ -124,6 +129,21 @@ async def security_responder_analyze(ctx: RunContext[OrchestratorDeps]) -> str:
         return json.dumps({"error": "Security Responder Agent実行に失敗しました"})
 
 
+def _ensure_subagent_prompts(agent_config: HNAgentConfig) -> None:
+    """サブエージェントの 6 本のプロンプトを Langfuse から取れることを、LLM を呼ぶ前に確かめる.
+
+    ツールの中で初めて取れないと分かると、HN・Tavily を呼んだ後に失敗し、Orchestrator の LLM も
+    もう一度呼ばれる（調査済みにならないので、閾値を超えている間はポーリングのたびに繰り返す）。
+    user プロンプトは変数なしで取る（本文があるかだけを見る）。SDK のキャッシュ（既定 60 秒）が
+    効くので、ツールの中で取り直すときは Langfuse と通信しない。
+
+    Raises:
+        PromptUnavailableError: 1 本でも取れないか、本文が空の場合
+    """
+    for prompt in agent_config.subagent_prompts():
+        resolve_prompt_text(prompt)
+
+
 class Orchestrator:
     """PydanticAI のエージェントでサブエージェントを制御するオーケストレーター."""
 
@@ -205,9 +225,16 @@ class Orchestrator:
         try:
             agent_output = self._run_agent(thread, results)
             self._extract_results(agent_output.all_messages(), results)
+        except PromptUnavailableError as exc:
+            # Langfuse のプロンプトの不備（LLM・HN・Tavily はまだ呼んでいない）。取得の失敗の
+            # 詳細は fetch_text_prompt が warning に出している
+            logger.error(
+                "プロンプトを取得できないため調査を中断: [%d] %s", thread.hn_id, exc
+            )
+            results["final_summary"] = PROMPT_UNAVAILABLE_SUMMARY
         except Exception:
             logger.exception("Orchestrator LLM呼び出しエラー: [%d]", thread.hn_id)
-            results["final_summary"] = "LLM呼び出しエラーにより調査を中断しました。"
+            results["final_summary"] = LLM_ERROR_SUMMARY
 
         # Langfuseに判断フローを記録
         self._finalize_trace(thread, results)
@@ -250,11 +277,13 @@ class Orchestrator:
             security_responder_agent=self.security_responder_agent,
         )
 
-        system_prompt = resolve_prompt(agent_config.orchestrator_system_prompt)
-        user_content = resolve_prompt(
+        # プロンプトを Langfuse から取れなければ PromptUnavailableError（LLM を呼ばずに中断）
+        system_prompt = resolve_prompt_text(agent_config.orchestrator_system_prompt)
+        user_content = resolve_prompt_text(
             agent_config.orchestrator_user_prompt,
             **self._build_user_variables(thread),
         )
+        _ensure_subagent_prompts(agent_config)
 
         return run_agent_sync(
             ORCHESTRATOR_AGENT,

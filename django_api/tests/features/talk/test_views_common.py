@@ -166,6 +166,6 @@ def test_get_owned_session_loads_setting_scene_and_system_prompt_in_one_query(
 
     with django_assert_num_queries(1):
         session = get_owned_session(SimpleNamespace(user=owner), created.pk)
-        loaded = (session.setting.system_prompt_ref.name, session.skill.name)
+        loaded = (session.setting.system_prompt.name, session.skill.name)
 
-    assert loaded == (setting.system_prompt_ref.name, "talk-scene-cafe")
+    assert loaded == (setting.system_prompt.name, "talk-scene-cafe")

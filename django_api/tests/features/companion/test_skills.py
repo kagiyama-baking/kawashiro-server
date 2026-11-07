@@ -155,7 +155,7 @@ class TestSkillInstructions:
         with pytest.raises(PromptUnavailableError) as exc_info:
             skill_instructions(AgentSkillFactory.build(name="good-night"))
 
-        assert exc_info.value.ref_name == NIGHT_PROMPT
+        assert exc_info.value.prompt_name == NIGHT_PROMPT
 
 
 @pytest.mark.unit
@@ -268,7 +268,7 @@ class TestBuildSkillCapabilities:
                 ),
             )
 
-        assert exc_info.value.ref_name == MORNING_PROMPT
+        assert exc_info.value.prompt_name == MORNING_PROMPT
         assert len(llm.requests) == 1
 
     def test_loaded_skill_with_skill_capabilities_returns_loaded_skill_name(

@@ -12,7 +12,7 @@ class CompanionConfigAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "is_active",
-        "system_prompt_ref",
+        "system_prompt",
         "area_code",
         "rate_limit",
         "tts_enabled",
@@ -20,7 +20,7 @@ class CompanionConfigAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_active", "tts_enabled")
     readonly_fields = ("created_at", "updated_at")
-    autocomplete_fields = ("system_prompt_ref",)
+    autocomplete_fields = ("system_prompt",)
     filter_horizontal = ("skills",)
 
     fieldsets = (
@@ -37,10 +37,10 @@ class CompanionConfigAdmin(admin.ModelAdmin):
         (
             "システムプロンプト",
             {
-                "fields": ("system_prompt_ref",),
+                "fields": ("system_prompt",),
                 "description": (
-                    "全スキルに共通のシステムプロンプト（Langfuse の text プロンプト）を"
-                    "Langfuseプロンプト参照から選択します。"
+                    "全スキルに共通のシステムプロンプト（Langfuse の text プロンプト）を、"
+                    "「AI設定 → Prompts」に登録したものから選択します。"
                 ),
             },
         ),

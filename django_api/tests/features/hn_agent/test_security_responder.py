@@ -12,16 +12,10 @@ from features.hn_agent.agents.security_responder import (
 )
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
+from integrations.langfuse.exceptions import PromptUnavailableError
 from tests.fixtures.llm import ScriptedLLM
 
 pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -118,14 +112,39 @@ class TestSecurityResponderAgent:
         assert result["analysis"]["official_patch"]["available"] is True
         assert len(result["search_sources"]) == 1
 
+    def test_analyze_without_user_prompt_in_langfuse_raises_before_llm_request(
+        self,
+        mock_hn_client,
+        mock_tavily_client,
+        security_llm,
+        hn_agent_config,
+        hn_langfuse_prompts,
+    ):
+        """user プロンプトを Langfuse から取れなければ、LLM を呼ばずに PromptUnavailableError."""
+        del hn_langfuse_prompts[("hn-agent-security-responder-user", "production")]
+        thread = HNThread.objects.create(hn_id=956, title="No prompt", author="x")
+        agent = SecurityResponderAgent(
+            hn_client=mock_hn_client, tavily_client=mock_tavily_client
+        )
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            async_to_sync(agent.analyze)(thread)
+
+        assert exc_info.value.prompt_name == "hn-agent-security-responder-user"
+        assert security_llm.requests == []
+
     def test_analyze_prompt_contains_uncommitted_data(
         self,
         mock_hn_client,
         mock_tavily_client,
         security_llm,
         hn_agent_config,
+        hn_langfuse_prompts,
     ):
-        """準備処理は呼び出し元の DB 接続で動き、未コミットのデータがプロンプトに入る."""
+        """準備処理は呼び出し元の DB 接続で動き、未コミットのデータがプロンプトに入る.
+
+        system は Langfuse の本文そのまま、user は本文に変数を差し込んだもの。
+        """
         security_llm.enqueue(self.MOCK_ANALYSIS_JSON)
         thread = HNThread.objects.create(hn_id=955, title="Uncommitted", author="x")
         HNThreadSnapshot.objects.create(thread=thread, score=321, num_comments=54)
@@ -137,12 +156,16 @@ class TestSecurityResponderAgent:
         async_to_sync(agent.analyze)(thread)
 
         request = security_llm.requests[0]
-        assert "スコア: 321, コメント数: 54" in request.user_prompt
+        assert request.user_prompt.startswith(
+            "タイトル: Uncommitted\nURL: (self-post)\n投稿者: x\n"
+            "スコア: 321, コメント数: 54\n"
+        )
         assert "[sec_expert]: Patch your systems now." in request.user_prompt
         assert "Details about the patch." in request.user_prompt
+        assert "{{" not in request.user_prompt
         assert (
             request.instructions
-            == hn_agent_config.security_responder_system_prompt.fallback_text
+            == hn_langfuse_prompts[("hn-agent-security-responder", "production")]
         )
         metadata = request.model_settings["extra_body"]["metadata"]
         assert metadata["service_name"] == "security_responder"

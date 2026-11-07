@@ -48,17 +48,18 @@ class SuperUserFactory(UserFactory):
     is_staff = True
 
 
-class LangfusePromptRefFactory(factory.django.DjangoModelFactory):
-    """LangfusePromptRef のファクトリ."""
+class PromptFactory(factory.django.DjangoModelFactory):
+    """Prompt（AI設定 → Prompts）のファクトリ（名前がそのまま本文の Langfuse のプロンプト名）.
+
+    本文はテストで Langfuse の代役（`langfuse_prompts`）に (名前, ラベル) で入れる。
+    """
 
     class Meta:
-        model = "langfuse_integration.LangfusePromptRef"
+        model = "llm_config.Prompt"
         django_get_or_create = ("name",)
 
-    name = factory.Sequence(lambda n: f"prompt-ref-{n}")
-    langfuse_prompt_name = factory.LazyAttribute(lambda o: o.name)
+    name = factory.Sequence(lambda n: f"prompt-{n}")
     label = "production"
-    fallback_text = "fallback"
     description = ""
 
 
@@ -75,10 +76,9 @@ class TalkSettingFactory(factory.django.DjangoModelFactory):
         skip_postgeneration_save = True
 
     name = factory.Sequence(lambda n: f"talk-setting-{n}")
-    system_prompt_ref = factory.SubFactory(
-        LangfusePromptRefFactory,
+    system_prompt = factory.SubFactory(
+        PromptFactory,
         name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
-        fallback_text="system prompt fallback",
     )
 
     @factory.post_generation
@@ -113,10 +113,9 @@ class CompanionConfigFactory(factory.django.DjangoModelFactory):
         skip_postgeneration_save = True
 
     name = factory.Sequence(lambda n: f"companion-config-{n}")
-    system_prompt_ref = factory.SubFactory(
-        LangfusePromptRefFactory,
+    system_prompt = factory.SubFactory(
+        PromptFactory,
         name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
-        fallback_text="system prompt fallback",
     )
 
     @factory.post_generation

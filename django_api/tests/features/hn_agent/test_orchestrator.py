@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2
@@ -29,11 +30,24 @@ from features.hn_agent.agents.security_responder import (
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from features.hn_agent.orchestrator import MAX_STEPS, ORCHESTRATOR_AGENT, Orchestrator
 from integrations.hn.client import HNComment
+from tests.fixtures.langfuse import FakeLangfuse
 from tests.fixtures.llm import ScriptedLLM, litellm_response, tool_calls
 
 pytestmark = pytest.mark.django_db
 
 FIXED_ERROR_SUMMARY = "LLM呼び出しエラーにより調査を中断しました。"
+# プロンプトを Langfuse から取れず、調査を始めなかったときの final_summary
+PROMPT_UNAVAILABLE_SUMMARY = "プロンプトを取得できないため調査を中断しました。"
+ORCHESTRATOR_LOGGER = "features.hn_agent.orchestrator"
+# サブエージェント（Detective・Devil's Advocate・Security Responder）の 6 本の Langfuse のプロンプト名
+SUBAGENT_PROMPT_NAMES = (
+    "hn-agent-detective",
+    "hn-agent-detective-user",
+    "hn-agent-devils-advocate",
+    "hn-agent-devils-advocate-user",
+    "hn-agent-security-responder",
+    "hn-agent-security-responder-user",
+)
 
 # Langfuse 上のプロンプトはこの名前と説明を前提に書かれている（変更時はプロンプトも直す）
 TOOL_DESCRIPTIONS = {
@@ -55,13 +69,6 @@ TOOL_DESCRIPTIONS = {
         "セキュリティ話題ではこのツール単独で完結させてよい（detective は不要）。"
     ),
 }
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -183,6 +190,24 @@ def _tool_returns(request) -> dict[str, str]:
     }
 
 
+def _orchestrator_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Orchestrator が出した ERROR のログのメッセージ."""
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == ORCHESTRATOR_LOGGER and record.levelno == logging.ERROR
+    ]
+
+
+def _prompt_error_log(thread: HNThread, prompt_name: str) -> str:
+    """プロンプトを取れずに中断したときのログ（取れなかったプロンプトの名前と理由を含む）."""
+    return (
+        f"プロンプトを取得できないため調査を中断: [{thread.hn_id}] "
+        f"プロンプト「{prompt_name}」を使えません（Langfuse からプロンプトを取得できませんでした: "
+        f"{prompt_name} (label=production)）"
+    )
+
+
 @pytest.mark.integration
 class TestOrchestrator:
     """Orchestratorのテスト."""
@@ -299,6 +324,90 @@ class TestOrchestrator:
         result = orchestrator.investigate(thread)
 
         assert result["final_summary"] == FIXED_ERROR_SUMMARY
+
+    @pytest.mark.parametrize(
+        "prompt_name", ["hn-agent-orchestrator", "hn-agent-orchestrator-user"]
+    )
+    def test_missing_orchestrator_prompt_aborts_without_llm_request_or_notification(
+        self,
+        orchestrator,
+        orchestrator_llm,
+        thread,
+        mock_detective_agent,
+        mock_reporter,
+        hn_langfuse_prompts,
+        caplog,
+        prompt_name,
+    ):
+        """Orchestrator のプロンプトを Langfuse から取れなければ、LLM を呼ばずに調査を中断する.
+
+        フォールバックはない。調査済みにしない（次のポーリングで再び調査する）ので、Slack へも
+        送らない。ログには、LLM の失敗ではなく、どのプロンプトを取れなかったかを出す。
+        """
+        del hn_langfuse_prompts[(prompt_name, "production")]
+
+        result = orchestrator.investigate(thread)
+
+        assert orchestrator_llm.requests == []
+        assert result["final_summary"] == PROMPT_UNAVAILABLE_SUMMARY
+        mock_detective_agent.investigate.assert_not_awaited()
+        mock_reporter.report_detective.assert_not_called()
+        thread.refresh_from_db()
+        assert thread.is_investigated is False
+        assert _orchestrator_errors(caplog) == [_prompt_error_log(thread, prompt_name)]
+
+    @pytest.mark.parametrize("prompt_name", SUBAGENT_PROMPT_NAMES)
+    def test_missing_subagent_prompt_aborts_before_llm_and_hn_tavily_requests(
+        self,
+        orchestrator_llm,
+        thread,
+        mock_reporter,
+        hn_langfuse_prompts,
+        caplog,
+        prompt_name,
+    ):
+        """サブエージェントのプロンプトが 1 本でも取れなければ、LLM も HN・Tavily も呼ばずに中断する.
+
+        ツールの中で初めて失敗すると、HN・Tavily を呼んだ後に Orchestrator の LLM がもう一度
+        呼ばれ、調査済みにならないのでポーリングのたびに繰り返す。サブエージェントは本物
+        （HN・Tavily のクライアントだけ代役）にし、3 つのツールを呼ぶ台本にする。
+        """
+        hn_client = MagicMock()
+        hn_client.get_comments.return_value = []
+        hn_client.flatten_comments.return_value = []
+        tavily_client = MagicMock()
+        tavily_client.search_context.return_value = []
+        orchestrator = Orchestrator(
+            detective_agent=DetectiveAgent(
+                hn_client=hn_client, tavily_client=tavily_client
+            ),
+            devils_advocate_agent=DevilsAdvocateAgent(hn_client=hn_client),
+            security_responder_agent=SecurityResponderAgent(
+                hn_client=hn_client, tavily_client=tavily_client
+            ),
+            reporter=mock_reporter,
+        )
+        orchestrator_llm.enqueue(
+            tool_calls(
+                "detective_investigate",
+                "devils_advocate_analyze",
+                "security_responder_analyze",
+            ),
+            "結論",
+        )
+        del hn_langfuse_prompts[(prompt_name, "production")]
+
+        result = orchestrator.investigate(thread)
+
+        assert orchestrator_llm.requests == []
+        hn_client.get_comments.assert_not_called()
+        tavily_client.search_context.assert_not_called()
+        assert result["final_summary"] == PROMPT_UNAVAILABLE_SUMMARY
+        assert result["steps"] == []
+        mock_reporter.report_detective.assert_not_called()
+        thread.refresh_from_db()
+        assert thread.is_investigated is False
+        assert _orchestrator_errors(caplog) == [_prompt_error_log(thread, prompt_name)]
 
     def test_usage_limit_exceeded_returns_fixed_summary(
         self,
@@ -551,9 +660,12 @@ class TestOrchestrator:
         mock_reporter.report_detective.assert_not_called()
 
     def test_request_uses_prompts_and_orchestrator_settings(
-        self, orchestrator, orchestrator_llm, thread, hn_agent_config
+        self, orchestrator, orchestrator_llm, thread, hn_langfuse_prompts
     ):
-        """プロンプトと LLM 設定は Orchestrator のものを使い、出力上限は付けない."""
+        """プロンプトと LLM 設定は Orchestrator のものを使い、出力上限は付けない.
+
+        system は Langfuse の本文そのまま、user は本文にスレッドの変数を差し込んだもの。
+        """
         orchestrator_llm.enqueue("結論")
 
         orchestrator.investigate(thread)
@@ -561,10 +673,13 @@ class TestOrchestrator:
         request = orchestrator_llm.requests[0]
         assert (
             request.instructions
-            == hn_agent_config.orchestrator_system_prompt.fallback_text
+            == hn_langfuse_prompts[("hn-agent-orchestrator", "production")]
         )
-        assert "Test Orchestrator Thread" in request.user_prompt
-        assert "スコア: 200, コメント数: 50" in request.user_prompt
+        assert request.user_prompt == (
+            "HN ID: 700\nタイトル: Test Orchestrator Thread\n"
+            "URL: https://example.com/orch\n投稿者: testuser\n"
+            "スコア: 200, コメント数: 50"
+        )
         settings = request.model_settings
         assert settings["extra_body"]["metadata"]["service_name"] == "orchestrator"
         assert "max_tokens" not in settings
@@ -606,12 +721,19 @@ class TestOrchestrator:
             assert tool.parameters_json_schema["properties"] == {}
 
     def test_finalize_trace_records_decision_log(
-        self, orchestrator, orchestrator_llm, thread, mock_detective_agent
+        self,
+        orchestrator,
+        orchestrator_llm,
+        thread,
+        mock_detective_agent,
+        hn_langfuse_prompts,
     ):
         """判断フローを現在のスパンに記録する."""
         mock_detective_agent.investigate.side_effect = RuntimeError("boom")
         orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
         client = MagicMock()
+        # プロンプトは、差し替えたクライアントからも Langfuse の代役の本文を取る
+        client.get_prompt.side_effect = FakeLangfuse(hn_langfuse_prompts).get_prompt
 
         with patch("langfuse.get_client", return_value=client):
             orchestrator.investigate(thread)
