@@ -41,7 +41,7 @@ def auth_client(user):
 
 @pytest.fixture
 def session_with_audio(user):
-    session = ChatSession.objects.create(user=user, config_name="m")
+    session = ChatSession.objects.create(user=user)
     ChatMessage.objects.create(session=session, sequence=0, role="user", content="hi")
     msg = ChatMessage(
         session=session,
@@ -85,7 +85,7 @@ class TestAudioGet:
         assert len(body) == 20
 
     def test_message_without_audio_returns_404(self, auth_client, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="hi"
         )
@@ -130,7 +130,7 @@ class TestAudioDeleteIndividual:
 @pytest.mark.django_db
 class TestAudioBulkDelete:
     def test_bulk_delete_removes_all_audio_keeps_messages(self, auth_client, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="u1"
         )

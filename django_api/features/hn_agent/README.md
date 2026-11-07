@@ -86,7 +86,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
   7. いずれかのエージェントが結果を返した場合のみ `HNThread.is_investigated = True` を一元的に更新
   8. Reporter に結果を渡して Slack 通知（送らない入口は下の「Slack 通知の有無」）
 - **ツールの契約**: `detective_investigate` / `devils_advocate_analyze` / `security_responder_analyze` の関数名と docstring は Langfuse 上のプロンプトが前提にしているので、変えるときはプロンプトも直します（`test_tool_names_and_descriptions_match_prompt_contract` で固定）。ツール内の例外は `{"error": ...}` の JSON にして LLM へ返し、そのステップは `success: False` になります。どのツールも引数を取らないので、モデルが付けた引数は検証せず無視します。未知のツール名はモデルへ伝えて続行します（打ち切りは上の `UsageLimits`）
-- **推論深度**: 有効な `HNAgentConfig.reasoning_effort`（`low` / `medium` / `high`）を、Orchestrator のリクエストにだけ `reasoning_effort` として載せます（サブエージェントには送りません）。「無効」（空文字）なら載せません。モデルが受け付けないときの扱いと選び方は [docs/initial-setup.md](../../../docs/initial-setup.md) の 5-2 を参照してください。送信本文は `tests/integrations/llm/test_runtime.py` と `tests/features/hn_agent/test_orchestrator.py` で固定しています
+- **推論深度**: 有効な `HNAgentConfig.reasoning_effort`（`low` / `medium` / `high`）を、Orchestrator のリクエストにだけ `reasoning_effort` として載せます（サブエージェントには送りません）。「無効」（空文字）なら載せません。モデルが受け付けないときの扱いと選び方は [docs/initial-setup.md](../../../docs/initial-setup.md) の 5-1 を参照してください。送信本文は `tests/integrations/llm/test_runtime.py` と `tests/features/hn_agent/test_orchestrator.py` で固定しています
 - **ツール選択の判断基準（System Prompt）**
   1. セキュリティ話題（脆弱性/CVE/情報漏洩/ハッキング/0-day） → `security_responder_analyze` 単独
   2. 新技術・プロダクト発表（Show HN/アーキテクチャ論争） → `detective_investigate` + `devils_advocate_analyze`

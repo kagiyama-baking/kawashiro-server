@@ -39,7 +39,7 @@ class TestAudioFileCleanup:
     def test_message_delete_removes_audio_file(
         self, user, django_capture_on_commit_callbacks
     ):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = _make_message_with_audio(session)
         storage = msg.audio_file.storage
         path = msg.audio_file.name
@@ -53,7 +53,7 @@ class TestAudioFileCleanup:
     def test_session_delete_cascades_audio_files(
         self, user, django_capture_on_commit_callbacks
     ):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         m1 = _make_message_with_audio(session, sequence=1)
         m2 = _make_message_with_audio(session, sequence=2)
         storage = m1.audio_file.storage
@@ -67,7 +67,7 @@ class TestAudioFileCleanup:
         assert not storage.exists(p2)
 
     def test_message_without_audio_delete_does_not_error(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="hi"
         )
@@ -78,7 +78,7 @@ class TestAudioFileCleanup:
         self, user, django_capture_on_commit_callbacks
     ):
         """ロールバックで行が戻るなら、音声ファイルも残す."""
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = _make_message_with_audio(session)
         storage = msg.audio_file.storage
         path = msg.audio_file.name
@@ -98,7 +98,7 @@ class TestAudioFileCleanup:
         self, user, django_capture_on_commit_callbacks
     ):
         """コミットの前はファイルに触らない."""
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = _make_message_with_audio(session)
         storage = msg.audio_file.storage
         path = msg.audio_file.name
@@ -113,7 +113,7 @@ class TestAudioFileCleanup:
         self, user, django_capture_on_commit_callbacks
     ):
         """ファイルの削除に失敗しても、確定済みの削除を失敗にしない."""
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = _make_message_with_audio(session)
 
         with (
