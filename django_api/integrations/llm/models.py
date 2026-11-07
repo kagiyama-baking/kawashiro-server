@@ -64,7 +64,7 @@ class LLMServiceConfig(models.Model):
         ("detective", "HN Agent Detective"),
         ("devils_advocate", "HN Agent Devil's Advocate"),
         ("security_responder", "HN Agent Security Responder"),
-        ("talk", "Talk Generator"),
+        ("talk", "Talk"),
         ("companion", "Companion"),
     ]
 

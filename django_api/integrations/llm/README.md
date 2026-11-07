@@ -97,7 +97,7 @@ flowchart LR
 
 | 項目 | 説明 |
 |---|---|
-| サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk Generator` / `Companion` の 6 択。**unique**（1 サービス 1 レコード） |
+| サービス名（`service_name`） | `HN Agent Orchestrator` / `HN Agent Detective` / `HN Agent Devil's Advocate` / `HN Agent Security Responder` / `Talk` / `Companion` の 6 択（`Talk` の旧表示名は `Talk Generator`）。**unique**（1 サービス 1 レコード） |
 | LLM設定（`provider_config`） | 使用する `LLMProviderConfig`。`on_delete=PROTECT` のため、参照中の設定は削除できません |
 | 有効（`is_active`） | 既定 `True`。**`False` のレコードは `get_llm_settings` から見えず、設定なし扱いでエラーになります** |
 | タイムアウト（`timeout`） | API リクエストのタイムアウト秒数（既定 `60`） |

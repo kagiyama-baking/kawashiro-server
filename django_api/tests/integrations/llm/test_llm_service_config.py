@@ -130,6 +130,15 @@ class TestLLMServiceConfig:
 
         assert config.get_service_name_display() == "Companion"
 
+    @pytest.mark.integration
+    def test_talk_service_name_is_displayed_as_talk(self, provider):
+        """talk の表示名は Talk（チャットが使うサービス。旧 Talk Generator）."""
+        config = LLMServiceConfig(service_name="talk", provider_config=provider)
+
+        config.full_clean()
+
+        assert config.get_service_name_display() == "Talk"
+
     def test_shared_provider(self, provider):
         """複数サービスが同じプロバイダー設定を共有できる."""
         talk = LLMServiceConfig.objects.create(

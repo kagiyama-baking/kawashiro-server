@@ -34,7 +34,7 @@ docker compose exec django-api python manage.py createsuperuser
 |---|---|---|
 | システム設定 | Core / 認証と認可 / 認証トークン | ユーザー、グループ、API トークンの管理 |
 | 外部サービス設定 | Microsoft 365 / Slack / Tavily / Celery | 外部 API の資格情報と定期タスクのスケジュール |
-| AI ツール設定 | AI設定 / Langfuse / HackerNews Agent / Companion / Talk Generator | LLM の割り当てとスキル（Agent Skills）、プロンプト参照、各機能の設定 |
+| AI ツール設定 | AI設定 / Langfuse / HackerNews Agent / Companion / Talk | LLM の割り当てとスキル（Agent Skills）、プロンプト参照、各機能の設定 |
 
 「Celery」は `django-celery-beat` の表示名を変更したもので、定期タスク・インターバル・Cron スケジュール・時刻指定を扱います（太陽イベントは未使用のため非表示）。
 
@@ -62,7 +62,7 @@ docker compose exec django-api python manage.py createsuperuser
 | HN Agent Detective | スレッドの分析 |
 | HN Agent Devil's Advocate | 反論・批判的検証 |
 | HN Agent Security Responder | セキュリティ観点の応答 |
-| Talk Generator | 会話生成（`/talk/`） |
+| Talk | Talk のチャットと会話生成（`/talk/`） |
 | Companion | Companion エージェント（発話に合うスキルを選んでセリフを生成） |
 
 `LLM設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
@@ -99,7 +99,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 ### 5-1. 会話生成設定（`TalkConfig`）
 
-「AI ツール設定 → Talk Generator → 会話生成設定」から、プリセット単位で作成します（`morning`、`evening` など）。
+「AI ツール設定 → Talk → 会話生成設定」から、プリセット単位で作成します（`morning`、`evening` など）。
 
 | 項目 | 説明 |
 |---|---|
