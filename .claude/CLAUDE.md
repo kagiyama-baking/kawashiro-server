@@ -172,6 +172,7 @@ django_api/tests/
 ├── conftest.py              # 共通フィクスチャ（APIClient, User, Token等）+ 実 LLM・Langfuse へのガード
 ├── fixtures/
 │   ├── factories.py         # factory-boy ファクトリ（UserFactory等）
+│   ├── langfuse.py          # Langfuse のプロンプトの取得の代役（FakeLangfuse）
 │   ├── llm.py               # LLM の代役（ScriptedLLM）
 │   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
 │   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
@@ -233,6 +234,8 @@ def test_user_login_with_invalid_password_raises_error():
 | `mock_ms_graph_settings`      | MS Graph設定モック                 |
 | `ms_graph_client`             | OneDrive MSGraphClientモック       |
 | `fake_litellm`                | LiteLLM の HTTP 層の代役           |
+| `langfuse_prompts`            | Langfuse の text プロンプトの代役（`(プロンプト名, ラベル) → 本文` の dict。companion では autouse） |
+| `langfuse_unreachable`        | Langfuse に届かない状態（`langfuse_prompts` の上に重ねる） |
 | `admin_site_client`           | 管理画面にスーパーユーザーでログインしたクライアント（`_static_storage_without_manifest` を使う） |
 | `_static_storage_without_manifest` | 静的ファイルを manifest なしの保存先にする（collectstatic なしで管理画面を描画できる） |
 
@@ -270,7 +273,7 @@ llm.requests[1].system_prompts  # system の本文の並び（指示の各部分
 
 ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
 
-Companion のテスト（`tests/features/companion/`）では、`conftest.py` の autouse の `langfuse_prompts` が Langfuse のプロンプトの取得を代役にします。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
+Langfuse のプロンプトの取得は、`tests/conftest.py` の `langfuse_prompts` で代役にします（Companion のテスト `tests/features/companion/` では、その `conftest.py` が autouse にしている）。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
 
 ## コーディング規約
 
