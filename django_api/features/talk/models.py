@@ -195,7 +195,8 @@ class TalkSetting(AbstractTTSSettings):
         verbose_name="シーン",
         help_text=(
             "この設定で選べるシーン（Agent Skills に登録したもの）。"
-            "無効にしたスキルは選べない。シーンの本文はツールを前提にしない"
+            "無効にしたスキルは、選んでいてもフロントでは選べない。"
+            "シーンの本文はツールを前提にしない"
         ),
     )
     created_at = models.DateTimeField("作成日時", auto_now_add=True)

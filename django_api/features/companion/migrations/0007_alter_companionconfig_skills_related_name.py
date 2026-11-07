@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('companion', '0006_move_agentskill_to_llm_config'),
-        ('llm_config', '0017_alter_llmserviceconfig_service_name'),
+        ('llm_config', '0015_agentskill_name_is_prompt_name'),
     ]
 
     operations = [

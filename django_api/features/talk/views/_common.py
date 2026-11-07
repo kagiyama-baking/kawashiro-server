@@ -107,8 +107,15 @@ def handle_synthesis_error(exc: Exception, *, fallback_message: str) -> Response
 
 
 def get_owned_session(request, session_id) -> ChatSession | None:
-    """request.user が所有する ChatSession を返す（無ければ None）."""
-    return ChatSession.objects.filter(id=session_id, user=request.user).first()
+    """request.user が所有する ChatSession を返す（無ければ None）.
+
+    ターンの事前検証で使う Talk 設定（とシステムプロンプトの参照）とシーンも一緒に引く。
+    """
+    return (
+        ChatSession.objects.select_related("setting__system_prompt_ref", "skill")
+        .filter(id=session_id, user=request.user)
+        .first()
+    )
 
 
 def create_assistant_message(

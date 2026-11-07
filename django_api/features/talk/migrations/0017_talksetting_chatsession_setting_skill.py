@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('langfuse_integration', '0003_seed_new_agent_refs'),
-        ('llm_config', '0017_alter_llmserviceconfig_service_name'),
+        ('llm_config', '0015_agentskill_name_is_prompt_name'),
         ('talk', '0016_talkconfig_synthesize_rate_limit'),
     ]
 
@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                 ('is_enabled', models.BooleanField(default=True, help_text='有効な設定だけを、フロントの Talk で選べて続けて話せる。複数の設定を有効にできる', verbose_name='有効')),
                 ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='作成日時')),
                 ('updated_at', models.DateTimeField(auto_now=True, verbose_name='更新日時')),
-                ('skills', models.ManyToManyField(blank=True, help_text='この設定で選べるシーン（Agent Skills に登録したもの）。無効にしたスキルは選べない。シーンの本文はツールを前提にしない', related_name='talk_settings', to='llm_config.agentskill', verbose_name='シーン')),
+                ('skills', models.ManyToManyField(blank=True, help_text='この設定で選べるシーン（Agent Skills に登録したもの）。無効にしたスキルは、選んでいてもフロントでは選べない。シーンの本文はツールを前提にしない', related_name='talk_settings', to='llm_config.agentskill', verbose_name='シーン')),
                 ('system_prompt_ref', models.ForeignKey(help_text='チャットのシステムプロンプト（Langfuse の text プロンプト）の参照。変数（{{weather}} など）は展開しない', on_delete=django.db.models.deletion.PROTECT, related_name='+', to='langfuse_integration.langfusepromptref', verbose_name='システムプロンプト')),
             ],
             options={

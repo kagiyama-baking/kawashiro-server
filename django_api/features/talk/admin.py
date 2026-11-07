@@ -50,7 +50,8 @@ class TalkSettingAdmin(admin.ModelAdmin):
                 "fields": ("skills",),
                 "description": (
                     "Agent Skills に登録したスキルから、この設定で選べるシーンを選びます。"
-                    "無効にしたスキルは選べません。チャットでは、選んだシーンの本文を"
+                    "無効にしたスキルは、ここで選んでいてもフロントでは選べません"
+                    "（そのシーンのチャットも続けられません）。チャットでは、選んだシーンの本文を"
                     "システムプロンプトの後ろに足します（ツールは使いません）。"
                 ),
             },
@@ -197,6 +198,13 @@ class ChatSessionAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
+
+    def get_readonly_fields(self, request, obj=None):
+        """追加するときだけ、Talk 設定とシーンを選べる（作った後は変えない）."""
+        if obj is None:
+            return ("id", "config_name", "created_at", "updated_at")
+        return self.readonly_fields
+
     inlines = (ChatMessageInline,)
 
     @admin.display(description="メッセージ数")

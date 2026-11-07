@@ -158,6 +158,15 @@ class TestChatSessionAdminTalkSetting:
         assert "ひな" in content
         assert "talk-scene-cafe" in content
 
+    def test_add_page_lets_setting_and_scene_be_chosen(self, admin_site_client):
+        """admin で作るチャットは、Talk 設定とシーンをここで選ぶ（作った後は読み取り専用）."""
+        response = admin_site_client.get(reverse("admin:talk_chatsession_add"))
+
+        assert response.status_code == 200
+        form_fields = response.context["adminform"].form.fields
+        assert {"setting", "skill"} <= set(form_fields)
+        assert "config_name" not in form_fields
+
     def test_changelist_shows_setting_and_scene_columns(
         self, admin_site_client, superuser
     ):

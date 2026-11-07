@@ -10,7 +10,7 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 |---|---|---|---|
 | **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「AI設定」の「LLM設定」「サービス設定」 | `LLMProviderConfig` / `LLMServiceConfig` |
 | **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」と「AI設定」の「Agent Skills」+ Langfuse UI | `LangfusePromptRef` / `AgentSkill`（全エージェントで共有するスキル）+ Langfuse 側のプロンプト実体 |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」「Companion 設定」 | `HNAgentConfig` / `TalkConfig` / `CompanionConfig` |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「Companion 設定」「Talk 設定」「会話生成設定（廃止予定）」 | `HNAgentConfig` / `CompanionConfig` / `TalkSetting` / `TalkConfig` |
 
 スキル（Agent Skills）の本文だけは参照（`LangfusePromptRef`）を通さず、スキル名とラベルで Langfuse から直接取ります（§4 の「Agent Skills」と §5）。各機能の設定は、登録したスキルから使うものを選びます（Companion 設定のスキルと、Talk 設定のシーン）。
 
@@ -37,7 +37,7 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 - **`resolve_prompt(ref, **vars)` / `get_prompt_with_variables(ref)`**（`integrations/langfuse/client.py`）
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
 - **`resolve_required_prompt(ref)`**（同上）
-  `resolve_prompt` で本文を解決し、空（空白だけ）なら `PromptUnavailableError` にします（空のシステムプロンプトで続けない）。変数は展開しません。Companion のシステムプロンプトが使います。
+  `resolve_prompt` で本文を解決し、空（空白だけ）なら `PromptUnavailableError` にします（空のシステムプロンプトで続けない）。変数は展開しません。Companion と Talk 設定のシステムプロンプトが使います。
 - **`fetch_text_prompt(name, *, label)`**（同上）
   参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を compile せずにそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまはスキルの本文（`resolve_skill_body`）だけが使います。
 - **`langfuse_session(session_id)`**（同上）

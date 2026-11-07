@@ -67,7 +67,7 @@ class TurnPlan:
         setting: セッションの Talk 設定
         content: 今回のユーザー発話
         history: 今回の発話より前の履歴（編集なら対象より前だけ）
-        system_prompt: 展開済みの system プロンプト
+        system_prompt: 確定した system プロンプト（Talk 設定とシーン）
         service: LLM と TTS を呼ぶサービス
         fallback_message: 想定外の例外のときにクライアントへ返すメッセージ
         edit_target_id: 編集対象のメッセージ ID（送信なら None）

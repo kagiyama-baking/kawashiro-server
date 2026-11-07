@@ -468,3 +468,16 @@ def test_0018_with_preset_sessions_split_across_settings_stops_and_changes_nothi
         apps.get_model("talk", "ChatSession").objects.get(pk=unbound).setting_id is None
     )
     assert len(_settings_by_name(apps)) == 2
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_rolling_back_service_display_name_keeps_talk_settings_migrations():
+    """サービスの表示名（llm_config 0017）だけを戻しても、Talk 設定と逆参照名の migration は外れない."""
+    plan = MigrationExecutor(connection).migration_plan(
+        [("llm_config", "0016_alter_llmserviceconfig_options")]
+    )
+
+    assert [(migration.app_label, migration.name) for migration, _ in plan] == [
+        ("llm_config", "0017_alter_llmserviceconfig_service_name")
+    ]
