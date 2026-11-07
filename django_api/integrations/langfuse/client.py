@@ -16,11 +16,6 @@ logger = logging.getLogger(__name__)
 _VARIABLE_PATTERN = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
-def extract_variables(text: str) -> set[str]:
-    """Mustache 風プレースホルダー `{{key}}` の変数名集合を抽出する."""
-    return set(_VARIABLE_PATTERN.findall(text))
-
-
 def get_prompt_with_variables(
     ref: "LangfusePromptRef",
 ) -> tuple[Callable[..., str], set[str]]:

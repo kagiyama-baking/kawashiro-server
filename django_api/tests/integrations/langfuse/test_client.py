@@ -470,30 +470,6 @@ class TestLangfuseSession:
         assert _client_warnings(caplog) == []
 
 
-class TestExtractVariables:
-    """extract_variables のテスト."""
-
-    def test_empty_string(self):
-        from integrations.langfuse.client import extract_variables
-
-        assert extract_variables("") == set()
-
-    def test_single_variable(self):
-        from integrations.langfuse.client import extract_variables
-
-        assert extract_variables("hello {{name}}") == {"name"}
-
-    def test_multiple_variables(self):
-        from integrations.langfuse.client import extract_variables
-
-        assert extract_variables("{{a}} and {{b}} and {{c}}") == {"a", "b", "c"}
-
-    def test_whitespace_tolerant(self):
-        from integrations.langfuse.client import extract_variables
-
-        assert extract_variables("{{ spaced }}") == {"spaced"}
-
-
 REQUIRED_PROMPT_TEXT = "システムプロンプト"
 EMPTY_PROMPT_TEXTS = ["", " \n\t "]
 
