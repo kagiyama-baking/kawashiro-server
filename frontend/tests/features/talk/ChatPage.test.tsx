@@ -23,7 +23,7 @@ vi.mock('@/lib/api/talk', () => ({
     deleteAudio: vi.fn(),
     deleteSession: vi.fn(),
     fetchAudioBlob: vi.fn(),
-    fetchConfigs: vi.fn(),
+    fetchSettings: vi.fn(),
     getSession: vi.fn(),
     listSessions: vi.fn(),
     streamEdit: vi.fn(),
@@ -51,7 +51,9 @@ function detail(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: messages.length,
         total_audio_bytes: 0,
         created_at: NOW,
@@ -104,12 +106,8 @@ describe('ChatPage', () => {
             previous: null,
             results: [],
         });
-        vi.mocked(api.fetchConfigs).mockResolvedValue([
-            {
-                name: 'friendly',
-                display_name: 'フレンドリー',
-                tts_enabled: false,
-            },
+        vi.mocked(api.fetchSettings).mockResolvedValue([
+            { id: 1, name: 'フレンドリー', tts_enabled: false, skills: [] },
         ]);
     });
 
@@ -117,18 +115,19 @@ describe('ChatPage', () => {
         act(() => store().reset());
     });
 
-    it('一覧とプリセットを読み込み、ページを離れるとストアを片付ける', async () => {
+    it('一覧と Talk 設定を読み込み、ページを離れるとストアを片付ける', async () => {
         renderPage('/talk');
 
         await waitFor(() => {
-            expect(store().selectedConfigName).toBe('friendly');
+            expect(store().selectedSettingId).toBe(1);
         });
+        expect(api.fetchSettings).toHaveBeenCalledTimes(1);
         expect(api.listSessions).toHaveBeenCalledTimes(1);
 
         fireEvent.click(screen.getByRole('link', { name: '他のページへ' }));
 
         expect(await screen.findByText('他のページ')).toBeInTheDocument();
-        expect(store().configs).toEqual([]);
+        expect(store().settings).toBeNull();
     });
 
     it('/talk では新規チャットを出し、h1 は 1 つにする', async () => {
@@ -191,7 +190,7 @@ describe('ChatPage', () => {
 
             expect(screen.queryByText('TALK')).not.toBeInTheDocument();
             expect(
-                screen.queryByRole('combobox', { name: 'プリセット' }),
+                screen.queryByRole('combobox', { name: 'Talk 設定' }),
             ).not.toBeInTheDocument();
             expect(screen.getByRole('alert')).toHaveTextContent(
                 'チャットの読み込みに失敗しました',
@@ -291,7 +290,7 @@ describe('ChatPage', () => {
         async function sendFirstMessage() {
             renderPage('/talk');
             await waitFor(() => {
-                expect(store().selectedConfigName).toBe('friendly');
+                expect(store().selectedSettingId).toBe(1);
             });
             const input = composerInput();
             vi.mocked(api.createSession).mockResolvedValueOnce(
@@ -306,6 +305,7 @@ describe('ChatPage', () => {
                     '/talk/new',
                 );
             });
+            expect(api.createSession).toHaveBeenCalledWith(1, null);
             return { input, stream };
         }
 

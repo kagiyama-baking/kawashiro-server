@@ -52,7 +52,7 @@ flowchart TB
 
 ## admin 項目と外部サービスのつながり
 
-HN Agent は「HackerNews Agent設定」からプロンプト参照 8 本を FK で、LLM サービス設定 4 種（orchestrator / detective / devils_advocate / security_responder）を `service_name` 経由で参照します。
+HN Agent は「HackerNews Agent設定」からプロンプト参照 8 本を FK で、サービス設定 4 種（orchestrator / detective / devils_advocate / security_responder）を `service_name` 経由で参照します。
 admin 設定と LiteLLM Proxy / Langfuse の対応図は [../../integrations/llm/README.md](../../integrations/llm/README.md) を参照してください。
 
 ## 各コンポーネント詳細
@@ -180,8 +180,8 @@ Django 管理画面から（表示順は「AI ツール設定」グループ）:
 
 | 設定画面 | 管理内容 |
 |---|---|
-| **LLM 設定**（`LLMProviderConfig`） | モデルエイリアス + LiteLLM Virtual Key |
-| **LLM サービス設定**（`LLMServiceConfig`） | `orchestrator` / `detective` / `devils_advocate` / `security_responder` の 4 サービスにプロバイダを割り当て |
+| **AI設定 → LLM設定**（`LLMProviderConfig`） | モデルエイリアス + LiteLLM Virtual Key |
+| **AI設定 → サービス設定**（`LLMServiceConfig`） | `orchestrator` / `detective` / `devils_advocate` / `security_responder` の 4 サービスにプロバイダを割り当て |
 | **Langfuse プロンプト参照**（`LangfusePromptRef`） | `hn-agent-orchestrator-system/-user`, `hn-agent-detective-system/-user`, `hn-agent-devils-advocate-system/-user`, `hn-agent-security-responder-system/-user` の 8 本 |
 | **Slack 通知設定** | Webhook URL（暗号化保存） |
 | **Tavily** | API キー（Web 検索、Detective・Security Responder で使用、任意） |

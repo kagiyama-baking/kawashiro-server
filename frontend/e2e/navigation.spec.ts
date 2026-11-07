@@ -5,7 +5,7 @@ test.describe('ナビゲーション', () => {
         // XHR/fetchのAPIリクエストのみモック（HTMLリクエストは除外）
         await page.route('**/api/**', (route) => {
             if (route.request().resourceType() === 'fetch' || route.request().resourceType() === 'xhr') {
-                return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [], configs: [], styles: [] }) });
+                return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [], settings: [], styles: [] }) });
             }
             return route.continue();
         });
@@ -86,6 +86,32 @@ test.describe('ナビゲーション', () => {
         await expect(
             page.locator('aside').getByRole('link', { name: 'ホーム' }),
         ).not.toHaveAttribute('aria-current');
+    });
+
+    test('サイドバーのメニューはチャットでも他のページと同じ位置と大きさで表示される', async ({
+        page,
+    }) => {
+        const menuBoxes = async () => {
+            const links = page
+                .getByRole('navigation', { name: 'メインメニュー' })
+                .getByRole('link');
+            await expect(links).toHaveCount(5);
+            await expect(links.last()).toBeVisible();
+            // 描画の後で待つ。先に待つと、まだ読み込みが始まっていない書体は待てない
+            await page.evaluate(async () => {
+                await document.fonts.ready;
+            });
+            return Promise.all(
+                (await links.all()).map((link) => link.boundingBox()),
+            );
+        };
+
+        await page.goto('/tts');
+        const onTts = await menuBoxes();
+        await page.goto('/talk');
+        const onTalk = await menuBoxes();
+
+        expect(onTalk).toEqual(onTts);
     });
 
     test('ログアウトするとログイン画面に遷移する', async ({ page }) => {

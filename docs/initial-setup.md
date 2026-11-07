@@ -34,15 +34,15 @@ docker compose exec django-api python manage.py createsuperuser
 |---|---|---|
 | システム設定 | Core / 認証と認可 / 認証トークン | ユーザー、グループ、API トークンの管理 |
 | 外部サービス設定 | Microsoft 365 / Slack / Tavily / Celery | 外部 API の資格情報と定期タスクのスケジュール |
-| AI ツール設定 | LLM 設定 / Langfuse / HackerNews Agent / Talk Generator | LLM の割り当て、プロンプト参照、各機能の設定 |
+| AI ツール設定 | AI設定 / Langfuse / HackerNews Agent / Companion / Talk | LLM の割り当てとスキル（Agent Skills）、プロンプト参照、各機能の設定 |
 
 「Celery」は `django-celery-beat` の表示名を変更したもので、定期タスク・インターバル・Cron スケジュール・時刻指定を扱います（太陽イベントは未使用のため非表示）。
 
 ## 4. AI 基盤の設定
 
-### 4-1. LLM 設定（`LLMProviderConfig`）
+### 4-1. LLM設定（`LLMProviderConfig`）
 
-「AI ツール設定 → LLM 設定 → LLM 設定」から作成します。モデルエイリアスと認証キーの組で、複数の LLM サービス設定から共有されます。
+「AI ツール設定 → AI設定 → LLM設定」から作成します。モデルエイリアスと認証キーの組で、複数のサービス設定から共有されます。
 
 | 項目 | 説明 |
 |---|---|
@@ -52,9 +52,9 @@ docker compose exec django-api python manage.py createsuperuser
 
 一覧の「Virtual Key」列で設定済みかどうかを確認できます。入力欄はパスワード形式で、保存済みの値は再表示されません（変更時のみ入力）。
 
-### 4-2. LLM サービス設定（`LLMServiceConfig`）
+### 4-2. サービス設定（`LLMServiceConfig`）
 
-どのサービスがどの LLM 設定を使うかを割り当てます。サービス名は 5 種で、それぞれ 1 レコードのみ登録できます。
+「AI ツール設定 → AI設定 → サービス設定」で、どのサービスがどの LLM設定を使うかを割り当てます。サービス名は 6 種で、それぞれ 1 レコードのみ登録できます。
 
 | サービス名 | 用途 |
 |---|---|
@@ -62,11 +62,12 @@ docker compose exec django-api python manage.py createsuperuser
 | HN Agent Detective | スレッドの分析 |
 | HN Agent Devil's Advocate | 反論・批判的検証 |
 | HN Agent Security Responder | セキュリティ観点の応答 |
-| Talk Generator | 会話生成（`/talk/`） |
+| Talk | Talk のチャットと会話生成（`/talk/`） |
+| Companion | Companion エージェント（発話に合うスキルを選んでセリフを生成） |
 
-`LLM 設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
+`LLM設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
 
-> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、5 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。
+> **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。`companion` の自動複製（マイグレーション `llm/0013`）は [LLM の README の §4（サービス設定）](../django_api/integrations/llm/README.md#サービス設定llmserviceconfig) を参照してください。
 
 ### 4-3. Langfuse プロンプト参照（`LangfusePromptRef`）
 
@@ -88,15 +89,19 @@ Langfuse 上のプロンプトを Django 側から参照するためのマッピ
 - `talk-{設定名}-system` — システムプロンプト
 - `talk-{設定名}-user` — ユーザープロンプト
 
-Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。
+**Companion 用（システムプロンプトの `companion-system` 1 本）も自動生成されません。** スキルの本文には参照を作りません。作り方は手順 5-3 を参照してください。
+
+Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。ただし Companion のスキルの本文は参照を通さずに Langfuse から直接取り、フォールバックがないので、Langfuse が必要です。
 
 LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/integrations/llm/README.md) を参照してください。
 
 ## 5. 機能の設定
 
-### 5-1. 会話生成設定（`TalkConfig`）
+### 5-1. 会話生成設定（`TalkConfig`。廃止予定）
 
-「AI ツール設定 → Talk Generator → 会話生成設定」から、プリセット単位で作成します（`morning`、`evening` など）。
+> **廃止予定:** チャットは手順 5-4 の Talk 設定へ、外部の自動化（`/talk/synthesize/`）は手順 5-3 の Companion へ移し、移した後に削除します。新しく作るのは、`/talk/synthesize/` を使い続ける間だけにしてください。
+
+「AI ツール設定 → Talk → 会話生成設定（廃止予定）」から、プリセット単位で作成します（`morning`、`evening` など）。
 
 | 項目 | 説明 |
 |---|---|
@@ -122,6 +127,39 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | フロントページ取得件数 | 30 | Algolia API 経由で最大 1000 件程度まで指定可 |
 
 加えて、**8 本のプロンプト参照を外部キーで選択します**（Orchestrator / Detective / Devil's Advocate / Security Responder × システム / ユーザー）。手順 4-3 で確認した自動投入済みのレコードをそのまま選べます。入力後、「有効」にチェックを入れて保存してください。
+
+### 5-3. Companion 設定（`CompanionConfig`）
+
+システムプロンプト 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
+
+1. **サービス設定の `Companion` を有効にする** — 「AI ツール設定 → AI設定 → サービス設定」で、マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
+2. **Langfuse に text プロンプトを作る** — システムプロンプトの `companion-system` と、スキルごとの本文（名前は自由。例: `good-morning`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内にします）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
+3. **システムプロンプトの参照を作る**（手順 4-3）— 作る参照は `companion-system` の 1 本だけです。識別名と `Langfuse プロンプト名` を `companion-system` にし、ラベルは手順 2 で付けたものにします。スキルの本文には参照を作りません（スキル名と同じ名前のプロンプトを直接引きます）
+4. **スキルを登録する** — 「AI ツール設定 → AI設定 → Agent Skills」（全エージェントで共有するスキルの登録先）から、スキルごとに名前（手順 2 のプロンプト名そのもの）・説明（どんな発話のときに使うか）・ラベル（手順 2 で付けたもの。既定は `production`）・有効を入れて保存します。一覧の名前とラベルが、手順 2 のプロンプトの名前とラベルに合っていることを確かめます
+5. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`システムプロンプト` に手順 3 の `companion-system` を選び、「スキル」で手順 4 のスキルを選んで保存します
+6. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
+7. **API で確かめる** — トークン（手順 9 の 4 で取得）を付けて発話を送り、セリフ（`text`）と使ったスキル（`skill`）が返ることを確かめます。503 なら、有効な設定・サービス設定・プロンプトの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜6）。`skill` を指定して 400 なら、そのスキルが設定で選ばれていて、有効かを確かめます（手順 4・5）。ステータスの意味は [Companion の README の「API」](../django_api/features/companion/README.md#api) を参照してください
+
+   ```bash
+   curl -X POST http://localhost:8000/companion/run/ \
+     -H "Authorization: Token YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"prompt": "おはよう"}'
+   # => {"text": "おはようございます。...", "skill": "good-morning", "audio_data": null, "audio_format": null}
+   ```
+
+### 5-4. Talk 設定（`TalkSetting`）
+
+フロントの Talk（チャット）で選ぶ設定です。システムプロンプト 1 本と、選べるシーン（本文は Langfuse。Agent Skills に登録）を持ちます。**複数を有効にできます。** 項目の意味は [Talk の README の「Talk 設定」](../django_api/features/talk/README.md#talk-設定talksettingリファレンス) を参照してください。
+
+1. **サービス設定の `Talk` が有効なことを確かめる** — 「AI ツール設定 → AI設定 → サービス設定」の `Talk`（会話生成設定と共通の行。なければ手順 4-2 で作成）
+2. **Langfuse に text プロンプトを作る** — チャットのシステムプロンプト（変数は展開しないので書かない）と、シーンごとの本文（名前は自由。例: `talk-scene-cafe`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内）。シーンの本文はツールを前提にしません。ラベルの付け方は Companion と同じです（[Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル)）
+3. **システムプロンプトの参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` を手順 2 のプロンプト名にし、ラベルは手順 2 で付けたものにします。シーンの本文には参照を作りません
+4. **シーンを Agent Skills に登録する** — 「AI ツール設定 → AI設定 → Agent Skills」から、名前（手順 2 のプロンプト名そのもの）・説明（フロントの Talk の選択肢に出る、人が読む短い文。例: 「カフェで向かい合って話す場面」）・ラベル・有効を入れて保存します
+5. **Talk 設定を作る** — 「AI ツール設定 → Talk → Talk 設定」から、名前（フロントの選択肢に出る）・システムプロンプト（手順 3）・シーン（手順 4 のスキル。なくてもよい）・音声を入れて保存します。「有効」は既定で ON です
+6. **確かめる** — `GET /talk/settings/`（手順 9 の 5）に設定とシーンが出ることを確かめ、フロントの Talk で設定とシーンを選んで話します。送信が 503 なら、サービス設定 `Talk`・システムプロンプト・シーンの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜4）
+
+> **Note:** 旧プリセットで作ったチャットがある環境では、migration `talk/0018` が、使われていたプリセットごとに Talk 設定を自動で作り（名前はプリセットの表示名）、そのチャットを紐づけます。名前を整えたり、使わない設定を無効にしたりしてください（規則は [Talk の README](../django_api/features/talk/README.md#talk-設定talksettingリファレンス)）。
 
 ## 6. 外部サービスの設定
 
@@ -182,11 +220,11 @@ curl -X POST http://localhost:8000/user/token/ \
   -H "Content-Type: application/json" \
   -d '{"email": "admin@example.com", "password": "YOUR_PASSWORD"}'
 
-# 5. Talk の設定一覧（Token 認証）
-curl http://localhost:8000/talk/configs/ \
+# 5. Talk 設定の一覧（Token 認証）。有効な設定と選べるシーンが返る
+curl http://localhost:8000/talk/settings/ \
   -H "Authorization: Token YOUR_TOKEN"
 
-# 6. 会話生成。TTS 有効時は audio_data（Base64）を含む JSON が返る
+# 6. 会話生成（廃止予定）。TTS 有効時は audio_data（Base64）を含む JSON が返る
 curl -X POST http://localhost:8000/talk/synthesize/ \
   -H "Authorization: Token YOUR_TOKEN" \
   -H "Content-Type: application/json" \

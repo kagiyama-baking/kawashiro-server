@@ -5,10 +5,14 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from features.talk.exceptions import HolidayNetworkError, HolidayTimeoutError
-from features.talk.holiday_client import HolidayClient
+from integrations.holiday import (
+    HolidayClient,
+    HolidayNetworkError,
+    HolidayTimeoutError,
+)
 
 
+@pytest.mark.unit
 class TestHolidayClient:
     """Tests for HolidayClient."""
 
@@ -29,7 +33,7 @@ class TestHolidayClient:
             "2025-05-06": "こどもの日 振替休日",
         }
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_fetch_holidays_success(self, mock_get, sample_holidays_response):
         """正常にAPIからデータを取得できる"""
         mock_response = Mock()
@@ -46,7 +50,7 @@ class TestHolidayClient:
             timeout=10,
         )
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_fetch_holidays_network_error(self, mock_get):
         """ネットワークエラー時にHolidayNetworkErrorを発生させる"""
         mock_get.side_effect = requests.ConnectionError("Connection failed")
@@ -56,7 +60,7 @@ class TestHolidayClient:
         with pytest.raises(HolidayNetworkError):
             client.fetch_holidays()
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_fetch_holidays_timeout_error(self, mock_get):
         """タイムアウト時にHolidayTimeoutErrorを発生させる"""
         mock_get.side_effect = requests.Timeout("Request timed out")
@@ -66,7 +70,7 @@ class TestHolidayClient:
         with pytest.raises(HolidayTimeoutError):
             client.fetch_holidays()
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_get_holiday_name_returns_name_on_holiday(
         self, mock_get, sample_holidays_response
     ):
@@ -81,7 +85,7 @@ class TestHolidayClient:
 
         assert result == "元日"
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_get_holiday_name_returns_none_on_non_holiday(
         self, mock_get, sample_holidays_response
     ):
@@ -96,7 +100,7 @@ class TestHolidayClient:
 
         assert result is None
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_get_holiday_name_with_substitute_holiday(
         self, mock_get, sample_holidays_response
     ):
@@ -111,7 +115,7 @@ class TestHolidayClient:
 
         assert result == "天皇誕生日 振替休日"
 
-    @patch("features.talk.holiday_client.requests.get")
+    @patch("integrations.holiday.client.requests.get")
     def test_holidays_are_cached(self, mock_get, sample_holidays_response):
         """祝日データはキャッシュされる"""
         mock_response = Mock()

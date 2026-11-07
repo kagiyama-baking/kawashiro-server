@@ -17,7 +17,7 @@ from django.db.models import Max
 from django.utils import timezone
 from rest_framework import status
 
-from .models import ChatMessage, ChatSession, TalkConfig
+from .models import ChatMessage, ChatSession, TalkSetting
 from .serializers import ChatSessionMessageDetailSerializer, ChatTurnDoneSerializer
 from .services import TalkService
 from .views._common import (
@@ -36,6 +36,15 @@ _EDIT_FALLBACK = "チャット応答の再生成中に問題が発生しまし�
 _AUDIO_FALLBACK = "音声の合成に失敗しました"
 _AUDIO_SAVE_ERROR = "音声の保存に失敗しました"
 _SESSION_GONE_ERROR = "セッションが見つかりません"
+_NO_SETTING_ERROR = "このチャットには Talk 設定がないため、続けられません。新しいチャットを始めてください"
+_DISABLED_SETTING_ERROR = (
+    "このチャットの Talk 設定「{name}」は無効になっているため、続けられません。"
+    "新しいチャットを始めてください"
+)
+_UNAVAILABLE_SCENE_ERROR = (
+    "このチャットのシーン「{name}」は使えなくなったため、続けられません。"
+    "新しいチャットを始めてください"
+)
 # タイトルを生成する履歴の上限。初回と、停止した初回ターン（最大 2 件）の次のターンまで
 _TITLE_MAX_HISTORY = 2
 
@@ -55,17 +64,17 @@ class TurnPlan:
 
     Attributes:
         session: 対象のセッション
-        config: セッションのプリセット
+        setting: セッションの Talk 設定
         content: 今回のユーザー発話
         history: 今回の発話より前の履歴（編集なら対象より前だけ）
-        system_prompt: 展開済みの system プロンプト
+        system_prompt: 確定した system プロンプト（Talk 設定とシーン）
         service: LLM と TTS を呼ぶサービス
         fallback_message: 想定外の例外のときにクライアントへ返すメッセージ
         edit_target_id: 編集対象のメッセージ ID（送信なら None）
     """
 
     session: ChatSession
-    config: TalkConfig
+    setting: TalkSetting
     content: str
     history: list[dict[str, str]]
     system_prompt: str
@@ -79,6 +88,37 @@ class TurnPlan:
         return [*self.history, {"role": "user", "content": self.content}]
 
 
+def _usable_setting(session: ChatSession) -> TalkSetting:
+    """セッションの Talk 設定とシーンが今も使えるかを確かめ、Talk 設定を返す.
+
+    どれも作成時に固定するので、使えなくなったら（Talk 設定がない・無効・シーンが無効か
+    設定から外れた）そのチャットは続けず、新しいチャットを促す。
+
+    Raises:
+        ChatTurnRejectedError: 使えない場合（400）
+    """
+    setting = session.setting
+    if setting is None:
+        raise ChatTurnRejectedError(
+            status.HTTP_400_BAD_REQUEST,
+            {"error": _NO_SETTING_ERROR},
+        )
+    if not setting.is_enabled:
+        raise ChatTurnRejectedError(
+            status.HTTP_400_BAD_REQUEST,
+            {"error": _DISABLED_SETTING_ERROR.format(name=setting.name)},
+        )
+    skill = session.skill
+    if skill is not None and not (
+        skill.is_enabled and setting.skills.filter(pk=skill.pk).exists()
+    ):
+        raise ChatTurnRejectedError(
+            status.HTTP_400_BAD_REQUEST,
+            {"error": _UNAVAILABLE_SCENE_ERROR.format(name=skill.name)},
+        )
+    return setting
+
+
 def prepare_turn(
     session: ChatSession,
     content: str,
@@ -87,7 +127,7 @@ def prepare_turn(
 ) -> TurnPlan:
     """ターンの事前検証を行い、実行計画を返す.
 
-    設定の存在 → 件数上限（送信のみ）→ プロンプト準備 → LLM 設定の順に確かめる。
+    Talk 設定とシーン → 件数上限（送信のみ）→ LLM 設定 → プロンプト準備の順に確かめる。
 
     Args:
         session: 所有権を確認済みのセッション
@@ -100,15 +140,7 @@ def prepare_turn(
     Raises:
         ChatTurnRejectedError: 検証に失敗した場合
     """
-    try:
-        config = TalkConfig.objects.select_related("system_prompt_ref").get(
-            name=session.config_name
-        )
-    except TalkConfig.DoesNotExist as exc:
-        raise ChatTurnRejectedError(
-            status.HTTP_404_NOT_FOUND,
-            {"error": f"設定 '{session.config_name}' が見つかりません"},
-        ) from exc
+    setting = _usable_setting(session)
 
     messages = session.messages.order_by("sequence")
     if edit_target is not None:
@@ -125,14 +157,14 @@ def prepare_turn(
     service = TalkService()
     fallback_message = _SEND_FALLBACK if edit_target is None else _EDIT_FALLBACK
     try:
-        system_prompt = service.prepare_chat_prompt(config)
+        system_prompt = service.prepare_chat_prompt(setting, session.skill)
     except Exception as exc:
         status_code, error = classify_synthesis_error(exc, fallback_message)
         raise ChatTurnRejectedError(status_code, {"error": error}) from exc
 
     return TurnPlan(
         session=session,
-        config=config,
+        setting=setting,
         content=content,
         history=history,
         system_prompt=system_prompt,
@@ -295,7 +327,7 @@ class ChatTurnRunner:
     def _audio_events(self, message: ChatMessage) -> Iterator[TurnEvent]:
         """音声を合成して保存する（失敗は致命にしない）."""
         plan = self._plan
-        tts_options = plan.config.get_tts_options()
+        tts_options = plan.setting.get_tts_options()
         if tts_options is None or not message.content.strip():
             return
         try:

@@ -2,18 +2,20 @@
 
 import base64
 import logging
-from datetime import datetime
 
-from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import authentication, permissions, status
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..constants import DAY_OF_WEEK_JA
-from ..exceptions import HolidayNetworkError, HolidayTimeoutError
-from ..holiday_client import HolidayClient
+from integrations.holiday import (
+    HolidayClient,
+    HolidayNetworkError,
+    HolidayTimeoutError,
+    get_datetime_info,
+)
+
 from ..models import TalkConfig
 from ..serializers import (
     ConfigListResponseSerializer,
@@ -188,22 +190,7 @@ class TodayInfoView(APIView):
     def get(self, request):
         """本日の日時情報を取得."""
         try:
-            now = datetime.now(timezone.get_current_timezone())
-            date_str = now.strftime("%Y-%m-%d")
-            time_str = now.strftime("%H:%M:%S")
-            day_of_week = now.strftime("%A")
-            day_of_week_ja = DAY_OF_WEEK_JA.get(day_of_week, day_of_week)
-
-            holiday_client = HolidayClient()
-            holiday_name = holiday_client.get_holiday_name(date_str)
-
-            data = {
-                "date": date_str,
-                "time": time_str,
-                "day_of_week": day_of_week,
-                "day_of_week_ja": day_of_week_ja,
-                "holiday_name": holiday_name,
-            }
+            data = get_datetime_info(HolidayClient())
 
             serializer = TodayInfoResponseSerializer(data=data)
             serializer.is_valid(raise_exception=True)

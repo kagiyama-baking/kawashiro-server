@@ -33,7 +33,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
         - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）
-        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk が参照）+ Sessions 機能でチャット会話を集約観測
+        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk 設定・会話生成設定 / Companion のシステムプロンプトが参照。Agent Skills（Companion のスキル・Talk のシーン）の本文は Langfuse から直接取る）+ Sessions 機能でチャット会話を集約観測
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
@@ -43,9 +43,10 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
         - 🔍 **Tavily**: Tavily Web 検索 API クライアント
         - 💬 **Slack**: Slack Incoming Webhook 通知クライアント
     - **features/** - ビジネス機能
-        - 🎙️ **Talk**: 会話生成 API + **チャット履歴セッション**（DB + ファイル永続化、編集再送、音声配信/個別 & 一括削除、LLM タイトル要約、Langfuse Session 連携）
+        - 🎙️ **Talk**: Talk 設定（システムプロンプト・選べるシーン）で話す**チャット履歴セッション**（DB + ファイル永続化、編集再送、音声配信/個別 & 一括削除、LLM タイトル要約、Langfuse Session 連携）+ 廃止予定の会話生成 API
         - 📁 **Media**: メディア変換（画像フォーマット変換、ZIP → PDF）
         - 🕵️ **HackerNews Agent**: HN 監視・分析エージェント（Watcher → Orchestrator → Detective / Devil's Advocate / Security Responder → Slack 通知。PydanticAI のエージェントがスレッド性質に応じて 3 ツールを使い分け）
+        - 🤝 **Companion**: 共通のシステムプロンプト + 用途ごとのスキル（本文は Langfuse）で動くエージェント。`POST /companion/run/` の発話に合うスキルを選び、日時・天気・今日の予定をツールで取得してセリフを返す（音声合成も可）
 - 🎤 **Style-BERT-VITS2 API**: 日本語音声合成サービス（CPU 推論・NVIDIA GPU はオプション）
 
 ## LLM / LiteLLM / Langfuse
@@ -54,9 +55,9 @@ LLM 周辺は「接続（どのモデル・どの鍵）」「プロンプト（�
 
 | レイヤ | 責務 | 管理場所 |
 |---|---|---|
-| **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「LLM設定」「LLMサービス設定」 |
-| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」+ Langfuse UI |
-| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「会話生成設定」 |
+| **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「AI設定」の「LLM設定」「サービス設定」 |
+| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」と「AI設定」の「Agent Skills」+ Langfuse UI |
+| **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「Companion 設定」「Talk 設定」「会話生成設定（廃止予定）」 |
 
 構成要素・admin と外部サービスの対応図・プロンプト命名規約は
 [django_api/integrations/llm/README.md](django_api/integrations/llm/README.md) を参照してください。
@@ -233,9 +234,10 @@ Playwright E2E などの詳細は [docs/development.md](docs/development.md) を
 | 初期セットアップ（管理画面の設定投入・定期タスク登録） | [docs/initial-setup.md](docs/initial-setup.md) |
 | Django API の機能一覧・管理画面ガイド | [django_api/README.md](django_api/README.md) |
 | LLM / LiteLLM / Langfuse の構成と命名規約 | [django_api/integrations/llm/README.md](django_api/integrations/llm/README.md) |
-| 会話生成・チャットセッションの仕様 | [django_api/features/talk/README.md](django_api/features/talk/README.md) |
+| Talk（Talk 設定・チャットセッション）と会話生成の仕様 | [django_api/features/talk/README.md](django_api/features/talk/README.md) |
 | メディア変換の制限値と仕様 | [django_api/features/media/README.md](django_api/features/media/README.md) |
 | HN Agent のアーキテクチャとプロンプト | [django_api/features/hn_agent/README.md](django_api/features/hn_agent/README.md) |
+| Companion の設定（システムプロンプト・スキル）・実行 API・Langfuse プロンプトのラベル | [django_api/features/companion/README.md](django_api/features/companion/README.md) |
 | 気象庁天気予報クライアント | [django_api/integrations/weather/README.md](django_api/integrations/weather/README.md) |
 | 音声合成 API・モデル配置・CPU/GPU 切替 | [sbv2_api/README.md](sbv2_api/README.md) |
 | フロントエンドの画面構成・開発コマンド | [frontend/README.md](frontend/README.md) |

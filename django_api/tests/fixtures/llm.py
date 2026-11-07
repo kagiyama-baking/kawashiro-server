@@ -7,14 +7,17 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import httpx2
 from openai import AsyncOpenAI
 from pydantic_ai.messages import (
+    InstructionPart,
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    SystemPromptPart,
     TextPart,
     ToolCallPart,
     UserPromptPart,
@@ -25,6 +28,7 @@ from pydantic_ai.models.function import (
     DeltaThinkingPart,
     FunctionModel,
 )
+from pydantic_ai.profiles import ModelProfileSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 
@@ -67,14 +71,51 @@ def tool_calls(*names: str) -> ModelResponse:
     )
 
 
+def tool_call(tool_name: str, /, **args: Any) -> ModelResponse:
+    """1 つのツールを引数付きで呼ぶ応答を作る.
+
+    呼び出しの ID は PydanticAI が呼び出しごとに振る（実際のプロバイダーと同じく一意）。
+    """
+    return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args)])
+
+
+def load_capability(capability_id: str) -> ModelResponse:
+    """組み込みの `load_capability` ツールで capability（スキル）を読み込む応答を作る."""
+    return tool_call("load_capability", id=capability_id)
+
+
 @dataclass(frozen=True)
 class RecordedRequest:
-    """モデルが受け取った 1 回分のリクエスト."""
+    """モデルが受け取った 1 回分のリクエスト.
+
+    `instructions` は指示をつないだ文字列、`instruction_parts` はその部分ごと
+    （OpenAI Chat では部分ごとに別の system メッセージになる）。
+    """
 
     messages: list[ModelMessage]
     instructions: str | None
     model_settings: ModelSettings | None
     function_tools: list[ToolDefinition]
+    instruction_parts: list[InstructionPart] = field(default_factory=list)
+
+    @property
+    def system_prompts(self) -> list[str]:
+        """system として届いた本文を、指示の各部分・会話の途中の system の順で返す.
+
+        会話の途中の system は、読み込んだ capability の指示など。`FunctionModel` の既定の
+        プロファイルでは、それらは `<system>` で囲んだ user メッセージになり、ここではなく
+        `conversation` に入る（本番と同じ形で受け取るには `ScriptedLLM(profile=...)`）。
+        """
+        return [
+            *(part.content for part in self.instruction_parts),
+            *(
+                part.content
+                for message in self.messages
+                if isinstance(message, ModelRequest)
+                for part in message.parts
+                if isinstance(part, SystemPromptPart)
+            ),
+        ]
 
     @property
     def conversation(self) -> list[tuple[str, str]]:
@@ -132,12 +173,22 @@ class ScriptedLLM:
     台本の各要素は文字列（テキスト応答）、`ModelResponse`、例外（送出する）のいずれか。
     ストリーミングの実行では `StreamScript` で流し方も指定できる。
     台本が尽きたリクエストは `IndexError` になる（想定外の追加呼び出しを検出するため）。
+
+    `profile` を省略すると `FunctionModel` の既定のプロファイルになる。読み込んだ capability の
+    指示を本番と同じく system で受け取るには、本番のプロファイル
+    （`integrations.llm.runtime._LITELLM_PROFILE`）を渡す。
     """
 
-    def __init__(self, *script: str | ModelResponse | StreamScript | Exception):
+    def __init__(
+        self,
+        *script: str | ModelResponse | StreamScript | Exception,
+        profile: ModelProfileSpec | None = None,
+    ):
         self._script = list(script)
         self.requests: list[RecordedRequest] = []
-        self.model = FunctionModel(self._respond, stream_function=self._respond_stream)
+        self.model = FunctionModel(
+            self._respond, stream_function=self._respond_stream, profile=profile
+        )
 
     def enqueue(self, *steps: str | ModelResponse | StreamScript | Exception) -> None:
         """台本の末尾に応答を足す."""
@@ -152,6 +203,9 @@ class ScriptedLLM:
                 instructions=info.instructions,
                 model_settings=info.model_settings,
                 function_tools=list(info.function_tools),
+                instruction_parts=list(
+                    info.model_request_parameters.instruction_parts or []
+                ),
             )
         )
         step = self._script.pop(0)
@@ -185,6 +239,21 @@ class ScriptedLLM:
             raise step.raises
         if step.hang:
             await asyncio.Event().wait()
+
+
+def slow_model(seconds: float) -> FunctionModel:
+    """`seconds` 秒待ってから本文を返すモデル（実行全体の制限時間のテスト用）.
+
+    待つのは `asyncio.sleep` なので、実行の期限が来ればその場で止まる。期限が効かなければ
+    遅れて本文を返すので、待ち時間を期限より十分長くしておくと、テストは待ち続けずに
+    「例外が出ない」で失敗する。
+    """
+
+    async def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        await asyncio.sleep(seconds)
+        return ModelResponse(parts=[TextPart(content="遅れた応答")])
+
+    return FunctionModel(respond)
 
 
 class LiteLLMStreamBody(httpx2.AsyncByteStream):

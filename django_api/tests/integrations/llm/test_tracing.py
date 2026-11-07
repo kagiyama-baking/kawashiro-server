@@ -13,12 +13,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.trace_capture import COMPANION_AUDIO, COMPANION_SESSION_ID
+
 DJANGO_API_DIR = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(scope="module")
 def captured() -> dict:
-    """計装を有効にして HN 調査と Talk を実行し、記録されたスパンを返す."""
+    """計装を有効にして HN 調査・Talk・Companion を実行し、記録されたスパンを返す."""
     process = subprocess.run(
         [sys.executable, "-m", "tests.fixtures.trace_capture"],
         cwd=DJANGO_API_DIR,
@@ -95,8 +97,8 @@ class TestTraceStructure:
         spans = captured["spans"]
         generations = [span for span in spans if span["name"].startswith("chat ")]
 
-        # Orchestrator 2 回 + Detective 1 回 + Talk 3 回（ストリーミング）
-        assert len(generations) == 6
+        # Orchestrator 2 回 + Detective 1 回 + Talk 3 回（ストリーミング）+ Companion 2 回
+        assert len(generations) == 8
         assert {span["scope"] for span in generations} == {"pydantic-ai"}
         assert {span["scope"] for span in spans} == {"pydantic-ai", "langfuse-sdk"}
 
@@ -229,14 +231,74 @@ class TestStreamingTrace:
         assert generation["status"] != "ERROR"
         assert talk["status"] != "ERROR"
 
-    def test_prepare_chat_is_separate_trace_without_io(self, captured):
-        """プロンプトの準備は別のトレースで記録し、内容は残さない."""
-        spans = captured["spans"]
-        prepare = _find(spans, "talk/prepare_chat")
+    def test_prepare_chat_records_no_separate_trace(self, captured):
+        """プロンプトの準備はトレースを作らない（ターンごとに別のトレースが増えない）."""
+        names = {span["name"] for span in captured["spans"]}
 
-        assert prepare["parent_id"] is None
-        assert "langfuse.observation.input" not in prepare["attributes"]
-        assert "langfuse.observation.output" not in prepare["attributes"]
+        assert "talk/prepare_chat" not in names
+
+
+@pytest.mark.integration
+class TestCompanionTrace:
+    """Companion の実行のトレース（音声合成した実行でも音声は送らない）."""
+
+    def test_companion_run_records_prompt_as_input_and_text_and_skill_as_output(
+        self, captured
+    ):
+        """companion/run は発話を入力に、セリフと使ったスキルだけを出力に記録する."""
+        attributes = _find(captured["spans"], "companion/run")["attributes"]
+
+        assert json.loads(attributes["langfuse.observation.input"]) == {
+            "args": ["おはよう"],
+            "kwargs": {},
+        }
+        assert json.loads(attributes["langfuse.observation.output"]) == {
+            "text": "おはよう！",
+            "skill": "good-morning",
+        }
+
+    def test_companion_trace_never_contains_audio(self, captured):
+        """トレースのどのスパンにも音声のデータは載らない."""
+        spans = captured["spans"]
+        root = _find(spans, "companion/run")
+        trace = [span for span in spans if span["trace_id"] == root["trace_id"]]
+
+        assert root["parent_id"] is None
+        assert [
+            span["name"]
+            for span in trace
+            if COMPANION_AUDIO.decode() in json.dumps(span, ensure_ascii=False)
+        ] == []
+
+    def test_companion_skill_load_is_nested_under_agent_and_companion_run(
+        self, captured
+    ):
+        """スキルの読み込みはエージェントの実行の配下、エージェントは companion/run の配下."""
+        spans = captured["spans"]
+        load = _find(spans, "execute_tool load_capability")
+
+        assert _ancestor_names(load, spans)[-2:] == [
+            "invoke_agent companion",
+            "companion/run",
+        ]
+
+    def test_companion_trace_is_in_session_of_the_day(self, captured):
+        """ルートの companion/run から generation まで、トレースのどのスパンもその日のセッションに入る.
+
+        Langfuse の Sessions には session.id を持つトレースが並ぶ（会話 ID はサービス名の
+        companion のままだが、session.id が優先される）。
+        """
+        spans = captured["spans"]
+        root = _find(spans, "companion/run")
+        trace = [span for span in spans if span["trace_id"] == root["trace_id"]]
+        names = [span["name"] for span in trace]
+
+        assert {"invoke_agent companion", "execute_tool load_capability"} <= set(names)
+        # スキルの読み込みと最後の応答の 2 回
+        assert len([name for name in names if name.startswith("chat ")]) == 2
+        assert [
+            (span["name"], span["attributes"].get("session.id")) for span in trace
+        ] == [(span["name"], COMPANION_SESSION_ID) for span in trace]
 
 
 IMPORT_CHECK_CODE = """
@@ -248,6 +310,7 @@ import django
 django.setup()
 
 import django_api.urls
+import features.companion.services
 import features.hn_agent.orchestrator
 import features.hn_agent.tasks
 import features.talk.services

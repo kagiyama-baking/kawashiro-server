@@ -10,6 +10,8 @@ urlpatterns = [
     path("synthesize/", views.TalkSynthesizeView.as_view(), name="synthesize"),
     path("datetime/", views.TodayInfoView.as_view(), name="datetime"),
     path("configs/", views.ConfigsListView.as_view(), name="configs"),
+    # Talk 設定（チャットで選べる設定とシーン）
+    path("settings/", views.TalkSettingsListView.as_view(), name="settings"),
     # チャット履歴 API
     path(
         "sessions/",

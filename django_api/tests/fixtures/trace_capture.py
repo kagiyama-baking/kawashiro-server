@@ -1,4 +1,4 @@
-"""実際に Langfuse の計装を有効にして HN 調査と Talk を実行し、スパンを JSON で出力する.
+"""実際に Langfuse の計装を有効にして HN 調査・Talk・Companion を実行し、スパンを JSON で出力する.
 
 `tests/integrations/llm/test_tracing.py` がサブプロセスで実行する。Langfuse のクライアントは
 プロセス内で共有され、テストのプロセスではトレースを無効にしているので分離する。
@@ -8,7 +8,14 @@ LLM にも Langfuse にも送信しない。
 
 import json
 import sys
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
+
+# Companion の音声合成の代役が返す音声（UTF-8 として読めるので、記録されれば文字列で現れる）
+COMPANION_AUDIO = b"RIFF-companion-trace-audio"
+# Companion を実行する時刻（日本時間では 2026-11-07 12:00）と、その日の Langfuse のセッション ID
+COMPANION_NOW = datetime(2026, 11, 7, 3, 0, tzinfo=UTC)
+COMPANION_SESSION_ID = "companion/2026-11-07"
 
 
 def _span_to_dict(span) -> dict:
@@ -30,7 +37,7 @@ def _create_fixtures():
     from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
 
     provider = LLMProviderConfig.objects.create(name="trace", model_alias="test-alias")
-    for service_name in ("orchestrator", "detective", "talk"):
+    for service_name in ("orchestrator", "detective", "talk", "companion"):
         LLMServiceConfig.objects.create(
             service_name=service_name, provider_config=provider
         )
@@ -85,7 +92,7 @@ def _run_investigation(thread):
 def _run_talk():
     """Talk のチャットをストリーミングで session_id 付きで実行する."""
     from features.talk.llm_agents import TALK_CHAT_AGENT
-    from features.talk.models import TalkConfig
+    from features.talk.models import TalkSetting
     from features.talk.services import TalkService
     from integrations.langfuse.models import LangfusePromptRef
     from tests.fixtures.llm import ScriptedLLM
@@ -93,16 +100,11 @@ def _run_talk():
     ref = LangfusePromptRef.objects.create(
         name="trace-talk", langfuse_prompt_name="trace-talk", fallback_text="system"
     )
-    config = TalkConfig.objects.create(
-        name="trace",
-        display_name="trace",
-        system_prompt_ref=ref,
-        user_prompt_ref=ref,
-    )
+    setting = TalkSetting.objects.create(name="trace", system_prompt_ref=ref)
     llm = ScriptedLLM("返信")
     service = TalkService()
     with TALK_CHAT_AGENT.override(model=llm.model):
-        system_prompt = service.prepare_chat_prompt(config)
+        system_prompt = service.prepare_chat_prompt(setting)
         list(
             service.stream_chat_reply(
                 system_prompt,
@@ -146,6 +148,46 @@ def _run_talk_through_litellm():
         stream.close()
 
 
+def _run_companion():
+    """Companion をスキルの読み込みと音声合成つきで実行する（音声は代役が返す）.
+
+    スキルの本文の取得（`fetch_text_prompt`）も Langfuse サーバーへ出ないよう差し替える
+    （システムプロンプトは main の差し替えで解決する）。セッション ID が決まるよう、
+    Django の現在時刻は COMPANION_NOW に固定する。
+    """
+    from features.companion.agent import COMPANION_AGENT
+    from features.companion.models import CompanionConfig
+    from features.companion.services import run_companion
+    from integrations.langfuse.models import LangfusePromptRef
+    from integrations.llm.models import AgentSkill
+    from integrations.llm.runtime import _LITELLM_PROFILE
+    from integrations.tts.client import TTSResult
+    from tests.fixtures.llm import ScriptedLLM, load_capability
+
+    ref = LangfusePromptRef.objects.create(
+        name="trace-companion", langfuse_prompt_name="trace-companion"
+    )
+    config = CompanionConfig.objects.create(
+        name="trace", is_active=True, system_prompt_ref=ref, tts_enabled=True
+    )
+    config.skills.add(
+        AgentSkill.objects.create(name="good-morning", description="朝のあいさつ")
+    )
+    llm = ScriptedLLM(
+        load_capability("good-morning"), "おはよう！", profile=_LITELLM_PROFILE
+    )
+    with (
+        COMPANION_AGENT.override(model=llm.model),
+        patch("integrations.llm.skills.fetch_text_prompt", return_value="手順"),
+        patch("features.companion.services.TTSClient") as tts_client,
+        patch("django.utils.timezone.now", return_value=COMPANION_NOW),
+    ):
+        tts_client.return_value.synthesize.return_value = TTSResult(
+            audio_data=COMPANION_AUDIO, content_type="audio/wav", format="wav"
+        )
+        run_companion("おはよう")
+
+
 def main() -> None:
     """スパンを収集して標準出力へ JSON で書く."""
     import django
@@ -176,6 +218,7 @@ def main() -> None:
         result = _run_investigation(thread)
         _run_talk()
         _run_talk_through_litellm()
+        _run_companion()
 
     client.flush()
     json.dump(

@@ -20,16 +20,16 @@ export function ChatPage() {
     const navigate = useNavigate();
     const threadKey = useChatStore((s) => s.threadKey);
     const loadSessions = useChatStore((s) => s.loadSessions);
-    const loadConfigs = useChatStore((s) => s.loadConfigs);
+    const loadSettings = useChatStore((s) => s.loadSettings);
     const openSession = useChatStore((s) => s.openSession);
     const startNewChat = useChatStore((s) => s.startNewChat);
     const reset = useChatStore((s) => s.reset);
 
     useEffect(() => {
         void loadSessions();
-        void loadConfigs();
+        void loadSettings();
         return () => reset();
-    }, [loadSessions, loadConfigs, reset]);
+    }, [loadSessions, loadSettings, reset]);
 
     // 新規チャットの画面が一瞬見えないよう、描画の前に読み込み中へ切り替える
     useLayoutEffect(() => {

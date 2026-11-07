@@ -8,6 +8,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from features.talk.models import ChatMessage, ChatSession
+from tests.fixtures.factories import AgentSkillFactory, TalkSettingFactory
 
 User = get_user_model()
 
@@ -125,21 +126,130 @@ class TestSessionListCreate:
         assert response.status_code == 200
         assert len(response.data["results"]) == 5
 
-    def test_create_session_with_config_name(self, auth_client, user):
-        response = auth_client.post(self.URL, {"config_name": "morning"}, format="json")
-        assert response.status_code == 201
-        assert response.data["config_name"] == "morning"
-        assert response.data["title"] == ""
-        assert ChatSession.objects.filter(user=user).count() == 1
+    def test_create_session_with_setting_and_scene_returns_detail(
+        self, auth_client, user
+    ):
+        """Talk 設定とシーンを固定したセッションを作り、詳細を返す（旧プリセット名は空）."""
+        scene = AgentSkillFactory(name="talk-scene-cafe", description="カフェで話す")
+        setting = TalkSettingFactory(name="ひな", skills=[scene], tts_enabled=True)
 
-    def test_create_requires_config_name(self, auth_client):
-        response = auth_client.post(self.URL, {}, format="json")
+        response = auth_client.post(
+            self.URL, {"setting": setting.pk, "skill": "talk-scene-cafe"}, format="json"
+        )
+
+        assert response.status_code == 201
+        assert response.data["setting"] == {"id": setting.pk, "name": "ひな"}
+        assert response.data["skill"] == {
+            "name": "talk-scene-cafe",
+            "description": "カフェで話す",
+        }
+        assert response.data["tts_enabled"] is True
+        assert response.data["title"] == ""
+        assert "config_name" not in response.data
+        session = ChatSession.objects.get(pk=response.data["id"])
+        assert (session.user, session.setting, session.skill, session.config_name) == (
+            user,
+            setting,
+            scene,
+            "",
+        )
+
+    @pytest.mark.parametrize("body", [{}, {"skill": None}, {"skill": ""}])
+    def test_create_session_without_scene(self, auth_client, body):
+        """シーンは省略・null・空文字のどれでも「なし」."""
+        setting = TalkSettingFactory(name="ひな")
+
+        response = auth_client.post(
+            self.URL, {"setting": setting.pk, **body}, format="json"
+        )
+
+        assert response.status_code == 201
+        assert response.data["skill"] is None
+        assert response.data["tts_enabled"] is False
+        assert ChatSession.objects.get(pk=response.data["id"]).skill is None
+
+    @pytest.mark.parametrize(
+        ("body", "message"),
+        [
+            ({}, "Talk 設定を選んでください"),
+            ({"setting": None}, "Talk 設定を選んでください"),
+            ({"setting": "abc"}, "Talk 設定は ID で指定してください"),
+            ({"setting": 999999}, "選んだ Talk 設定は見つからないか、無効です"),
+            ({"config_name": "morning"}, "Talk 設定を選んでください"),
+        ],
+    )
+    def test_create_with_invalid_setting_returns_400(self, auth_client, body, message):
+        """Talk 設定がない・ID でない・見つからない（旧プリセット名だけの本文も）は 400."""
+        response = auth_client.post(self.URL, body, format="json")
+
         assert response.status_code == 400
+        assert response.data == {"setting": [message]}
+        assert ChatSession.objects.count() == 0
+
+    def test_create_with_disabled_setting_returns_400(self, auth_client):
+        """無効な Talk 設定ではセッションを作れない."""
+        setting = TalkSettingFactory(name="無効", is_enabled=False)
+
+        response = auth_client.post(self.URL, {"setting": setting.pk}, format="json")
+
+        assert response.status_code == 400
+        assert response.data == {
+            "setting": ["選んだ Talk 設定は見つからないか、無効です"]
+        }
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_create_with_unknown_or_disabled_scene_returns_400(
+        self, auth_client, enabled
+    ):
+        """登録のない・無効なシーンは 400."""
+        scene = AgentSkillFactory(name="talk-scene-off", is_enabled=False)
+        setting = TalkSettingFactory(name="ひな", skills=[scene])
+        name = "talk-scene-none" if enabled else scene.name
+
+        response = auth_client.post(
+            self.URL, {"setting": setting.pk, "skill": name}, format="json"
+        )
+
+        assert response.status_code == 400
+        assert response.data == {"skill": ["選んだシーンは見つからないか、無効です"]}
+
+    def test_create_with_scene_not_in_setting_returns_400(self, auth_client):
+        """Talk 設定で選んでいないシーンは 400."""
+        AgentSkillFactory(name="talk-scene-cafe")
+        setting = TalkSettingFactory(name="ひな")
+
+        response = auth_client.post(
+            self.URL, {"setting": setting.pk, "skill": "talk-scene-cafe"}, format="json"
+        )
+
+        assert response.status_code == 400
+        assert response.data == {
+            "skill": ["このシーンは選んだ Talk 設定では使えません"]
+        }
 
     def test_create_unauthenticated_returns_401(self):
         client = APIClient()
-        response = client.post(self.URL, {"config_name": "m"}, format="json")
+        response = client.post(self.URL, {"setting": 1}, format="json")
         assert response.status_code == 401
+
+    def test_list_items_include_setting_scene_and_voice(self, auth_client, user):
+        """一覧の各項目は Talk 設定・シーン・音声の有無を持つ（Talk 設定なしは null と false）."""
+        scene = AgentSkillFactory(name="talk-scene-cafe", description="カフェで話す")
+        setting = TalkSettingFactory(name="ひな", skills=[scene], tts_enabled=True)
+        ChatSession.objects.create(user=user, setting=setting, skill=scene, title="新")
+        ChatSession.objects.create(user=user, config_name="gone", title="旧")
+
+        response = auth_client.get(self.URL)
+
+        items = {item["title"]: item for item in response.data["results"]}
+        assert (items["新"]["setting"], items["新"]["skill"]) == (
+            {"id": setting.pk, "name": "ひな"},
+            {"name": "talk-scene-cafe", "description": "カフェで話す"},
+        )
+        assert items["新"]["tts_enabled"] is True
+        assert (items["旧"]["setting"], items["旧"]["skill"]) == (None, None)
+        assert items["旧"]["tts_enabled"] is False
+        assert all("config_name" not in item for item in items.values())
 
 
 @pytest.mark.django_db

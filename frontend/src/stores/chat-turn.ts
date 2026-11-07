@@ -150,11 +150,14 @@ export interface ChatTurnControls {
  * - それより前の失敗: 楽観表示を戻す（`error` イベント、HTTP エラー、接続できない）
  * - それより前の停止と切断: サーバーが途中までを保存するので、GET で確かめて揃える
  * - 保存のあと: 生成中を解いて次を打てるようにし、音声とタイトルを裏で待つ
+ *
+ * `reloadSettings` は、新規チャットの作成を断られたときに Talk 設定の一覧と選択を読み直す。
  */
 export function createChatTurns(
     set: SetChatState,
     get: GetChatState,
     updaters: ChatStateUpdaters,
+    reloadSettings: () => Promise<void>,
 ): ChatTurnControls {
     const {
         updateMessages,
@@ -269,9 +272,7 @@ export function createChatTurns(
         historyVersion += 1;
         if (!isSameThread(ctx)) return;
         const state = get();
-        const audioPending = state.configs.some(
-            (c) => c.name === state.activeSession?.config_name && c.tts_enabled,
-        );
+        const audioPending = state.activeSession?.tts_enabled ?? false;
         const messages = applySaved(state.messages, {
             userLocalId: ctx.userLocalId,
             assistantLocalId: ctx.assistantLocalId,
@@ -414,7 +415,7 @@ export function createChatTurns(
         }
     };
 
-    /** セッションが別のタブなどで消されていたら手放す。プリセットが消えた 404 と区別するため確かめる。 */
+    /** セッションが別のタブなどで消されていたら手放す。編集対象が消えた 404 と区別するため確かめる。 */
     const abandonIfGone = async (ctx: TurnContext) => {
         try {
             await apiGetSession(ctx.sessionId);
@@ -496,14 +497,15 @@ export function createChatTurns(
         return 'sent';
     };
 
-    /** 新規チャットの最初の送信で使うセッションを作る。使えなければ null を返す。 */
+    /** 新規チャットの最初の送信で、選んだ Talk 設定とシーンのセッションを作る。使えなければ null を返す。 */
     const createSessionForRun = async (
         controller: AbortController,
-        configName: string,
+        settingId: number,
+        skillName: string | null,
         restore: readonly ChatUiMessage[],
         hooks: TurnHooks,
     ): Promise<string | null> => {
-        const creating = apiCreateSession(configName);
+        const creating = apiCreateSession(settingId, skillName);
         const aborted = new Promise<null>((resolve) => {
             controller.signal.addEventListener('abort', () => resolve(null), {
                 once: true,
@@ -517,6 +519,9 @@ export function createChatTurns(
             if (currentRun?.controller !== controller) return null;
             currentRun = null;
             set({ messages: restore, isRunning: false, error: message });
+            // 選んだ Talk 設定やシーンが、画面を開いている間に使えなくなった。
+            // 同じ選択のまま断られ続けないよう、一覧と選択を読み直す
+            if (hasStatus(error, 400)) void reloadSettings();
             return null;
         }
         // 停止された、または別のチャットへ移った。応答を待たずに入力文を戻し、作られたら消す
@@ -558,7 +563,9 @@ export function createChatTurns(
                 state.activeSessionId ??
                 (await createSessionForRun(
                     controller,
-                    state.selectedConfigName ?? '',
+                    // 新規チャットで送れるなら選ばれている（selectIsSendDisabled）
+                    state.selectedSettingId ?? 0,
+                    state.selectedSkillName,
                     restore,
                     hooks,
                 ));

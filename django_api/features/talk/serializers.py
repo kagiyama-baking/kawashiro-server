@@ -1,10 +1,12 @@
-"""会話生成シリアライザー."""
+"""Talk のシリアライザー（Talk 設定・チャット・廃止予定の会話生成）."""
 
 from django.db.models import Sum
 from django.urls import reverse
 from rest_framework import serializers
 
-from .models import ChatMessage, ChatSession
+from integrations.llm.models import AgentSkill
+
+from .models import ChatMessage, ChatSession, TalkSetting
 
 CHAT_MESSAGE_MAX_LENGTH = 4000
 SESSION_TITLE_MAX_LENGTH = 120
@@ -64,7 +66,62 @@ class ConfigListResponseSerializer(serializers.Serializer):
     configs = ConfigItemSerializer(many=True, help_text="設定一覧")
 
 
-class ChatSessionListItemSerializer(serializers.ModelSerializer):
+class TalkSceneSerializer(serializers.Serializer):
+    """シーン（スキル）の名前と説明."""
+
+    name = serializers.CharField(read_only=True, help_text="スキル名")
+    description = serializers.CharField(
+        read_only=True, help_text="説明（フロントの選択肢に出す）"
+    )
+
+
+class TalkSettingSummarySerializer(serializers.Serializer):
+    """セッションの Talk 設定（ID と名前）."""
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class TalkSettingItemSerializer(serializers.ModelSerializer):
+    """Talk 設定の一覧の 1 項目（選べるシーンは `enabled_skills` を先に引いておく）."""
+
+    skills = TalkSceneSerializer(
+        many=True,
+        read_only=True,
+        source="enabled_skills",
+        help_text="この設定で選べる有効なシーン（名前順）",
+    )
+
+    class Meta:
+        model = TalkSetting
+        fields = ("id", "name", "tts_enabled", "skills")
+        read_only_fields = fields
+
+
+class TalkSettingListResponseSerializer(serializers.Serializer):
+    """Talk 設定の一覧のレスポンス."""
+
+    settings = TalkSettingItemSerializer(
+        many=True, help_text="有効な Talk 設定（名前順）"
+    )
+
+
+class _SessionSettingFieldsMixin(serializers.Serializer):
+    """セッションの Talk 設定・シーン・音声の有無（Talk 設定がなければ null と false）."""
+
+    setting = TalkSettingSummarySerializer(read_only=True, allow_null=True)
+    skill = TalkSceneSerializer(read_only=True, allow_null=True)
+    tts_enabled = serializers.SerializerMethodField(
+        help_text="応答に音声が付くか（Talk 設定の音声合成）"
+    )
+
+    def get_tts_enabled(self, obj: ChatSession) -> bool:
+        return obj.setting is not None and obj.setting.tts_enabled
+
+
+class ChatSessionListItemSerializer(
+    _SessionSettingFieldsMixin, serializers.ModelSerializer
+):
     """セッション一覧の 1 項目."""
 
     message_count = serializers.IntegerField(read_only=True)
@@ -75,7 +132,9 @@ class ChatSessionListItemSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "title",
-            "config_name",
+            "setting",
+            "skill",
+            "tts_enabled",
             "message_count",
             "total_audio_bytes",
             "created_at",
@@ -116,7 +175,9 @@ class ChatSessionMessageDetailSerializer(serializers.ModelSerializer):
         return path
 
 
-class ChatSessionDetailSerializer(serializers.ModelSerializer):
+class ChatSessionDetailSerializer(
+    _SessionSettingFieldsMixin, serializers.ModelSerializer
+):
     """セッション詳細."""
 
     messages = ChatSessionMessageDetailSerializer(many=True, read_only=True)
@@ -128,7 +189,9 @@ class ChatSessionDetailSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "title",
-            "config_name",
+            "setting",
+            "skill",
+            "tts_enabled",
             "messages",
             "message_count",
             "total_audio_bytes",
@@ -153,11 +216,44 @@ class ChatTurnDoneSerializer(ChatSessionDetailSerializer):
 
 
 class ChatSessionCreateSerializer(serializers.Serializer):
-    """セッション作成."""
+    """セッション作成（Talk 設定とシーンを固定する）."""
 
-    config_name = serializers.CharField(
-        required=True, max_length=50, help_text="使用するプリセット名（作成後固定）"
+    setting = serializers.PrimaryKeyRelatedField(
+        queryset=TalkSetting.objects.filter(is_enabled=True),
+        help_text="使う Talk 設定の ID（有効なもの。作成後固定）",
+        error_messages={
+            "required": "Talk 設定を選んでください",
+            "null": "Talk 設定を選んでください",
+            "does_not_exist": "選んだ Talk 設定は見つからないか、無効です",
+            "incorrect_type": "Talk 設定は ID で指定してください",
+        },
     )
+    # 関係のフィールドは空文字を None として扱う（シーンなし）
+    skill = serializers.SlugRelatedField(
+        slug_field="name",
+        queryset=AgentSkill.objects.filter(is_enabled=True),
+        required=False,
+        allow_null=True,
+        help_text=(
+            "シーンのスキル名（Talk 設定で選べる有効なもの。なしなら省略か null。"
+            "作成後固定）"
+        ),
+        error_messages={
+            "does_not_exist": "選んだシーンは見つからないか、無効です",
+            "invalid": "選んだシーンは見つからないか、無効です",
+        },
+    )
+
+    def validate(self, attrs):
+        skill = attrs.get("skill")
+        if (
+            skill is not None
+            and not attrs["setting"].skills.filter(pk=skill.pk).exists()
+        ):
+            raise serializers.ValidationError(
+                {"skill": "このシーンは選んだ Talk 設定では使えません"}
+            )
+        return attrs
 
 
 class ChatSessionUpdateSerializer(serializers.ModelSerializer):

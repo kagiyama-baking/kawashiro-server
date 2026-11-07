@@ -5,66 +5,41 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 
-from features.talk.exceptions import PlaceholderDataMissingError
-from features.talk.models import TalkConfig
 from features.talk.services import TalkService
-from integrations.langfuse.models import LangfusePromptRef
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import LLMClientError, LLMConfigurationError
+from tests.fixtures.factories import (
+    AgentSkillFactory,
+    LangfusePromptRefFactory,
+    TalkSettingFactory,
+)
 from tests.fixtures.llm import LiteLLMStreamBody, litellm_stream, stream_of
 from tests.fixtures.sse import SEPARATE_DELTAS
 
 SYSTEM_PROMPT = "あなたは親切なアシスタントです。"
+# シーン（スキル）の本文を置く Langfuse のプロンプト名（スキル名そのもの）
+SCENE_NAME = "talk-scene-cafe"
+SCENE_BODY = "カフェで向かい合って、ゆっくり話している。"
 
 
 @pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    """Langfuse 接続を切って fallback_text 経由に統一する."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
+def _langfuse_prompts(langfuse_prompts):
+    """Langfuse は代役にする（入れていない参照のプロンプトはフォールバックテキストに落ちる）."""
+    return langfuse_prompts
 
 
 @pytest.fixture
-def chat_prompt_refs(db):
-    sys_ref = LangfusePromptRef.objects.create(
-        name="talk-chat-system",
-        langfuse_prompt_name="talk-chat-system",
-        fallback_text=SYSTEM_PROMPT,
-    )
-    user_ref = LangfusePromptRef.objects.create(
-        name="talk-chat-user",
-        langfuse_prompt_name="talk-chat-user",
-        fallback_text="dummy user prompt",
-    )
-    return sys_ref, user_ref
+def chat_setting(db):
+    """システムプロンプトだけの Talk 設定（本文は参照のフォールバックテキスト）."""
+    ref = LangfusePromptRefFactory(name="talk-chat-system", fallback_text=SYSTEM_PROMPT)
+    return TalkSettingFactory(name="チャットテスト設定", system_prompt_ref=ref)
 
 
 @pytest.fixture
-def chat_config(chat_prompt_refs):
-    return TalkConfig.objects.create(
-        name="chat_test",
-        display_name="チャットテスト設定",
-        tts_enabled=False,
-        system_prompt_ref=chat_prompt_refs[0],
-        user_prompt_ref=chat_prompt_refs[1],
-    )
-
-
-def _config_with_system_prompt(name: str, system_text: str, **fields) -> TalkConfig:
-    sys_ref = LangfusePromptRef.objects.create(
-        name=f"{name}-sys",
-        langfuse_prompt_name=f"{name}-sys",
-        fallback_text=system_text,
-    )
-    user_ref = LangfusePromptRef.objects.create(
-        name=f"{name}-usr", langfuse_prompt_name=f"{name}-usr", fallback_text="dummy"
-    )
-    return TalkConfig.objects.create(
-        name=name,
-        display_name=name,
-        system_prompt_ref=sys_ref,
-        user_prompt_ref=user_ref,
-        **fields,
-    )
+def scene(langfuse_prompts):
+    """本文を Langfuse（staging）に置いたシーン."""
+    langfuse_prompts[(SCENE_NAME, "staging")] = f"\n  {SCENE_BODY}\n"
+    return AgentSkillFactory(name=SCENE_NAME, label="staging")
 
 
 def _reply(messages: list[dict[str, str]] | None = None, **kwargs) -> list[str]:
@@ -80,42 +55,76 @@ def _reply(messages: list[dict[str, str]] | None = None, **kwargs) -> list[str]:
 
 @pytest.mark.django_db
 class TestPrepareChatPrompt:
-    """TalkService.prepare_chat_prompt のテスト."""
+    """TalkService.prepare_chat_prompt（Talk 設定のシステムプロンプト + シーン）のテスト."""
 
-    def test_prepare_chat_prompt_returns_system_prompt(
-        self, talk_llm_settings, chat_config
+    def test_prepare_chat_prompt_without_scene_returns_system_prompt(
+        self, talk_llm_settings, chat_setting
     ):
-        """system プロンプトの本文を返す."""
-        assert TalkService().prepare_chat_prompt(chat_config) == SYSTEM_PROMPT
+        """シーンがなければ、システムプロンプトの本文だけを返す."""
+        assert TalkService().prepare_chat_prompt(chat_setting) == SYSTEM_PROMPT
 
-    @patch("features.talk.services.HolidayClient")
-    def test_prepare_chat_prompt_expands_placeholder(
-        self, mock_holiday_class, talk_llm_settings
+    def test_prepare_chat_prompt_with_scene_appends_scene_section(
+        self, talk_llm_settings, chat_setting, scene
     ):
-        """system プロンプトのプレースホルダーは取得したデータで展開する."""
-        mock_holiday_class.return_value.get_holiday_name.return_value = None
-        config = _config_with_system_prompt("chat_with_dt", "現在時刻: {{datetime}}")
+        """シーンがあれば、本文を「# シーン設定」の節としてシステムプロンプトの後ろに足す."""
+        prompt = TalkService().prepare_chat_prompt(chat_setting, scene)
 
-        system_prompt = TalkService().prepare_chat_prompt(config)
+        assert prompt == f"{SYSTEM_PROMPT}\n\n# シーン設定\n\n{SCENE_BODY}"
 
-        assert "{{datetime}}" not in system_prompt
-        assert "day_of_week" in system_prompt
+    def test_prepare_chat_prompt_does_not_expand_variables(
+        self, talk_llm_settings, langfuse_prompts
+    ):
+        """システムプロンプトとシーンの変数は展開しない（外部のデータを取りに行かない）."""
+        ref = LangfusePromptRefFactory(
+            name="talk-vars-system", fallback_text="現在時刻: {{datetime}}"
+        )
+        langfuse_prompts[(SCENE_NAME, "staging")] = "天気: {{weather}}"
 
-    def test_prepare_chat_prompt_weather_requires_area_code(self, talk_llm_settings):
-        """{{weather}} があるのに予報区コードがなければ外部 API を呼ぶ前に失敗する."""
-        config = _config_with_system_prompt(
-            "chat_no_area", "天気: {{weather}}", area_code=""
+        prompt = TalkService().prepare_chat_prompt(
+            TalkSettingFactory(system_prompt_ref=ref),
+            AgentSkillFactory(name=SCENE_NAME, label="staging"),
         )
 
-        with pytest.raises(PlaceholderDataMissingError):
-            TalkService().prepare_chat_prompt(config)
+        assert "{{datetime}}" in prompt
+        assert "{{weather}}" in prompt
 
-    def test_prepare_chat_prompt_without_llm_config_raises_configuration_error(
-        self, chat_config
+    def test_prepare_chat_prompt_with_empty_system_prompt_raises_error(
+        self, talk_llm_settings
     ):
-        """LLM 設定がなければストリームを始める前に LLMConfigurationError になる."""
+        """システムプロンプトの本文が空なら PromptUnavailableError（空のまま話さない）."""
+        ref = LangfusePromptRefFactory(name="talk-empty-system", fallback_text=" \n")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            TalkService().prepare_chat_prompt(TalkSettingFactory(system_prompt_ref=ref))
+
+        assert exc_info.value.ref_name == "talk-empty-system"
+
+    def test_prepare_chat_prompt_with_unavailable_scene_never_uses_ref_fallback(
+        self, talk_llm_settings, chat_setting
+    ):
+        """シーンの本文が Langfuse にないとエラー（同じ名前の参照の本文は使わない）."""
+        LangfusePromptRefFactory(
+            name=SCENE_NAME,
+            langfuse_prompt_name=SCENE_NAME,
+            label="staging",
+            fallback_text="使わない本文",
+        )
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            TalkService().prepare_chat_prompt(
+                chat_setting, AgentSkillFactory(name=SCENE_NAME, label="staging")
+            )
+
+        assert exc_info.value.ref_name == SCENE_NAME
+
+    def test_prepare_chat_prompt_without_llm_config_raises_before_langfuse(
+        self, chat_setting, langfuse_unreachable
+    ):
+        """LLM 設定がなければ、Langfuse に問い合わせる前に LLMConfigurationError になる."""
         with pytest.raises(LLMConfigurationError):
-            TalkService().prepare_chat_prompt(chat_config)
+            TalkService().prepare_chat_prompt(
+                chat_setting, AgentSkillFactory(name=SCENE_NAME)
+            )
 
 
 @pytest.mark.django_db

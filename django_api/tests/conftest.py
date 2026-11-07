@@ -1,6 +1,7 @@
 """pytest設定とフィクスチャ定義"""
 
 import os
+from unittest.mock import patch
 
 import pydantic_ai.models
 import pytest
@@ -10,6 +11,7 @@ from pydantic_ai.models import override_allow_model_requests
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from tests.fixtures.langfuse import FakeLangfuse
 from tests.fixtures.llm import FakeLiteLLM
 
 # 開発者の .env に Langfuse キーがあってもテストからトレースを送らない。
@@ -54,6 +56,28 @@ def fake_litellm(mocker):
 
     with override_allow_model_requests(True):
         yield install
+
+
+@pytest.fixture
+def langfuse_prompts():
+    """Langfuse の text プロンプトの代役（`(プロンプト名, ラベル) → 本文` の dict）.
+
+    使ったテストは Langfuse へ出ない。本文を返させたいテストは dict に入れる。
+    入れていない名前・ラベルは SDK と同じく NotFoundError で取得に失敗する。
+    companion のテストでは autouse（tests/features/companion/conftest.py）。
+    """
+    prompts: dict[tuple[str, str], str] = {}
+    with patch("langfuse.get_client", return_value=FakeLangfuse(prompts)):
+        yield prompts
+
+
+@pytest.fixture
+def langfuse_unreachable(langfuse_prompts):
+    """Langfuse に届かない（クライアントを用意できない。入れた本文も返らない）."""
+    with patch(
+        "langfuse.get_client", side_effect=ConnectionError("Langfuse に届きません")
+    ):
+        yield
 
 
 @pytest.fixture
@@ -108,6 +132,28 @@ def superuser_client(api_client, superuser_token):
     """スーパーユーザー認証済みAPIクライアントのフィクスチャ"""
     api_client.credentials(HTTP_AUTHORIZATION=f"Token {superuser_token.key}")
     return api_client
+
+
+@pytest.fixture
+def _static_storage_without_manifest(settings):
+    """管理画面のテンプレートを描画できるよう、manifest を使わない保存先にする.
+
+    テストの前に collectstatic はしないので、本番と同じ manifest 付きの保存先では
+    テンプレートの `{% static %}` が manifest にない名前で失敗する。
+    """
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    }
+
+
+@pytest.fixture
+def admin_site_client(client, superuser, _static_storage_without_manifest):
+    """管理画面にスーパーユーザーでログインしたクライアント（画面を描画できる）."""
+    client.force_login(superuser)
+    return client
 
 
 @pytest.fixture

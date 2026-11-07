@@ -1,5 +1,7 @@
-"""LLM API設定モデル."""
+"""LLM API設定モデルと、全エージェントで共有するスキル（Agent Skills）のモデル."""
 
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 
 from core.encryption import decrypt_value, encrypt_value
@@ -62,7 +64,8 @@ class LLMServiceConfig(models.Model):
         ("detective", "HN Agent Detective"),
         ("devils_advocate", "HN Agent Devil's Advocate"),
         ("security_responder", "HN Agent Security Responder"),
-        ("talk", "Talk Generator"),
+        ("talk", "Talk"),
+        ("companion", "Companion"),
     ]
 
     service_name = models.CharField(
@@ -92,8 +95,99 @@ class LLMServiceConfig(models.Model):
     updated_at = models.DateTimeField("更新日時", auto_now=True)
 
     class Meta:
-        verbose_name = "LLMサービス設定"
-        verbose_name_plural = "LLMサービス設定"
+        verbose_name = "サービス設定"
+        verbose_name_plural = "サービス設定"
 
     def __str__(self):
         return f"{self.get_service_name_display()} → {self.provider_config.name}"
+
+
+# スキル名の規則（Agent Skills の命名: 英小文字・数字・ハイフン。先頭・末尾・連続のハイフンは不可）。
+# スキル名は PydanticAI の capability の id になるので、id に使えない `:` も、予約の
+# `deferred_capabilities` も通らない。`$` は末尾の改行も通すので `\Z` で終える。
+SKILL_NAME_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*\Z"
+
+# 毎回の実行に入る組み込みの capability の id（`integrations/llm/apps.py` の
+# `Agent.instrument_all` が入れる Instrumentation）。スキル名が同じだと id が衝突し、
+# そのスキルを渡した実行は始まる前に失敗する。
+RESERVED_SKILL_NAMES = frozenset({"instrumentation"})
+
+
+def validate_skill_name_not_reserved(value: str) -> None:
+    """組み込みの capability と同じ id になるスキル名を拒む."""
+    if value in RESERVED_SKILL_NAMES:
+        raise ValidationError(
+            "「%(value)s」は予約されているため、スキル名に使えません",
+            code="reserved",
+            params={"value": value},
+        )
+
+
+class AgentSkill(models.Model):
+    """エージェントのスキル（Agent Skills。用途ごとの手順）.
+
+    全エージェントで共有する（Companion 設定が使うスキルを `CompanionConfig.skills` で、
+    Talk 設定が選べるシーンを `TalkSetting.skills` で選ぶ）。Companion では名前と説明が
+    モデルに見せる一覧になり、Talk では説明がフロントの選択肢になる。本文はそのスキルを
+    使うときだけ、スキル名と同じ名前の Langfuse の text プロンプトを `label` で取る
+    （フォールバックはない）。
+    """
+
+    name = models.CharField(
+        "スキル名",
+        max_length=64,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=SKILL_NAME_PATTERN,
+                message=(
+                    "スキル名は英小文字・数字をハイフンでつないだ形で入力してください"
+                    "（例: good-morning）"
+                ),
+            ),
+            validate_skill_name_not_reserved,
+        ],
+        # help_text は管理画面で HTML として出るので、山かっこを書かない
+        help_text=(
+            "英小文字・数字・ハイフン（例: good-morning）、64 字以内。"
+            "先頭・末尾・連続のハイフンは使えない。名前は、本文を読む Langfuse の text "
+            "プロンプトの名前そのもの（版はラベルで選ぶ）なので、名前を変えると本文を読む先も"
+            "変わる"
+        ),
+    )
+    description = models.CharField(
+        "説明",
+        max_length=1024,
+        help_text=(
+            "どんな発話のときに使うスキルか（例: 朝のあいさつ。「おはよう」など）。"
+            "モデルはこの説明を読んで使うスキルを選ぶ。1024 字以内"
+        ),
+    )
+    label = models.CharField(
+        "ラベル",
+        max_length=50,
+        default="production",
+        help_text="本文を取る Langfuse のプロンプトのラベル（staging / production）",
+    )
+    is_enabled = models.BooleanField(
+        "有効",
+        default=True,
+        help_text="無効にしたスキルは、設定で選んでいても使わない",
+    )
+
+    class Meta:
+        verbose_name = "Agent Skill"
+        verbose_name_plural = "Agent Skills"
+        ordering = ["name"]
+        # companion から状態だけの migration（llm_config 0014・companion 0006）で移したので、
+        # 表は companion の 0003 が作った companion_agentskill のまま。既定の表名
+        # （llm_config_agentskill）にそろえるなら、後で AlterModelTable を足す。
+        db_table = "companion_agentskill"
+
+    def __str__(self) -> str:
+        return f"{self.name}@{self.label}"
+
+    def save(self, *args, **kwargs):
+        """保存時にバリデーションを実行."""
+        self.full_clean()
+        super().save(*args, **kwargs)

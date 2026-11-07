@@ -277,7 +277,9 @@ export function aggregateFromDetail(
     return {
         id: detail.id,
         title: detail.title,
-        config_name: detail.config_name,
+        setting: detail.setting,
+        skill: detail.skill,
+        tts_enabled: detail.tts_enabled,
         message_count: detail.messages.length,
         total_audio_bytes: detail.messages.reduce(
             (sum, m) => sum + m.audio_size_bytes,

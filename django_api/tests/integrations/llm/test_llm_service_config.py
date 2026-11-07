@@ -2,6 +2,8 @@
 
 import pytest
 
+from integrations.llm.config import get_llm_settings
+from integrations.llm.exceptions import LLMConfigurationError
 from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
 
 
@@ -115,6 +117,28 @@ class TestLLMServiceConfig:
             )
             assert config.service_name == service
 
+    @pytest.mark.integration
+    def test_service_name_with_companion_is_valid_choice(self, provider):
+        """companion はサービス名の選択肢にあり（表示名 Companion）、検証を通る.
+
+        objects.create は choices を検証しないので、admin の入力チェックと同じ
+        full_clean で確かめる。
+        """
+        config = LLMServiceConfig(service_name="companion", provider_config=provider)
+
+        config.full_clean()
+
+        assert config.get_service_name_display() == "Companion"
+
+    @pytest.mark.integration
+    def test_talk_service_name_is_displayed_as_talk(self, provider):
+        """talk の表示名は Talk（チャットが使うサービス。旧 Talk Generator）."""
+        config = LLMServiceConfig(service_name="talk", provider_config=provider)
+
+        config.full_clean()
+
+        assert config.get_service_name_display() == "Talk"
+
     def test_shared_provider(self, provider):
         """複数サービスが同じプロバイダー設定を共有できる."""
         talk = LLMServiceConfig.objects.create(
@@ -154,3 +178,39 @@ class TestLLMServiceConfig:
         LLMServiceConfig.objects.create(service_name="talk", provider_config=provider)
         with pytest.raises(ProtectedError):
             provider.delete()
+
+
+@pytest.mark.unit
+class TestLLMConfigVerboseNames:
+    """管理画面に出す名前（グループ「AI設定」の中で、LLM を重ねない）."""
+
+    def test_service_config_verbose_name_is_service_settings(self):
+        """サービスごとの割り当ては「サービス設定」."""
+        meta = LLMServiceConfig._meta
+
+        assert (meta.verbose_name, meta.verbose_name_plural) == (
+            "サービス設定",
+            "サービス設定",
+        )
+
+    def test_provider_config_verbose_name_stays_llm_settings(self):
+        """モデルと鍵の組は「LLM設定」のまま（サービス設定でそれを選ぶ項目の名前も同じ）."""
+        meta = LLMProviderConfig._meta
+
+        assert (meta.verbose_name, meta.verbose_name_plural) == ("LLM設定", "LLM設定")
+        assert (
+            LLMServiceConfig._meta.get_field("provider_config").verbose_name
+            == "LLM設定"
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_get_llm_settings_without_config_raises_error_pointing_to_admin_menu():
+    """有効なサービス設定がなければ LLMConfigurationError で、作る場所を今の名前で案内する."""
+    with pytest.raises(LLMConfigurationError) as exc_info:
+        get_llm_settings("talk")
+
+    message = str(exc_info.value)
+    assert "サービス 'talk' のLLM設定がありません" in message
+    assert "「AI設定 → サービス設定」" in message

@@ -9,9 +9,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from features.talk.llm_agents import TALK_CHAT_AGENT, TALK_TITLE_AGENT
-from features.talk.models import ChatMessage, ChatSession, TalkConfig
+from features.talk.models import ChatMessage, ChatSession, TalkSetting
 from integrations.langfuse.models import LangfusePromptRef
 from integrations.tts.client import TTSResult
+from tests.fixtures.factories import AgentSkillFactory
 from tests.fixtures.llm import ScriptedLLM, make_llm_settings
 
 
@@ -75,10 +76,13 @@ def media_root(settings, tmp_path):
 
 
 @pytest.fixture
-def chat_turn_env(media_root):
-    """Langfuse から切り離す（スロットルの計数は `tests/conftest.py` が毎回空にする）."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
+def chat_turn_env(media_root, langfuse_prompts):
+    """Langfuse を代役にする（スロットルの計数は `tests/conftest.py` が毎回空にする）.
+
+    システムプロンプトは参照のフォールバックテキストに落ちる。シーンの本文は
+    `langfuse_prompts` に入れたものだけを返す。
+    """
+    return langfuse_prompts
 
 
 @pytest.fixture
@@ -113,36 +117,50 @@ def prompt_refs(db):
 
 
 @pytest.fixture
-def talk_config(prompt_refs):
-    return TalkConfig.objects.create(
-        name="chat-turn",
-        display_name="チャットのターン",
-        system_prompt_ref=prompt_refs[0],
-        user_prompt_ref=prompt_refs[1],
+def talk_setting(prompt_refs):
+    return TalkSetting.objects.create(
+        name="チャットのターン", system_prompt_ref=prompt_refs[0]
     )
 
 
 @pytest.fixture
-def tts_config(prompt_refs):
-    return TalkConfig.objects.create(
-        name="chat-turn-tts",
-        display_name="チャットのターン（音声あり）",
+def tts_setting(prompt_refs):
+    return TalkSetting.objects.create(
+        name="チャットのターン（音声あり）",
         tts_enabled=True,
         tts_format="wav",
         tts_model="model",
         system_prompt_ref=prompt_refs[0],
-        user_prompt_ref=prompt_refs[1],
     )
 
 
-@pytest.fixture
-def session(user, talk_config):
-    return ChatSession.objects.create(user=user, config_name=talk_config.name)
+# シーン（スキル）の本文を置く Langfuse のプロンプト名（スキル名そのもの）と本文
+SCENE_NAME = "talk-scene-cafe"
+SCENE_BODY = "カフェで向かい合って、ゆっくり話している。"
 
 
 @pytest.fixture
-def tts_session(user, tts_config):
-    return ChatSession.objects.create(user=user, config_name=tts_config.name)
+def scene(talk_setting, chat_turn_env):
+    """Talk 設定で選んだシーン（本文は Langfuse の staging にある）."""
+    chat_turn_env[(SCENE_NAME, "staging")] = SCENE_BODY
+    skill = AgentSkillFactory(name=SCENE_NAME, label="staging")
+    talk_setting.skills.add(skill)
+    return skill
+
+
+@pytest.fixture
+def session(user, talk_setting):
+    return ChatSession.objects.create(user=user, setting=talk_setting)
+
+
+@pytest.fixture
+def scene_session(user, talk_setting, scene):
+    return ChatSession.objects.create(user=user, setting=talk_setting, skill=scene)
+
+
+@pytest.fixture
+def tts_session(user, tts_setting):
+    return ChatSession.objects.create(user=user, setting=tts_setting)
 
 
 @pytest.fixture

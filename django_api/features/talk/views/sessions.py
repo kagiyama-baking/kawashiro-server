@@ -38,6 +38,7 @@ class ChatSessionListCreateView(generics.GenericAPIView):
         # なる場合があるため、最新更新降順を明示する。
         return (
             ChatSession.objects.filter(user=self.request.user)
+            .select_related("setting", "skill")
             .annotate(
                 message_count=Count("messages"),
                 total_audio_bytes=Coalesce(Sum("messages__audio_size_bytes"), 0),
@@ -62,7 +63,12 @@ class ChatSessionListCreateView(generics.GenericAPIView):
         request=ChatSessionCreateSerializer,
         responses={
             201: OpenApiResponse(response=ChatSessionDetailSerializer),
-            400: OpenApiResponse(description="config_name 不正"),
+            400: OpenApiResponse(
+                description=(
+                    "Talk 設定がない・見つからないか無効、またはシーンが見つからないか無効・"
+                    "Talk 設定で選べない"
+                )
+            ),
             401: OpenApiResponse(description="認証エラー"),
         },
     )
@@ -71,7 +77,8 @@ class ChatSessionListCreateView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         session = ChatSession.objects.create(
             user=request.user,
-            config_name=serializer.validated_data["config_name"],
+            setting=serializer.validated_data["setting"],
+            skill=serializer.validated_data.get("skill"),
         )
         out = ChatSessionDetailSerializer(session, context={"request": request})
         return Response(out.data, status=status.HTTP_201_CREATED)
@@ -88,7 +95,9 @@ class ChatSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        return ChatSession.objects.filter(user=self.request.user)
+        return ChatSession.objects.filter(user=self.request.user).select_related(
+            "setting", "skill"
+        )
 
     def get_serializer_class(self):
         if self.request.method == "PATCH":

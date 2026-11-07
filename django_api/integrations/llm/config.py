@@ -39,7 +39,7 @@ def get_llm_settings(service_name: str) -> LLMSettings:
     except LLMServiceConfig.DoesNotExist as err:
         raise LLMConfigurationError(
             f"サービス '{service_name}' のLLM設定がありません。\n"
-            "Django管理画面からLLMサービス設定を作成してください。"
+            "Django管理画面の「AI設定 → サービス設定」で作成してください。"
         ) from err
 
     provider = config.provider_config

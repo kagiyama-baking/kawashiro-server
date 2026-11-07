@@ -42,7 +42,9 @@ export function sessionDetail(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: messages.length,
         total_audio_bytes: 0,
         created_at: NOW,
@@ -58,7 +60,9 @@ export function sessionItem(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: 0,
         total_audio_bytes: 0,
         created_at: NOW,
