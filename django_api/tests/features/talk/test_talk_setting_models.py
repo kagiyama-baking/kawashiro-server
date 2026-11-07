@@ -1,11 +1,12 @@
 """Talk 設定（TalkSetting）と、チャットセッションの Talk 設定・シーンのテスト."""
 
 import pytest
+from django.apps import apps
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.db.models import ProtectedError
 
-from features.talk.models import ChatSession, TalkConfig, TalkSetting
+from features.talk.models import ChatSession, TalkSetting
 from tests.fixtures.factories import (
     AgentSkillFactory,
     LangfusePromptRefFactory,
@@ -102,10 +103,14 @@ class TestTalkSetting:
 
         assert list(setting.skills.all()) == []
 
-    def test_verbose_names_mark_talk_setting_and_deprecated_preset(self):
-        """admin の表示名: Talk 設定と、廃止予定の会話生成設定."""
+    def test_verbose_name_is_talk_setting(self):
+        """admin の表示名は Talk 設定."""
         assert TalkSetting._meta.verbose_name == "Talk 設定"
-        assert TalkConfig._meta.verbose_name == "会話生成設定（廃止予定）"
+
+    def test_talk_app_has_no_preset_model(self):
+        """旧会話生成設定（プリセット。TalkConfig）のモデルはない."""
+        with pytest.raises(LookupError):
+            apps.get_model("talk", "TalkConfig")
 
 
 @pytest.mark.integration
@@ -113,18 +118,14 @@ class TestTalkSetting:
 class TestChatSessionTalkSetting:
     """チャットセッションの Talk 設定とシーン."""
 
-    def test_chat_session_with_setting_has_no_scene_and_no_preset_name(self, user):
-        """Talk 設定だけで作れる（シーンなし・旧プリセット名は空）."""
+    def test_chat_session_with_setting_has_no_scene(self, user):
+        """Talk 設定だけで作れる（シーンなし）."""
         setting = TalkSettingFactory()
 
         session = ChatSession.objects.create(user=user, setting=setting)
 
         session.refresh_from_db()
-        assert (session.setting, session.skill, session.config_name) == (
-            setting,
-            None,
-            "",
-        )
+        assert (session.setting, session.skill) == (setting, None)
         assert list(setting.chat_sessions.all()) == [session]
 
     def test_chat_session_with_scene_keeps_skill(self, user):
@@ -153,9 +154,7 @@ class TestChatSessionTalkSetting:
         with pytest.raises(ProtectedError):
             scene.delete()
 
-    def test_config_name_is_labeled_as_deprecated_preset_name(self):
-        """旧プリセット名は廃止予定の項目として表示する."""
-        field = ChatSession._meta.get_field("config_name")
-
-        assert field.verbose_name == "旧プリセット名（廃止予定）"
-        assert (field.blank, field.default) == (True, "")
+    def test_chat_session_has_no_preset_name_field(self):
+        """チャットは旧プリセット名（config_name）を持たない."""
+        with pytest.raises(FieldDoesNotExist):
+            ChatSession._meta.get_field("config_name")

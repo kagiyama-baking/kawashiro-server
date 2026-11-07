@@ -24,30 +24,29 @@ def user(db):
 @pytest.mark.django_db
 class TestChatSession:
     def test_create_with_required_fields(self, user):
-        session = ChatSession.objects.create(user=user, config_name="morning")
+        session = ChatSession.objects.create(user=user)
         assert isinstance(session.id, uuid.UUID)
         assert session.user_id == user.id
-        assert session.config_name == "morning"
         assert session.title == ""
         assert session.created_at is not None
         assert session.updated_at is not None
 
     def test_default_ordering_is_recent_first(self, user):
-        s1 = ChatSession.objects.create(user=user, config_name="a")
-        s2 = ChatSession.objects.create(user=user, config_name="b")
+        s1 = ChatSession.objects.create(user=user)
+        s2 = ChatSession.objects.create(user=user)
         ids = list(ChatSession.objects.values_list("id", flat=True))
         assert ids == [s2.id, s1.id]
 
     def test_str_uses_title_or_fallback(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
-        assert "ChatSession" in str(session) or session.config_name in str(session)
+        session = ChatSession.objects.create(user=user)
+        assert str(session) == f"ChatSession({session.id})"
         session.title = "テストタイトル"
         session.save()
         assert "テストタイトル" in str(session)
 
     def test_user_cascade_deletes_sessions(self, user):
-        ChatSession.objects.create(user=user, config_name="m")
-        ChatSession.objects.create(user=user, config_name="e")
+        ChatSession.objects.create(user=user)
+        ChatSession.objects.create(user=user)
         user.delete()
         assert ChatSession.objects.count() == 0
 
@@ -55,7 +54,7 @@ class TestChatSession:
 @pytest.mark.django_db
 class TestChatMessage:
     def test_create_user_message(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         msg = ChatMessage.objects.create(
             session=session,
             sequence=0,
@@ -69,7 +68,7 @@ class TestChatMessage:
         assert not msg.audio_file
 
     def test_create_assistant_with_audio(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         audio = ContentFile(b"\x00" * 100, name="reply.wav")
         msg = ChatMessage.objects.create(
             session=session,
@@ -85,7 +84,7 @@ class TestChatMessage:
         assert msg.audio_format == "wav"
 
     def test_unique_session_sequence(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="a"
         )
@@ -95,7 +94,7 @@ class TestChatMessage:
             )
 
     def test_default_ordering_is_sequence(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         ChatMessage.objects.create(
             session=session, sequence=2, role="user", content="3"
         )
@@ -109,7 +108,7 @@ class TestChatMessage:
         assert contents == ["1", "2", "3"]
 
     def test_session_cascade_deletes_messages(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="hi"
         )

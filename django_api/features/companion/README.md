@@ -1,6 +1,6 @@
 # Companion — システムプロンプトとスキル
 
-Companion は、全体で 1 つのエージェント設定（共通のシステムプロンプト）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。実行 API（`POST /companion/run/`）で受け取った発話からエージェントが合うスキルを選び、その手順に従ってセリフを返します（音声合成が有効なら音声も）。いずれ Talk のプリセット（`TalkConfig`）を置き換えます。
+Companion は、全体で 1 つのエージェント設定（共通のシステムプロンプト）と、用途ごとの「スキル」（おはよう・おかえり・おやすみ など）を持つ Django アプリです。実行 API（`POST /companion/run/`）で受け取った発話からエージェントが合うスキルを選び、その手順に従ってセリフを返します（音声合成が有効なら音声も）。
 
 - スキルは admin の「Agent Skills」（`AgentSkill`。全エージェントで共有するモデル。項目は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）に名前・説明・ラベル・有効を登録し、Companion 設定ではその中から使うものを選びます
 - スキルの本文は DB に持たず、スキル名と同じ名前の Langfuse の text プロンプトを、スキルのラベルで直接取ります。フォールバックはありません（下の「スキル」）
@@ -46,7 +46,7 @@ features/companion/
 | `skills` | M2M → `AgentSkill`（`related_name="companion_configs"`。0007 までは `configs`） | この設定で使うスキル（下の「スキルの登録（Agent Skills）」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
 | `area_code` | CharField(10), `""` | 天気予報の予報区コード（例: `130010`）。空なら天気を扱わない | 空か 6 桁の半角数字（`^[0-9]{6}\Z`。全角数字・末尾の改行は通さない） |
 | `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限（数え方は下の「API」の「回数制限」） | 1 以上 |
-| `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の `TalkConfig` 表](../talk/README.md#talkconfig-リファレンス) の `tts_*` 行と同じ | 同左 |
+| `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の Talk 設定の表](../talk/README.md#talk-設定talksettingリファレンス) の `tts_*` 行と同じ | 同左 |
 | `created_at` / `updated_at` | DateTime（自動） | 作成・更新日時（admin では読み取りのみ） | — |
 
 - `save()` は `full_clean()` を呼ぶため、上の入力チェックは admin 経由でもコード経由でも必ず走ります。ほかの設定の無効化と保存は 1 つのトランザクションで行いますが、2 件を同時に有効にすると、両方が有効のまま残ることがあります（そのあいだ実行は 503。下の「実行の流れ」）。管理画面で 1 件だけを有効にし直すと解消します。
@@ -206,8 +206,6 @@ features/companion/
 | `audio_data` | 文字列 / `null` | Base64 でエンコードした音声。音声合成が無効なら `null` |
 | `audio_format` | 文字列 / `null` | 音声の形式（設定の `tts_format`: `wav` / `mp3` / `ogg`）。音声合成が無効なら `null` |
 
-- Talk の `/talk/synthesize/` とはセリフのキーが違います（`greeting_text` ではなく `text`）。
-
 ### エラー
 
 本文は `{"error": "<メッセージ>"}` です。ただし、入力の不正は項目ごとのエラー（例: `{"prompt": ["この項目は空にできません。"]}`）、401・429 と JSON として読めない本文は DRF の `{"detail": "..."}` です。5xx のメッセージは決まった文で、例外の内容（接続先・設定名など）は返さずにログへ出します。
@@ -263,4 +261,4 @@ curl -s -X POST http://localhost:8000/companion/run/ \
 
 ## 初期セットアップ
 
-サービス設定の有効化から、Langfuse のプロンプト・システムプロンプトの参照・Agent Skills・設定の登録、API での動作確認までの順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3「Companion 設定」を参照してください。
+サービス設定の有効化から、Langfuse のプロンプト・システムプロンプトの参照・Agent Skills・設定の登録、API での動作確認までの順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-2「Companion 設定」を参照してください。

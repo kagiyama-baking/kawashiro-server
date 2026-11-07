@@ -1,41 +1,38 @@
-# Talk — チャット（Talk 設定・シーン）と会話生成（廃止予定）
+# Talk — チャット（Talk 設定・シーン）
 
-Talk 設定（システムプロンプト・選べるシーン・音声）で、過去発話を引き継いで続けて話すチャット（`/talk/sessions/` 系）と、廃止予定の単発の会話生成 API（`/talk/synthesize/`）を提供する Django アプリです（admin のグループは「Talk」）。
+Talk 設定（システムプロンプト・選べるシーン・音声）で、過去発話を引き継いで続けて話すチャット（`/talk/settings/`・`/talk/sessions/` 系）を提供する Django アプリです（admin のグループは「Talk」）。
 
 - チャット: セッションの作成時に Talk 設定とシーン（任意）を固定し、`ChatSession` / `ChatMessage` として PostgreSQL に永続化する。シーンの本文はシステムプロンプトの後ろに足す（ツールは使わない）。TTS 音声は `MEDIA_ROOT` 配下にファイル保存して認可付きで配信する
-- 単発生成（廃止予定）: `TalkConfig`（プリセット）に紐づく Langfuse プロンプトを解決し、必要な外部データを埋め込んで LLM に投げ、任意で TTS 音声を返す
 - プロンプト本文は DB に持たず、Langfuse 上のプロンプトを参照する（システムプロンプトは `LangfusePromptRef` 経由、シーンはスキル名と同じ名前のプロンプト。詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 
 ## アーキテクチャ
 
 ```
 features/talk/
-├── models.py            # TalkSetting（Talk 設定）/ ChatSession / ChatMessage / TalkConfig（会話生成設定。廃止予定）
+├── models.py            # TalkSetting（Talk 設定）/ ChatSession / ChatMessage
 ├── serializers.py       # リクエスト・レスポンス定義（content 上限 4000 文字）
-├── services.py          # TalkService: チャットのプロンプト（Talk 設定 + シーン）・LLM・TTS・会話生成のプレースホルダー（検出・並列取得）
-├── llm_agents.py        # PydanticAI エージェント（チャット・タイトル・単発生成）と履歴の変換
+├── services.py          # TalkService: チャットのプロンプト（Talk 設定 + シーン）・LLM・TTS
+├── llm_agents.py        # PydanticAI エージェント（チャット・タイトル）と履歴の変換
 ├── chat_turn.py         # チャットの 1 ターンの実行: prepare_turn / commit_turn / ChatTurnRunner
 ├── views/               # ビューは責務ごとに分割（外部からは features.talk.views.X で参照）
 │   ├── __init__.py      # 各ビューの再エクスポート（urls.py 側は変更不要）
 │   ├── _common.py       # 例外→HTTP マッピング / SESSION_MAX_MESSAGES / 音声保存ヘルパ
 │   ├── _sse.py          # ターンの応答（SSE / JSON の切替）: format_sse / respond_with_turn
 │   ├── settings.py      # TalkSettingsListView（GET /talk/settings/）
-│   ├── synthesize.py    # TalkSynthesizeView, TodayInfoView, ConfigsListView（会話生成。廃止予定）
 │   ├── sessions.py      # ChatSessionListCreateView, ChatSessionDetailView, SessionPagination
 │   ├── messages.py      # ChatSessionMessageView, ChatSessionMessageEditView（検証のみ）
 │   └── audio.py         # ChatSessionMessageAudioView, ChatSessionAudioBulkDeleteView
 ├── signals.py           # post_delete で音声ファイルを物理削除（apps.ready() で登録）
 ├── permissions.py       # IsSessionOwner（session / session 経由オブジェクトの所有者判定）
-├── throttling.py        # TalkConfigRateThrottle（/talk/synthesize/ のプリセットごとの回数制限）
-├── admin.py             # Talk 設定 / ChatSession / ChatMessage / 会話生成設定（廃止予定）の管理画面
+├── admin.py             # Talk 設定 / ChatSession / ChatMessage の管理画面
 └── management/commands/cleanup_orphan_audio.py
 ```
 
-`TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。祝日クライアント（holidays-jp API。インスタンス内キャッシュ）と日時情報の組み立て（`get_datetime_info`。`{{datetime}}` と `GET /talk/datetime/` が共用）は `integrations/holiday/` にあります。LLM は `llm_agents.py` の 3 エージェントを、チャットは `stream_text_sync`、タイトルと単発生成は `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストでは LLM を `TALK_CHAT_AGENT.override(model=...)` で差し替えます（`tests/features/talk/conftest.py` の `chat_llm` / `title_llm`）。
+`TalkService` は TTS クライアントを遅延初期化（プロパティ経由）で保持します。LLM は `llm_agents.py` の 2 エージェントを、チャットは `stream_text_sync`、タイトルは `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストでは LLM を `TALK_CHAT_AGENT.override(model=...)` で差し替えます（`tests/features/talk/conftest.py` の `chat_llm` / `title_llm`）。
 
 ## Talk 設定（TalkSetting）リファレンス
 
-チャットのシステムプロンプト・選べるシーン・音声をまとめた設定です。管理画面の「AI ツール設定 → Talk → Talk 設定」から登録し、**複数を有効にできます**（Companion 設定と違い、1 件に絞りません）。登録の手順は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-4 を参照してください。
+チャットのシステムプロンプト・選べるシーン・音声をまとめた設定です。管理画面の「AI ツール設定 → Talk → Talk 設定」から登録し、**複数を有効にできます**（Companion 設定と違い、1 件に絞りません）。登録の手順は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3 を参照してください。
 
 | フィールド | 型 / 既定値 | 説明 |
 |---|---|---|
@@ -43,18 +40,30 @@ features/talk/
 | `is_enabled` | Bool, `True` | 有効な設定だけを、フロントの Talk で選べて、続けて話せる |
 | `system_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | チャットのシステムプロンプト（Langfuse の text プロンプト）の参照。必須。変数（`{{weather}}` など）は展開しない |
 | `skills` | M2M → `AgentSkill`（`related_name="talk_settings"`） | この設定で選べるシーン（[Agent Skills](../../integrations/llm/README.md#agent-skillsagentskill) に登録したもの）。任意。無効にしたスキルは選べない |
-| `tts_*`（9 項目） | `AbstractTTSSettings`（`integrations/tts/models.py`）を継承 | 項目と既定値は下の TalkConfig の表の `tts_*` 行と同じ。`get_tts_options()` は `tts_enabled=False` なら `None` |
+| `tts_enabled` | Bool, `False` | 音声合成の有効化。`False` なら応答に音声を付けない |
+| `tts_model` | CharField(100), `""` | TTS モデル名。空文字なら `None` として送られ SBV2 側の既定モデルを使う |
+| `tts_style` | CharField(50), `"Neutral"` | 話者スタイル |
+| `tts_style_weight` | Float, `1.0` | スタイル強度 |
+| `tts_speed` | Float, `1.0` | 話速 |
+| `tts_sdp_ratio` | Float, `0.2` | SDP 比率 |
+| `tts_noise_scale` | Float, `0.6` | ノイズスケール |
+| `tts_noise_scale_w` | Float, `0.8` | ノイズスケール W |
+| `tts_format` | choices `wav` / `mp3` / `ogg`, 既定 `wav` | 出力音声フォーマット |
 | `created_at` / `updated_at` | DateTime | 作成・更新日時 |
 
 - `save()` は `full_clean()` を呼びます（登録済みの名前で保存すると、admin では名前の欄のエラーになります）。並び順は名前順です。
+- `tts_*` の 9 項目は `AbstractTTSSettings`（`integrations/tts/models.py`）から継承します（Companion 設定と同じ項目）。`get_tts_options()` はまとめて辞書にし、`tts_enabled=False` なら `None`（音声を合成しない）です。
 - **シーンは、スキル名と同じ名前の Langfuse の text プロンプトの本文です**（スキルのラベルの版。フォールバックはありません）。ツールを使わないので、本文はツールを前提にせず、変数も書きません。
 - チャットセッションは、作成時に Talk 設定（`setting`）とシーン（`skill`。なしなら空）を固定して持ちます（どちらも `on_delete=PROTECT`）。**チャットで使った Talk 設定とスキルは消せません。** 使わなくなったら無効にしてください。
-- 旧プリセット名（`ChatSession.config_name`）は、Talk 設定より前のチャットのプリセット名です（移行の元。新しいチャットでは空。会話生成設定と一緒に削除する予定）。
-- LLM の接続先は「AI設定 → サービス設定」の `Talk`（`talk`。会話生成設定と共通）です。
+- LLM の接続先は「AI設定 → サービス設定」の `Talk`（`talk`）です。
 
-> **Note（既存のチャットの移行）:** migration `0018` は、Talk 設定のないチャットに使われているプリセットごとに、同じシステムプロンプトと音声の Talk 設定（有効・シーンなし）を作り、そのチャットを紐づけます（更新日時は変えないので、一覧の順は変わりません）。名前はプリセットの表示名（空白だけならプリセット名）で、表示名がほかのプリセットと重なるときは「表示名（プリセット名）」です。同じプリセットのチャットがすでに Talk 設定に紐づいていれば（下の紐づけ直し）、名前を見ずにその Talk 設定へ紐づけます（移した後に名前や音声を整えていてもよい。2 つ以上に分かれていれば止まる）。そうでなければ、同じ名前の Talk 設定がすでにあり、システムプロンプトも同じなら、作らずにそれへ紐づけます（音声は違ってもよい）。システムプロンプトが違うか、作る名前どうしが重なるときは、何も変えずに `RuntimeError` で止まります。止まると起動時の migrate で API が起動しないので、`docker compose run --rm django-api python manage.py shell` で重なる表示名か Talk 設定の名前を変えて（分かれて紐づいたチャットは 1 つの Talk 設定にそろえて）から起動し直します（本番で止まるのは、作る名前どうしが重なる場合くらいです）。プリセットが消えたチャットは紐づかず、続けられません（新しいチャットで話す）。旧プリセット名は変えません。
+> **Note（既存のチャットの移行）:** Talk 設定より前のチャットは、旧プリセット名（`ChatSession.config_name`）で旧 Talk Generator の会話生成設定（プリセット。`TalkConfig`）に紐づいていました。migration `0018` は、Talk 設定のないチャットに使われているプリセットごとに、同じシステムプロンプトと音声の Talk 設定（有効・シーンなし）を作り、そのチャットを紐づけます（更新日時は変えないので、一覧の順は変わりません）。名前はプリセットの表示名（空白だけならプリセット名）で、表示名がほかのプリセットと重なるときは「表示名（プリセット名）」です。同じプリセットのチャットがすでに Talk 設定に紐づいていれば（下の紐づけ直し）、名前を見ずにその Talk 設定へ紐づけます（移した後に名前や音声を整えていてもよい。2 つ以上に分かれていれば止まる）。そうでなければ、同じ名前の Talk 設定がすでにあり、システムプロンプトも同じなら、作らずにそれへ紐づけます（音声は違ってもよい）。システムプロンプトが違うか、作る名前どうしが重なるときは、何も変えずに `RuntimeError` で止まります。止まると起動時の migrate で API が起動しないので、`docker compose run --rm django-api python manage.py shell` で重なる表示名か Talk 設定の名前を変えて（分かれて紐づいたチャットは 1 つの Talk 設定にそろえて）から起動し直します（本番で止まるのは、作る名前どうしが重なる場合くらいです）。プリセットが消えたチャットは紐づかず、続けられません（新しいチャットで話す）。旧プリセット名は変えません。
 >
 > 戻し方: `0018` の戻しは何もしません。`0017` を含む版のコードで `python manage.py migrate talk 0016` を実行すると、Talk 設定の表と列ごと外れ、旧プリセット名で動く版のコードに戻せます（Talk 設定の行は消えます。`0017` 以降で作ったチャットは旧プリセット名が空なので、旧版では続けられません）。旧版のコードが `0018` の後に作ったチャット（Talk 設定がなく、旧プリセット名がある）は、`migrate talk 0017` → `migrate talk` で紐づけ直せます（前進は、もう紐づいたチャットには触れず、新しいチャットは同じプリセットのチャットが紐づく Talk 設定に付きます）。イメージだけを旧版に戻している間は、旧版の admin が Talk 設定とチャットのシーンからの参照を知らないので、Talk 設定・チャットが使っているスキルやプロンプト参照を消さないでください（PROTECT の画面ではなく、DB の外部キー違反で 500 になります）。
+
+> **Note（旧会話生成設定の削除）:** migration `0019` は、プリセット（`TalkConfig`）の表と、チャットの旧プリセット名（`ChatSession.config_name`）の列を消します。`0018` の後に当たるので、移せたチャットは Talk 設定に紐づいたまま残り、移せなかったチャット（Talk 設定がない）は続けられないままです。プリセットが参照していたプロンプト参照（`LangfusePromptRef`。ユーザープロンプトの参照など）は消さないので、Talk 設定が使っていないものは確かめてから admin で消してください。
+>
+> 戻し方: この版のコードで `python manage.py migrate talk 0018` を実行すると、空のプリセットの表と、空文字の旧プリセット名の列ができます。消したプリセットと旧プリセット名は戻らないので、旧版の `/talk/synthesize/` を使うならプリセットを admin で作り直してください（上の `0016` へ戻す手順でも、旧プリセットのチャットは旧版で続けられません）。**イメージだけを `0019` より前の版に戻すと、旧版のコードが消した表と列を読むので、Talk のチャット（API と admin）が 500 になります。** 先にこの版のコードで `migrate talk 0018` を実行してから、イメージを戻してください。
 
 ## チャットのプロンプト（Talk 設定とシーン）
 
@@ -72,63 +81,8 @@ features/talk/
 <シーンの本文>
 ```
 
-- 変数（`{{weather}}` など）は展開しません（下の「プロンプトプレースホルダー」は会話生成だけのものです）。ツールも使いません。
+- 変数（`{{weather}}` など）は展開しません。ツールも使いません。
 - 本文の取り方（SDK のキャッシュ・期限切れの本文の扱い）は Companion と同じです（[Companion の README の「スキル」](../companion/README.md#スキル)）。プロンプトは毎ターン組み立て直すので、Langfuse で本文を直すと、キャッシュの期限（既定 60 秒）の後のターンから効きます。
-
-## TalkConfig リファレンス
-
-> **廃止予定:** チャットは Talk 設定へ移りました（会話生成設定はもう使いません）。会話生成設定は外部の自動化が呼ぶ `/talk/synthesize/` のためだけに残し、Companion へ移した後に削除します。
-
-プリセットごとに複数登録可能（`morning` / `evening` / `welcome_home` …）。管理画面（`/admin/`）から登録します。
-
-| フィールド | 型 / 既定値 | 説明 |
-|---|---|---|
-| `name` | CharField(50), unique | API 呼び出し時の識別子（例: `morning`） |
-| `display_name` | CharField(100) | 管理画面での表示名 |
-| `area_code` | CharField(10), `""` | 予報区コード。`^\d{6}$` の RegexValidator 付き（例: `130010`）。`{{weather}}` 使用時のみ必須 |
-| `tts_enabled` | Bool, `False` | 音声合成の有効化。`False` ならテキストのみ返す |
-| `tts_model` | CharField(100), `""` | TTS モデル名。空文字なら `None` として送られ SBV2 側の既定モデルを使う |
-| `tts_style` | CharField(50), `"Neutral"` | 話者スタイル |
-| `tts_style_weight` | Float, `1.0` | スタイル強度 |
-| `tts_speed` | Float, `1.0` | 話速 |
-| `tts_sdp_ratio` | Float, `0.2` | SDP 比率 |
-| `tts_noise_scale` | Float, `0.6` | ノイズスケール |
-| `tts_noise_scale_w` | Float, `0.8` | ノイズスケール W |
-| `tts_format` | choices `wav` / `mp3` / `ogg`, 既定 `wav` | 出力音声フォーマット |
-| `system_prompt_ref` | FK → `LangfusePromptRef` (PROTECT) | システムプロンプトの参照。必須 |
-| `user_prompt_ref` | FK → `LangfusePromptRef` (PROTECT) | ユーザープロンプトテンプレートの参照。必須 |
-| `synthesize_rate_limit` | PositiveInteger, `10`（1 以上） | `/talk/synthesize/` を 1 分間に呼べる回数。ユーザーとプリセットの組で数え、超えると 429（下の「上限・レート制限」）。この API にだけ効き、チャットには効かない |
-
-- `save()` は `full_clean()` を呼ぶため、`area_code` の 6 桁チェックは admin 経由でもコード経由でも必ず走ります。
-- `on_delete=PROTECT` のため、`TalkConfig` から参照されている `LangfusePromptRef` は削除できません。
-- TTS 設定は `get_tts_options()` でまとめて辞書化され、`tts_enabled=False` のときは `None`（＝音声生成をスキップ）になります。
-- `synthesize_rate_limit` は DB 側にも既定値（10）を持つので、イメージだけ前の版に戻しても（[../../../docs/deployment.md](../../../docs/deployment.md) のロールバック）、admin でプリセットを作れます。
-
-> **Note (廃止フィールド):** かつて存在した `use_weather` / `use_events` / `use_datetime` は **migration `0014_remove_talkconfig_use_datetime_and_more` で削除済み**です。現在はプロンプト本文中の `{{placeholder}}` を自動検出する方式で、フラグによる有効・無効の切り替えはありません。
-
-> **Note (プロンプト参照は手動):** `TalkConfig` 作成時に `LangfusePromptRef` が自動生成されることはありません（そのようなコードは存在しません）。migration `0012` は既存 config を移行するための一度きりのデータ移行です。新規プリセットでは **先に `LangfusePromptRef` を作成し、admin の autocomplete で選択**してください。
-
-## プロンプトプレースホルダー
-
-`TalkService.SUPPORTED_PLACEHOLDERS` は `{"weather", "events", "datetime"}` の 3 種です。プロンプト文字列に `{{weather}}` のような Mustache 風プレースホルダーを書くだけで、対応するデータが取得・展開されます。
-
-**検出の仕組み**
-
-1. `LangfusePromptRef` からプロンプトを解決し、変数集合を得る（Langfuse から取得できればその `variables`、失敗時は `fallback_text` を正規表現で走査）
-2. 変数集合を `SUPPORTED_PLACEHOLDERS` と積集合して「本当に必要なキー」だけに絞る
-3. `{{weather}}` が要求されているのに `area_code` が空なら、外部 API を呼ぶ前に `PlaceholderDataMissingError`（HTTP 400）
-4. 必要なキーのみ `ThreadPoolExecutor(max_workers=min(len(tasks), 3))` で並列取得。`FIRST_EXCEPTION` で待ち、いずれかが失敗したら未完了の future をキャンセルして最初の例外を伝播
-5. 取得結果を `json.dumps(..., ensure_ascii=False, indent=2)` で文字列化して埋め込む。要求されなかったキーは空文字で埋めるため、未使用の `{{...}}` がそのまま残ることはない
-
-プレースホルダーは会話生成（`/talk/synthesize/`）だけのもので、**system + user 両方**を走査します。チャットは変数を展開しません（上の「チャットのプロンプト」）。
-
-| プレースホルダー | データ源 | 埋め込まれる内容 | 前提 |
-|---|---|---|---|
-| `{{datetime}}` | サーバー時刻 + [holidays-jp API](https://holidays-jp.github.io/api/v1/date.json) | `date` / `time` / `day_of_week` / `day_of_week_ja` / `holiday_name`（祝日でなければ null） | 祝日 API への外部通信が必要（タイムアウト 10 秒） |
-| `{{weather}}` | 気象庁（`WeatherClient.get_weather(area_code, 0)` ＝当日分） | 地域名・天気概況・最高/最低気温・時間帯別降水確率 | `area_code` 必須。未設定なら 400 |
-| `{{events}}` | Outlook Calendar（`OutlookMSGraphClient.get_calendar_events`、本日分） | 当日のカレンダー予定一覧 | MS Graph 連携設定。不備時は 502 / 503 |
-
-**プロンプトの用意**は手動作業です。Langfuse 上にプロンプトを登録し、Django 側に `LangfusePromptRef` を作成してから `TalkConfig` で選択します。命名は migration `0012` が使った `talk-<config_name>-system` / `talk-<config_name>-user` を慣例としています。Langfuse に到達できない場合は `LangfusePromptRef.fallback_text` が使われるため、最低限のフォールバック文面を入れておくと安全です。プロンプト管理の詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)、初期セットアップ手順は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) を参照してください。
 
 ## API リファレンス
 
@@ -139,14 +93,6 @@ features/talk/
 | メソッド | パス | 用途 |
 |---|---|---|
 | `GET` | `/talk/settings/` | 有効な Talk 設定（`id` / `name` / `tts_enabled`）と、それぞれで選べる有効なシーン（`skills`: `name` / `description`）。どちらも名前順 |
-
-**会話生成系（廃止予定）**
-
-| メソッド | パス | 用途 |
-|---|---|---|
-| `POST` | `/talk/synthesize/` | `config_name` のプリセットで会話を生成。任意の `user_prompt`（最大 4000 文字）を渡すと `user_prompt_ref` の代わりにその文字列を使う。プリセットの回数制限を超えると 429（下の「上限・レート制限」） |
-| `GET` | `/talk/datetime/` | 本日の日付・時刻・曜日・祝日名を返す |
-| `GET` | `/talk/configs/` | 登録済みプリセット一覧（`name` / `display_name` / `tts_enabled`）。フロントは使わない（チャットは `/talk/settings/`） |
 
 **チャット履歴セッション系**
 
@@ -210,7 +156,6 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 | 項目 | 値 | 備考 |
 |---|---|---|
 | throttle scope `talk_chat` | 20 リクエスト/分 | `ScopedRateThrottle`。メッセージ送信と編集再送に適用（`settings.py` の `DEFAULT_THROTTLE_RATES`） |
-| `/talk/synthesize/` の回数 | プリセットごと（`TalkConfig.synthesize_rate_limit`、既定 10 回/分） | `TalkConfigRateThrottle`。ユーザーとプリセットの組で直近 1 分を数え、超えると 429 + `Retry-After`（次に通るまでの秒数）。失敗した生成も 1 回と数える。上限は毎回 DB から読むので、admin で変えると次のリクエストから効く。`config_name` を検証できない本文（400）とプリセットがないもの（404）は数えない（生成を始めてからの 400 / 404、たとえばプレースホルダーの設定不足や予報区コード不明は数える） |
 | `SESSION_MAX_MESSAGES` | 50 | user + assistant の合計。到達後の送信は 400。編集再送は対象以降を置き換えるので確認しない。確認は事前検証で行うので、同時送信や編集で少し超えることがある |
 | `content` 最大長 | 4000 文字 | 送信・編集どちらも同じ |
 | `CHAT_MAX_OUTPUT_TOKENS` | 1024 | チャット応答の `max_tokens` |
@@ -228,7 +173,7 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 | Talk 設定を無効にした | `このチャットの Talk 設定「<名前>」は無効になっているため、続けられません。新しいチャットを始めてください` |
 | シーンのスキルを無効にしたか、Talk 設定から外した | `このチャットのシーン「<スキル名>」は使えなくなったため、続けられません。新しいチャットを始めてください` |
 
-**エラーマッピング**（`views/_common.classify_synthesis_error`。HTTP の応答と SSE の `error` で共用）: プレースホルダー設定不足（会話生成） → 400、予報区コード不明 → 404、外部 API/LLM/TTS/祝日のタイムアウト → 504、ネットワーク・パース・認証エラーと LLM の HTTP エラー（4xx / 5xx）や不正な応答 → 502、MS Graph 等の設定不備・LLM の設定（サービス設定 `talk`）がない・プロンプトの本文を使えない（`PromptUnavailableError`） → 503（`サービスの設定に問題があります`）、それ以外 → 500。
+**エラーマッピング**（`views/_common.classify_synthesis_error`。HTTP の応答と SSE の `error`・`audio_error` で共用）: LLM・TTS のタイムアウト → 504、LLM の接続エラー・HTTP エラー（4xx / 5xx）・不正な応答と TTS の接続エラー → 502、LLM の設定（サービス設定 `talk`）がない・プロンプトの本文を使えない（`PromptUnavailableError`） → 503（`サービスの設定に問題があります`）、それ以外 → 500。
 
 ## 内部挙動
 
@@ -242,7 +187,7 @@ SSE を使うクライアントは `Accept: text/event-stream, application/json`
 
 **編集再送** — 対象より前の履歴だけを LLM に渡して応答を生成し、完了または停止した時点で、対象 `sequence` 以降のメッセージを（シグナルを確実に発火させるため）1 件ずつ削除して、同じ `sequence` で新しい user メッセージを作り直します。LLM の間に対象の行が消えていたら末尾に追加します。
 
-**Langfuse Sessions 連携** — `synthesize` / `stream_chat_reply` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/synthesize`、`talk/chat`、`talk/generate_session_title`）、チャット系では共有の `langfuse_session`（`integrations/langfuse/client.py`。`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。プロンプトの準備（`prepare_chat_prompt`）はトレースを作りません（ターンごとに別のトレースは増えません）。`talk/chat` の出力は届いた本文で、停止した場合はそこまでの本文です。
+**Langfuse Sessions 連携** — `stream_chat_reply` / `generate_session_title` は `@observe` でトレースされ（それぞれ `talk/chat`、`talk/generate_session_title`）、共有の `langfuse_session`（`integrations/langfuse/client.py`。`propagate_attributes` の with 文）がトレースと配下の観測に `session_id`（セッションの UUID）を付与します。Langfuse UI の Sessions で同一会話のトレースをまとめて追跡できます。付与に失敗しても警告ログのみで本処理は継続します。プロンプトの準備（`prepare_chat_prompt`）はトレースを作りません（ターンごとに別のトレースは増えません）。`talk/chat` の出力は届いた本文で、停止した場合はそこまでの本文です。
 
 ## 運用
 
@@ -259,15 +204,6 @@ docker compose exec django-api python manage.py cleanup_orphan_audio
 **保存先** — `MEDIA_ROOT` はコンテナ内 `/django_api/media`（`BASE_DIR / "media"`）で、ホストの `/opt/app/django-api/media` をバインドマウントしています。音声はここに実ファイルとして蓄積されるため、`GET /talk/sessions/` が返す `total_audio_bytes` や上記コマンドで定期的に状況を確認してください。不要な音声は音声一括削除 API（本文は保持）で回収できます。
 
 ## 使用例
-
-```bash
-# 単発生成（TTS 有効なプリセットなら audio_data に Base64 の音声が入る）
-curl -X POST http://localhost:8000/talk/synthesize/ \
-  -H "Authorization: Token YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"config_name": "morning"}'
-# => {"greeting_text": "おはようございます。...", "audio_data": "UklGRi...", "audio_format": "wav"}
-```
 
 ```bash
 # 0) 選べる Talk 設定とシーンを確かめる

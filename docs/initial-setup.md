@@ -62,7 +62,7 @@ docker compose exec django-api python manage.py createsuperuser
 | HN Agent Detective | スレッドの分析 |
 | HN Agent Devil's Advocate | 反論・批判的検証 |
 | HN Agent Security Responder | セキュリティ観点の応答 |
-| Talk | Talk のチャットと会話生成（`/talk/`） |
+| Talk | Talk のチャット（`/talk/`） |
 | Companion | Companion エージェント（発話に合うスキルを選んでセリフを生成） |
 
 `LLM設定` は必須の外部キー（`on_delete=PROTECT`）なので、**手順 4-1 を先に済ませてください**。`タイムアウト（秒）` の既定は 60、`有効` の既定は ON です。
@@ -84,12 +84,7 @@ Langfuse 上のプロンプトを Django 側から参照するためのマッピ
 
 `hn-agent-orchestrator-system` / `-user`、`hn-agent-detective-system` / `-user`、`hn-agent-devils-advocate-system` / `-user`、`hn-agent-security-responder-system` / `-user`
 
-**Talk 用は自動生成されません。** `TalkConfig` を新規作成しても参照は作られないため、プリセットごとに以下 2 本を**手動で作成**してください（命名は `features/talk/migrations/0012_migrate_system_prompt_to_ref.py` の規約に合わせます）。
-
-- `talk-{設定名}-system` — システムプロンプト
-- `talk-{設定名}-user` — ユーザープロンプト
-
-**Companion 用（システムプロンプトの `companion-system` 1 本）も自動生成されません。** スキルの本文には参照を作りません。作り方は手順 5-3 を参照してください。
+**Companion 用（システムプロンプトの `companion-system` 1 本）と Talk 設定用（チャットのシステムプロンプト）は自動生成されません。** スキル（Companion のスキル・Talk のシーン）の本文には参照を作りません。作り方は手順 5-2（Companion）と 5-3（Talk 設定）を参照してください。
 
 Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。ただし Companion のスキルの本文は参照を通さずに Langfuse から直接取り、フォールバックがないので、Langfuse が必要です。
 
@@ -97,25 +92,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 ## 5. 機能の設定
 
-### 5-1. 会話生成設定（`TalkConfig`。廃止予定）
-
-> **廃止予定:** チャットは手順 5-4 の Talk 設定へ、外部の自動化（`/talk/synthesize/`）は手順 5-3 の Companion へ移し、移した後に削除します。新しく作るのは、`/talk/synthesize/` を使い続ける間だけにしてください。
-
-「AI ツール設定 → Talk → 会話生成設定（廃止予定）」から、プリセット単位で作成します（`morning`、`evening` など）。
-
-| 項目 | 説明 |
-|---|---|
-| 設定名 | API の `config_name` に指定する一意な識別子 |
-| 表示名 | 管理画面での表示名 |
-| 予報区コード | 6 桁の数字（例: `130010`）。**プロンプトに `{{weather}}` を含める場合のみ必須** |
-| TTS 設定 | 音声合成の有効化、モデル、スタイル、話速、フォーマット（既定 WAV） |
-| システムプロンプト | 手順 4-3 で作った `talk-{設定名}-system` を選択 |
-| ユーザープロンプト | 手順 4-3 で作った `talk-{設定名}-user` を選択 |
-| 生成回数の上限（1 分あたり） | 「回数制限」の節。`/talk/synthesize/` を 1 分間に呼べる回数（既定 10）。数え方と超えたときの応答は [Talk の README](../django_api/features/talk/README.md) の「上限・レート制限」を参照 |
-
-プロンプト参照 2 本はどちらも必須の外部キーです。`{{weather}}` `{{events}}` `{{datetime}}` はプロンプト本文に含まれていれば自動的に検出・展開されます（有効化フラグはありません）。
-
-### 5-2. HN Agent 設定（`HNAgentConfig`）
+### 5-1. HN Agent 設定（`HNAgentConfig`）
 
 | 項目 | 既定値 | 説明 |
 |---|---|---|
@@ -128,7 +105,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 加えて、**8 本のプロンプト参照を外部キーで選択します**（Orchestrator / Detective / Devil's Advocate / Security Responder × システム / ユーザー）。手順 4-3 で確認した自動投入済みのレコードをそのまま選べます。入力後、「有効」にチェックを入れて保存してください。
 
-### 5-3. Companion 設定（`CompanionConfig`）
+### 5-2. Companion 設定（`CompanionConfig`）
 
 システムプロンプト 1 本と、用途ごとのスキル（本文は Langfuse）を登録します。項目の意味と入力チェックは [Companion の README](../django_api/features/companion/README.md) を参照してください。
 
@@ -148,18 +125,18 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
    # => {"text": "おはようございます。...", "skill": "good-morning", "audio_data": null, "audio_format": null}
    ```
 
-### 5-4. Talk 設定（`TalkSetting`）
+### 5-3. Talk 設定（`TalkSetting`）
 
 フロントの Talk（チャット）で選ぶ設定です。システムプロンプト 1 本と、選べるシーン（本文は Langfuse。Agent Skills に登録）を持ちます。**複数を有効にできます。** 項目の意味は [Talk の README の「Talk 設定」](../django_api/features/talk/README.md#talk-設定talksettingリファレンス) を参照してください。
 
-1. **サービス設定の `Talk` が有効なことを確かめる** — 「AI ツール設定 → AI設定 → サービス設定」の `Talk`（会話生成設定と共通の行。なければ手順 4-2 で作成）
+1. **サービス設定の `Talk` が有効なことを確かめる** — 「AI ツール設定 → AI設定 → サービス設定」の `Talk`（なければ手順 4-2 で作成）
 2. **Langfuse に text プロンプトを作る** — チャットのシステムプロンプト（変数は展開しないので書かない）と、シーンごとの本文（名前は自由。例: `talk-scene-cafe`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内）。シーンの本文はツールを前提にしません。ラベルの付け方は Companion と同じです（[Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル)）
 3. **システムプロンプトの参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` を手順 2 のプロンプト名にし、ラベルは手順 2 で付けたものにします。シーンの本文には参照を作りません
 4. **シーンを Agent Skills に登録する** — 「AI ツール設定 → AI設定 → Agent Skills」から、名前（手順 2 のプロンプト名そのもの）・説明（フロントの Talk の選択肢に出る、人が読む短い文。例: 「カフェで向かい合って話す場面」）・ラベル・有効を入れて保存します
 5. **Talk 設定を作る** — 「AI ツール設定 → Talk → Talk 設定」から、名前（フロントの選択肢に出る）・システムプロンプト（手順 3）・シーン（手順 4 のスキル。なくてもよい）・音声を入れて保存します。「有効」は既定で ON です
 6. **確かめる** — `GET /talk/settings/`（手順 9 の 5）に設定とシーンが出ることを確かめ、フロントの Talk で設定とシーンを選んで話します。送信が 503 なら、サービス設定 `Talk`・システムプロンプト・シーンの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜4）
 
-> **Note:** 旧プリセットで作ったチャットがある環境では、migration `talk/0018` が、使われていたプリセットごとに Talk 設定を自動で作り（名前はプリセットの表示名）、そのチャットを紐づけます。名前を整えたり、使わない設定を無効にしたりしてください（規則は [Talk の README](../django_api/features/talk/README.md#talk-設定talksettingリファレンス)）。
+> **Note:** 旧プリセット（旧会話生成設定）で作ったチャットがある環境では、migration `talk/0018` が、使われていたプリセットごとに Talk 設定を自動で作り（名前はプリセットの表示名）、そのチャットを紐づけます。名前を整えたり、使わない設定を無効にしたりしてください（規則は [Talk の README](../django_api/features/talk/README.md#talk-設定talksettingリファレンス)）。プリセットそのものは、その後の `talk/0019` で消えます。
 
 ## 6. 外部サービスの設定
 
@@ -224,17 +201,11 @@ curl -X POST http://localhost:8000/user/token/ \
 curl http://localhost:8000/talk/settings/ \
   -H "Authorization: Token YOUR_TOKEN"
 
-# 6. 会話生成（廃止予定）。TTS 有効時は audio_data（Base64）を含む JSON が返る
-curl -X POST http://localhost:8000/talk/synthesize/ \
-  -H "Authorization: Token YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"config_name": "morning"}'
-
-# 7. HN Agent の一括実行（スーパーユーザーのトークンが必要）
+# 6. HN Agent の一括実行（スーパーユーザーのトークンが必要）
 curl -X POST http://localhost:8000/hn-agent/run-all/ \
   -H "Authorization: Token YOUR_SUPERUSER_TOKEN"
 ```
 
 - `/hn-agent/` 配下はすべて `IsAdminUser` のため、**スーパーユーザーのトークン**を使ってください。一般ユーザーのトークンでは 403 になります
-- **Slack 通知の確認**は専用エンドポイントがないため、上記 7 の一括実行で閾値を超えたスレッドが調査されたときに、対象チャンネルへ投稿が届くかどうかで確認します。届かない場合は `docker compose logs -f celery-worker django-api` に Slack 関連の警告が出ていないか確認してください
+- **Slack 通知の確認**は専用エンドポイントがないため、上記 6 の一括実行で閾値を超えたスレッドが調査されたときに、対象チャンネルへ投稿が届くかどうかで確認します。届かない場合は `docker compose logs -f celery-worker django-api` に Slack 関連の警告が出ていないか確認してください
 - 定期実行の確認は、管理画面の「定期タスク」一覧で `最終実行日時` と `累計実行回数` が増えることで判断できます

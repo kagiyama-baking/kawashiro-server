@@ -1,9 +1,9 @@
-"""Talk の管理画面（Talk 設定・チャット履歴・廃止予定の会話生成設定）."""
+"""Talk の管理画面（Talk 設定・チャット履歴）."""
 
 from django.contrib import admin
 from django.db.models import Sum
 
-from .models import ChatMessage, ChatSession, TalkConfig, TalkSetting
+from .models import ChatMessage, ChatSession, TalkSetting
 
 
 @admin.register(TalkSetting)
@@ -83,73 +83,6 @@ class TalkSettingAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(TalkConfig)
-class TalkConfigAdmin(admin.ModelAdmin):
-    """会話生成設定 Admin（廃止予定。`/talk/synthesize/` だけが使う）"""
-
-    list_display = (
-        "name",
-        "display_name",
-        "tts_enabled",
-    )
-    list_filter = ("tts_enabled",)
-    search_fields = ("name", "display_name")
-    autocomplete_fields = ("system_prompt_ref", "user_prompt_ref")
-
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": ("name", "display_name"),
-            },
-        ),
-        (
-            "天気設定",
-            {
-                "fields": ("area_code",),
-                "classes": ("collapse",),
-                "description": (
-                    "プロンプトに `{{weather}}` を含める場合は予報区コードが必須"
-                ),
-            },
-        ),
-        (
-            "TTS設定",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "tts_enabled",
-                    "tts_model",
-                    "tts_format",
-                    "tts_style",
-                    "tts_style_weight",
-                    "tts_speed",
-                    "tts_sdp_ratio",
-                    "tts_noise_scale",
-                    "tts_noise_scale_w",
-                ),
-            },
-        ),
-        (
-            "プロンプト参照（Langfuse）",
-            {
-                "fields": ("system_prompt_ref", "user_prompt_ref"),
-                "description": (
-                    "システムプロンプト・ユーザープロンプトの Langfuse 参照を選択。"
-                    "`{{weather}}` `{{events}}` `{{datetime}}` をテンプレートに含めると"
-                    "自動的に対応するデータが取得されます。"
-                ),
-            },
-        ),
-        (
-            "回数制限",
-            {
-                "fields": ("synthesize_rate_limit",),
-            },
-        ),
-    )
-
-
 class ChatMessageInline(admin.TabularInline):
     """ChatSession 内のメッセージインライン表示."""
 
@@ -189,12 +122,11 @@ class ChatSessionAdmin(admin.ModelAdmin):
     )
     search_fields = ("title", "user__email")
     list_select_related = ("user", "setting", "skill")
-    # Talk 設定・シーンは作成時に固定（旧プリセット名は移行の元として残すだけ）
+    # Talk 設定・シーンは作成時に固定
     readonly_fields = (
         "id",
         "setting",
         "skill",
-        "config_name",
         "created_at",
         "updated_at",
     )
@@ -202,7 +134,7 @@ class ChatSessionAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         """追加するときだけ、Talk 設定とシーンを選べる（作った後は変えない）."""
         if obj is None:
-            return ("id", "config_name", "created_at", "updated_at")
+            return ("id", "created_at", "updated_at")
         return self.readonly_fields
 
     inlines = (ChatMessageInline,)

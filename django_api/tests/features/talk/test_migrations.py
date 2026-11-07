@@ -6,21 +6,19 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.recorder import MigrationRecorder
 
-from features.talk.models import ChatSession, TalkConfig
-from integrations.langfuse.models import LangfusePromptRef
-
-BEFORE_RATE_LIMIT = [("talk", "0015_chatsession_chatmessage_and_more")]
-AFTER_RATE_LIMIT = [("talk", "0016_talkconfig_synthesize_rate_limit")]
 # Talk 設定（0017）より前
 BEFORE_TALK_SETTINGS = [("talk", "0016_talkconfig_synthesize_rate_limit")]
 # 既存のチャットを Talk 設定へ移す前（0017）と、移す migration（0018）
 BEFORE_BIND = [("talk", "0017_talksetting_chatsession_setting_skill")]
 AFTER_BIND = [("talk", "0018_bind_chat_sessions_to_talk_settings")]
+# 旧会話生成設定（プリセット）の表とチャットの旧プリセット名の列を消す migration（0019）
+AFTER_REMOVE_PRESETS = [
+    ("talk", "0019_delete_talkconfig_remove_chatsession_config_name")
+]
 
-# 0018 のテストで作るもの（後始末で消す）
+# 0018・0019 のテストで作るもの（後始末で消す）
 BIND_USER_EMAIL = "talk-bind-test@example.com"
 BIND_PRESETS = (
     "bind-chat",
@@ -33,9 +31,6 @@ BIND_PRESETS = (
 BIND_REFS = tuple(f"{name}-system" for name in BIND_PRESETS) + ("bind-other-system",)
 # 0018 の前にあった時刻（紐づけで変わらないことを確かめる）
 OLD_UPDATED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
-
-LEGACY_CONFIG_NAME = "legacy"
-LEGACY_PROMPT_REF_NAME = "talk-legacy"
 
 # 収集時（テスト DB を作る前）の接続先。pytest-django は、DB を使うと宣言した
 # テスト（django_db マーカーなど）が 1 つも収集されないとテスト DB を作らないので、
@@ -66,8 +61,6 @@ def migrator(django_db_setup, django_db_blocker):
         _delete_bind_rows(_applied_apps(executor))
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
-        TalkConfig.objects.filter(name=LEGACY_CONFIG_NAME).delete()
-        LangfusePromptRef.objects.filter(name=LEGACY_PROMPT_REF_NAME).delete()
 
 
 def _applied_apps(migrator):
@@ -78,18 +71,25 @@ def _applied_apps(migrator):
     return migrator.loader.project_state(applied).apps
 
 
+def _talk_model(apps, model_name):
+    """その時点にある talk のモデルを返す（Talk 設定は 0017 から、プリセットは 0019 の前まで）."""
+    try:
+        return apps.get_model("talk", model_name)
+    except LookupError:
+        return None
+
+
 def _delete_bind_rows(apps):
-    """0018 のテストで作った行を消す（ユーザーを消すとチャットも消える）."""
+    """0018・0019 のテストで作った行を消す（ユーザーを消すとチャットも消える）."""
     apps.get_model(settings.AUTH_USER_MODEL).objects.filter(
         email=BIND_USER_EMAIL
     ).delete()
-    try:
-        talk_setting = apps.get_model("talk", "TalkSetting")
-    except LookupError:  # 0017 より前まで戻した
-        pass
-    else:
+    talk_setting = _talk_model(apps, "TalkSetting")
+    if talk_setting is not None:
         talk_setting.objects.filter(system_prompt_ref__name__in=BIND_REFS).delete()
-    apps.get_model("talk", "TalkConfig").objects.filter(name__in=BIND_PRESETS).delete()
+    talk_config = _talk_model(apps, "TalkConfig")
+    if talk_config is not None:
+        talk_config.objects.filter(name__in=BIND_PRESETS).delete()
     apps.get_model("langfuse_integration", "LangfusePromptRef").objects.filter(
         name__in=BIND_REFS
     ).delete()
@@ -144,79 +144,53 @@ def _settings_by_name(apps):
     }
 
 
-@pytest.mark.integration
-def test_0016_sets_rate_limit_10_on_existing_configs(migrator):
-    """移行前からあるプリセットの生成回数の上限は 10 になる."""
-    migrator.migrate(BEFORE_RATE_LIMIT)
-    old_apps = migrator.loader.project_state(BEFORE_RATE_LIMIT).apps
-    prompt_ref = old_apps.get_model(
-        "langfuse_integration", "LangfusePromptRef"
-    ).objects.create(
-        name=LEGACY_PROMPT_REF_NAME,
-        langfuse_prompt_name=LEGACY_PROMPT_REF_NAME,
-        fallback_text="既存のプロンプト",
-    )
-    old_apps.get_model("talk", "TalkConfig").objects.create(
-        name=LEGACY_CONFIG_NAME,
-        display_name="既存のプリセット",
-        system_prompt_ref=prompt_ref,
-        user_prompt_ref=prompt_ref,
-    )
-
-    migrator.loader.build_graph()
-    migrator.migrate(AFTER_RATE_LIMIT)
-
-    new_apps = migrator.loader.project_state(AFTER_RATE_LIMIT).apps
-    config = new_apps.get_model("talk", "TalkConfig").objects.get(
-        name=LEGACY_CONFIG_NAME
-    )
-    assert config.synthesize_rate_limit == 10
+def _table_names() -> set[str]:
+    return set(connection.introspection.table_names())
 
 
-@pytest.mark.integration
-@pytest.mark.django_db
-def test_0016_lets_code_without_rate_limit_create_configs():
-    """0016 の後も、上限の列を知らないコード（イメージだけ戻したとき）がプリセットを作れる.
+def _column_names(table: str) -> set[str]:
+    with connection.cursor() as cursor:
+        description = connection.introspection.get_table_description(cursor, table)
+    return {column.name for column in description}
 
-    0015 時点のモデルは INSERT に上限の列を含めないので、DB の既定値で 10 になる。
+
+def _bound_session(apps, user_id) -> tuple[str, int]:
+    """0018 の後の状態のチャットを作る（旧プリセット名と、移した Talk 設定を持つ）.
+
+    Returns:
+        (チャットの pk, Talk 設定の pk)
     """
-    old_apps = MigrationLoader(connection).project_state(BEFORE_RATE_LIMIT).apps
-    prompt_ref = old_apps.get_model(
-        "langfuse_integration", "LangfusePromptRef"
-    ).objects.create(
-        name=LEGACY_PROMPT_REF_NAME,
-        langfuse_prompt_name=LEGACY_PROMPT_REF_NAME,
-        fallback_text="旧版のプロンプト",
+    preset = _preset(apps, "bind-chat", "チャット用（移行テスト）")
+    setting = apps.get_model("talk", "TalkSetting").objects.create(
+        name="チャット用（移行テスト）",
+        system_prompt_ref_id=preset.system_prompt_ref_id,
     )
-
-    old_apps.get_model("talk", "TalkConfig").objects.create(
-        name=LEGACY_CONFIG_NAME,
-        display_name="旧版で作ったプリセット",
-        system_prompt_ref=prompt_ref,
-        user_prompt_ref=prompt_ref,
+    session = _session(apps, user_id, "bind-chat")
+    apps.get_model("talk", "ChatSession").objects.filter(pk=session).update(
+        setting=setting
     )
-
-    assert TalkConfig.objects.get(name=LEGACY_CONFIG_NAME).synthesize_rate_limit == 10
+    return session, setting.pk
 
 
 @pytest.mark.integration
-@pytest.mark.django_db
-def test_0017_lets_code_before_talk_settings_create_sessions(django_user_model):
-    """0017 の後も、Talk 設定を知らないコード（イメージだけ戻したとき）がチャットを作れる.
+def test_0017_lets_code_before_talk_settings_create_sessions(migrator):
+    """0017 の後（0019 より前）も、Talk 設定を知らないコード（イメージだけ戻したとき）がチャットを作れる.
 
     0016 時点のモデルは INSERT に Talk 設定・シーンの列を含めないので、どちらも空（NULL）になる。
     """
-    old_apps = MigrationLoader(connection).project_state(BEFORE_TALK_SETTINGS).apps
-    user = django_user_model.objects.create_user(
-        email="talk-legacy-session@example.com", password="dummypass1234"
-    )
+    apps = _migrate(migrator, AFTER_BIND)
+    old_apps = migrator.loader.project_state(BEFORE_TALK_SETTINGS).apps
 
     old = old_apps.get_model("talk", "ChatSession").objects.create(
-        user_id=user.pk, config_name="chat"
+        user_id=_bind_user(apps), config_name="chat"
     )
 
-    session = ChatSession.objects.get(pk=old.pk)
-    assert (session.setting, session.skill, session.config_name) == (None, None, "chat")
+    session = apps.get_model("talk", "ChatSession").objects.get(pk=old.pk)
+    assert (session.setting_id, session.skill_id, session.config_name) == (
+        None,
+        None,
+        "chat",
+    )
 
 
 @pytest.mark.integration
@@ -468,6 +442,40 @@ def test_0018_with_preset_sessions_split_across_settings_stops_and_changes_nothi
         apps.get_model("talk", "ChatSession").objects.get(pk=unbound).setting_id is None
     )
     assert len(_settings_by_name(apps)) == 2
+
+
+@pytest.mark.integration
+def test_0019_drops_presets_and_preset_names_and_keeps_sessions_bound(migrator):
+    """旧プリセットの表とチャットの旧プリセット名の列を消し、Talk 設定への紐づけは残す.
+
+    プリセットが参照していたプロンプト参照は消さない。
+    """
+    apps = _migrate(migrator, AFTER_BIND)
+    session, setting_id = _bound_session(apps, _bind_user(apps))
+
+    apps = _migrate(migrator, AFTER_REMOVE_PRESETS)
+
+    assert "talk_talkconfig" not in _table_names()
+    assert "config_name" not in _column_names("talk_chatsession")
+    chat = apps.get_model("talk", "ChatSession").objects.get(pk=session)
+    assert (chat.setting_id, chat.updated_at) == (setting_id, OLD_UPDATED_AT)
+    refs = apps.get_model("langfuse_integration", "LangfusePromptRef").objects
+    assert refs.filter(name="bind-chat-system").exists()
+
+
+@pytest.mark.integration
+def test_0019_backwards_recreates_empty_presets_and_blank_preset_names(migrator):
+    """0018 へ戻すと、空のプリセットの表と空の旧プリセット名ができる（消した内容は戻らない）."""
+    apps = _migrate(migrator, AFTER_BIND)
+    session, setting_id = _bound_session(apps, _bind_user(apps))
+    _migrate(migrator, AFTER_REMOVE_PRESETS)
+
+    apps = _migrate(migrator, AFTER_BIND)
+
+    assert "talk_talkconfig" in _table_names()
+    assert not apps.get_model("talk", "TalkConfig").objects.exists()
+    chat = apps.get_model("talk", "ChatSession").objects.get(pk=session)
+    assert (chat.config_name, chat.setting_id) == ("", setting_id)
 
 
 @pytest.mark.integration

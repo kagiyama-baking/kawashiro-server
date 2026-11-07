@@ -20,9 +20,6 @@ TALK_CHAT_AGENT: Agent[str, str | None] = Agent(
 TALK_TITLE_AGENT: Agent[None, str | None] = Agent(
     name="talk-title", output_type=str | None
 )
-TALK_SYNTHESIZE_AGENT: Agent[None, str | None] = Agent(
-    name="talk-synthesize", output_type=str | None
-)
 
 
 @TALK_CHAT_AGENT.instructions

@@ -169,17 +169,13 @@ class TestStreamChatReply:
 
         assert _reply() == ["一", "二"]
 
-    @patch("features.talk.services.HolidayClient")
-    def test_stream_chat_reply_does_not_expand_user_messages(
-        self, mock_holiday_class, chat_llm
-    ):
+    def test_stream_chat_reply_does_not_expand_user_messages(self, chat_llm):
         """user メッセージ内の {{datetime}} は展開しない（純粋な対話）."""
         chat_llm.enqueue("OK")
 
         _reply([{"role": "user", "content": "今日は {{datetime}} です"}])
 
         assert chat_llm.requests[0].user_prompt == "今日は {{datetime}} です"
-        mock_holiday_class.return_value.get_holiday_name.assert_not_called()
 
     def test_stream_chat_reply_blank_text_yields_nothing_without_retry(self, chat_llm):
         """空の本文は増分なしで終わり、再試行しない."""

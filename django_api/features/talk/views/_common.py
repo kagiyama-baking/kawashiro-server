@@ -4,29 +4,15 @@ import logging
 
 from django.core.files.base import ContentFile
 from rest_framework import status
-from rest_framework.response import Response
 
-from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
 from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
     LLMTimeoutError,
 )
-from integrations.msgraph.exceptions import (
-    AuthenticationError,
-    ConfigurationError,
-    NetworkError,
-)
 from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
-from integrations.weather.exceptions import (
-    WeatherAreaNotFoundError,
-    WeatherNetworkError,
-    WeatherParseError,
-    WeatherTimeoutError,
-)
 
-from ..exceptions import PlaceholderDataMissingError
 from ..models import ChatMessage, ChatSession
 
 logger = logging.getLogger(__name__)
@@ -37,9 +23,10 @@ SESSION_MAX_MESSAGES = 50
 
 
 def classify_synthesis_error(exc: Exception, fallback: str) -> tuple[int, str]:
-    """Talk 系の例外を HTTP ステータスとクライアント向けのメッセージに分類する.
+    """チャットのターンの例外を HTTP ステータスとクライアント向けのメッセージに分類する.
 
-    HTTP の応答と SSE の `error` イベントで共用する。ログもここで出す。
+    ターンで起きるのは LLM・TTS・プロンプトの準備の失敗だけ。HTTP の応答と SSE の
+    `error` / `audio_error` イベントで共用する。ログもここで出す。
 
     Args:
         exc: 発生した例外
@@ -48,62 +35,24 @@ def classify_synthesis_error(exc: Exception, fallback: str) -> tuple[int, str]:
     Returns:
         (HTTP ステータス, メッセージ)
     """
-    if isinstance(exc, PlaceholderDataMissingError):
-        logger.warning("プレースホルダー要求データ不足: %s", str(exc))
-        return status.HTTP_400_BAD_REQUEST, str(exc)
-
-    if isinstance(exc, WeatherAreaNotFoundError):
-        logger.warning("予報区コードが見つからない: %s", str(exc))
-        return status.HTTP_404_NOT_FOUND, "指定された予報区コードが見つかりません"
-
-    if isinstance(exc, WeatherTimeoutError):
-        logger.error("外部APIタイムアウト: %s", str(exc))
-        return (
-            status.HTTP_504_GATEWAY_TIMEOUT,
-            "外部サービスへのリクエストがタイムアウトしました",
-        )
-
-    if isinstance(exc, (LLMTimeoutError, TTSTimeoutError, HolidayTimeoutError)):
-        logger.error("AI/TTS/祝日サービスタイムアウト: %s", str(exc))
+    # LLMTimeoutError は LLMClientError の子なので、接続の失敗より先に見る
+    if isinstance(exc, (LLMTimeoutError, TTSTimeoutError)):
+        logger.error("AI/TTSサービスタイムアウト: %s", str(exc))
         return (
             status.HTTP_504_GATEWAY_TIMEOUT,
             "サービスへのリクエストがタイムアウトしました",
         )
 
-    if isinstance(
-        exc,
-        (
-            WeatherNetworkError,
-            WeatherParseError,
-            NetworkError,
-            HolidayNetworkError,
-        ),
-    ):
-        logger.error("外部API接続エラー: %s", str(exc))
-        return status.HTTP_502_BAD_GATEWAY, "外部サービスへの接続に失敗しました"
-
     if isinstance(exc, (LLMClientError, TTSNetworkError)):
         logger.error("AI/TTSサービスエラー: %s", str(exc))
         return status.HTTP_502_BAD_GATEWAY, "AI生成サービスへの接続に失敗しました"
 
-    if isinstance(
-        exc, (ConfigurationError, LLMConfigurationError, PromptUnavailableError)
-    ):
+    if isinstance(exc, (LLMConfigurationError, PromptUnavailableError)):
         logger.error("サービス設定エラー: %s", str(exc))
         return status.HTTP_503_SERVICE_UNAVAILABLE, "サービスの設定に問題があります"
 
-    if isinstance(exc, AuthenticationError):
-        logger.error("外部サービス認証エラー: %s", str(exc))
-        return status.HTTP_502_BAD_GATEWAY, "外部サービスへの認証に失敗しました"
-
     logger.error("予期しないエラー: %s", str(exc), exc_info=exc)
     return status.HTTP_500_INTERNAL_SERVER_ERROR, fallback
-
-
-def handle_synthesis_error(exc: Exception, *, fallback_message: str) -> Response:
-    """Talk 系ビュー共通の例外 → HTTP マッピング."""
-    status_code, error = classify_synthesis_error(exc, fallback_message)
-    return Response({"error": error}, status=status_code)
 
 
 def get_owned_session(request, session_id) -> ChatSession | None:

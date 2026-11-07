@@ -15,7 +15,7 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | `integrations.tts` | `/tts/` | テキスト読み上げ（Style-BERT-VITS2 プロキシ） | [sbv2_api/README.md](../sbv2_api/README.md) |
 | `integrations.weather` | `/weather/` | 気象庁天気予報 | [README](integrations/weather/README.md) |
 | `features.media` | `/media/` | 画像変換・ZIP→PDF（制限値あり） | [README](features/media/README.md) |
-| `features.talk` | `/talk/` | Talk 設定とシーンで話すチャット（`/talk/settings/`・`/talk/sessions/`。応答は JSON か SSE）+ 廃止予定の会話生成（`/talk/synthesize/`・`/talk/configs/`・`/talk/datetime/`） | [README](features/talk/README.md) |
+| `features.talk` | `/talk/` | Talk 設定とシーンで話すチャット（`/talk/settings/`・`/talk/sessions/`。応答は JSON か SSE） | [README](features/talk/README.md) |
 | `features.hn_agent` | `/hn-agent/` | HackerNews Agent（監視・調査・辛口分析・セキュリティ対応指針。superuser のみ） | [README](features/hn_agent/README.md) |
 | `features.companion` | `/companion/` | Companion エージェント（`/companion/run/` の発話に合うスキルでセリフを生成。音声合成が有効なら音声も。ユーザーごとの回数制限あり） | [README](features/companion/README.md) |
 
@@ -97,7 +97,6 @@ Tavily Web 検索の API キー（暗号化保存）とタイムアウト（既�
 | HackerNews Agent設定 | 閾値・ポーリング・プロンプト 8 本の割り当て | [features/hn_agent/README.md](features/hn_agent/README.md) |
 | Companion 設定（CompanionConfig） | 有効な 1 件の設定（システムプロンプト・予報区・回数の上限・TTS）。スキルは Agent Skills に登録したものから選ぶだけ | [features/companion/README.md](features/companion/README.md) |
 | Talk 設定（TalkSetting） | チャットの設定（システムプロンプト・選べるシーン・TTS）。複数を有効にできる | [features/talk/README.md](features/talk/README.md) |
-| 会話生成設定（TalkConfig。廃止予定） | プリセットごとの動作パラメータ + プロンプト 2 本 + TTS + 生成回数の上限 | [features/talk/README.md](features/talk/README.md) |
 | HNスレッド / チャットセッション | 収集データ・会話履歴の閲覧と削除 | — |
 
 ## テストの実行
