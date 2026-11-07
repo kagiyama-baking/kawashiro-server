@@ -115,7 +115,7 @@ flowchart LR
 
 | 項目 | 説明 |
 |---|---|
-| プロンプト名（`name`） | 本文を取る Langfuse の text プロンプトの名前そのもの（例: `hn-agent-orchestrator`。Langfuse のフォルダは `companion/system` のように `/` で区切る）。**unique**、200 字以内。前後の空白と改行は使えません（`^\S(?:.*\S)?\Z`。途中の改行も不可。admin の入力欄は前後の空白を取り除く） |
+| プロンプト名（`name`） | 本文を取る Langfuse の text プロンプトの名前そのもの（例: `hn-agent-orchestrator`。Langfuse のフォルダは `companion/system` のように `/` で区切る）。**unique**、200 字以内。前後の空白と改行は使えません（`^\S(?:[^\r\n]*\S)?\Z`。途中の改行（CR・LF）も不可、途中の空白は可。admin の入力欄は前後の空白を取り除く） |
 | ラベル（`label`） | 本文を取る Langfuse のプロンプトのラベル（既定 `production`。使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)） |
 | 説明（`description`） | 用途の説明（admin の一覧に出る。1 行の入力欄、255 字以内） |
 

@@ -29,7 +29,7 @@ from django.db.models import F
 
 # 名前の規則（integrations.llm.models.PROMPT_NAME_PATTERN と同じ。migration はモデルのコードに
 # 依らないので、ここに持つ）と、名前の上限（0018 まで・この後）
-PROMPT_NAME_PATTERN = r"^\S(?:.*\S)?\Z"
+PROMPT_NAME_PATTERN = r"^\S(?:[^\r\n]*\S)?\Z"
 OLD_NAME_MAX_LENGTH = 100
 NAME_MAX_LENGTH = 200
 # 付け替えの途中に使う一時の名前の接頭辞
@@ -50,7 +50,7 @@ def _name_problem(langfuse_prompt_name: str) -> str | None:
     if len(langfuse_prompt_name) > NAME_MAX_LENGTH:
         return f"Langfuse のプロンプト名が {NAME_MAX_LENGTH} 字を超えます"
     if not re.match(PROMPT_NAME_PATTERN, langfuse_prompt_name):
-        return "Langfuse のプロンプト名の前後か途中に、空白か改行があります"
+        return "Langfuse のプロンプト名の前後に空白か改行があるか、途中に改行があります"
     return None
 
 
@@ -172,7 +172,7 @@ class Migration(migrations.Migration):
                             "プロンプト名の前後には、空白と改行を入れられません"
                             "（途中の改行も不可）"
                         ),
-                        regex="^\\S(?:.*\\S)?\\Z",
+                        regex="^\\S(?:[^\\r\\n]*\\S)?\\Z",
                     )
                 ],
                 verbose_name="プロンプト名",

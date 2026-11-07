@@ -147,6 +147,24 @@ def test_rename_with_duplicates_added_after_move_stops_and_keeps_names(prompt_mi
 
 
 @pytest.mark.integration
+def test_rename_with_unusable_name_added_after_move_stops_and_keeps_names(
+    prompt_migrator,
+):
+    """0018 の後に名前にできない Langfuse 名（途中の CR）の行ができていても、0019 で止まる."""
+    apps = migrate_to(prompt_migrator, BEFORE_RENAME)
+    pk = create_prompt(
+        apps, f"{TEST_PREFIX}bad", langfuse_prompt_name=f"{TEST_PREFIX}a\rb"
+    ).pk
+
+    with pytest.raises(RuntimeError, match=f"{TEST_PREFIX}bad"):
+        migrate_to(prompt_migrator, AFTER_RENAME)
+
+    assert RENAME not in applied_migrations()
+    stopped_apps = prompt_migrator.loader.project_state(BEFORE_RENAME).apps
+    assert names_by_pk(stopped_apps, [pk]) == {pk: f"{TEST_PREFIX}bad"}
+
+
+@pytest.mark.integration
 def test_rename_reverse_restores_columns_and_hn_seed_names(
     prompt_migrator, hn_seed_system_prompts
 ):

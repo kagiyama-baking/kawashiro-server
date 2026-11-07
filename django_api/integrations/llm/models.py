@@ -103,9 +103,9 @@ class LLMServiceConfig(models.Model):
 
 
 # プロンプト名の規則（Langfuse のプロンプト名そのもの）。前後の空白と改行は不可で、Langfuse の
-# フォルダの `/` と途中の空白は使える。`.` は改行に合わないので途中の改行も通らない。`$` は末尾の
-# 改行も通すので `\Z` で終える。
-PROMPT_NAME_PATTERN = r"^\S(?:.*\S)?\Z"
+# フォルダの `/` と途中の空白は使える。途中の改行（CR・LF）も通さない（`.` は CR に合うので
+# 使わない）。`$` は末尾の改行も通すので `\Z` で終える。
+PROMPT_NAME_PATTERN = r"^\S(?:[^\r\n]*\S)?\Z"
 
 
 class Prompt(models.Model):

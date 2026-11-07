@@ -67,6 +67,7 @@ class TestPromptValidation:
             pytest.param("companion ", id="trailing_space"),
             pytest.param("companion\n", id="trailing_newline"),
             pytest.param("companion\nsystem", id="newline_inside"),
+            pytest.param("a\rb", id="carriage_return_inside"),
             pytest.param("\tcompanion", id="leading_tab"),
             pytest.param("companion\u3000", id="trailing_ideographic_space"),
             pytest.param("a" * 201, id="201_chars"),

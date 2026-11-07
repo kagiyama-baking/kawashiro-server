@@ -36,7 +36,7 @@ PERMISSION_ACTIONS = ("add", "change", "delete", "view")
 
 # 0019 の名前の規則・名前の上限・一時の名前の接頭辞（migration はほかの migration とモデルの
 # コードに依らないので、ここに持つ）
-PROMPT_NAME_PATTERN = r"^\S(?:.*\S)?\Z"
+PROMPT_NAME_PATTERN = r"^\S(?:[^\r\n]*\S)?\Z"
 NAME_MAX_LENGTH = 200
 TEMPORARY_PREFIX = "__llm_config_0019__/"
 
@@ -48,7 +48,7 @@ def _name_problem(langfuse_prompt_name: str) -> str | None:
     if len(langfuse_prompt_name) > NAME_MAX_LENGTH:
         return f"Langfuse のプロンプト名が {NAME_MAX_LENGTH} 字を超えます"
     if not re.match(PROMPT_NAME_PATTERN, langfuse_prompt_name):
-        return "Langfuse のプロンプト名の前後か途中に、空白か改行があります"
+        return "Langfuse のプロンプト名の前後に空白か改行があるか、途中に改行があります"
     return None
 
 

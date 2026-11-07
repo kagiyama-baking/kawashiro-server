@@ -411,6 +411,7 @@ def test_move_with_duplicate_langfuse_prompt_names_stops_before_changing_anythin
         pytest.param(" prompt-move-test-x", id="leading_space"),
         pytest.param("prompt-move-test-x\n", id="trailing_newline"),
         pytest.param("prompt-move-test\nx", id="newline_inside"),
+        pytest.param(TEST_PREFIX + "a\rb", id="carriage_return_inside"),
         pytest.param(TEST_PREFIX + "x" * 184, id="201_chars"),
     ],
 )
