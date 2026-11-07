@@ -84,6 +84,32 @@ class TalkConfigFactory(factory.django.DjangoModelFactory):
     )
 
 
+class TalkSettingFactory(factory.django.DjangoModelFactory):
+    """TalkSetting のファクトリ（既定は有効・シーンなし・音声なし）.
+
+    `skills=[...]` を渡すと、そのスキルをシーンとして選んだ設定にする。
+    """
+
+    class Meta:
+        model = "talk.TalkSetting"
+        django_get_or_create = ("name",)
+        # 選んだシーンは M2M なので、選んだ後に設定を保存し直さない
+        skip_postgeneration_save = True
+
+    name = factory.Sequence(lambda n: f"talk-setting-{n}")
+    system_prompt_ref = factory.SubFactory(
+        LangfusePromptRefFactory,
+        name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
+        fallback_text="system prompt fallback",
+    )
+
+    @factory.post_generation
+    def skills(self, create, extracted, **kwargs):
+        """`skills` を渡したら、そのスキルを設定のシーンに選ぶ（保存するときだけ）."""
+        if create and extracted is not None:
+            self.skills.set(extracted)
+
+
 class AgentSkillFactory(factory.django.DjangoModelFactory):
     """AgentSkill のファクトリ（名前がそのまま本文の Langfuse のプロンプト名。ラベルは staging）."""
 

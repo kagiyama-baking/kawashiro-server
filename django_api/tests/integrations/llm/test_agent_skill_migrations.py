@@ -12,6 +12,7 @@ llm_config の 0015 は、スキル名を本文の Langfuse のプロンプト�
 """
 
 import pytest
+from django.conf import settings
 from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
@@ -20,8 +21,6 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
-from features.companion.models import CompanionConfig
-from integrations.langfuse.models import LangfusePromptRef
 from integrations.llm.models import AgentSkill
 
 # 移す前の時点（AgentSkill は companion のモデル）
@@ -78,7 +77,9 @@ def migrator(django_db_setup, django_db_blocker):
     を使わない理由は tests/features/talk/test_migrations.py の migrator と同じ）。
     DB の遮断を自分で外すので、テスト DB ができていなければ触る前に中止する。
     作った行は当て直す前に消す（0015 は名前を付け替え、64 字を超える名前があると止まる
-    ため）。このモジュールが行き来する時点では表が同じなので、いまのモデルで消せる。
+    ため）。消すのは、いま当たっている時点のモデル（`_applied_apps`）。talk の 0017 は
+    llm_config に依存するので、llm_config を戻すと Talk 設定の表とチャットセッションの
+    シーンの列も外れ、いまのモデルで消すと、それらを参照して落ちる。
     内容の型（ContentType）の行は migration が付け替えるので、当て直した後にキャッシュを
     空にする（ほかのテストが古い行を引かないように）。
     """
@@ -91,15 +92,36 @@ def migrator(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         executor = MigrationExecutor(connection)
         yield executor
-        CompanionConfig.objects.filter(name=CONFIG_NAME).delete()
-        AgentSkill.objects.filter(name__in=CLEANUP_SKILL_NAMES).delete()
-        LangfusePromptRef.objects.filter(name=PROMPT_REF_NAME).delete()
+        apps = _applied_apps(executor)
+        skill_app = (
+            "llm_config"
+            if LLM_MOVE in executor.loader.applied_migrations
+            else "companion"
+        )
+        apps.get_model("companion", "CompanionConfig").objects.filter(
+            name=CONFIG_NAME
+        ).delete()
+        apps.get_model(skill_app, "AgentSkill").objects.filter(
+            name__in=CLEANUP_SKILL_NAMES
+        ).delete()
+        apps.get_model("langfuse_integration", "LangfusePromptRef").objects.filter(
+            name=PROMPT_REF_NAME
+        ).delete()
         # ユーザーを消すと、そのユーザーの履歴と権限の付与も消える
-        get_user_model().objects.filter(email=TEST_USER_EMAIL).delete()
-        Group.objects.filter(name=TEST_GROUP_NAME).delete()
-        executor.loader.build_graph()
+        apps.get_model(settings.AUTH_USER_MODEL).objects.filter(
+            email=TEST_USER_EMAIL
+        ).delete()
+        apps.get_model("auth", "Group").objects.filter(name=TEST_GROUP_NAME).delete()
         executor.migrate(executor.loader.graph.leaf_nodes())
         ContentType.objects.clear_cache()
+
+
+def _applied_apps(migrator):
+    """DB に当たっている migration の時点のモデルを引ける apps を返す（グラフを読み直す）."""
+    migrator.loader.build_graph()
+    nodes = migrator.loader.graph.nodes
+    applied = [key for key in migrator.loader.applied_migrations if key in nodes]
+    return migrator.loader.project_state(applied).apps
 
 
 def _migrate(migrator, targets):

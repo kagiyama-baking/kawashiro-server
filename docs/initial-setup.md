@@ -97,9 +97,11 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 ## 5. 機能の設定
 
-### 5-1. 会話生成設定（`TalkConfig`）
+### 5-1. 会話生成設定（`TalkConfig`。廃止予定）
 
-「AI ツール設定 → Talk → 会話生成設定」から、プリセット単位で作成します（`morning`、`evening` など）。
+> **廃止予定:** チャットは手順 5-4 の Talk 設定へ、外部の自動化（`/talk/synthesize/`）は手順 5-3 の Companion へ移し、移した後に削除します。新しく作るのは、`/talk/synthesize/` を使い続ける間だけにしてください。
+
+「AI ツール設定 → Talk → 会話生成設定（廃止予定）」から、プリセット単位で作成します（`morning`、`evening` など）。
 
 | 項目 | 説明 |
 |---|---|
@@ -145,6 +147,16 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
      -d '{"prompt": "おはよう"}'
    # => {"text": "おはようございます。...", "skill": "good-morning", "audio_data": null, "audio_format": null}
    ```
+
+### 5-4. Talk 設定（`TalkSetting`）
+
+フロントの Talk（チャット）で選ぶ設定です。システムプロンプト 1 本と、選べるシーン（本文は Langfuse。Agent Skills に登録）を持ちます。**複数を有効にできます。** 項目の意味は [Talk の README の「Talk 設定」](../django_api/features/talk/README.md#talk-設定talksettingリファレンス) を参照してください。
+
+1. **サービス設定の `Talk` が有効なことを確かめる** — 「AI ツール設定 → AI設定 → サービス設定」の `Talk`（会話生成設定と共通の行。なければ手順 4-2 で作成）
+2. **Langfuse に text プロンプトを作る** — チャットのシステムプロンプト（変数は展開しないので書かない）と、シーンごとの本文（名前は自由。例: `talk-scene-cafe`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内）。シーンの本文はツールを前提にしません。ラベルの付け方は Companion と同じです（[Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル)）
+3. **システムプロンプトの参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` を手順 2 のプロンプト名にし、ラベルは手順 2 で付けたものにします。シーンの本文には参照を作りません
+4. **シーンを Agent Skills に登録する** — 「AI ツール設定 → AI設定 → Agent Skills」から、名前（手順 2 のプロンプト名そのもの）・説明（フロントの Talk の選択肢に出る、人が読む短い文。例: 「カフェで向かい合って話す場面」）・ラベル・有効を入れて保存します
+5. **Talk 設定を作る** — 「AI ツール設定 → Talk → Talk 設定」から、名前（フロントの選択肢に出る）・システムプロンプト（手順 3）・シーン（手順 4 のスキル。なくてもよい）・音声を入れて保存します。「有効」は既定で ON です
 
 ## 6. 外部サービスの設定
 

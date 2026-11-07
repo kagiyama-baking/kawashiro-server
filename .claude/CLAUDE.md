@@ -62,7 +62,7 @@ kawashiro-server/
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
 | LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
-| Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
+| Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・廃止予定の会話生成（TalkConfig・プレースホルダー） | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
 | Companion の設定モデル（CompanionConfig）・スキルの本文の取得・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |

@@ -1,4 +1,7 @@
-"""会話生成設定モデル"""
+"""Talk のモデル（Talk 設定・チャット履歴）.
+
+旧 Talk Generator の会話生成設定（TalkConfig。`/talk/synthesize/` が使う）は、削除まで残る。
+"""
 
 import uuid
 from typing import Any
@@ -6,6 +9,9 @@ from typing import Any
 from django.conf import settings
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
+
+from integrations.llm.models import AgentSkill
+from integrations.tts.models import AbstractTTSSettings
 
 
 def chat_audio_upload_path(instance: "ChatMessage", filename: str) -> str:
@@ -122,8 +128,8 @@ class TalkConfig(models.Model):
 
     class Meta:
         db_table = "talk_talkconfig"
-        verbose_name = "会話生成設定"
-        verbose_name_plural = "会話生成設定"
+        verbose_name = "会話生成設定（廃止予定）"
+        verbose_name_plural = "会話生成設定（廃止予定）"
 
     def __str__(self):
         return self.display_name
@@ -150,6 +156,65 @@ class TalkConfig(models.Model):
         }
 
 
+class TalkSetting(AbstractTTSSettings):
+    """Talk 設定（チャットのシステムプロンプト・選べるシーン・音声）.
+
+    複数を有効にでき、有効な設定をフロントの Talk で選ぶ。シーンは Agent Skills
+    （AgentSkill）から選び、チャットでは選んだシーンの本文をシステムプロンプトの後ろに足す。
+    ツールは使わない。
+    """
+
+    name = models.CharField(
+        "設定名",
+        max_length=255,
+        unique=True,
+        help_text="フロントの Talk で選ぶときに出る名前",
+    )
+    is_enabled = models.BooleanField(
+        "有効",
+        default=True,
+        help_text=(
+            "有効な設定だけを、フロントの Talk で選べて続けて話せる。"
+            "複数の設定を有効にできる"
+        ),
+    )
+    system_prompt_ref = models.ForeignKey(
+        "langfuse_integration.LangfusePromptRef",
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="システムプロンプト",
+        help_text=(
+            "チャットのシステムプロンプト（Langfuse の text プロンプト）の参照。"
+            "変数（{{weather}} など）は展開しない"
+        ),
+    )
+    skills = models.ManyToManyField(
+        AgentSkill,
+        blank=True,
+        related_name="talk_settings",
+        verbose_name="シーン",
+        help_text=(
+            "この設定で選べるシーン（Agent Skills に登録したもの）。"
+            "無効にしたスキルは選べない。シーンの本文はツールを前提にしない"
+        ),
+    )
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+    updated_at = models.DateTimeField("更新日時", auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Talk 設定"
+        verbose_name_plural = "Talk 設定"
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """保存時にバリデーションを実行."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
 class ChatSession(models.Model):
     """チャットセッション（履歴）."""
 
@@ -170,10 +235,37 @@ class ChatSession(models.Model):
         verbose_name="タイトル",
         help_text="初回応答後に LLM で要約生成。手動編集も可能",
     )
+    setting = models.ForeignKey(
+        TalkSetting,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="chat_sessions",
+        verbose_name="Talk 設定",
+        help_text=(
+            "セッション作成時に固定。チャットで使った設定は消せない（無効にする）"
+        ),
+    )
+    skill = models.ForeignKey(
+        AgentSkill,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="talk_chat_sessions",
+        verbose_name="シーン",
+        help_text=(
+            "セッション作成時に固定（シーンなしなら空）。"
+            "チャットで使ったスキルは消せない（無効にする）"
+        ),
+    )
     config_name = models.CharField(
         max_length=50,
-        verbose_name="プリセット名",
-        help_text="セッション作成時に固定。途中変更不可",
+        blank=True,
+        default="",
+        verbose_name="旧プリセット名（廃止予定）",
+        help_text=(
+            "Talk 設定より前のチャットのプリセット名（移行の元）。新しいチャットでは空"
+        ),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

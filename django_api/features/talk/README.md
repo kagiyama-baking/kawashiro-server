@@ -10,7 +10,7 @@ LLM・天気・予定・日時・TTS を束ねて「ひとこと」を生成す�
 
 ```
 features/talk/
-├── models.py            # TalkConfig / ChatSession / ChatMessage
+├── models.py            # TalkSetting（Talk 設定）/ ChatSession / ChatMessage / TalkConfig（会話生成設定。廃止予定）
 ├── serializers.py       # リクエスト・レスポンス定義（content 上限 4000 文字）
 ├── services.py          # TalkService: プレースホルダー検出・並列取得・LLM・TTS
 ├── llm_agents.py        # PydanticAI エージェント（チャット・タイトル・単発生成）と履歴の変換
@@ -26,13 +26,34 @@ features/talk/
 ├── signals.py           # post_delete で音声ファイルを物理削除（apps.ready() で登録）
 ├── permissions.py       # IsSessionOwner（session / session 経由オブジェクトの所有者判定）
 ├── throttling.py        # TalkConfigRateThrottle（/talk/synthesize/ のプリセットごとの回数制限）
-├── admin.py             # TalkConfig / ChatSession / ChatMessage の管理画面
+├── admin.py             # Talk 設定 / ChatSession / ChatMessage / 会話生成設定（廃止予定）の管理画面
 └── management/commands/cleanup_orphan_audio.py
 ```
 
 `TalkService` は TTS・祝日・天気・Outlook の各クライアントをすべて遅延初期化（プロパティ経由）で保持します。祝日クライアント（holidays-jp API。インスタンス内キャッシュ）と日時情報の組み立て（`get_datetime_info`。`{{datetime}}` と `GET /talk/datetime/` が共用）は `integrations/holiday/` にあります。LLM は `llm_agents.py` の 3 エージェントを、チャットは `stream_text_sync`、タイトルと単発生成は `run_agent_sync` で実行し、接続設定は呼び出しごとに `get_llm_settings("talk")` で解決します（詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）。本文のない応答（出力上限やフィルターで本文がなくなったものを含む）は再試行せず空文字として扱います。テストでは LLM を `TALK_CHAT_AGENT.override(model=...)` で差し替えます（`tests/features/talk/conftest.py` の `chat_llm` / `title_llm`）。
 
+## Talk 設定（TalkSetting）リファレンス
+
+チャットのシステムプロンプト・選べるシーン・音声をまとめた設定です。管理画面の「AI ツール設定 → Talk → Talk 設定」から登録し、**複数を有効にできます**（Companion 設定と違い、1 件に絞りません）。登録の手順は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-4 を参照してください。
+
+| フィールド | 型 / 既定値 | 説明 |
+|---|---|---|
+| `name` | CharField(255), unique | フロントの Talk で選ぶときに出る名前（自由記述） |
+| `is_enabled` | Bool, `True` | 有効な設定だけを、フロントの Talk で選べて、続けて話せる |
+| `system_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | チャットのシステムプロンプト（Langfuse の text プロンプト）の参照。必須。変数（`{{weather}}` など）は展開しない |
+| `skills` | M2M → `AgentSkill`（`related_name="talk_settings"`） | この設定で選べるシーン（[Agent Skills](../../integrations/llm/README.md#agent-skillsagentskill) に登録したもの）。任意。無効にしたスキルは選べない |
+| `tts_*`（9 項目） | `AbstractTTSSettings`（`integrations/tts/models.py`）を継承 | 項目と既定値は下の TalkConfig の表の `tts_*` 行と同じ。`get_tts_options()` は `tts_enabled=False` なら `None` |
+| `created_at` / `updated_at` | DateTime | 作成・更新日時 |
+
+- `save()` は `full_clean()` を呼びます（登録済みの名前で保存すると、admin では名前の欄のエラーになります）。並び順は名前順です。
+- **シーンは、スキル名と同じ名前の Langfuse の text プロンプトの本文です**（スキルのラベルの版。フォールバックはありません）。ツールを使わないので、本文はツールを前提にせず、変数も書きません。
+- チャットセッションは、作成時に Talk 設定（`setting`）とシーン（`skill`。なしなら空）を固定して持ちます（どちらも `on_delete=PROTECT`）。**チャットで使った Talk 設定とスキルは消せません。** 使わなくなったら無効にしてください。
+- 旧プリセット名（`ChatSession.config_name`）は、Talk 設定より前のチャットのプリセット名です（移行の元。新しいチャットでは空。会話生成設定と一緒に削除する予定）。
+- LLM の接続先は「AI設定 → サービス設定」の `Talk`（`talk`。会話生成設定と共通）です。
+
 ## TalkConfig リファレンス
+
+> **廃止予定:** 会話生成設定は、チャットを Talk 設定へ、外部の自動化（`/talk/synthesize/`）を Companion へ移した後に削除します。
 
 プリセットごとに複数登録可能（`morning` / `evening` / `welcome_home` …）。管理画面（`/admin/`）から登録します。
 
