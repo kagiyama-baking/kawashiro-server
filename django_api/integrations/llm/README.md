@@ -161,6 +161,7 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 | Talk system | `talk-{config_name}-system` | `talk-{config_name}-system`（同名） |
 | Talk user | `talk-{config_name}-user` | `talk-{config_name}-user`（同名） |
 | Companion system | `companion-system` | `companion-system`（同名） |
+| Talk 設定（`TalkSetting`）の system | 自由（migration `talk/0018` が作った Talk 設定は、プリセットの `talk-{config_name}-system` をそのまま使う） | 参照の `langfuse_prompt_name` |
 | スキル（Agent Skills）の本文 | なし（参照を作らない） | スキル名そのもの（例: `good-morning`。ラベルはスキルの `label`） |
 
 **投入方法の違いに注意してください。**
@@ -168,6 +169,7 @@ Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN 
 - **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りの `LangfusePromptRef` として自動投入されます。
 - **Talk の 2 本は自動生成されません。** migration `talk/0012` は「マイグレーション実行時点で存在した `TalkConfig`」の分だけ参照を作り、既存の `system_prompt` を `fallback_text` へ移管したものです。**その後に新しい `TalkConfig` を追加する場合は、`LangfusePromptRef` を admin で手動作成**してから FK に割り当ててください（`system_prompt_ref` / `user_prompt_ref` はどちらも必須・`PROTECT`）。
 - **Companion のシステムプロンプトの参照も自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `LangfusePromptRef`（`companion-system`）を手動で作成してから `CompanionConfig.system_prompt_ref` に割り当てます。
+- **Talk 設定のシステムプロンプトの参照も手動作成です**（migration はありません。`talk/0018` は既存のチャットのために Talk 設定を作りますが、参照はプリセットのものをそのまま使います）。
 - **スキル（Agent Skills）の本文には参照を作りません。** Langfuse に本文の text プロンプトを作り、そのプロンプト名をスキル名として admin の Agent Skills に登録します（`fetch_text_prompt` でスキルのラベルの版を取る。**フォールバックはなく**、Companion では取れなければ 503）。ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-3 を参照してください。
 
 いずれの場合も、`LangfusePromptRef` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。参照のプロンプトは、未登録でも `fallback_text` で動作します（スキルの本文は参照を通さないので、Langfuse への登録が必要です）。
