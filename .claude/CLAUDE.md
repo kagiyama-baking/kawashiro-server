@@ -175,6 +175,7 @@ django_api/tests/
 │   ├── langfuse.py          # Langfuse のプロンプトの取得の代役（FakeLangfuse）
 │   ├── llm.py               # LLM の代役（ScriptedLLM）
 │   ├── migrations.py        # migration のテストのヘルパ（DB に当たっている時点のモデルを引く）
+│   ├── prompt_migrations.py # プロンプト（Prompt）の migration のテストの時点・ヘルパ（フィクスチャは integrations/llm/conftest.py）
 │   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
 │   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
 ├── core/                    # admin並び順等のコアテスト
