@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
-from .exceptions import LangfusePromptError
+from .exceptions import LangfusePromptError, PromptUnavailableError
 
 if TYPE_CHECKING:
     from .models import LangfusePromptRef
@@ -85,6 +85,28 @@ def resolve_prompt(ref: "LangfusePromptRef", **variables: Any) -> str:
     """
     compile_fn, _ = get_prompt_with_variables(ref)
     return compile_fn(**variables)
+
+
+def resolve_required_prompt(ref: "LangfusePromptRef") -> str:
+    """プロンプト（システムプロンプト）の本文を参照から解決し、空なら例外にする.
+
+    `resolve_prompt` は Langfuse から取れなくても例外を出さずにフォールバックテキストへ落ち、
+    フォールバックテキストは空でもよい。空のまま「読めた体」で続けないよう、ここで止める。
+    変数は展開しない。Langfuse と通信する同期関数なので、イベントループの外で呼ぶ。
+
+    Args:
+        ref: プロンプトの参照（変数のない text プロンプト）
+
+    Returns:
+        前後の空白を除いた本文
+
+    Raises:
+        PromptUnavailableError: 本文が空（空白だけ）の場合
+    """
+    text = resolve_prompt(ref).strip()
+    if not text:
+        raise PromptUnavailableError(ref.name)
+    return text
 
 
 def fetch_text_prompt(name: str, *, label: str) -> str:

@@ -27,7 +27,7 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 - **`LLMServiceConfig`**（同上）
   サービス（`orchestrator` / `detective` / `devils_advocate` / `security_responder` / `talk` / `companion`）ごとに、使用する `LLMProviderConfig`・有効フラグ・タイムアウトを割り当てます。
 - **`AgentSkill`**（同上）
-  全エージェントで共有するスキル（Agent Skills）。名前・説明・Langfuse のラベル・有効を持ち、各機能の設定が M2M で選びます（いまは `CompanionConfig.skills`）。本文は、スキル名と同じ名前の Langfuse の text プロンプトを `fetch_text_prompt` で直接取ります（§4）。
+  全エージェントで共有するスキル（Agent Skills）。名前・説明・Langfuse のラベル・有効を持ち、各機能の設定が M2M で選びます（いまは `CompanionConfig.skills`）。本文は、スキル名と同じ名前の Langfuse の text プロンプトを `fetch_text_prompt` で直接取ります（§4）。取るのは `resolve_skill_body(skill)`（`integrations/llm/skills.py`。全エージェント共通）で、取れないか空なら `PromptUnavailableError`（`integrations/langfuse/exceptions.py`）です。
 - **`LangfusePromptRef`**（`integrations/langfuse/models.py`）
   Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig` / `TalkConfig` / `CompanionConfig`（システムプロンプト）から FK で参照されます。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
@@ -36,8 +36,10 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
   `get_llm_settings` の結果で PydanticAI のエージェントを LiteLLM Proxy 経由で実行します（§6）。
 - **`resolve_prompt(ref, **vars)` / `get_prompt_with_variables(ref)`**（`integrations/langfuse/client.py`）
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
+- **`resolve_required_prompt(ref)`**（同上）
+  `resolve_prompt` で本文を解決し、空（空白だけ）なら `PromptUnavailableError` にします（空のシステムプロンプトで続けない）。変数は展開しません。Companion のシステムプロンプトが使います。
 - **`fetch_text_prompt(name, *, label)`**（同上）
-  参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を compile せずにそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまは Companion のスキルの本文だけが使います。
+  参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を compile せずにそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまはスキルの本文（`resolve_skill_body`）だけが使います。
 - **`langfuse_session(session_id)`**（同上）
   中で実行する処理のトレースと配下の観測に、Langfuse のセッション ID（`session.id`）を伝播する with 文です（`propagate_attributes` を包む）。入った時点の現在のスパン（`@observe` の関数の中ならそのスパン）にも付きます。`None`・空文字なら何もせず、伝播の開始・解除に失敗しても警告ログだけで本処理は続けます。いまは Talk のチャットと Companion が使います（§6 の「Langfuse の Sessions」）。
 

@@ -8,6 +8,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
@@ -17,7 +18,6 @@ from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
 
 from .exceptions import (
     CompanionNotConfiguredError,
-    PromptUnavailableError,
     UnknownSkillError,
 )
 from .serializers import CompanionRunRequestSerializer, CompanionRunResponseSerializer

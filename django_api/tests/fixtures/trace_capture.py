@@ -183,7 +183,7 @@ def _run_companion():
     )
     with (
         COMPANION_AGENT.override(model=llm.model),
-        patch("features.companion.skills.fetch_text_prompt", return_value="手順"),
+        patch("integrations.llm.skills.fetch_text_prompt", return_value="手順"),
         patch("features.companion.services.TTSClient") as tts_client,
         patch("django.utils.timezone.now", return_value=COMPANION_NOW),
     ):

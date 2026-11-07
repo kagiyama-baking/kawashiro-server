@@ -23,19 +23,18 @@ from pydantic_ai.messages import (
 )
 
 from features.companion.agent import COMPANION_AGENT, CompanionDeps
-from features.companion.exceptions import PromptUnavailableError
 from features.companion.skills import (
     build_skill_capabilities,
     loaded_skill,
-    resolve_required_prompt,
-    resolve_skill_body,
     skill_instructions,
 )
 from integrations.langfuse.client import fetch_text_prompt
-from integrations.langfuse.exceptions import LangfusePromptError
+from integrations.langfuse.exceptions import (
+    PromptUnavailableError,
+)
 from integrations.llm.exceptions import LLMOutputError
 from integrations.llm.runtime import _LITELLM_PROFILE, run_agent_sync
-from tests.fixtures.factories import AgentSkillFactory, LangfusePromptRefFactory
+from tests.fixtures.factories import AgentSkillFactory
 from tests.fixtures.llm import (
     RecordedRequest,
     ScriptedLLM,
@@ -101,7 +100,7 @@ def fetches():
         calls.append((name, label, threading.get_ident()))
         return fetch_text_prompt(name, label=label)
 
-    with patch("features.companion.skills.fetch_text_prompt", side_effect=record):
+    with patch("integrations.llm.skills.fetch_text_prompt", side_effect=record):
         yield calls
 
 
@@ -126,115 +125,6 @@ def morning_run(skills):
     llm = _scripted(load_capability("good-morning"), "おはよう！")
     result = _run(llm, build_skill_capabilities(skills))
     return llm, result
-
-
-@pytest.mark.unit
-class TestResolveRequiredPrompt:
-    """resolve_required_prompt（システムプロンプト。本文が空なら読めた体で続けない）."""
-
-    def test_resolve_required_prompt_with_text_returns_stripped_text(self):
-        """前後の空白を除いた本文を返す."""
-        ref = LangfusePromptRefFactory.build(
-            name="companion-system", fallback_text=f"\n  {SYSTEM_PROMPT}\n"
-        )
-
-        assert resolve_required_prompt(ref) == SYSTEM_PROMPT
-
-    @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
-    def test_resolve_required_prompt_with_empty_text_raises_error_with_ref_name(
-        self, fallback_text
-    ):
-        """本文が空（空白だけ）なら、参照の識別名を持つ PromptUnavailableError を送出する.
-
-        `resolve_prompt` は Langfuse から取れないと例外を出さずにフォールバックテキストへ落ちる。
-        """
-        ref = LangfusePromptRefFactory.build(
-            name="companion-system", fallback_text=fallback_text
-        )
-
-        with pytest.raises(
-            PromptUnavailableError, match="companion-system"
-        ) as exc_info:
-            resolve_required_prompt(ref)
-
-        assert (exc_info.value.ref_name, exc_info.value.reason) == (
-            "companion-system",
-            "本文が空です",
-        )
-
-
-@pytest.mark.unit
-class TestResolveSkillBody:
-    """resolve_skill_body（スキルの本文を Langfuse から取る。フォールバックはない）."""
-
-    def test_resolve_skill_body_returns_stripped_body_of_prompt_with_skill_label(
-        self, langfuse_prompts
-    ):
-        """スキル名と同じ名前のプロンプトをスキルのラベルで取り、前後の空白を除いて返す."""
-        langfuse_prompts[(MORNING_PROMPT, "staging")] = f"\n  {MORNING_BODY}\n"
-        langfuse_prompts[(MORNING_PROMPT, "production")] = "production の本文"
-        skill = AgentSkillFactory.build(name="good-morning", label="staging")
-
-        assert resolve_skill_body(skill) == MORNING_BODY
-
-    @pytest.mark.parametrize("body", EMPTY_TEXTS)
-    def test_resolve_skill_body_with_empty_body_raises_error_with_prompt_name(
-        self, langfuse_prompts, body
-    ):
-        """本文が空（空白だけ）なら、プロンプト名を持つ PromptUnavailableError を送出する."""
-        langfuse_prompts[(MORNING_PROMPT, "staging")] = body
-
-        with pytest.raises(PromptUnavailableError) as exc_info:
-            resolve_skill_body(AgentSkillFactory.build(name="good-morning"))
-
-        assert (exc_info.value.ref_name, exc_info.value.reason) == (
-            MORNING_PROMPT,
-            "本文が空です",
-        )
-
-    def test_resolve_skill_body_without_prompt_for_label_raises_error_with_cause(
-        self, langfuse_prompts
-    ):
-        """スキルのラベルのプロンプトがなければ PromptUnavailableError（ほかのラベルは使わない）.
-
-        取得の失敗（LangfusePromptError）はそのまま出さず、原因（`__cause__`）として持つ。
-        """
-        langfuse_prompts[(MORNING_PROMPT, "production")] = MORNING_BODY
-        skill = AgentSkillFactory.build(name="good-morning", label="staging")
-
-        with pytest.raises(PromptUnavailableError) as exc_info:
-            resolve_skill_body(skill)
-
-        assert exc_info.value.ref_name == MORNING_PROMPT
-        assert isinstance(exc_info.value.__cause__, LangfusePromptError)
-
-    def test_resolve_skill_body_when_langfuse_unreachable_raises_error_with_reason(
-        self, langfuse_unreachable
-    ):
-        """Langfuse に届かなければ PromptUnavailableError（理由に取得の失敗を書く）."""
-        with pytest.raises(PromptUnavailableError, match=MORNING_PROMPT) as exc_info:
-            resolve_skill_body(AgentSkillFactory.build(name="good-morning"))
-
-        cause = exc_info.value.__cause__
-        assert isinstance(cause, LangfusePromptError)
-        assert exc_info.value.reason == str(cause)
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-def test_resolve_skill_body_when_langfuse_unreachable_never_uses_ref_fallback(
-    langfuse_unreachable,
-):
-    """Langfuse に届かなくても、同じ名前の参照（移行で残った旧スキルの参照など）の本文は使わない."""
-    LangfusePromptRefFactory(
-        name=MORNING_PROMPT,
-        langfuse_prompt_name=MORNING_PROMPT,
-        label="staging",
-        fallback_text=MORNING_BODY,
-    )
-
-    with pytest.raises(PromptUnavailableError):
-        resolve_skill_body(AgentSkillFactory(name="good-morning"))
 
 
 @pytest.mark.unit

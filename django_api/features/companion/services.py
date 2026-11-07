@@ -14,7 +14,7 @@ from langfuse import get_client, observe
 from pydantic_ai.capabilities import Capability
 from pydantic_ai.usage import UsageLimits
 
-from integrations.langfuse.client import langfuse_session
+from integrations.langfuse.client import langfuse_session, resolve_required_prompt
 from integrations.llm.config import get_llm_settings
 from integrations.llm.exceptions import LLMOutputError
 from integrations.llm.models import AgentSkill
@@ -27,7 +27,6 @@ from .models import CompanionConfig
 from .skills import (
     build_skill_capabilities,
     loaded_skill,
-    resolve_required_prompt,
     skill_instructions,
 )
 

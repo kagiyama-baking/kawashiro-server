@@ -14,13 +14,13 @@ features/companion/
 ├── models.py                  # CompanionConfig（スキルは integrations/llm/models.py の AgentSkill から選ぶ）
 ├── admin.py                   # 設定（スキルの選択・有効化アクション）。Agent Skills の画面は integrations/llm/admin.py
 ├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）・出力の検証
-├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・スキルの本文の取得（resolve_skill_body）・システムプロンプトの解決（resolve_required_prompt）・loaded_skill
+├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・loaded_skill。本文の取得（resolve_skill_body）は integrations/llm/skills.py、システムプロンプトの解決（resolve_required_prompt）は integrations/langfuse/client.py
 ├── services.py                # run_companion（1 回の実行）→ CompanionReply
 ├── serializers.py             # 実行 API の入力（prompt / skill）と応答（text / skill / audio_data / audio_format）
 ├── views.py                   # CompanionRunView（POST /companion/run/）・例外と HTTP ステータスの対応
 ├── throttling.py              # CompanionRateThrottle（有効な設定の rate_limit で、ユーザーごとに数える）
 ├── urls.py                    # app_name = "companion"（run/）
-├── exceptions.py              # CompanionError / PromptUnavailableError / CompanionNotConfiguredError / UnknownSkillError
+├── exceptions.py              # CompanionError / CompanionNotConfiguredError / UnknownSkillError（PromptUnavailableError は integrations/langfuse/exceptions.py）
 └── migrations/                # 0001_initial と次の 5 本（0001 まで戻せる）
     ├── 0002_rename_persona_prompt_ref_to_system_prompt_ref.py  # persona_prompt_ref → system_prompt_ref の改名（手書き）
     ├── 0003_agentskill_companionconfig_skills.py               # AgentSkill と CompanionConfig.skills を足す
@@ -83,8 +83,8 @@ features/companion/
 
 - **モデルが最初に見るのは一覧（カタログ）だけです。** system にスキル名と説明が `- good-morning: 朝のあいさつ（「おはよう」など）` の形で並び、組み込みの `load_capability` ツールが足されます。一覧の見出し・囲み（`<context id="capability:deferred_capabilities">`）・後ろの注記は PydanticAI の英語の定型文です。本文はまだ送りません。
 - **モデルが `load_capability`（引数 `id` にスキル名）を呼ぶと、そのスキルの本文が以降のリクエストに入ります。** ツールの結果（読み込んだ旨の英語の定型文だけ）の直後の system（`<context id="capability:<スキル名>">` で囲んだもの）として届き、ユーザーの発話やツールの結果には混ざりません（送る形は `tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract` で固定）。読み込まなかったスキルの本文は送りません。
-- **本文は読み込まれたときに Langfuse から取り、1 回の実行で 1 回だけ取ります。** `resolve_skill_body(skill)` が `fetch_text_prompt(skill.name, label=skill.label)`（`integrations/langfuse/client.py`）で、スキル名と同じ名前のプロンプトをスキルのラベルで取ります。読み込んだ後はリクエストのたびに本文を送りますが、最初に取った本文を使い続けます（実行の途中で本文は変わりません）。取るのは呼び出し元のスレッドです。
-- **本文を取れないか、空ならエラーです（フォールバックはありません）。** Langfuse から取れない（届かない・そのラベルのプロンプトがない・Text 型でない）か、本文が空（空白だけ）なら、`PromptUnavailableError`（`exceptions.py`）で実行ごと止めます（API では 503）。例外はプロンプト名を `ref_name`、理由を `reason` に持ち、取れなかったときは元の `LangfusePromptError` を `__cause__` に持ちます。同じ名前の `LangfusePromptRef` があっても、そのフォールバックテキストは使いません。読み込めた体で続けたり、そのスキルを飛ばしたりはしません。
+- **本文は読み込まれたときに Langfuse から取り、1 回の実行で 1 回だけ取ります。** `resolve_skill_body(skill)`（`integrations/llm/skills.py`。全エージェント共通）が `fetch_text_prompt(skill.name, label=skill.label)`（`integrations/langfuse/client.py`）で、スキル名と同じ名前のプロンプトをスキルのラベルで取ります。読み込んだ後はリクエストのたびに本文を送りますが、最初に取った本文を使い続けます（実行の途中で本文は変わりません）。取るのは呼び出し元のスレッドです。
+- **本文を取れないか、空ならエラーです（フォールバックはありません）。** Langfuse から取れない（届かない・そのラベルのプロンプトがない・Text 型でない）か、本文が空（空白だけ）なら、`PromptUnavailableError`（`integrations/langfuse/exceptions.py`）で実行ごと止めます（API では 503）。例外はプロンプト名を `ref_name`、理由を `reason` に持ち、取れなかったときは元の `LangfusePromptError` を `__cause__` に持ちます。同じ名前の `LangfusePromptRef` があっても、そのフォールバックテキストは使いません。読み込めた体で続けたり、そのスキルを飛ばしたりはしません。
 - **Langfuse SDK のプロンプトのキャッシュはそのまま使います（DB のフォールバックではありません）。** キャッシュはプロセス（gunicorn のワーカー）ごとで、プロンプト名とラベルで引きます。期限（既定 60 秒）が切れた後の最初の取得は古い本文を返し、裏で取り直します。そのため Langfuse で本文を直しても、反映されるのは取り直した後の実行からです。一度取れた本文は、その後 Langfuse に届かなくなっても返り続けます（取り直しに失敗しても古い本文のまま）。エラーになるのは、そのプロセスのキャッシュにまだないとき（起動の直後や、初めて使うスキル）と、Langfuse でプロンプトが見つからなくなってキャッシュから外れた後です。キャッシュにないときは SDK がその場で取りに行き、失敗すると 3 回まで試します（1 回の待ちは SDK の既定で 5 秒）。
 - **本文は変数のない text プロンプトです。** `{{...}}` は展開せず、そのまま届きます。日時・天気・予定のデータは本文に埋め込めないので、下の「ツール」を呼ぶよう本文に書きます（ツール名は表の名前のとおりに書く）。
 - **使ったスキルは `loaded_skill(messages)` で実行の履歴から取ります。** 最初に読み込みに成功したスキル名を返し、どれも読み込まなければ `None` です。不明な名前・読み込み済みのスキルを読み込もうとすると、モデルに再試行を求めるだけで数えません。`run_companion` では続けて 3 回まで再試行でき、それを超えて失敗すると実行が失敗します（`LLMOutputError`。下の「上限と再試行」）。
