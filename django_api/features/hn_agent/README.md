@@ -52,7 +52,7 @@ flowchart TB
 
 ## admin 項目と外部サービスのつながり
 
-HN Agent は「HackerNews Agent設定」からプロンプト参照 8 本を FK で、サービス設定 4 種（orchestrator / detective / devils_advocate / security_responder）を `service_name` 経由で参照します。
+HN Agent は「HackerNews Agent設定」から「AI設定 → Prompts」のプロンプト 8 本を FK で、サービス設定 4 種（orchestrator / detective / devils_advocate / security_responder）を `service_name` 経由で参照します。
 admin 設定と LiteLLM Proxy / Langfuse の対応図は [../../integrations/llm/README.md](../../integrations/llm/README.md) を参照してください。
 
 ## 各コンポーネント詳細
@@ -170,7 +170,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 |---|---|
 | `HNThread` | HN スレッドの基本情報（`hn_id`, `title`, `url`, `author`, `is_investigated`） |
 | `HNThreadSnapshot` | スコア・コメント数の時系列スナップショット（上昇速度の計算用） |
-| `HNAgentConfig` | エージェント動作パラメータ + 使用プロンプト 8 本（`LangfusePromptRef` FK：Orchestrator / Detective / Devil's Advocate / Security Responder それぞれ system / user） |
+| `HNAgentConfig` | エージェント動作パラメータ + 使用プロンプト 8 本（`Prompt` への FK。AI設定 → Prompts：Orchestrator / Detective / Devil's Advocate / Security Responder それぞれ system / user） |
 
 ※ `Memory Agent` / `ThreadEmbedding` / `Investigation` モデルは廃止されました（Langfuse トレースで代替）。
 
@@ -182,7 +182,7 @@ Django 管理画面から（表示順は「AI ツール設定」グループ）:
 |---|---|
 | **AI設定 → LLM設定**（`LLMProviderConfig`） | モデルエイリアス + LiteLLM Virtual Key |
 | **AI設定 → サービス設定**（`LLMServiceConfig`） | `orchestrator` / `detective` / `devils_advocate` / `security_responder` の 4 サービスにプロバイダを割り当て |
-| **Langfuse プロンプト参照**（`LangfusePromptRef`） | `hn-agent-orchestrator-system/-user`, `hn-agent-detective-system/-user`, `hn-agent-devils-advocate-system/-user`, `hn-agent-security-responder-system/-user` の 8 本 |
+| **AI設定 → Prompts**（`Prompt`） | `hn-agent-orchestrator-system/-user`, `hn-agent-detective-system/-user`, `hn-agent-devils-advocate-system/-user`, `hn-agent-security-responder-system/-user` の 8 本 |
 | **Slack 通知設定** | Webhook URL（暗号化保存） |
 | **Tavily** | API キー（Web 検索、Detective・Security Responder で使用、任意） |
 | **HackerNews Agent 設定**（`HNAgentConfig`） | 推論深度、スコア閾値、速度閾値、ポーリング間隔、フロントページ取得件数、プロンプト 8 本 |
@@ -268,7 +268,7 @@ features/hn_agent/
 | `hn-agent-security-responder` | Security Responder の system プロンプト（cve_ids / affected / workarounds / official_patch / severity / summary の JSON スキーマ指定） |
 | `hn-agent-security-responder-user` | Security Responder の user プロンプト（`{{title}}`, `{{url}}`, `{{author}}`, `{{score_info}}`, `{{comments_section}}`, `{{search_section}}`） |
 
-Langfuse 未登録でも `LangfusePromptRef.fallback_text` で動作します。初期データは以下 2 本の migration で自動投入されます:
+Langfuse 未登録でも `Prompt.fallback_text` で動作します。初期データは以下 2 本の migration で自動投入されます（当時の `LangfusePromptRef`。いまの `Prompt`）:
 
 - `integrations/langfuse/migrations/0002_seed_default_refs.py`: Orchestrator / Detective 用 4 種
 - `integrations/langfuse/migrations/0003_seed_new_agent_refs.py`: Devil's Advocate / Security Responder 用 4 種、および Orchestrator の fallback_text を 3 ツール判断基準付きに更新

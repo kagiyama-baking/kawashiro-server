@@ -14,8 +14,8 @@ from integrations.langfuse.client import (
     resolve_required_prompt,
 )
 from integrations.langfuse.exceptions import LangfusePromptError, PromptUnavailableError
-from integrations.langfuse.models import LangfusePromptRef
-from tests.fixtures.factories import LangfusePromptRefFactory
+from integrations.llm.models import Prompt
+from tests.fixtures.factories import PromptFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -26,7 +26,7 @@ SESSION_ID = "companion/2026-11-07"
 @pytest.fixture
 def ref(db):
     """テスト用プロンプト参照."""
-    return LangfusePromptRef.objects.create(
+    return Prompt.objects.create(
         name="test-ref",
         langfuse_prompt_name="test-prompt",
         label="production",
@@ -123,7 +123,7 @@ class TestResolvePrompt:
     def test_fallback_keeps_unknown_placeholders(self, mock_get_client, db):
         """未知のプレースホルダーは元の `{{key}}` のまま残す."""
         mock_get_client.side_effect = RuntimeError("boom")
-        ref = LangfusePromptRef.objects.create(
+        ref = Prompt.objects.create(
             name="partial",
             langfuse_prompt_name="partial",
             fallback_text="hello {{name}} / {{unknown}}",
@@ -137,7 +137,7 @@ class TestResolvePrompt:
     def test_fallback_without_variables(self, mock_get_client, db):
         """variables が無くても fallback は機能する."""
         mock_get_client.side_effect = RuntimeError("boom")
-        ref = LangfusePromptRef.objects.create(
+        ref = Prompt.objects.create(
             name="plain",
             langfuse_prompt_name="plain",
             fallback_text="static text",
@@ -159,7 +159,7 @@ class TestResolvePrompt:
         mock_client.get_prompt.return_value = mock_prompt
         mock_get_client.return_value = mock_client
 
-        ref = LangfusePromptRef.objects.create(
+        ref = Prompt.objects.create(
             name="staging-ref",
             langfuse_prompt_name="hello",
             label="staging",
@@ -217,7 +217,7 @@ class TestGetPromptWithVariables:
     def test_fallback_with_empty_template(self, mock_get_client, db):
         """変数を含まない fallback_text は空集合を返す."""
         mock_get_client.side_effect = RuntimeError("boom")
-        ref = LangfusePromptRef.objects.create(
+        ref = Prompt.objects.create(
             name="plain-vars",
             langfuse_prompt_name="plain-vars",
             fallback_text="no variables here",
@@ -521,7 +521,7 @@ class TestResolveRequiredPrompt:
         self, langfuse_prompts
     ):
         """前後の空白を除いた本文を返す."""
-        ref = LangfusePromptRefFactory.build(
+        ref = PromptFactory.build(
             name="companion-system", fallback_text=f"\n  {REQUIRED_PROMPT_TEXT}\n"
         )
 
@@ -535,9 +535,7 @@ class TestResolveRequiredPrompt:
 
         `resolve_prompt` は Langfuse から取れないと例外を出さずにフォールバックテキストへ落ちる。
         """
-        ref = LangfusePromptRefFactory.build(
-            name="companion-system", fallback_text=fallback_text
-        )
+        ref = PromptFactory.build(name="companion-system", fallback_text=fallback_text)
 
         with pytest.raises(
             PromptUnavailableError, match="companion-system"

@@ -47,6 +47,25 @@ def test_admin_app_list_shows_agent_skills_under_llm_config_not_companion(superu
     assert "AgentSkill" not in models_by_app["companion"]
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_admin_app_list_shows_prompts_under_llm_config_without_langfuse_group(
+    superuser,
+):
+    """Prompts は AI設定のアプリに出て、Langfuse のグループはない（モデルがない）."""
+    req = RequestFactory().get("/admin/")
+    req.user = superuser
+
+    models_by_app = {
+        entry["app_label"]: [model["object_name"] for model in entry["models"]]
+        for entry in admin.site.get_app_list(req)
+    }
+
+    assert "Prompt" in models_by_app["llm_config"]
+    assert "langfuse_integration" not in models_by_app
+    assert "langfuse_integration" not in ADMIN_APP_ORDER
+
+
 @pytest.mark.django_db
 def test_celery_beat_label_is_celery(superuser):
     """django-celery-beat の表示名が「Celery」に変更されている."""
@@ -73,7 +92,6 @@ def test_renamed_verbose_names_applied(superuser):
     }
     assert names.get("msgraph_config") == "Microsoft 365"
     assert names.get("llm_config") == "AI設定"
-    assert names.get("langfuse_integration") == "Langfuse"
     assert names.get("hn_agent") == "HackerNews Agent"
     assert names.get("talk") == "Talk"
     assert names.get("companion") == "Companion"

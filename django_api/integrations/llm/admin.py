@@ -1,9 +1,9 @@
-"""AI設定（LLM設定・サービス設定・Agent Skills）の管理画面."""
+"""AI設定（LLM設定・サービス設定・Prompts・Agent Skills）の管理画面."""
 
 from django import forms
 from django.contrib import admin
 
-from .models import AgentSkill, LLMProviderConfig, LLMServiceConfig
+from .models import AgentSkill, LLMProviderConfig, LLMServiceConfig, Prompt
 
 
 class LLMProviderConfigForm(forms.ModelForm):
@@ -119,6 +119,64 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
             "詳細設定",
             {
                 "fields": ("timeout",),
+            },
+        ),
+        (
+            "メタ情報",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+
+@admin.register(Prompt)
+class PromptAdmin(admin.ModelAdmin):
+    """Prompts 管理（各機能の設定は、ここで登録したプロンプトから選ぶ）."""
+
+    list_display = (
+        "name",
+        "langfuse_prompt_name",
+        "label",
+        "description",
+        "updated_at",
+    )
+    list_filter = ("label",)
+    # 各機能の設定のプロンプトの欄（autocomplete）が、この検索で候補を出す
+    search_fields = ("name", "langfuse_prompt_name", "description")
+    readonly_fields = ("created_at", "updated_at")
+
+    fieldsets = (
+        (
+            "基本設定",
+            {
+                "fields": ("name", "description"),
+                "description": (
+                    "Django 側で一意に識別する名前と用途説明。"
+                    "各機能設定（HN Agent / Companion / Talk）はここで登録したプロンプトを"
+                    "選択します。"
+                ),
+            },
+        ),
+        (
+            "Langfuse連携",
+            {
+                "fields": ("langfuse_prompt_name", "label"),
+                "description": (
+                    "Langfuse 上のプロンプト名とラベル。"
+                    "Langfuse 接続時はここで指定したプロンプトが取得されます。"
+                ),
+            },
+        ),
+        (
+            "フォールバック",
+            {
+                "fields": ("fallback_text",),
+                "description": (
+                    "Langfuse 接続失敗・プロンプト未登録時に使用されるテキスト。"
+                    "`{{変数}}` は呼び出し側の variables で簡易置換されます。"
+                ),
             },
         ),
         (

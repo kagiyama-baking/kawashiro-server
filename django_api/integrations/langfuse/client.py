@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from .exceptions import LangfusePromptError, PromptUnavailableError
 
 if TYPE_CHECKING:
-    from .models import LangfusePromptRef
+    from integrations.llm.models import Prompt
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +17,9 @@ _VARIABLE_PATTERN = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
 def get_prompt_with_variables(
-    ref: "LangfusePromptRef",
+    ref: "Prompt",
 ) -> tuple[Callable[..., str], set[str]]:
-    """LangfusePromptRef から compile 関数と変数集合を返す.
+    """プロンプト（Prompt）から compile 関数と変数集合を返す.
 
     1. Langfuse から取得できた場合: prompt.variables と prompt.compile を返す。
     2. 取得失敗時: fallback_text から正規表現で変数を抽出し、
@@ -66,8 +66,8 @@ def get_prompt_with_variables(
     return compile_fn, variables
 
 
-def resolve_prompt(ref: "LangfusePromptRef", **variables: Any) -> str:
-    """LangfusePromptRef からプロンプト文字列を解決する.
+def resolve_prompt(ref: "Prompt", **variables: Any) -> str:
+    """プロンプト（Prompt）からプロンプト文字列を解決する.
 
     内部で get_prompt_with_variables を使用し、compile 関数を呼び出す。
 
@@ -82,7 +82,7 @@ def resolve_prompt(ref: "LangfusePromptRef", **variables: Any) -> str:
     return compile_fn(**variables)
 
 
-def resolve_required_prompt(ref: "LangfusePromptRef") -> str:
+def resolve_required_prompt(ref: "Prompt") -> str:
     """プロンプト（システムプロンプト）の本文を参照から解決し、空なら例外にする.
 
     `resolve_prompt` は Langfuse から取れなくても例外を出さずにフォールバックテキストへ落ち、

@@ -10,7 +10,7 @@ from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import LLMClientError, LLMConfigurationError
 from tests.fixtures.factories import (
     AgentSkillFactory,
-    LangfusePromptRefFactory,
+    PromptFactory,
     TalkSettingFactory,
 )
 from tests.fixtures.llm import LiteLLMStreamBody, litellm_stream, stream_of
@@ -32,8 +32,8 @@ def _langfuse_prompts(langfuse_prompts):
 def chat_setting(db, langfuse_prompts):
     """システムプロンプトだけの Talk 設定（本文は Langfuse の production にある）."""
     langfuse_prompts[("talk-chat-system", "production")] = SYSTEM_PROMPT
-    ref = LangfusePromptRefFactory(name="talk-chat-system")
-    return TalkSettingFactory(name="チャットテスト設定", system_prompt_ref=ref)
+    ref = PromptFactory(name="talk-chat-system")
+    return TalkSettingFactory(name="チャットテスト設定", system_prompt=ref)
 
 
 @pytest.fixture
@@ -77,11 +77,11 @@ class TestPrepareChatPrompt:
     ):
         """システムプロンプトとシーンの変数は展開しない（外部のデータを取りに行かない）."""
         langfuse_prompts[("talk-vars-system", "production")] = "現在時刻: {{datetime}}"
-        ref = LangfusePromptRefFactory(name="talk-vars-system")
+        ref = PromptFactory(name="talk-vars-system")
         langfuse_prompts[(SCENE_NAME, "staging")] = "天気: {{weather}}"
 
         prompt = TalkService().prepare_chat_prompt(
-            TalkSettingFactory(system_prompt_ref=ref),
+            TalkSettingFactory(system_prompt=ref),
             AgentSkillFactory(name=SCENE_NAME, label="staging"),
         )
 
@@ -93,10 +93,10 @@ class TestPrepareChatPrompt:
     ):
         """システムプロンプトの本文が空なら PromptUnavailableError（空のまま話さない）."""
         langfuse_prompts[("talk-empty-system", "production")] = " \n"
-        ref = LangfusePromptRefFactory(name="talk-empty-system")
+        ref = PromptFactory(name="talk-empty-system")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
-            TalkService().prepare_chat_prompt(TalkSettingFactory(system_prompt_ref=ref))
+            TalkService().prepare_chat_prompt(TalkSettingFactory(system_prompt=ref))
 
         assert exc_info.value.ref_name == "talk-empty-system"
 
@@ -104,7 +104,7 @@ class TestPrepareChatPrompt:
         self, talk_llm_settings, chat_setting
     ):
         """シーンの本文が Langfuse にないとエラー（同じ名前の参照の本文は使わない）."""
-        LangfusePromptRefFactory(
+        PromptFactory(
             name=SCENE_NAME,
             langfuse_prompt_name=SCENE_NAME,
             label="staging",

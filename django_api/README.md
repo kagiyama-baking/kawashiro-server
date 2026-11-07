@@ -24,8 +24,8 @@ REST API で複数の機能を提供するバックエンドサーバです。LL
 | アプリ | 説明 | 詳細 |
 |---|---|---|
 | `core` | カスタム `User` モデル（email ログイン）・Fernet 暗号化ユーティリティ・admin 並び順制御 | — |
-| `integrations.llm` | LiteLLM Proxy 経由の PydanticAI 実行基盤と接続設定（`LLMProviderConfig` / `LLMServiceConfig`） | [README](integrations/llm/README.md) |
-| `integrations.langfuse` | Langfuse プロンプト参照（`LangfusePromptRef` / `resolve_prompt`） | [README](integrations/llm/README.md) |
+| `integrations.llm` | LiteLLM Proxy 経由の PydanticAI 実行基盤と接続設定（`LLMProviderConfig` / `LLMServiceConfig`）、全エージェントで共有するプロンプト（`Prompt`）とスキル（`AgentSkill`） | [README](integrations/llm/README.md) |
+| `integrations.langfuse` | Langfuse のプロンプトの取得とセッションの伝播（`client.py`）。モデルは持たない（以前の `LangfusePromptRef` は `integrations.llm` の `Prompt` へ移した。migration の履歴のためにアプリは残す） | [README](integrations/llm/README.md) |
 | `integrations.msgraph` | Microsoft Graph の証明書認証設定・クライアント（onedrive / outlook が利用） | — |
 | `integrations.hn` | Hacker News Algolia API クライアント（hn_agent が利用。API キー不要のため設定モデルなし） | — |
 | `integrations.tavily` | Tavily Web 検索クライアント（hn_agent が利用。未設定でもエージェントは検索なしで継続） | — |
@@ -93,7 +93,7 @@ Tavily Web 検索の API キー（暗号化保存）とタイムアウト（既�
 |---|---|---|
 | AI設定 → LLM設定 / サービス設定 | モデルエイリアス + Virtual Key、サービスへの割り当て | [integrations/llm/README.md](integrations/llm/README.md) |
 | AI設定 → Agent Skills（AgentSkill） | 全エージェントで共有するスキル（名前・説明・Langfuse のラベル・有効）。Companion 設定（スキル）と Talk 設定（シーン）が選ぶ。本文はスキル名と同じ名前の Langfuse の text プロンプトから読む（参照は作らない） | [integrations/llm/README.md](integrations/llm/README.md) |
-| Langfuseプロンプト参照 | Langfuse プロンプトのマッピング + フォールバック（HN 用 8 本は migration で自動投入、**Talk 用と Companion のシステムプロンプト用は手動作成**。Agent Skills（Companion のスキル・Talk のシーン）の本文には作らない） | [integrations/llm/README.md](integrations/llm/README.md) |
+| AI設定 → Prompts（Prompt） | 全エージェントで共有するプロンプト（Langfuse プロンプトのマッピング + フォールバック）。HN 用 8 本は migration で自動投入、**Talk 用と Companion のシステムプロンプト用は手動作成**。Agent Skills（Companion のスキル・Talk のシーン）の本文には作らない | [integrations/llm/README.md](integrations/llm/README.md) |
 | HackerNews Agent設定 | 閾値・ポーリング・プロンプト 8 本の割り当て | [features/hn_agent/README.md](features/hn_agent/README.md) |
 | Companion 設定（CompanionConfig） | 有効な 1 件の設定（システムプロンプト・予報区・回数の上限・TTS）。スキルは Agent Skills に登録したものから選ぶだけ | [features/companion/README.md](features/companion/README.md) |
 | Talk 設定（TalkSetting） | チャットの設定（システムプロンプト・選べるシーン・TTS）。複数を有効にできる | [features/talk/README.md](features/talk/README.md) |

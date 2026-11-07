@@ -13,15 +13,15 @@ from features.companion.models import CompanionConfig
 from tests.fixtures.factories import (
     AgentSkillFactory,
     CompanionConfigFactory,
-    LangfusePromptRefFactory,
+    PromptFactory,
 )
 
 
-def _config_form_data(system_prompt_ref, **fields) -> dict:
+def _config_form_data(system_prompt, **fields) -> dict:
     """設定の追加フォームの送信内容（スキルは選ばない。TTS は既定値）."""
     return {
         "name": "main",
-        "system_prompt_ref": system_prompt_ref.pk,
+        "system_prompt": system_prompt.pk,
         "area_code": "130010",
         "rate_limit": 10,
         "tts_model": "",
@@ -112,7 +112,7 @@ class TestCompanionConfigAdminPages:
             _content(response)
         )
 
-    def test_change_page_system_prompt_ref_uses_autocomplete(self, admin_site_client):
+    def test_change_page_system_prompt_uses_autocomplete(self, admin_site_client):
         """システムプロンプトの参照は検索して選ぶ."""
         config = CompanionConfigFactory()
 
@@ -122,7 +122,7 @@ class TestCompanionConfigAdminPages:
 
         config_fields = response.context["adminform"].form.fields
         assert isinstance(
-            config_fields["system_prompt_ref"].widget.widget, AutocompleteSelect
+            config_fields["system_prompt"].widget.widget, AutocompleteSelect
         )
 
     def test_change_page_shows_system_prompt_section_with_same_label(
@@ -137,8 +137,8 @@ class TestCompanionConfigAdminPages:
 
         adminform = response.context["adminform"]
         sections = {name: options["fields"] for name, options in adminform.fieldsets}
-        assert sections["システムプロンプト"] == ("system_prompt_ref",)
-        assert adminform.form.fields["system_prompt_ref"].label == "システムプロンプト"
+        assert sections["システムプロンプト"] == ("system_prompt",)
+        assert adminform.form.fields["system_prompt"].label == "システムプロンプト"
 
     def test_change_page_shows_skills_section_with_same_label(self, admin_site_client):
         """「スキル」の節に、同じ名前の項目（選ぶスキル）だけがある."""
@@ -153,19 +153,19 @@ class TestCompanionConfigAdminPages:
         assert sections["スキル"] == ("skills",)
         assert adminform.form.fields["skills"].label == "スキル"
 
-    def test_autocomplete_for_system_prompt_ref_returns_matching_refs(
+    def test_autocomplete_for_system_prompt_returns_matching_refs(
         self, admin_site_client
     ):
         """参照の検索欄に打った語で、名前が合う参照だけが候補に出る."""
-        ref = LangfusePromptRefFactory(name="companion-system")
-        LangfusePromptRefFactory(name="talk-system")
+        ref = PromptFactory(name="companion-system")
+        PromptFactory(name="talk-system")
 
         response = admin_site_client.get(
             reverse("admin:autocomplete"),
             {
                 "app_label": "companion",
                 "model_name": "companionconfig",
-                "field_name": "system_prompt_ref",
+                "field_name": "system_prompt",
                 "term": "companion",
             },
         )
@@ -183,7 +183,7 @@ class TestCompanionConfigAdminSave:
         self, admin_site_client
     ):
         """追加画面で選んだスキルだけを、その設定で選んだ状態で保存する."""
-        system_prompt = LangfusePromptRefFactory(name="companion-system")
+        system_prompt = PromptFactory(name="companion-system")
         morning = AgentSkillFactory(name="good-morning")
         night = AgentSkillFactory(name="good-night")
         AgentSkillFactory(name="welcome-home")
@@ -195,12 +195,12 @@ class TestCompanionConfigAdminSave:
 
         assert response.status_code == 302
         config = CompanionConfig.objects.get(name="main")
-        assert config.system_prompt_ref == system_prompt
+        assert config.system_prompt == system_prompt
         assert list(config.skills.all()) == [morning, night]
 
     def test_add_without_skills_creates_config_with_no_skills(self, admin_site_client):
         """スキルを 1 つも選ばなくても保存できる."""
-        system_prompt = LangfusePromptRefFactory(name="companion-system")
+        system_prompt = PromptFactory(name="companion-system")
 
         response = admin_site_client.post(
             reverse("admin:companion_companionconfig_add"),

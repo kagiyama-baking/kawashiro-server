@@ -13,14 +13,14 @@ class TalkSettingAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "is_enabled",
-        "system_prompt_ref",
+        "system_prompt",
         "tts_enabled",
         "updated_at",
     )
     list_filter = ("is_enabled", "tts_enabled")
     search_fields = ("name",)
     readonly_fields = ("created_at", "updated_at")
-    autocomplete_fields = ("system_prompt_ref",)
+    autocomplete_fields = ("system_prompt",)
     filter_horizontal = ("skills",)
 
     fieldsets = (
@@ -37,10 +37,10 @@ class TalkSettingAdmin(admin.ModelAdmin):
         (
             "システムプロンプト",
             {
-                "fields": ("system_prompt_ref",),
+                "fields": ("system_prompt",),
                 "description": (
-                    "チャットのシステムプロンプト（Langfuse の text プロンプト）を"
-                    "Langfuseプロンプト参照から選択します。変数は展開しません。"
+                    "チャットのシステムプロンプト（Langfuse の text プロンプト）を、"
+                    "「AI設定 → Prompts」に登録したものから選択します。変数は展開しません。"
                 ),
             },
         ),

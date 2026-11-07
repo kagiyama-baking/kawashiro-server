@@ -6,8 +6,7 @@ import pytest
 
 from features.hn_agent.models import HNAgentConfig, HNThread
 from features.hn_agent.orchestrator import ORCHESTRATOR_AGENT
-from integrations.langfuse.models import LangfusePromptRef
-from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
+from integrations.llm.models import LLMProviderConfig, LLMServiceConfig, Prompt
 from tests.fixtures.llm import ScriptedLLM, tool_calls
 
 # HN Agent の 8 本のプロンプトの本文（Langfuse のプロンプト名 → 代役が返す本文）。
@@ -74,7 +73,7 @@ def hn_llm_services(db):
 
 @pytest.fixture
 def hn_prompt_refs(db):
-    """HN Agent 用の LangfusePromptRef を用意する.
+    """HN Agent 用のプロンプト（Prompt）を用意する.
 
     data migration でシード済みのものを取得する（テスト DB にも適用される）。
     """
@@ -88,9 +87,7 @@ def hn_prompt_refs(db):
         "security_responder_system": "hn-agent-security-responder-system",
         "security_responder_user": "hn-agent-security-responder-user",
     }
-    return {
-        key: LangfusePromptRef.objects.get(name=name) for key, name in names.items()
-    }
+    return {key: Prompt.objects.get(name=name) for key, name in names.items()}
 
 
 @pytest.fixture

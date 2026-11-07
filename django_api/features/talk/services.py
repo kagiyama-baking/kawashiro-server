@@ -67,7 +67,7 @@ class TalkService:
                 取れないか空の場合
         """
         get_llm_settings("talk")
-        system_prompt = resolve_required_prompt(setting.system_prompt_ref)
+        system_prompt = resolve_required_prompt(setting.system_prompt)
         if skill is None:
             return system_prompt
         return (

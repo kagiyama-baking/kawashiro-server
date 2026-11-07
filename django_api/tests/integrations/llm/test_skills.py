@@ -8,7 +8,7 @@ import pytest
 
 from integrations.langfuse.exceptions import LangfusePromptError, PromptUnavailableError
 from integrations.llm.skills import resolve_skill_body
-from tests.fixtures.factories import AgentSkillFactory, LangfusePromptRefFactory
+from tests.fixtures.factories import AgentSkillFactory, PromptFactory
 
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 # スキルの本文を置く Langfuse のプロンプト名（スキル名そのもの）
@@ -79,7 +79,7 @@ def test_resolve_skill_body_when_langfuse_unreachable_never_uses_ref_fallback(
     langfuse_unreachable,
 ):
     """Langfuse に届かなくても、同じ名前の参照（移行で残った旧スキルの参照など）の本文は使わない."""
-    LangfusePromptRefFactory(
+    PromptFactory(
         name=MORNING_PROMPT,
         langfuse_prompt_name=MORNING_PROMPT,
         label="staging",

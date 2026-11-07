@@ -32,8 +32,8 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
 - 🐍 **Django API**: REST API で複数の機能を提供するバックエンドサーバ
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
-        - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）
-        - 🔭 **Langfuse**: プロンプト管理モデル `LangfusePromptRef`（HN Agent / Talk 設定 / Companion のシステムプロンプトが参照。Agent Skills（Companion のスキル・Talk のシーン）の本文は Langfuse から直接取る）+ Sessions 機能でチャット会話を集約観測
+        - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）と、全エージェントで共有する Prompts（`Prompt`。HN Agent / Talk 設定 / Companion のシステムプロンプトが選ぶ）・Agent Skills（Companion のスキル・Talk のシーン）
+        - 🔭 **Langfuse**: プロンプトの本文の取得（Prompts と Agent Skills の本文は Langfuse の text プロンプト）+ Sessions 機能でチャット会話を集約観測
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
@@ -56,7 +56,7 @@ LLM 周辺は「接続（どのモデル・どの鍵）」「プロンプト（�
 | レイヤ | 責務 | 管理場所 |
 |---|---|---|
 | **LLM 接続** | どのモデルに、どの鍵で繋ぐか | Django admin「AI設定」の「LLM設定」「サービス設定」 |
-| **プロンプト管理** | どのテキストを渡すか | Django admin「Langfuseプロンプト参照」と「AI設定」の「Agent Skills」+ Langfuse UI |
+| **プロンプト管理** | どのテキストを渡すか | Django admin「AI設定」の「Prompts」「Agent Skills」+ Langfuse UI |
 | **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「Companion 設定」「Talk 設定」 |
 
 構成要素・admin と外部サービスの対応図・プロンプト命名規約は

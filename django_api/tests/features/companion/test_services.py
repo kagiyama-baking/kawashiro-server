@@ -102,7 +102,7 @@ def _active_config(
     """有効な設定を作り、システムプロンプトの本文を Langfuse の代役に production で置く."""
     langfuse_prompts[(SYSTEM_PROMPT_NAME, "production")] = system_prompt
     return CompanionConfigFactory(
-        is_active=True, system_prompt_ref__name=SYSTEM_PROMPT_NAME, **fields
+        is_active=True, system_prompt__name=SYSTEM_PROMPT_NAME, **fields
     )
 
 

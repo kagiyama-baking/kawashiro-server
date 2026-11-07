@@ -13,8 +13,8 @@ class PromptUnavailableError(Exception):
     ときも使えない（`reason` に取得の失敗を書き、元の例外を `__cause__` に持つ）。
 
     Attributes:
-        ref_name: 使えなかったプロンプトの名前（システムプロンプトは参照の識別名
-            `LangfusePromptRef.name`、スキルの本文は Langfuse のプロンプト名。スキル名と同じ）
+        ref_name: 使えなかったプロンプトの名前（システムプロンプトは識別名 `Prompt.name`、
+            スキルの本文は Langfuse のプロンプト名。スキル名と同じ）
         reason: 使えなかった理由（本文が空・取得の失敗）
     """
 

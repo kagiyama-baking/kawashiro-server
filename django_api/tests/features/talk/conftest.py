@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from features.talk.llm_agents import TALK_CHAT_AGENT, TALK_TITLE_AGENT
 from features.talk.models import ChatMessage, ChatSession, TalkSetting
-from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import Prompt
 from integrations.tts.client import TTSResult
 from tests.fixtures.factories import AgentSkillFactory
 from tests.fixtures.llm import ScriptedLLM, make_llm_settings
@@ -87,7 +87,7 @@ SYSTEM_PROMPT_BODY = "あなたは親切な AI です。"
 def system_prompt(db, chat_turn_env):
     """Talk 設定のシステムプロンプトの参照（本文は Langfuse の production にある）."""
     chat_turn_env[(SYSTEM_PROMPT_NAME, "production")] = SYSTEM_PROMPT_BODY
-    return LangfusePromptRef.objects.create(
+    return Prompt.objects.create(
         name=SYSTEM_PROMPT_NAME, langfuse_prompt_name=SYSTEM_PROMPT_NAME
     )
 
@@ -95,7 +95,7 @@ def system_prompt(db, chat_turn_env):
 @pytest.fixture
 def talk_setting(system_prompt):
     return TalkSetting.objects.create(
-        name="チャットのターン", system_prompt_ref=system_prompt
+        name="チャットのターン", system_prompt=system_prompt
     )
 
 
@@ -106,7 +106,7 @@ def tts_setting(system_prompt):
         tts_enabled=True,
         tts_format="wav",
         tts_model="model",
-        system_prompt_ref=system_prompt,
+        system_prompt=system_prompt,
     )
 
 

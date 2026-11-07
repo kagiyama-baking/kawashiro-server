@@ -34,7 +34,7 @@ docker compose exec django-api python manage.py createsuperuser
 |---|---|---|
 | システム設定 | Core / 認証と認可 / 認証トークン | ユーザー、グループ、API トークンの管理 |
 | 外部サービス設定 | Microsoft 365 / Slack / Tavily / Celery | 外部 API の資格情報と定期タスクのスケジュール |
-| AI ツール設定 | AI設定 / Langfuse / HackerNews Agent / Companion / Talk | LLM の割り当てとスキル（Agent Skills）、プロンプト参照、各機能の設定 |
+| AI ツール設定 | AI設定 / HackerNews Agent / Companion / Talk | LLM の割り当て・プロンプト（Prompts）・スキル（Agent Skills）と、各機能の設定 |
 
 「Celery」は `django-celery-beat` の表示名を変更したもので、定期タスク・インターバル・Cron スケジュール・時刻指定を扱います（太陽イベントは未使用のため非表示）。
 
@@ -69,9 +69,9 @@ docker compose exec django-api python manage.py createsuperuser
 
 > **Note:** `devils_advocate` / `security_responder` の 2 件は、マイグレーション `integrations/llm/migrations/0012_add_new_agent_service_choices.py` により、**既存の `detective` 設定を雛形として `is_active=False` で自動複製されます**（`detective` が存在する場合のみ）。新規環境で `detective` を未作成のままマイグレートした場合は自動生成されないため、6 件すべてを手動で作成します。自動生成された 2 件を使う場合は、管理画面で「有効」にチェックを入れ、必要ならプロバイダーを差し替えてください。`companion` の自動複製（マイグレーション `llm/0013`）は [LLM の README の §4（サービス設定）](../django_api/integrations/llm/README.md#サービス設定llmserviceconfig) を参照してください。
 
-### 4-3. Langfuse プロンプト参照（`LangfusePromptRef`）
+### 4-3. Prompts（`Prompt`）
 
-Langfuse 上のプロンプトを Django 側から参照するためのマッピングです。実体は Langfuse にあり、このモデルは名前・ラベル・フォールバックのみを持ちます。
+「AI ツール設定 → AI設定 → Prompts」で、Langfuse 上のプロンプトを Django 側から参照するためのマッピングを登録します（全エージェントで共有し、各機能の設定がここから選びます）。実体は Langfuse にあり、このモデルは名前・ラベル・フォールバックのみを持ちます。
 
 | 項目 | 説明 |
 |---|---|
@@ -84,9 +84,9 @@ Langfuse 上のプロンプトを Django 側から参照するためのマッピ
 
 `hn-agent-orchestrator-system` / `-user`、`hn-agent-detective-system` / `-user`、`hn-agent-devils-advocate-system` / `-user`、`hn-agent-security-responder-system` / `-user`
 
-**Companion 用（システムプロンプトの `companion-system` 1 本）と Talk 設定用（チャットのシステムプロンプト）は自動生成されません。** スキル（Companion のスキル・Talk のシーン）の本文には参照を作りません。作り方は手順 5-2（Companion）と 5-3（Talk 設定）を参照してください。
+**Companion 用（システムプロンプトの `companion-system` 1 本）と Talk 設定用（チャットのシステムプロンプト）は自動生成されません。** スキル（Companion のスキル・Talk のシーン）の本文には Prompts を作りません。作り方は手順 5-2（Companion）と 5-3（Talk 設定）を参照してください。
 
-Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。ただし Companion のスキルの本文は参照を通さずに Langfuse から直接取り、フォールバックがないので、Langfuse が必要です。
+Langfuse を使わない構成では、`Langfuse プロンプト名` に任意の名前を入れたうえで**フォールバックテキストに本文を書いておけば動作します**。フォールバックが空だと空のプロンプトで LLM を呼ぶことになります。ただし Companion のスキルの本文は Prompts を通さずに Langfuse から直接取り、フォールバックがないので、Langfuse が必要です。
 
 LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/integrations/llm/README.md) を参照してください。
 
@@ -103,7 +103,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 | ポーリング間隔（秒） | 600 | 最低 60。**実行スケジュールは制御しません**（手順 7 参照） |
 | フロントページ取得件数 | 30 | Algolia API 経由で最大 1000 件程度まで指定可 |
 
-加えて、**8 本のプロンプト参照を外部キーで選択します**（Orchestrator / Detective / Devil's Advocate / Security Responder × システム / ユーザー）。手順 4-3 で確認した自動投入済みのレコードをそのまま選べます。入力後、「有効」にチェックを入れて保存してください。
+加えて、**8 本のプロンプトを外部キーで選択します**（Orchestrator / Detective / Devil's Advocate / Security Responder × システム / ユーザー）。手順 4-3 で確認した自動投入済みのレコードをそのまま選べます。入力後、「有効」にチェックを入れて保存してください。
 
 ### 5-2. Companion 設定（`CompanionConfig`）
 
@@ -111,7 +111,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 1. **サービス設定の `Companion` を有効にする** — 「AI ツール設定 → AI設定 → サービス設定」で、マイグレーション `llm/0013` が `talk` から無効の状態で複製した行に「有効」のチェックを入れます（行がなければ手順 4-2 で作成）
 2. **Langfuse に text プロンプトを作る** — システムプロンプトの `companion-system` と、スキルごとの本文（名前は自由。例: `good-morning`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内にします）。付けるラベルは [Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル) の規則に従います（開発と本番で Langfuse を共有しているため）
-3. **システムプロンプトの参照を作る**（手順 4-3）— 作る参照は `companion-system` の 1 本だけです。識別名と `Langfuse プロンプト名` を `companion-system` にし、ラベルは手順 2 で付けたものにします。スキルの本文には参照を作りません（スキル名と同じ名前のプロンプトを直接引きます）
+3. **システムプロンプトを Prompts に登録する**（手順 4-3）— 登録するのは `companion-system` の 1 本だけです。識別名と `Langfuse プロンプト名` を `companion-system` にし、ラベルは手順 2 で付けたものにします。スキルの本文には Prompts を作りません（スキル名と同じ名前のプロンプトを直接引きます）
 4. **スキルを登録する** — 「AI ツール設定 → AI設定 → Agent Skills」（全エージェントで共有するスキルの登録先）から、スキルごとに名前（手順 2 のプロンプト名そのもの）・説明（どんな発話のときに使うか）・ラベル（手順 2 で付けたもの。既定は `production`）・有効を入れて保存します。一覧の名前とラベルが、手順 2 のプロンプトの名前とラベルに合っていることを確かめます
 5. **Companion 設定を作る** — 「AI ツール設定 → Companion → Companion 設定」から、`システムプロンプト` に手順 3 の `companion-system` を選び、「スキル」で手順 4 のスキルを選んで保存します
 6. **有効にする** — 一覧のアクション「選択した設定を有効にする」を使うか、「有効」にチェックを入れて保存します（有効にできるのは 1 件だけで、ほかは自動で無効になります）
@@ -131,7 +131,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 
 1. **サービス設定の `Talk` が有効なことを確かめる** — 「AI ツール設定 → AI設定 → サービス設定」の `Talk`（なければ手順 4-2 で作成）
 2. **Langfuse に text プロンプトを作る** — チャットのシステムプロンプト（変数は展開しないので書かない）と、シーンごとの本文（名前は自由。例: `talk-scene-cafe`。この名前がそのままスキル名になるので、英小文字・数字・ハイフンの 64 字以内）。シーンの本文はツールを前提にしません。ラベルの付け方は Companion と同じです（[Companion の README](../django_api/features/companion/README.md#langfuse-プロンプトのラベル)）
-3. **システムプロンプトの参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` を手順 2 のプロンプト名にし、ラベルは手順 2 で付けたものにします。シーンの本文には参照を作りません
+3. **システムプロンプトを Prompts に登録する**（手順 4-3）— 識別名と `Langfuse プロンプト名` を手順 2 のプロンプト名にし、ラベルは手順 2 で付けたものにします。シーンの本文には Prompts を作りません
 4. **シーンを Agent Skills に登録する** — 「AI ツール設定 → AI設定 → Agent Skills」から、名前（手順 2 のプロンプト名そのもの）・説明（フロントの Talk の選択肢に出る、人が読む短い文。例: 「カフェで向かい合って話す場面」）・ラベル・有効を入れて保存します
 5. **Talk 設定を作る** — 「AI ツール設定 → Talk → Talk 設定」から、名前（フロントの選択肢に出る）・システムプロンプト（手順 3）・シーン（手順 4 のスキル。なくてもよい）・音声を入れて保存します。「有効」は既定で ON です
 6. **確かめる** — `GET /talk/settings/`（手順 9 の 5）に設定とシーンが出ることを確かめ、フロントの Talk で設定とシーンを選んで話します。送信が 503 なら、サービス設定 `Talk`・システムプロンプト・シーンの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜4）

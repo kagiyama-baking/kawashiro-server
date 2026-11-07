@@ -1,4 +1,4 @@
-"""LLM API設定モデルと、全エージェントで共有するスキル（Agent Skills）のモデル."""
+"""LLM API設定モデルと、全エージェントで共有するプロンプト（Prompts）・スキル（Agent Skills）のモデル."""
 
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
@@ -100,6 +100,59 @@ class LLMServiceConfig(models.Model):
 
     def __str__(self):
         return f"{self.get_service_name_display()} → {self.provider_config.name}"
+
+
+class Prompt(models.Model):
+    """プロンプト（Langfuse の text プロンプトの参照。全エージェントで共有する）.
+
+    本文は Langfuse にあり、このモデルは名前・ラベル・フォールバックのみ持つ。各機能の設定
+    （HN Agent の 8 本、Companion 設定・Talk 設定のシステムプロンプト）が外部キーで選ぶ。
+    """
+
+    name = models.CharField(
+        "識別名",
+        max_length=100,
+        unique=True,
+        help_text="Django 内で一意に識別する名前（例: hn-agent-orchestrator-system）",
+    )
+    langfuse_prompt_name = models.CharField(
+        "Langfuseプロンプト名",
+        max_length=200,
+        help_text="Langfuse 上で登録されているプロンプト名",
+    )
+    label = models.CharField(
+        "ラベル",
+        max_length=50,
+        default="production",
+        help_text="Langfuse のプロンプトラベル（production, staging 等）",
+    )
+    fallback_text = models.TextField(
+        "フォールバックテキスト",
+        blank=True,
+        default="",
+        help_text="Langfuse 接続失敗・プロンプト未登録時に使用するテキスト",
+    )
+    description = models.CharField(
+        "説明",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="このプロンプトの用途説明",
+    )
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+    updated_at = models.DateTimeField("更新日時", auto_now=True)
+
+    class Meta:
+        verbose_name = "Prompt"
+        verbose_name_plural = "Prompts"
+        ordering = ["name"]
+        # langfuse_integration から状態だけの migration（llm_config 0018・langfuse_integration
+        # 0004）で移したので、表は langfuse_integration の 0001 が作ったまま。既定の表名
+        # （llm_config_prompt）にそろえるなら、後で AlterModelTable を足す。
+        db_table = "langfuse_integration_langfusepromptref"
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.langfuse_prompt_name}@{self.label})"
 
 
 # スキル名の規則（Agent Skills の命名: 英小文字・数字・ハイフン。先頭・末尾・連続のハイフンは不可）。

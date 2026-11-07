@@ -58,10 +58,10 @@ def classify_synthesis_error(exc: Exception, fallback: str) -> tuple[int, str]:
 def get_owned_session(request, session_id) -> ChatSession | None:
     """request.user が所有する ChatSession を返す（無ければ None）.
 
-    ターンの事前検証で使う Talk 設定（とシステムプロンプトの参照）とシーンも一緒に引く。
+    ターンの事前検証で使う Talk 設定（とシステムプロンプト）とシーンも一緒に引く。
     """
     return (
-        ChatSession.objects.select_related("setting__system_prompt_ref", "skill")
+        ChatSession.objects.select_related("setting__system_prompt", "skill")
         .filter(id=session_id, user=request.user)
         .first()
     )

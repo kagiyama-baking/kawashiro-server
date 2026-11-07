@@ -15,8 +15,8 @@ kawashiro-server/
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
 │   ├── health/              # ヘルスチェック（ミドルウェア方式、ALLOWED_HOSTS検証前に応答）
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のスキル（Agent Skills）。admin のグループ「AI設定」
-│   │   ├── langfuse/        # Langfuseプロンプト参照（LangfusePromptRef / resolve_prompt）
+│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のプロンプト（Prompts）とスキル（Agent Skills）。admin のグループ「AI設定」
+│   │   ├── langfuse/        # Langfuse 連携（プロンプトの取得・セッションの伝播）。モデルなし（migration の履歴のために残す）
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
 │   │   ├── outlook/         # Outlook Calendar連携API
@@ -61,7 +61,7 @@ kawashiro-server/
 | CI/CD 詳細・デプロイ・Secrets・タグ運用・ロールバック | `docs/deployment.md` |
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
-| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
+| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Prompts の Prompt・Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
 | Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動） | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
@@ -174,6 +174,7 @@ django_api/tests/
 │   ├── factories.py         # factory-boy ファクトリ（UserFactory等）
 │   ├── langfuse.py          # Langfuse のプロンプトの取得の代役（FakeLangfuse）
 │   ├── llm.py               # LLM の代役（ScriptedLLM）
+│   ├── migrations.py        # migration のテストのヘルパ（DB に当たっている時点のモデルを引く）
 │   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
 │   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
 ├── core/                    # admin並び順等のコアテスト

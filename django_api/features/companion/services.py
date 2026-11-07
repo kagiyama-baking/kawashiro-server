@@ -109,7 +109,7 @@ def _run_companion(prompt: str, skill: str | None) -> CompanionReply:
     skills = list(config.skills.filter(is_enabled=True))
     selected = None if skill is None else _find_skill(skills, skill)
     settings = get_llm_settings("companion")
-    system_prompt = resolve_required_prompt(config.system_prompt_ref)
+    system_prompt = resolve_required_prompt(config.system_prompt)
     instructions, capabilities = _instructions_and_capabilities(
         system_prompt, skills, selected
     )

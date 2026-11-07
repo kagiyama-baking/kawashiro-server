@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 
 from features.talk.models import ChatMessage, ChatSession, TalkSetting
 from features.talk.services import TalkService
-from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import Prompt
 from integrations.tts.client import TTSResult
 from integrations.tts.exceptions import TTSNetworkError
 
@@ -54,16 +54,12 @@ def auth_client(user):
 def system_prompt(db, langfuse_prompts):
     """Talk 設定のシステムプロンプトの参照（本文は Langfuse の代役の production にある）."""
     langfuse_prompts[("msg-system", "production")] = "あなたは親切な AI です。"
-    return LangfusePromptRef.objects.create(
-        name="msg-system", langfuse_prompt_name="msg-system"
-    )
+    return Prompt.objects.create(name="msg-system", langfuse_prompt_name="msg-system")
 
 
 @pytest.fixture
 def talk_setting(system_prompt):
-    return TalkSetting.objects.create(
-        name="セッション用", system_prompt_ref=system_prompt
-    )
+    return TalkSetting.objects.create(name="セッション用", system_prompt=system_prompt)
 
 
 @pytest.fixture
@@ -74,7 +70,7 @@ def tts_setting(system_prompt):
         tts_format="wav",
         tts_model="model",
         tts_style="Neutral",
-        system_prompt_ref=system_prompt,
+        system_prompt=system_prompt,
     )
 
 
