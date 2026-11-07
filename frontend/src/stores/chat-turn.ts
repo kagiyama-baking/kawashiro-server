@@ -150,11 +150,14 @@ export interface ChatTurnControls {
  * - それより前の失敗: 楽観表示を戻す（`error` イベント、HTTP エラー、接続できない）
  * - それより前の停止と切断: サーバーが途中までを保存するので、GET で確かめて揃える
  * - 保存のあと: 生成中を解いて次を打てるようにし、音声とタイトルを裏で待つ
+ *
+ * `reloadSettings` は、新規チャットの作成を断られたときに Talk 設定の一覧と選択を読み直す。
  */
 export function createChatTurns(
     set: SetChatState,
     get: GetChatState,
     updaters: ChatStateUpdaters,
+    reloadSettings: () => Promise<void>,
 ): ChatTurnControls {
     const {
         updateMessages,
@@ -516,6 +519,9 @@ export function createChatTurns(
             if (currentRun?.controller !== controller) return null;
             currentRun = null;
             set({ messages: restore, isRunning: false, error: message });
+            // 選んだ Talk 設定やシーンが、画面を開いている間に使えなくなった。
+            // 同じ選択のまま断られ続けないよう、一覧と選択を読み直す
+            if (hasStatus(error, 400)) void reloadSettings();
             return null;
         }
         // 停止された、または別のチャットへ移った。応答を待たずに入力文を戻し、作られたら消す

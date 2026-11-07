@@ -651,7 +651,7 @@ describe('chat-store', () => {
             expect(state().messages[1].audioState).toBe('pending');
         });
 
-        it('選んだシーンが使えなければサーバーの項目エラーを出して発話を戻す', async () => {
+        it('選んだシーンが使えなくなっていたら、サーバーの項目エラーを出して発話を戻し、選択肢を読み直す', async () => {
             await ready([voiced]);
             state().selectSkill('good-morning');
             vi.mocked(api.createSession).mockRejectedValueOnce(
@@ -660,17 +660,69 @@ describe('chat-store', () => {
                     400,
                 ),
             );
+            // 開いている間に、管理画面でシーンが外された
+            const withoutScene = { ...voiced, skills: [] };
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([withoutScene]);
 
             await expect(state().sendMessage('おはよう')).resolves.toBe(
                 'not-sent',
             );
+            await flush();
 
             expect(state().messages).toEqual([]);
             expect(state().activeSessionId).toBeNull();
             expect(state().error).toBe(
                 'このシーンは選んだ Talk 設定では使えません',
             );
+            expect(api.fetchSettings).toHaveBeenCalledTimes(2);
+            expect(state().settings).toEqual([withoutScene]);
+            expect(state().selectedSettingId).toBe(2);
+            expect(state().selectedSkillName).toBeNull();
         });
+
+        it('選んだ Talk 設定が無効にされていて作成が 400 なら、読み直して残っている Talk 設定を選ぶ', async () => {
+            await ready([friendly, voiced]);
+            state().selectSetting(2);
+            vi.mocked(api.createSession).mockRejectedValueOnce(
+                httpError(
+                    { setting: ['選んだ Talk 設定は見つからないか、無効です'] },
+                    400,
+                ),
+            );
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([friendly]);
+
+            await expect(state().sendMessage('おはよう')).resolves.toBe(
+                'not-sent',
+            );
+            await flush();
+
+            expect(api.fetchSettings).toHaveBeenCalledTimes(2);
+            expect(state().settings).toEqual([friendly]);
+            expect(state().selectedSettingId).toBe(1);
+            expect(state().error).toBe(
+                '選んだ Talk 設定は見つからないか、無効です',
+            );
+        });
+
+        it.each([
+            ['500', () => httpError({ error: '作成できません' }, 500)],
+            ['接続できない', () => new TypeError('Failed to fetch')],
+        ])(
+            '作成の失敗が 400 でなければ（%s）選択肢を読み直さない',
+            async (_label, failure) => {
+                await ready([friendly, voiced]);
+                state().selectSetting(2);
+                vi.mocked(api.createSession).mockRejectedValueOnce(failure());
+
+                await expect(state().sendMessage('こんにちは')).resolves.toBe(
+                    'not-sent',
+                );
+                await flush();
+
+                expect(api.fetchSettings).toHaveBeenCalledTimes(1);
+                expect(state().selectedSettingId).toBe(2);
+            },
+        );
 
         it('作成したばかりのセッションでは threadKey を変えない', async () => {
             await ready();
@@ -1461,6 +1513,47 @@ describe('chat-store', () => {
             expect(state().activeSession).toBeNull();
             expect(state().messages).toEqual([]);
             expect(state().threadKey).not.toBe(key);
+        });
+
+        describe('シーンは新しいチャットごとに「なし」から選ぶ', () => {
+            /** Talk 設定とシーンを選んで送り、チャットを作る。 */
+            async function createWithScene() {
+                vi.mocked(api.fetchSettings).mockResolvedValueOnce([
+                    friendly,
+                    voiced,
+                ]);
+                await state().loadSettings();
+                state().selectSetting(2);
+                state().selectSkill('good-morning');
+                vi.mocked(api.createSession).mockResolvedValueOnce(
+                    detail([], { id: 'new', title: '', skill: morning }),
+                );
+                nextStreamMessage(controlledStream());
+                void state().sendMessage('おはよう');
+                await flush();
+                expect(state().activeSessionId).toBe('new');
+            }
+
+            it('作ったチャットから新しいチャットへ移ると、シーンは「なし」に戻り Talk 設定は保つ', async () => {
+                await createWithScene();
+
+                state().startNewChat();
+
+                expect(state().selectedSkillName).toBeNull();
+                expect(state().selectedSettingId).toBe(2);
+            });
+
+            it('表示中のチャットを消して新しいチャットへ移っても、シーンは「なし」に戻る', async () => {
+                await createWithScene();
+
+                await state().removeSession('new');
+                // 画面は /talk へ移り、ChatPage が呼ぶ（もう新しいチャットなので何もしない）
+                state().startNewChat();
+
+                expect(state().activeSessionId).toBeNull();
+                expect(state().selectedSkillName).toBeNull();
+                expect(state().selectedSettingId).toBe(2);
+            });
         });
 
         it('すでに新しいチャットなら threadKey を変えない', () => {

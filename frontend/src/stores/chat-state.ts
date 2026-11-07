@@ -64,7 +64,10 @@ function nextThreadKey(): number {
     return threadKeyCounter;
 }
 
-/** 表示中のセッションのない状態。threadKey を変えるので ChatThread はリマウントする。 */
+/**
+ * 表示中のセッションのない状態。threadKey を変えるので ChatThread はリマウントする。
+ * 次に始めるチャットのシーンは「なし」から選ぶ（Talk 設定の選択は保つ）。
+ */
 export function emptyThread(): Partial<ChatStoreState> {
     return {
         activeSessionId: null,
@@ -77,6 +80,7 @@ export function emptyThread(): Partial<ChatStoreState> {
         error: null,
         audioObjectUrls: new Map(),
         audioBlobs: new Map(),
+        selectedSkillName: null,
     };
 }
 

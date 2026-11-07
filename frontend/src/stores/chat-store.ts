@@ -93,7 +93,9 @@ function writeSelectedSetting(id: number): void {
 export const useChatStore = create<ChatStore>((set, get) => {
     const updaters = createChatStateUpdaters(set);
     const { updateMessages, patchSession, dropFromList } = updaters;
-    const turns = createChatTurns(set, get, updaters);
+    const turns = createChatTurns(set, get, updaters, () =>
+        get().loadSettings(),
+    );
 
     /** 表示中のセッションを離れる。遅れて届く読み込みの結果も捨てる。 */
     const leaveThread = () => {
