@@ -79,12 +79,13 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 - **処理**
   1. `get_llm_settings("orchestrator")` で接続設定を取得
   2. `HNAgentConfig.objects.get_active_config()` で有効設定を取得（8 FK を先読み）
-  3. `resolve_prompt(config.orchestrator_system_prompt)` で system prompt 解決
-  4. `resolve_prompt(config.orchestrator_user_prompt, hn_id=..., title=..., …)` で user prompt 解決
+  3. `resolve_prompt_text(config.orchestrator_system_prompt)` で system prompt の本文を Langfuse から取る
+  4. `resolve_prompt_text(config.orchestrator_user_prompt, hn_id=..., title=..., …)` で user prompt の本文に変数を差し込んで取る
   5. `run_agent_sync` で実行（同期の `investigate()` から呼ぶ）。`UsageLimits(request_limit=11, tool_calls_limit=10)` で打ち切り、超過時は `final_summary` が固定文になる
   6. 各ツールの docstring（発火条件を含む）を見て LLM がどのツールを何回呼ぶかを判断。同じステップで複数のツールを呼ぶと並行に動く
   7. いずれかのエージェントが結果を返した場合のみ `HNThread.is_investigated = True` を一元的に更新
   8. Reporter に結果を渡して Slack 通知（送らない入口は下の「Slack 通知の有無」）
+- **プロンプトを取れないとき**: 3・4 で Langfuse から取れない（届かない・そのラベルのプロンプトがない・Chat 型）か本文が空なら、フォールバックはなく、LLM を呼ばずに調査を中断します（`PromptUnavailableError`。`final_summary` は「LLM呼び出しエラーにより調査を中断しました。」、例外はログに残る）。調査済みにしないので、閾値を超えたままなら次のポーリングで調べ直し、Slack へは送りません
 - **ツールの契約**: `detective_investigate` / `devils_advocate_analyze` / `security_responder_analyze` の関数名と docstring は Langfuse 上のプロンプトが前提にしているので、変えるときはプロンプトも直します（`test_tool_names_and_descriptions_match_prompt_contract` で固定）。ツール内の例外は `{"error": ...}` の JSON にして LLM へ返し、そのステップは `success: False` になります。どのツールも引数を取らないので、モデルが付けた引数は検証せず無視します。未知のツール名はモデルへ伝えて続行します（打ち切りは上の `UsageLimits`）
 - **推論深度**: 有効な `HNAgentConfig.reasoning_effort`（`low` / `medium` / `high`）を、Orchestrator のリクエストにだけ `reasoning_effort` として載せます（サブエージェントには送りません）。「無効」（空文字）なら載せません。モデルが受け付けないときの扱いと選び方は [docs/initial-setup.md](../../../docs/initial-setup.md) の 5-1 を参照してください。送信本文は `tests/integrations/llm/test_runtime.py` と `tests/features/hn_agent/test_orchestrator.py` で固定しています
 - **ツール選択の判断基準（System Prompt）**
@@ -101,6 +102,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 - `async def investigate/analyze(self, thread)` で、ツールから `await` されます。ORM・HN/Tavily 取得・プロンプト解決・LLM 設定の取得は同期の `_prepare(thread)` にまとめて `sync_to_async`（呼び出し元スレッド）で実行し、LLM の応答だけをイベントループ上で待ちます。同じステップで複数のツールが呼ばれると、準備処理は直列、LLM 呼び出しは並行になります
 - 応答は `agents/__init__.py` の `run_analysis` が `PromptedOutput(Schema, template=False)` で検証します。Langfuse のプロンプトが JSON の形を指示しているので、スキーマをプロンプトや API パラメータとして送ることはありません（コードフェンスは除去されます）
 - スキーマ（`agents/schemas.py`）は未知のキーも残し、必須キーは下の各エージェントに示したものだけです。`analysis` には LLM が返したキーだけが入ります（任意キーの既定値は足しません）。文字列項目とリストの `null` は既定値に寄せます
+- プロンプトを Langfuse から取れなければ（フォールバックはない）、LLM を呼ばずに `PromptUnavailableError` を送出し、ツールが error の JSON にして Orchestrator のモデルへ返します（そのステップは失敗。Orchestrator の LLM は呼ばれたまま進む）
 - 読めない応答（JSON でない・必須キーがない）は出力リトライを 1 回行い、それでも駄目なら最後の応答の先頭 500 文字を入れたフォールバックを返します。調査済みマークと Slack 通知は通常どおり行うので、再調査のループにはなりません。接続エラーや不正な HTTP 応答などはそのまま送出し、ツール側で error JSON になります（調査済みにはなりません）
 
 ### Detective Agent（`agents/detective.py`）
@@ -111,7 +113,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 - **処理**
   1. HN Algolia API でコメントを再帰取得（最大 50 件）
   2. Tavily API で投稿者・トピックの背景情報検索（設定なしの場合は skip）
-  3. `resolve_prompt(config.detective_system_prompt)` / `config.detective_user_prompt` で system/user prompt 解決
+  3. `resolve_prompt_text(config.detective_system_prompt)` / `config.detective_user_prompt`（変数を差し込む）で system/user prompt の本文を Langfuse から取る
   4. `get_llm_settings("detective")` の設定で `DETECTIVE_AGENT` を実行して分析
 - **出力**: 構造化分析結果（Slack 通知用）。必須キーは `title_ja` / `comment_highlights`、任意キーは `why_trending` / `background` / `summary`
 - **特徴**
@@ -124,7 +126,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 - **入力**: 調査対象 `HNThread`
 - **処理**
   1. HN コメントを取得（最大 50 件、Tavily は使わない）
-  2. `resolve_prompt(config.devils_advocate_system_prompt)` / `config.devils_advocate_user_prompt` で prompt 解決
+  2. `resolve_prompt_text(config.devils_advocate_system_prompt)` / `config.devils_advocate_user_prompt`（変数を差し込む）で prompt の本文を Langfuse から取る
   3. `get_llm_settings("devils_advocate")` の設定で `DEVILS_ADVOCATE_AGENT` を実行して分析
 - **出力**: 構造化分析結果
   - `concerns[]`（必須）: 懸念点・トレードオフ
@@ -142,7 +144,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 - **処理**
   1. HN コメントを取得
   2. Tavily API で CVE / advisory / patch / workaround を検索（クエリ例: `f"{title} CVE advisory patch workaround"`、設定なしの場合は skip）
-  3. `resolve_prompt(config.security_responder_system_prompt)` / `config.security_responder_user_prompt` で prompt 解決
+  3. `resolve_prompt_text(config.security_responder_system_prompt)` / `config.security_responder_user_prompt`（変数を差し込む）で prompt の本文を Langfuse から取る
   4. `get_llm_settings("security_responder")` の設定で `SECURITY_RESPONDER_AGENT` を実行して分析
 - **出力**: 構造化分析結果
   - `cve_ids[]`: CVE ID（無ければ `[]`）
@@ -182,7 +184,7 @@ Django 管理画面から（表示順は「AI ツール設定」グループ）:
 |---|---|
 | **AI設定 → LLM設定**（`LLMProviderConfig`） | モデルエイリアス + LiteLLM Virtual Key |
 | **AI設定 → サービス設定**（`LLMServiceConfig`） | `orchestrator` / `detective` / `devils_advocate` / `security_responder` の 4 サービスにプロバイダを割り当て |
-| **AI設定 → Prompts**（`Prompt`） | `hn-agent-orchestrator-system/-user`, `hn-agent-detective-system/-user`, `hn-agent-devils-advocate-system/-user`, `hn-agent-security-responder-system/-user` の 8 本 |
+| **AI設定 → Prompts**（`Prompt`） | `hn-agent-orchestrator` / `hn-agent-orchestrator-user`、`hn-agent-detective` / `-user`、`hn-agent-devils-advocate` / `-user`、`hn-agent-security-responder` / `-user` の 8 本（名前は Langfuse のプロンプト名そのもの） |
 | **Slack 通知設定** | Webhook URL（暗号化保存） |
 | **Tavily** | API キー（Web 検索、Detective・Security Responder で使用、任意） |
 | **HackerNews Agent 設定**（`HNAgentConfig`） | 推論深度、スコア閾値、速度閾値、ポーリング間隔、フロントページ取得件数、プロンプト 8 本 |
@@ -268,10 +270,10 @@ features/hn_agent/
 | `hn-agent-security-responder` | Security Responder の system プロンプト（cve_ids / affected / workarounds / official_patch / severity / summary の JSON スキーマ指定） |
 | `hn-agent-security-responder-user` | Security Responder の user プロンプト（`{{title}}`, `{{url}}`, `{{author}}`, `{{score_info}}`, `{{comments_section}}`, `{{search_section}}`） |
 
-Langfuse 未登録でも `Prompt.fallback_text` で動作します。初期データは以下 2 本の migration で自動投入されます（当時の `LangfusePromptRef`。いまの `Prompt`）:
+**Langfuse に上の 8 本（ラベル `production`）が必要です。フォールバックはありません**（取れないときの挙動は上の「Orchestrator」と「サブエージェント共通」）。Prompts（`Prompt`。名前とラベル）は以下 2 本の migration で自動投入されます（当時の `LangfusePromptRef`。名前は `llm_config` の `0019` で上の表の名前になる）。本文は Langfuse に作り、下書きにはこの 2 本の本文を使えます:
 
 - `integrations/langfuse/migrations/0002_seed_default_refs.py`: Orchestrator / Detective 用 4 種
-- `integrations/langfuse/migrations/0003_seed_new_agent_refs.py`: Devil's Advocate / Security Responder 用 4 種、および Orchestrator の fallback_text を 3 ツール判断基準付きに更新
+- `integrations/langfuse/migrations/0003_seed_new_agent_refs.py`: Devil's Advocate / Security Responder 用 4 種と、3 ツールの判断基準を書いた Orchestrator の system（`ORCHESTRATOR_SYSTEM_PROMPT_V2`）
 
 ### トレーシング
 
@@ -293,4 +295,4 @@ Langfuse 未登録でも `Prompt.fallback_text` で動作します。初期デ�
 | Redis | Celery ブローカー | 必須（定期実行時） |
 | Tavily API | Web 検索（背景調査） | 任意（未設定時は skip） |
 | Slack Webhook | 調査結果通知 | 任意（未設定時は skip） |
-| Langfuse | LLM トレーシング・プロンプト管理 | 任意（未設定時は fallback_text で動作） |
+| Langfuse | LLM トレーシング・プロンプト管理 | 必須（プロンプトの本文を取る。フォールバックなし） |

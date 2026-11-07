@@ -8,7 +8,7 @@ import pytest
 
 from integrations.langfuse.exceptions import LangfusePromptError, PromptUnavailableError
 from integrations.llm.skills import resolve_skill_body
-from tests.fixtures.factories import AgentSkillFactory, PromptFactory
+from tests.fixtures.factories import AgentSkillFactory
 
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 # スキルの本文を置く Langfuse のプロンプト名（スキル名そのもの）
@@ -40,7 +40,7 @@ class TestResolveSkillBody:
         with pytest.raises(PromptUnavailableError) as exc_info:
             resolve_skill_body(AgentSkillFactory.build(name="good-morning"))
 
-        assert (exc_info.value.ref_name, exc_info.value.reason) == (
+        assert (exc_info.value.prompt_name, exc_info.value.reason) == (
             MORNING_PROMPT,
             "本文が空です",
         )
@@ -58,7 +58,7 @@ class TestResolveSkillBody:
         with pytest.raises(PromptUnavailableError) as exc_info:
             resolve_skill_body(skill)
 
-        assert exc_info.value.ref_name == MORNING_PROMPT
+        assert exc_info.value.prompt_name == MORNING_PROMPT
         assert isinstance(exc_info.value.__cause__, LangfusePromptError)
 
     def test_resolve_skill_body_when_langfuse_unreachable_raises_error_with_reason(
@@ -71,20 +71,3 @@ class TestResolveSkillBody:
         cause = exc_info.value.__cause__
         assert isinstance(cause, LangfusePromptError)
         assert exc_info.value.reason == str(cause)
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-def test_resolve_skill_body_when_langfuse_unreachable_never_uses_ref_fallback(
-    langfuse_unreachable,
-):
-    """Langfuse に届かなくても、同じ名前の参照（移行で残った旧スキルの参照など）の本文は使わない."""
-    PromptFactory(
-        name=MORNING_PROMPT,
-        langfuse_prompt_name=MORNING_PROMPT,
-        label="staging",
-        fallback_text=MORNING_BODY,
-    )
-
-    with pytest.raises(PromptUnavailableError):
-        resolve_skill_body(AgentSkillFactory(name="good-morning"))

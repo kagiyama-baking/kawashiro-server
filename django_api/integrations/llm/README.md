@@ -12,7 +12,7 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 | **プロンプト管理** | どのテキストを渡すか | Django admin「AI設定」の「Prompts」「Agent Skills」+ Langfuse UI | `Prompt` / `AgentSkill`（どちらも全エージェントで共有）+ Langfuse 側のプロンプト実体 |
 | **機能設定** | いつ・どのプロンプトで呼ぶか | Django admin「HackerNews Agent設定」「Companion 設定」「Talk 設定」 | `HNAgentConfig` / `CompanionConfig` / `TalkSetting` |
 
-各機能の設定は、Prompts に登録したプロンプトを外部キーで選びます（HN Agent 設定の 8 本、Companion 設定・Talk 設定のシステムプロンプト）。スキル（Agent Skills）の本文だけは Prompts を通さず、スキル名とラベルで Langfuse から直接取ります（§4 の「Agent Skills」と §5）。各機能の設定は、登録したスキルから使うものを選びます（Companion 設定のスキルと、Talk 設定のシーン）。
+各機能の設定は、Prompts に登録したプロンプトを外部キーで選びます（HN Agent 設定の 8 本、Companion 設定・Talk 設定のシステムプロンプト）。スキル（Agent Skills）は、登録したスキルから使うものを選びます（Companion 設定のスキルと、Talk 設定のシーン）。**どちらも、名前が本文を取る Langfuse の text プロンプトの名前そのもの**で、本文はその名前とラベルで Langfuse から取ります。**フォールバックはありません**（取れなければ、そのプロンプトを使う機能は止まる。§7）。
 
 モデルを差し替えるときは admin の「AI設定 → LLM設定」だけ、プロンプトを変えるときは Langfuse UI だけを触ればよく、コード変更もデプロイも不要です。
 
@@ -21,7 +21,7 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 - **LiteLLM Proxy**（外部サービス / internal.kagiyama.net 管理）
   OpenAI 互換エンドポイント。`model_alias`（例: `bedrock/moonshotai.kimi-k2.5`）を受けて実プロバイダーへルーティングし、モデル差し替え・コスト集計・Virtual Key 発行を一元化します。接続先は環境変数 `LITELLM_PROXY_URL`（既定 `http://litellm-proxy:4000/v1`）。
 - **Langfuse**（外部サービス / SaaS or self-hosted）
-  LLM 呼び出しの観測（traces / generations / spans）と、バージョン管理付きプロンプトテンプレートを提供。環境変数 `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_BASE_URL` / `LANGFUSE_TRACING_ENVIRONMENT` で設定します。
+  LLM 呼び出しの観測（traces / generations / spans）と、バージョン管理付きプロンプトテンプレートを提供。環境変数 `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_BASE_URL` / `LANGFUSE_TRACING_ENVIRONMENT` で設定します。**プロンプトの本文はすべて Langfuse から取る（フォールバックはない）ので、必須です。**
 - **`LLMProviderConfig`**（`integrations/llm/models.py`）
   モデルエイリアス + LiteLLM Virtual Key の組。複数の `LLMServiceConfig` から共有参照できます。
 - **`LLMServiceConfig`**（同上）
@@ -29,17 +29,15 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
 - **`AgentSkill`**（同上）
   全エージェントで共有するスキル（Agent Skills）。名前・説明・Langfuse のラベル・有効を持ち、各機能の設定が M2M で選びます（`CompanionConfig.skills` と、シーンとして選ぶ `TalkSetting.skills`）。本文は、スキル名と同じ名前の Langfuse の text プロンプトを `fetch_text_prompt` で直接取ります（§4）。取るのは `resolve_skill_body(skill)`（`integrations/llm/skills.py`。全エージェント共通）で、取れないか空なら `PromptUnavailableError`（`integrations/langfuse/exceptions.py`）です。
 - **`Prompt`**（同上。admin の「AI設定 → Prompts」）
-  全エージェントで共有するプロンプト。Django 内識別名 ↔ Langfuse プロンプト名のマッピング + `fallback_text`。`HNAgentConfig`（8 本）/ `TalkSetting` / `CompanionConfig`（システムプロンプト `system_prompt`）から FK で参照されます（§4 の「Prompts」）。
+  全エージェントで共有するプロンプト。名前は本文を取る Langfuse の text プロンプトの名前そのもので、ラベルでその版を選びます（フォールバックはありません）。`HNAgentConfig`（8 本）/ `TalkSetting` / `CompanionConfig`（システムプロンプト `system_prompt`）から FK で参照されます（§4 の「Prompts」）。本文を取るのは `resolve_prompt_text`（下）です。
 - **`get_llm_settings(service_name)`**（`integrations/llm/config.py`）
   `is_active=True` の `LLMServiceConfig` を引いて `LLMSettings` を返します。該当なしなら `LLMConfigurationError`。
 - **実行基盤**（`integrations/llm/runtime.py`）
   `get_llm_settings` の結果で PydanticAI のエージェントを LiteLLM Proxy 経由で実行します（§6）。
-- **`resolve_prompt(ref, **vars)` / `get_prompt_with_variables(ref)`**（`integrations/langfuse/client.py`。`ref` は `Prompt`）
-  Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
-- **`resolve_required_prompt(ref)`**（同上）
-  `resolve_prompt` で本文を解決し、空（空白だけ）なら `PromptUnavailableError` にします（空のシステムプロンプトで続けない）。変数は展開しません。Companion と Talk 設定のシステムプロンプトが使います。
-- **`fetch_text_prompt(name, *, label, variables=None)`**（同上）
-  参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を返します。`variables`（変数名 → 値の dict）を渡すと、本文の `{{変数}}` を SDK の compile で展開します（値は文字列にし、渡していない変数の `{{x}}` は残ります）。渡さなければ（`None`）compile せず、本文をそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまはスキルの本文（`resolve_skill_body`。変数は渡さない）だけが使います。
+- **`resolve_prompt_text(prompt, /, **variables)`**（`integrations/llm/prompts.py`。全エージェント共通）
+  プロンプト（`Prompt`）の本文を、プロンプト名とラベルで `fetch_text_prompt` で取り、前後の空白を除いて返します。変数を渡すと本文の `{{変数}}` に差し込み（HN Agent の user プロンプト）、渡さなければ展開しません。取れないか空（空白だけ）なら `PromptUnavailableError`（`integrations/langfuse/exceptions.py`。`prompt_name` にプロンプト名、`reason` に理由、取れなかったときは元の `LangfusePromptError` を `__cause__` に持つ）。Langfuse と通信する同期関数なので、イベントループの外で呼びます。HN Agent の 8 本と、Companion・Talk 設定のシステムプロンプトが使います。
+- **`fetch_text_prompt(name, *, label, variables=None)`**（`integrations/langfuse/client.py`）
+  Langfuse の Text 型プロンプトを名前とラベルで取り、本文を返します（プロジェクトで Langfuse のプロンプトを取る唯一の経路）。`variables`（変数名 → 値の dict）を渡すと、本文の `{{変数}}` を SDK の compile で展開します（値は文字列にし、渡していない変数の `{{x}}` は残ります）。渡さなければ（`None`）compile せず、本文をそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。Prompts の本文（`resolve_prompt_text`）とスキルの本文（`resolve_skill_body`。変数は渡さない）が使います。
 - **`langfuse_session(session_id)`**（同上）
   中で実行する処理のトレースと配下の観測に、Langfuse のセッション ID（`session.id`）を伝播する with 文です（`propagate_attributes` を包む）。入った時点の現在のスパン（`@observe` の関数の中ならそのスパン）にも付きます。`None`・空文字なら何もせず、伝播の開始・解除に失敗しても警告ログだけで本処理は続けます。いまは Talk のチャットと Companion が使います（§6 の「Langfuse の Sessions」）。
 
@@ -51,7 +49,7 @@ flowchart LR
         subgraph LLMApp["AI設定（llm_config）"]
             Provider["LLM設定<br/>model_alias + Virtual Key"]
             Service["サービス設定<br/>orchestrator / detective /<br/>devils_advocate / security_responder /<br/>talk / companion"]
-            Prompts["Prompts（Prompt）<br/>langfuse_prompt_name + label"]
+            Prompts["Prompts（Prompt）<br/>name + label"]
             Skills["Agent Skills（AgentSkill）<br/>name + label"]
         end
         HN["HackerNews Agent設定"]
@@ -75,7 +73,7 @@ flowchart LR
     Companion -.->|companion| Service
 
     Provider ==>|Virtual Key + model_alias| LiteLLM
-    Prompts ==>|名前とラベルで取得| Langfuse
+    Prompts ==>|name@label| Langfuse
     Skills ==>|name@label| Langfuse
 ```
 
@@ -113,21 +111,26 @@ flowchart LR
 
 ### Prompts（`Prompt`）
 
-全エージェントで共有するプロンプト（Langfuse の text プロンプトへの参照）です。admin の「AI ツール設定 → AI設定 → Prompts」で登録し、各機能の設定が外部キーで選びます（HN Agent 設定の 8 本と、Companion 設定・Talk 設定のシステムプロンプト `system_prompt`）。並び順は名前順です。
+全エージェントで共有するプロンプト（Langfuse の text プロンプト）です。admin の「AI ツール設定 → AI設定 → Prompts」で登録し、各機能の設定が外部キーで選びます（HN Agent 設定の 8 本と、Companion 設定・Talk 設定のシステムプロンプト `system_prompt`）。並び順は名前順です。
 
 | 項目 | 説明 |
 |---|---|
-| 識別名（`name`） | Django 内で一意の名前。**unique**（例: `hn-agent-orchestrator-system`, `talk-morning-system`） |
-| Langfuse プロンプト名（`langfuse_prompt_name`） | Langfuse 上の実プロンプト名。**識別名と一致するとは限りません**（§5 参照） |
-| ラベル（`label`） | Langfuse のプロンプトラベル（既定 `production`。`staging` 等に切り替え可能） |
-| フォールバックテキスト（`fallback_text`） | Langfuse 不達・未登録時に使うテキスト。`{{key}}` は呼び出し側の変数で簡易置換 |
-| 説明（`description`） | 用途説明（admin 一覧に表示） |
+| プロンプト名（`name`） | 本文を取る Langfuse の text プロンプトの名前そのもの（例: `hn-agent-orchestrator`。Langfuse のフォルダは `companion/system` のように `/` で区切る）。**unique**、200 字以内。前後の空白と改行は使えません（`^\S(?:.*\S)?\Z`。途中の改行も不可。admin の入力欄は前後の空白を取り除く） |
+| ラベル（`label`） | 本文を取る Langfuse のプロンプトのラベル（既定 `production`。使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)） |
+| 説明（`description`） | 用途の説明（admin の一覧に出る。1 行の入力欄、255 字以内） |
 
-- 設定のプロンプトの欄は、検索して選びます（autocomplete。識別名・Langfuse プロンプト名・説明が検索対象）。設定から選ばれているプロンプトは消せません（`on_delete=PROTECT`）。
+- **プロンプト名がそのまま本文のプロンプト名です。** 本文は `resolve_prompt_text`（§2）が、プロンプト名と同じ名前の Langfuse の text プロンプトを、プロンプトのラベルで取ります（接頭辞などは付けません）。名前を変えると本文を取るプロンプトも変わるので、Langfuse 側のプロンプト名も合わせてください。
+- **フォールバックはありません。** Langfuse から取れない（届かない・そのラベルのプロンプトがない・Text 型でない）か、本文が空なら、そのプロンプトを使う機能は止まります（§7）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続けます（[Companion の README の「スキル」](../../features/companion/README.md#スキル) のキャッシュの説明と同じ）。
+- 名前が一意なので、1 つの Langfuse のプロンプトを 2 つのラベルで同時に使うことはできません（どちらかのラベルを選ぶ）。
+- 表示（`__str__`）は `hn-agent-orchestrator@production`（プロンプト名@ラベル。本文を取るプロンプトとその版）です。設定のプロンプトの欄にそのまま出ます。
+- 設定のプロンプトの欄は、検索して選びます（autocomplete。名前と説明が検索対象）。admin の一覧には名前・ラベル・説明が並び、ラベルで絞り込めます。設定から選ばれているプロンプトは消せません（`on_delete=PROTECT`）。
+- `save()` は `full_clean()` を呼びます。登録済みの名前や、前後に空白のある名前は、コードから作っても保存されません。
 
 > **Note（表名と内容の型）:** `Prompt` は langfuse_integration アプリの `LangfusePromptRef`（admin の「Langfuse → Langfuseプロンプト参照」）を移したモデルです。migration `llm/0018` が状態だけで作り、`hn_agent/0018`・`companion/0008`・`talk/0020` が設定の外部キーの向き先を替え、`langfuse_integration/0004` が古いモデルを状態から消します（表は変えません）。表は langfuse_integration の `0001` が作った `langfuse_integration_langfusepromptref`（`Meta.db_table`）のままです。既定の表名（`llm_config_prompt`）にそろえるなら、Agent Skills と合わせて後で `AlterModelTable` を足します。Companion 設定と Talk 設定の項目は `system_prompt_ref` から `system_prompt` に改めました（列は `system_prompt_ref_id` から `system_prompt_id` に変わり、値はそのまま）。権限と管理画面の履歴が指す内容の型（ContentType）の行は、`llm/0018` が `langfuse_integration`/`langfusepromptref` から `llm_config`/`prompt` へ付け替えます（id はそのまま。既定の権限の codename と表示名も `<操作>_prompt`・`Can <操作> Prompt` に改めます）。移す先の行もあれば、Agent Skills と同じ規則で 1 つにまとめます（下の「Agent Skills」の Note）。langfuse_integration アプリはモデルを持たなくなりますが（admin のグループも出ません）、これまでの migration（hn_agent・companion・talk の migration が依存する）のために残します。
 
-> **Note（戻し方）:** 移す前の版へ戻すときは、先にこの版のコードで `python manage.py migrate llm_config 0017` を実行します（上の 5 本が外れ、列名と内容の型も元に戻ります）。イメージだけを古い版に戻すと、古い版のコードが `system_prompt_ref_id` の列を読むので、Companion と Talk のチャット（API と admin）が 500 になります。
+> **Note（名前の付け替え）:** migration `llm/0019` で、名前を Langfuse のプロンプト名そのものにしました。それまでは Django 側の識別名（`name`）と Langfuse のプロンプト名（`langfuse_prompt_name`）を別に持ち、取れなければフォールバックテキスト（`fallback_text`）を使っていました。前進では、名前を 200 字までにし、名前が Langfuse のプロンプト名と違う行の名前を Langfuse のプロンプト名に付け替え（本文を取る先は変わりません。HN Agent の seed では system の 4 本が `hn-agent-orchestrator-system` → `hn-agent-orchestrator` などになります）、`langfuse_prompt_name` と `fallback_text` の列を消します。付け替えは 2 段（いったん一時の名前 `__llm_config_0019__/<pk>` にする）なので、名前が入れ替わる行があっても一意の制約に触れません。**名前にできない参照があれば、`llm/0018` の最初で、何も変えずに `RuntimeError` で止まります**（`0019` も同じ検査をします）。止まるのは、Langfuse のプロンプト名が空・前後の空白や改行・途中の改行・200 字超の参照と、Langfuse のプロンプト名がほかの参照と重なる（同じプロンプトを 2 つのラベルで使っているなど）参照、名前か Langfuse のプロンプト名が一時の名前で始まる参照です。エラーに直すべき参照（識別名・Langfuse のプロンプト名@ラベル）が並ぶので、この版より前のコード（管理画面の「Langfuse → Langfuseプロンプト参照」か shell）で直してから migrate し直してください（起動時の migrate が止まるので、本番では先にイメージを戻す）。
+
+> **Note（戻し方）:** 移す前の版へ戻すときは、先にこの版のコードで `python manage.py migrate llm_config 0017` を実行します（上の 6 本（`llm/0018`・`0019`、`hn_agent/0018`・`companion/0008`・`talk/0020`・`langfuse_integration/0004`）が外れ、列名と内容の型も元に戻ります）。戻すと、`langfuse_prompt_name` は名前と同じ値で、`fallback_text` は空で戻り、HN Agent の seed の system の 4 本は元の識別名に戻ります（その識別名がほかのプロンプトに使われていなければ）。**消したフォールバックテキストと、seed 以外の元の識別名は戻りません**（必要なら、移す前の控え（`dumpdata langfuse_integration.langfusepromptref`）から直す）。0018 までの名前は 100 字までなので、100 字を超える名前のプロンプトがあれば、何も変えずに `RuntimeError` で止まります（名前と Langfuse のプロンプト名を 100 字以内にしてから戻し直す）。イメージだけを古い版に戻すと、古い版のコードが `system_prompt_ref_id` と `langfuse_prompt_name` の列を読むので、HN Agent の調査・Companion・Talk のチャット（API と admin）が 500 になります。
 
 ### Agent Skills（`AgentSkill`）
 
@@ -155,30 +158,32 @@ flowchart LR
 
 ## 5. Langfuse プロンプト命名規約
 
-Django 側の識別名と Langfuse 側のプロンプト名は別物です。HN Agent の **system プロンプトのみ Langfuse 側に `-system` が付きません**（歴史的経緯）。
+Prompts のプロンプト名とスキル名は、Langfuse のプロンプト名そのものです（Django 側の別名はありません）。版はラベルで選びます。
 
-| 用途 | Django 識別名（`name`） | Langfuse プロンプト名 |
+| 用途 | 名前（Prompts のプロンプト名・スキル名 = Langfuse のプロンプト名） | 変数 |
 |---|---|---|
-| HN Agent Orchestrator system | `hn-agent-orchestrator-system` | `hn-agent-orchestrator` |
-| HN Agent Orchestrator user | `hn-agent-orchestrator-user` | `hn-agent-orchestrator-user` |
-| HN Agent Detective system | `hn-agent-detective-system` | `hn-agent-detective` |
-| HN Agent Detective user | `hn-agent-detective-user` | `hn-agent-detective-user` |
-| HN Agent Devil's Advocate system | `hn-agent-devils-advocate-system` | `hn-agent-devils-advocate` |
-| HN Agent Devil's Advocate user | `hn-agent-devils-advocate-user` | `hn-agent-devils-advocate-user` |
-| HN Agent Security Responder system | `hn-agent-security-responder-system` | `hn-agent-security-responder` |
-| HN Agent Security Responder user | `hn-agent-security-responder-user` | `hn-agent-security-responder-user` |
-| Companion system | `companion-system` | `companion-system`（同名） |
-| Talk 設定（`TalkSetting`）の system | 自由（migration `talk/0018` が作った Talk 設定は、旧プリセットのシステムプロンプトの参照（例: `talk-morning-system`）をそのまま使う） | 参照の `langfuse_prompt_name` |
-| スキル（Agent Skills）の本文 | なし（参照を作らない） | スキル名そのもの（例: `good-morning`。ラベルはスキルの `label`） |
+| HN Agent Orchestrator system | `hn-agent-orchestrator` | なし |
+| HN Agent Orchestrator user | `hn-agent-orchestrator-user` | あり（[HN Agent の README の「プロンプト管理」](../../features/hn_agent/README.md#プロンプト管理)） |
+| HN Agent Detective system | `hn-agent-detective` | なし |
+| HN Agent Detective user | `hn-agent-detective-user` | あり（同上） |
+| HN Agent Devil's Advocate system | `hn-agent-devils-advocate` | なし |
+| HN Agent Devil's Advocate user | `hn-agent-devils-advocate-user` | あり（同上） |
+| HN Agent Security Responder system | `hn-agent-security-responder` | なし |
+| HN Agent Security Responder user | `hn-agent-security-responder-user` | あり（同上） |
+| Companion system | `companion-system` | なし（`{{x}}` は展開しない） |
+| Talk 設定（`TalkSetting`）の system | 自由（migration `talk/0018` が作った Talk 設定は、旧プリセットのシステムプロンプトをそのまま使う） | なし（同上） |
+| スキル（Agent Skills）の本文 | スキル名そのもの（例: `good-morning`。Prompts には登録しない） | なし（同上） |
+
+HN Agent の system の 4 本は、migration `llm/0019` より前は Django 側の識別名に `-system` が付いていました（Langfuse 側には付かない。例: `hn-agent-orchestrator-system` → Langfuse は `hn-agent-orchestrator`）。`llm/0019` で Langfuse のプロンプト名に合わせました（§4 の「Prompts」）。
 
 **投入方法の違いに注意してください。**
 
-- **HN Agent の 8 本**は migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本 + orchestrator system の `fallback_text` を V2 へ更新）で、`fallback_text` 入りのプロンプト（当時の `LangfusePromptRef`。いまの `Prompt`）として自動投入されます。
-- **Companion のシステムプロンプトの参照は自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse の text プロンプトと `Prompt`（`companion-system`）を手動で作成してから `CompanionConfig.system_prompt` に割り当てます。
-- **Talk 設定のシステムプロンプトの参照も手動作成です**（migration はありません。`talk/0018` は既存のチャットのために Talk 設定を作りますが、参照は旧プリセットのものをそのまま使います）。
-- **スキル（Agent Skills）の本文には参照を作りません。** Langfuse に本文の text プロンプトを作り、そのプロンプト名をスキル名として admin の Agent Skills に登録します（`fetch_text_prompt` でスキルのラベルの版を取る。**フォールバックはなく**、Companion では取れなければ 503）。ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 5-2 を参照してください。
+- **HN Agent の 8 本**は、Prompts には migration `langfuse/0002`（orchestrator / detective の 4 本）と `langfuse/0003`（devils_advocate / security_responder の 4 本）で自動投入されます（当時の `LangfusePromptRef`。名前は `llm/0019` で上の表の名前になる）。**本文は Langfuse に 8 本の text プロンプト（ラベル `production`）として作ってください。** 下書きは、その 2 本の migration の本文です（`0003` の orchestrator system は、3 ツールの判断基準を書いた版）。
+- **Companion のシステムプロンプトは自動生成されません。** リポジトリを公開しているので本文を git に置かず、migration はありません。Langfuse に text プロンプト（`companion-system`）を作り、同じ名前とラベルで Prompts に登録してから `CompanionConfig.system_prompt` に割り当てます。
+- **Talk 設定のシステムプロンプトも手動作成です**（migration はありません。`talk/0018` は既存のチャットのために Talk 設定を作りますが、システムプロンプトは旧プリセットのものをそのまま使います）。
+- **スキル（Agent Skills）の本文は Prompts に登録しません。** Langfuse に本文の text プロンプトを作り、そのプロンプト名をスキル名として admin の Agent Skills に登録します（`fetch_text_prompt` でスキルのラベルの版を取る）。ラベルの使い分けは [Companion の README の「Langfuse プロンプトのラベル」](../../features/companion/README.md#langfuse-プロンプトのラベル)、登録の順序は [../../../docs/initial-setup.md](../../../docs/initial-setup.md) の 4-3・5-2・5-3 を参照してください。
 
-いずれの場合も、`Prompt` があるのは Django 側のマッピングだけです。Langfuse 側にプロンプト実体を登録すると、Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えが可能になります。参照のプロンプトは、未登録でも `fallback_text` で動作します（スキルの本文は参照を通さないので、Langfuse への登録が必要です）。
+いずれの場合も、Django 側にあるのは名前とラベル（と説明）だけで、本文は Langfuse にあります。Langfuse UI 上でバージョン管理・A/B テスト・`staging`/`production` ラベル切り替えができます。**フォールバックはないので、どれも Langfuse への登録が必要です。**
 
 ## 6. LLM の呼び出し方
 
@@ -187,7 +192,7 @@ LLM 呼び出しはすべて PydanticAI のエージェントで行います。�
 ```python
 from pydantic_ai import Agent
 
-from integrations.langfuse.client import resolve_prompt
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.config import get_llm_settings
 from integrations.llm.exceptions import (
     LLMClientError,
@@ -195,6 +200,7 @@ from integrations.llm.exceptions import (
     LLMOutputError,
     LLMTimeoutError,
 )
+from integrations.llm.prompts import resolve_prompt_text
 from integrations.llm.runtime import run_agent_sync
 
 # None を許すと、本文のない応答を再試行せず None として受け取れる
@@ -202,8 +208,8 @@ MY_AGENT = Agent(name="my-feature", output_type=str | None)
 
 try:
     settings = get_llm_settings("talk")  # admin のサービス設定を解決（DB を読む）
-    system_prompt = resolve_prompt(config.system_prompt)
-    user_prompt = resolve_prompt(config.user_prompt, weather="晴れ")
+    system_prompt = resolve_prompt_text(config.system_prompt)  # Langfuse から取る
+    user_prompt = resolve_prompt_text(config.user_prompt, weather="晴れ")  # 変数を差し込む
 
     result = run_agent_sync(
         MY_AGENT, settings, user_prompt=user_prompt, instructions=system_prompt
@@ -211,6 +217,8 @@ try:
     text = result.output or ""
 except LLMConfigurationError:
     ...  # サービス設定が無い、または is_active=False
+except PromptUnavailableError:
+    ...  # プロンプトを Langfuse から取れないか、空（フォールバックはない）
 except LLMTimeoutError:
     ...  # timeout（既定 60 秒）か run_timeout の超過
 except LLMOutputError:
@@ -241,16 +249,13 @@ except LLMClientError:
 
 ## 7. フェイルソフト挙動
 
-外部サービスが落ちても機能全体は止まらない設計です。
+外部サービスが落ちても、できるだけ機能全体を止めない設計です。ただしプロンプトの本文（Langfuse）には代わりがないので、取れなければそのプロンプトを使う処理は止まります。
 
 | 状況 | 挙動 |
 |---|---|
-| Langfuse 未設定 / 接続失敗 / プロンプト未登録（`Prompt` 経由のプロンプト） | `fallback_text` を使用し、`{{key}}` を `render_template` で簡易置換。警告ログのみで処理継続 |
-| Langfuse 側が Chat 型プロンプト | 未対応のため警告ログを出して `fallback_text` にフォールバック（対応しているのは Text 型のみ） |
-| `langfuse` パッケージ未インストール | `ImportError` を捕捉して `fallback_text` にフォールバック |
+| Prompts のプロンプト（HN Agent の 8 本、Companion・Talk 設定のシステムプロンプト）を Langfuse から取れない（`LANGFUSE_*` が未設定・届かない・そのラベルのプロンプトがない・Chat 型・`langfuse` を import できない）か、本文が空 | **フェイルソフトしません（フォールバックなし）。** `resolve_prompt_text` が `PromptUnavailableError` にする。Companion と Talk のチャットは LLM を呼ばずに 503（Talk はそのターン）。HN Agent は、Orchestrator のプロンプトなら LLM を呼ばずに調査を中断し（ログに残す。調査済みにしないので次のポーリングで調べ直し、Slack へは送らない）、サブエージェントのプロンプトならそのツールが失敗として Orchestrator に返る（[HN Agent の README](../../features/hn_agent/README.md)）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける |
+| Agent Skill（Companion のスキル・Talk のシーン）の本文を Langfuse から取れない（届かない・未登録・Chat 型）か、空 | **フェイルソフトしません。** `PromptUnavailableError` で実行（Talk ではそのターン）を止め、API は 503（フォールバックなし）。キャッシュの扱いは上と同じ（[Companion の README の「スキル」](../../features/companion/README.md#スキル)） |
 | Langfuse への `session_id` 付与失敗 | 警告ログのみ。Talk のチャットも Companion の実行も継続 |
-| Agent Skill（Companion のスキル・Talk のシーン）の本文を Langfuse から取れない（届かない・未登録・Chat 型）か、空 | **フェイルソフトしません。** `PromptUnavailableError` で実行（Talk ではそのターン）を止め、API は 503（フォールバックなし）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける（[Companion の README の「スキル」](../../features/companion/README.md#スキル)） |
-| Companion・Talk 設定のシステムプロンプトの本文が空（Langfuse から取れず `fallback_text` も空） | **フェイルソフトしません。** `resolve_required_prompt` が `PromptUnavailableError` にし、API は 503（空のシステムプロンプトで話さない） |
 | Companion の出力（セリフと使ったスキル）を Langfuse のスパンに記録できない | 警告ログのみ。実行は続け、API はセリフを返す（[Companion の README の「トレース（Langfuse）」](../../features/companion/README.md#トレースlangfuse)） |
 | `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック。それも未設定ならプレースホルダーのキーで送信し、認証の判断は LiteLLM Proxy に任せる |
 | `LLMServiceConfig` が無い / `is_active=False` | `LLMConfigurationError`（**ここはフェイルソフトしません**。設定漏れは早期に顕在化させます） |

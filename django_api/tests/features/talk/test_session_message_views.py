@@ -54,7 +54,7 @@ def auth_client(user):
 def system_prompt(db, langfuse_prompts):
     """Talk 設定のシステムプロンプトの参照（本文は Langfuse の代役の production にある）."""
     langfuse_prompts[("msg-system", "production")] = "あなたは親切な AI です。"
-    return Prompt.objects.create(name="msg-system", langfuse_prompt_name="msg-system")
+    return Prompt.objects.create(name="msg-system")
 
 
 @pytest.fixture

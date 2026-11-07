@@ -26,7 +26,7 @@ from features.companion.services import (
     run_companion,
 )
 from features.companion.skills import skill_instructions
-from integrations.langfuse.exceptions import PromptUnavailableError
+from integrations.langfuse.exceptions import LangfusePromptError, PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
@@ -302,7 +302,7 @@ class TestAutoSelection:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm)
 
-        assert exc_info.value.ref_name == "good-morning"
+        assert exc_info.value.prompt_name == "good-morning"
         assert len(llm.requests) == 1
 
 
@@ -365,7 +365,7 @@ class TestSkillSpecified:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm, skill="good-evening")
 
-        assert exc_info.value.ref_name == "good-evening"
+        assert exc_info.value.prompt_name == "good-evening"
         assert llm.requests == []
 
     def test_run_companion_with_skill_when_body_unavailable_raises_error_before_llm(
@@ -381,7 +381,7 @@ class TestSkillSpecified:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm, skill="good-night")
 
-        assert exc_info.value.ref_name == "good-night"
+        assert exc_info.value.prompt_name == "good-night"
         assert llm.requests == []
 
     def test_run_companion_with_skill_uses_body_for_label_of_skill(
@@ -486,6 +486,35 @@ class TestBeforeModelErrors:
 
         assert llm.requests == []
 
+    def test_run_companion_without_system_prompt_in_langfuse_raises_error_before_llm(
+        self, config, langfuse_prompts
+    ):
+        """システムプロンプトを Langfuse から取れなければ、モデルを呼ばずに PromptUnavailableError.
+
+        フォールバックはない。取得の失敗（LangfusePromptError）を原因（`__cause__`）に持つ。
+        """
+        del langfuse_prompts[(SYSTEM_PROMPT_NAME, "production")]
+        llm = _scripted("こんにちは")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            _run(llm)
+
+        assert exc_info.value.prompt_name == SYSTEM_PROMPT_NAME
+        assert isinstance(exc_info.value.__cause__, LangfusePromptError)
+        assert llm.requests == []
+
+    def test_run_companion_when_langfuse_unreachable_raises_error_before_llm(
+        self, config, langfuse_unreachable
+    ):
+        """Langfuse に届かなければ、システムプロンプトを取れずにモデルを呼ばない."""
+        llm = _scripted("こんにちは")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            _run(llm)
+
+        assert exc_info.value.prompt_name == SYSTEM_PROMPT_NAME
+        assert llm.requests == []
+
     @pytest.mark.parametrize("body", EMPTY_TEXTS)
     def test_run_companion_with_empty_system_prompt_raises_prompt_unavailable_error(
         self, db, langfuse_prompts, body
@@ -497,7 +526,7 @@ class TestBeforeModelErrors:
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm)
 
-        assert exc_info.value.ref_name == SYSTEM_PROMPT_NAME
+        assert exc_info.value.prompt_name == SYSTEM_PROMPT_NAME
         assert llm.requests == []
 
 

@@ -29,11 +29,14 @@ CLEANUP_SKILL_NAMES = (
     *TEST_SKILL_NAMES,
     *(f"companion-skill-{name}" for name in TEST_SKILL_NAMES),
 )
-# 規則（companion-skill-<スキル名>）に合わせない参照の識別名
+# 規則（companion-skill-<スキル名>）に合わせない参照の識別名と、その Langfuse のプロンプト名
 CUSTOM_REF_NAME = "companion-migration-test-custom"
+CUSTOM_PROMPT_NAMES = ("custom-night", "custom-morning")
+# 後始末で消す参照（llm_config の 0019 の後は、名前が Langfuse のプロンプト名になる）
 TEST_REF_NAMES = (
     PROMPT_REF_NAME,
     CUSTOM_REF_NAME,
+    *CUSTOM_PROMPT_NAMES,
     *(f"companion-skill-{name}" for name in TEST_SKILL_NAMES),
 )
 

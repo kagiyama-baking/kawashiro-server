@@ -102,42 +102,48 @@ class LLMServiceConfig(models.Model):
         return f"{self.get_service_name_display()} → {self.provider_config.name}"
 
 
-class Prompt(models.Model):
-    """プロンプト（Langfuse の text プロンプトの参照。全エージェントで共有する）.
+# プロンプト名の規則（Langfuse のプロンプト名そのもの）。前後の空白と改行は不可で、Langfuse の
+# フォルダの `/` と途中の空白は使える。`.` は改行に合わないので途中の改行も通らない。`$` は末尾の
+# 改行も通すので `\Z` で終える。
+PROMPT_NAME_PATTERN = r"^\S(?:.*\S)?\Z"
 
-    本文は Langfuse にあり、このモデルは名前・ラベル・フォールバックのみ持つ。各機能の設定
-    （HN Agent の 8 本、Companion 設定・Talk 設定のシステムプロンプト）が外部キーで選ぶ。
+
+class Prompt(models.Model):
+    """プロンプト（Langfuse の text プロンプト。全エージェントで共有する）.
+
+    名前は Langfuse のプロンプト名そのもので、本文はその名前の text プロンプトを `label` で取る
+    （`integrations/llm/prompts.py` の `resolve_prompt_text`。フォールバックはない）。各機能の
+    設定（HN Agent の 8 本、Companion 設定・Talk 設定のシステムプロンプト）が外部キーで選ぶ。
     """
 
     name = models.CharField(
-        "識別名",
-        max_length=100,
-        unique=True,
-        help_text="Django 内で一意に識別する名前（例: hn-agent-orchestrator-system）",
-    )
-    langfuse_prompt_name = models.CharField(
-        "Langfuseプロンプト名",
+        "プロンプト名",
         max_length=200,
-        help_text="Langfuse 上で登録されているプロンプト名",
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=PROMPT_NAME_PATTERN,
+                message="プロンプト名の前後には、空白と改行を入れられません（途中の改行も不可）",
+            ),
+        ],
+        help_text=(
+            "本文を取る Langfuse の text プロンプトの名前そのもの（例: hn-agent-orchestrator。"
+            "フォルダは / で区切る）。200 字以内。前後の空白と改行は使えない。名前を変えると"
+            "本文を取る先も変わる"
+        ),
     )
     label = models.CharField(
         "ラベル",
         max_length=50,
         default="production",
-        help_text="Langfuse のプロンプトラベル（production, staging 等）",
-    )
-    fallback_text = models.TextField(
-        "フォールバックテキスト",
-        blank=True,
-        default="",
-        help_text="Langfuse 接続失敗・プロンプト未登録時に使用するテキスト",
+        help_text="本文を取る Langfuse のプロンプトのラベル（staging / production）",
     )
     description = models.CharField(
         "説明",
         max_length=255,
         blank=True,
         default="",
-        help_text="このプロンプトの用途説明",
+        help_text="このプロンプトの用途（admin の一覧に出る）",
     )
     created_at = models.DateTimeField("作成日時", auto_now_add=True)
     updated_at = models.DateTimeField("更新日時", auto_now=True)
@@ -152,7 +158,12 @@ class Prompt(models.Model):
         db_table = "langfuse_integration_langfusepromptref"
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.langfuse_prompt_name}@{self.label})"
+        return f"{self.name}@{self.label}"
+
+    def save(self, *args, **kwargs):
+        """保存時にバリデーションを実行."""
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 # スキル名の規則（Agent Skills の命名: 英小文字・数字・ハイフン。先頭・末尾・連続のハイフンは不可）。

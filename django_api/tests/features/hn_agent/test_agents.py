@@ -16,6 +16,7 @@ from features.hn_agent.agents import run_analysis
 from features.hn_agent.agents.detective import DETECTIVE_AGENT, DetectiveAgent
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
@@ -178,6 +179,30 @@ class TestDetectiveAgent:
             request.instructions
             == hn_langfuse_prompts[("hn-agent-detective", "production")]
         )
+
+    @pytest.mark.parametrize(
+        "prompt_name", ["hn-agent-detective", "hn-agent-detective-user"]
+    )
+    def test_investigate_without_prompt_in_langfuse_raises_before_llm_request(
+        self,
+        agent,
+        hot_thread,
+        detective_llm,
+        hn_agent_config,
+        hn_langfuse_prompts,
+        prompt_name,
+    ):
+        """プロンプトを Langfuse から取れなければ、LLM を呼ばずに PromptUnavailableError.
+
+        フォールバックはない。Orchestrator のツールは、この失敗を error の JSON にして返す。
+        """
+        del hn_langfuse_prompts[(prompt_name, "production")]
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            async_to_sync(agent.investigate)(hot_thread)
+
+        assert exc_info.value.prompt_name == prompt_name
+        assert detective_llm.requests == []
 
     def test_investigate_sends_detective_service_metadata(
         self, agent, hot_thread, detective_llm, hn_agent_config

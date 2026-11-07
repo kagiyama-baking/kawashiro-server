@@ -49,10 +49,9 @@ class SuperUserFactory(UserFactory):
 
 
 class PromptFactory(factory.django.DjangoModelFactory):
-    """Prompt（AI設定 → Prompts）のファクトリ（Langfuse のプロンプト名は識別名と同じ）.
+    """Prompt（AI設定 → Prompts）のファクトリ（名前がそのまま本文の Langfuse のプロンプト名）.
 
-    フォールバックテキストは空のまま。本文はテストで Langfuse の代役
-    （`langfuse_prompts`）に入れる。
+    本文はテストで Langfuse の代役（`langfuse_prompts`）に (名前, ラベル) で入れる。
     """
 
     class Meta:
@@ -60,7 +59,6 @@ class PromptFactory(factory.django.DjangoModelFactory):
         django_get_or_create = ("name",)
 
     name = factory.Sequence(lambda n: f"prompt-{n}")
-    langfuse_prompt_name = factory.LazyAttribute(lambda o: o.name)
     label = "production"
     description = ""
 

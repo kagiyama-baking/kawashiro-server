@@ -12,6 +12,7 @@ from features.hn_agent.agents.devils_advocate import (
 )
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
+from integrations.langfuse.exceptions import PromptUnavailableError
 from tests.fixtures.llm import ScriptedLLM
 
 pytestmark = pytest.mark.django_db
@@ -96,6 +97,19 @@ class TestDevilsAdvocateAgent:
         ]
         assert len(result["analysis"]["critical_comments"]) == 1
         assert result["comments_analyzed"] == 1
+
+    def test_analyze_without_system_prompt_in_langfuse_raises_before_llm_request(
+        self, mock_hn_client, advocate_llm, hn_agent_config, hn_langfuse_prompts
+    ):
+        """system プロンプトを Langfuse から取れなければ、LLM を呼ばずに PromptUnavailableError."""
+        del hn_langfuse_prompts[("hn-agent-devils-advocate", "production")]
+        thread = HNThread.objects.create(hn_id=903, title="No prompt", author="x")
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            async_to_sync(DevilsAdvocateAgent(hn_client=mock_hn_client).analyze)(thread)
+
+        assert exc_info.value.prompt_name == "hn-agent-devils-advocate"
+        assert advocate_llm.requests == []
 
     def test_analyze_prompt_contains_uncommitted_data(
         self, mock_hn_client, advocate_llm, hn_agent_config, hn_langfuse_prompts

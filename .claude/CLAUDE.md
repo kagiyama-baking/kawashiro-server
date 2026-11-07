@@ -274,7 +274,7 @@ llm.requests[1].system_prompts  # system の本文の並び（指示の各部分
 
 ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
 
-Langfuse のプロンプトの取得は、`tests/conftest.py` の `langfuse_prompts` で代役にします（Companion のテスト `tests/features/companion/` では、その `conftest.py` が autouse にしている。HN Agent のテストでは `tests/features/hn_agent/conftest.py` の `hn_langfuse_prompts` が 8 本の本文を入れて autouse にしている）。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
+Langfuse のプロンプトの取得は、`tests/conftest.py` の `langfuse_prompts` で代役にします（Companion のテスト `tests/features/companion/` では、その `conftest.py` が autouse にしている。HN Agent のテストでは `tests/features/hn_agent/conftest.py` の `hn_langfuse_prompts` が 8 本の本文を入れて autouse にしている）。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です。フォールバックはないので、設定が使うプロンプト（Prompts の `Prompt`。名前がそのまま Langfuse のプロンプト名）の本文も、テストで dict に入れます（入れなければ `PromptUnavailableError`）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
 
 ## コーディング規約
 

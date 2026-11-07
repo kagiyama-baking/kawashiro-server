@@ -12,8 +12,8 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import UsageLimits
 
-from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
+from integrations.llm.prompts import resolve_prompt_text
 from integrations.llm.runtime import run_agent_sync
 
 from .agents import hn_conversation_id
@@ -250,8 +250,9 @@ class Orchestrator:
             security_responder_agent=self.security_responder_agent,
         )
 
-        system_prompt = resolve_prompt(agent_config.orchestrator_system_prompt)
-        user_content = resolve_prompt(
+        # プロンプトを Langfuse から取れなければ PromptUnavailableError（LLM を呼ばずに中断）
+        system_prompt = resolve_prompt_text(agent_config.orchestrator_system_prompt)
+        user_content = resolve_prompt_text(
             agent_config.orchestrator_user_prompt,
             **self._build_user_variables(thread),
         )

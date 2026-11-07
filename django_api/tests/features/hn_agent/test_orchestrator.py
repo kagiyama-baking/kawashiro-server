@@ -29,6 +29,7 @@ from features.hn_agent.agents.security_responder import (
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from features.hn_agent.orchestrator import MAX_STEPS, ORCHESTRATOR_AGENT, Orchestrator
 from integrations.hn.client import HNComment
+from integrations.langfuse.exceptions import PromptUnavailableError
 from tests.fixtures.langfuse import FakeLangfuse
 from tests.fixtures.llm import ScriptedLLM, litellm_response, tool_calls
 
@@ -293,6 +294,43 @@ class TestOrchestrator:
         result = orchestrator.investigate(thread)
 
         assert result["final_summary"] == FIXED_ERROR_SUMMARY
+
+    @pytest.mark.parametrize(
+        "prompt_name", ["hn-agent-orchestrator", "hn-agent-orchestrator-user"]
+    )
+    def test_missing_orchestrator_prompt_aborts_without_llm_request_or_notification(
+        self,
+        orchestrator,
+        orchestrator_llm,
+        thread,
+        mock_detective_agent,
+        mock_reporter,
+        hn_langfuse_prompts,
+        caplog,
+        prompt_name,
+    ):
+        """Orchestrator のプロンプトを Langfuse から取れなければ、LLM を呼ばずに調査を中断する.
+
+        フォールバックはない。調査済みにしない（次のポーリングで再び調査する）ので、Slack へも
+        送らない。原因（PromptUnavailableError）はログに残す。
+        """
+        del hn_langfuse_prompts[(prompt_name, "production")]
+
+        result = orchestrator.investigate(thread)
+
+        assert orchestrator_llm.requests == []
+        assert result["final_summary"] == FIXED_ERROR_SUMMARY
+        mock_detective_agent.investigate.assert_not_awaited()
+        mock_reporter.report_detective.assert_not_called()
+        thread.refresh_from_db()
+        assert thread.is_investigated is False
+        (record,) = [
+            r
+            for r in caplog.records
+            if r.name == "features.hn_agent.orchestrator" and r.exc_info
+        ]
+        assert record.exc_info[0] is PromptUnavailableError
+        assert record.exc_info[1].prompt_name == prompt_name
 
     def test_usage_limit_exceeded_returns_fixed_summary(
         self,

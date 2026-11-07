@@ -3,7 +3,7 @@
 Talk 設定（システムプロンプト・選べるシーン・音声）で、過去発話を引き継いで続けて話すチャット（`/talk/settings/`・`/talk/sessions/` 系）を提供する Django アプリです（admin のグループは「Talk」）。
 
 - チャット: セッションの作成時に Talk 設定とシーン（任意）を固定し、`ChatSession` / `ChatMessage` として PostgreSQL に永続化する。シーンの本文はシステムプロンプトの後ろに足す（ツールは使わない）。TTS 音声は `MEDIA_ROOT` 配下にファイル保存して認可付きで配信する
-- プロンプト本文は DB に持たず、Langfuse 上のプロンプトを参照する（システムプロンプトは「AI設定 → Prompts」のプロンプト（`Prompt`）経由、シーンはスキル名と同じ名前のプロンプト。詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）
+- プロンプト本文は DB に持たず、Langfuse 上のプロンプトから取る（システムプロンプトは「AI設定 → Prompts」のプロンプト（`Prompt`）と同じ名前、シーンはスキル名と同じ名前のプロンプト。どちらもフォールバックはない。詳細は [../../integrations/llm/README.md](../../integrations/llm/README.md)）
 
 ## アーキテクチャ
 
@@ -72,7 +72,7 @@ features/talk/
 ターンごとに `TalkService.prepare_chat_prompt(setting, skill)` が system プロンプトを確定します（ストリームを始める前なので、失敗は通常の HTTP ステータスで返ります）。
 
 1. LLM の設定（`get_llm_settings("talk")`）を確かめる（Langfuse に問い合わせる前に止める）
-2. Talk 設定のシステムプロンプトを参照から解決する（`resolve_required_prompt`。Langfuse から取れなければ参照の `fallback_text`。空なら 503）
+2. Talk 設定のシステムプロンプトの本文を Langfuse から取る（`resolve_prompt_text`。プロンプト名とラベルで取り、フォールバックはない。取れないか空なら 503）
 3. シーンがあれば、本文を Langfuse から取り（`resolve_skill_body`。スキル名と同じ名前のプロンプトをスキルのラベルで取る。フォールバックはなく、取れないか空なら 503）、`# シーン設定` の見出しでシステムプロンプトの後ろに足す
 
 ```

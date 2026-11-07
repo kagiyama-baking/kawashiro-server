@@ -14,10 +14,11 @@ from langfuse import get_client, observe
 from pydantic_ai.capabilities import Capability
 from pydantic_ai.usage import UsageLimits
 
-from integrations.langfuse.client import langfuse_session, resolve_required_prompt
+from integrations.langfuse.client import langfuse_session
 from integrations.llm.config import get_llm_settings
 from integrations.llm.exceptions import LLMOutputError
 from integrations.llm.models import AgentSkill
+from integrations.llm.prompts import resolve_prompt_text
 from integrations.llm.runtime import run_agent_sync
 from integrations.tts.client import TTSClient, TTSResult
 
@@ -82,8 +83,8 @@ def run_companion(prompt: str, skill: str | None = None) -> CompanionReply:
         CompanionNotConfiguredError: 有効な設定がないか、複数ある場合
         UnknownSkillError: 指定したスキルが、有効な設定で選ばれていないか、無効な場合
         LLMConfigurationError: companion の LLM サービス設定がない場合
-        PromptUnavailableError: システムプロンプトの本文が空の場合か、使うスキルの本文を
-            Langfuse から取れないか、空の場合
+        PromptUnavailableError: システムプロンプトか、使うスキルの本文を Langfuse から
+            取れないか、空の場合
         LLMOutputError: 応答の本文が空の場合・読み込みなどのツールの失敗が続いた場合・
             本文に漏れたツール呼び出しの書式が作り直させても直らなかった場合
         LLMTimeoutError: リクエストごとのタイムアウトか、実行全体の RUN_TIMEOUT を過ぎた場合
@@ -109,7 +110,7 @@ def _run_companion(prompt: str, skill: str | None) -> CompanionReply:
     skills = list(config.skills.filter(is_enabled=True))
     selected = None if skill is None else _find_skill(skills, skill)
     settings = get_llm_settings("companion")
-    system_prompt = resolve_required_prompt(config.system_prompt)
+    system_prompt = resolve_prompt_text(config.system_prompt)
     instructions, capabilities = _instructions_and_capabilities(
         system_prompt, skills, selected
     )
@@ -142,7 +143,7 @@ def _run_companion(prompt: str, skill: str | None) -> CompanionReply:
 
 
 def _active_config() -> CompanionConfig:
-    """有効な設定を返す（システムプロンプトの参照ごと）.
+    """有効な設定を返す（システムプロンプト（Prompt）ごと）.
 
     有効な設定が複数ある（2 件を同時に有効にすると起こりうる）ときは、どれかを選ばずに
     設定の不備として止め、原因を error ログに出す。

@@ -87,9 +87,7 @@ SYSTEM_PROMPT_BODY = "あなたは親切な AI です。"
 def system_prompt(db, chat_turn_env):
     """Talk 設定のシステムプロンプトの参照（本文は Langfuse の production にある）."""
     chat_turn_env[(SYSTEM_PROMPT_NAME, "production")] = SYSTEM_PROMPT_BODY
-    return Prompt.objects.create(
-        name=SYSTEM_PROMPT_NAME, langfuse_prompt_name=SYSTEM_PROMPT_NAME
-    )
+    return Prompt.objects.create(name=SYSTEM_PROMPT_NAME)
 
 
 @pytest.fixture

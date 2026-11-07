@@ -12,9 +12,17 @@ langfuse_integration/langfusepromptref から llm_config/prompt へ付け替え�
 migrate の後に作られる）。移す先の行もあれば（戻した後の migrate が作った行など）、その行を指す
 履歴と権限を元の行へ寄せてから消し、元の行を付け替える（行は 1 つにまとまる）。
 
+最初に、続く llm_config の 0019 が名前を Langfuse のプロンプト名にできるかを検査する（0019 と
+同じ検査）。Langfuse のプロンプト名が名前にできない（空・前後の空白や改行・途中の改行・200 字超）、
+ほかの参照と重なる、名前か Langfuse のプロンプト名が 0019 の一時の名前で始まる参照が 1 件でも
+あれば、何も変えずに RuntimeError で止める（この 0018 から 0019 まで、どれも当たらない）。
+
 戻すときは `migrate llm_config 0017`（設定の付け替えと古いモデルの削除も外れ、プロンプトは
 langfuse_integration のモデルに戻る。内容の型の行も同じ規則で戻す）。
 """
+
+import re
+from collections import defaultdict
 
 from django.conf import settings
 from django.db import migrations, models
@@ -25,6 +33,81 @@ NEW_CONTENT_TYPE = ("llm_config", "prompt")
 VERBOSE_NAMES = {OLD_CONTENT_TYPE: "Langfuseプロンプト参照", NEW_CONTENT_TYPE: "Prompt"}
 # Django が作る既定の権限の操作（codename は `<操作>_<モデル名>`）
 PERMISSION_ACTIONS = ("add", "change", "delete", "view")
+
+# 0019 の名前の規則・名前の上限・一時の名前の接頭辞（migration はほかの migration とモデルの
+# コードに依らないので、ここに持つ）
+PROMPT_NAME_PATTERN = r"^\S(?:.*\S)?\Z"
+NAME_MAX_LENGTH = 200
+TEMPORARY_PREFIX = "__llm_config_0019__/"
+
+
+def _name_problem(langfuse_prompt_name: str) -> str | None:
+    """Langfuse のプロンプト名を名前にできない理由（できるなら None）."""
+    if not langfuse_prompt_name.strip():
+        return "Langfuse のプロンプト名が空です"
+    if len(langfuse_prompt_name) > NAME_MAX_LENGTH:
+        return f"Langfuse のプロンプト名が {NAME_MAX_LENGTH} 字を超えます"
+    if not re.match(PROMPT_NAME_PATTERN, langfuse_prompt_name):
+        return "Langfuse のプロンプト名の前後か途中に、空白か改行があります"
+    return None
+
+
+def _problems(rows) -> list[str]:
+    """名前を Langfuse のプロンプト名にできない参照（0019 の _problems と同じ検査）.
+
+    Args:
+        rows: (識別名, Langfuse のプロンプト名, ラベル) の並び
+
+    Returns:
+        直すべき参照の説明（なければ空）
+    """
+    problems = []
+    by_langfuse_name = defaultdict(list)
+    for name, langfuse_name, label in rows:
+        by_langfuse_name[langfuse_name].append((name, label))
+        reason = _name_problem(langfuse_name)
+        if reason is not None:
+            problems.append(f"- {name}（{langfuse_name!r}@{label}）: {reason}")
+        if name.startswith(TEMPORARY_PREFIX) or langfuse_name.startswith(
+            TEMPORARY_PREFIX
+        ):
+            problems.append(
+                f"- {name}（{langfuse_name}@{label}）: 名前か Langfuse のプロンプト名が、"
+                f"移行の一時の名前（{TEMPORARY_PREFIX}）で始まります"
+            )
+    for langfuse_name, refs in sorted(by_langfuse_name.items()):
+        if len(refs) > 1:
+            problems.append(
+                f"- Langfuse のプロンプト名 {langfuse_name} が重なっています: "
+                + "、".join(
+                    f"{name}（{langfuse_name}@{label}）" for name, label in refs
+                )
+            )
+    return problems
+
+
+def _stop_if_problems(rows) -> None:
+    """名前にできない参照があれば、何も変えずに RuntimeError で止める（0019 と同じ文面）."""
+    problems = _problems(rows)
+    if problems:
+        raise RuntimeError(
+            "プロンプトの名前を Langfuse のプロンプト名にできない参照があるので、migration を"
+            "止めました（この migration は何も変えていません）。プロンプト（AI設定 → Prompts）の"
+            "名前は Langfuse のプロンプト名そのものになり、一意です。この版より前のコードの"
+            "管理画面（「Langfuse → Langfuseプロンプト参照」）か shell で、次の参照の Langfuse の"
+            "プロンプト名を直すか、使っていない参照を消してから、migrate し直してください:\n"
+            + "\n".join(problems)
+        )
+
+
+def check_names_can_become_langfuse_prompt_names(apps, schema_editor):
+    """0019 で名前を Langfuse のプロンプト名にできない参照があれば、何も変えずに止める."""
+    LangfusePromptRef = apps.get_model("langfuse_integration", "LangfusePromptRef")
+    _stop_if_problems(
+        LangfusePromptRef.objects.using(schema_editor.connection.alias)
+        .order_by("name")
+        .values_list("name", "langfuse_prompt_name", "label")
+    )
 
 
 def _permission_holders(apps) -> list[tuple[type, str]]:
@@ -120,6 +203,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # 何かを変える前に止まれるよう、最初に検査する（戻すときは何もしない）
+        migrations.RunPython(
+            check_names_can_become_langfuse_prompt_names, migrations.RunPython.noop
+        ),
         migrations.SeparateDatabaseAndState(
             state_operations=[
                 migrations.CreateModel(
@@ -194,7 +281,9 @@ class Migration(migrations.Migration):
                         ),
                         (
                             "updated_at",
-                            models.DateTimeField(auto_now=True, verbose_name="更新日時"),
+                            models.DateTimeField(
+                                auto_now=True, verbose_name="更新日時"
+                            ),
                         ),
                     ],
                     options={

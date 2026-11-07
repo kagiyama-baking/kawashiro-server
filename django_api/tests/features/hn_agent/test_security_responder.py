@@ -12,6 +12,7 @@ from features.hn_agent.agents.security_responder import (
 )
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
+from integrations.langfuse.exceptions import PromptUnavailableError
 from tests.fixtures.llm import ScriptedLLM
 
 pytestmark = pytest.mark.django_db
@@ -110,6 +111,27 @@ class TestSecurityResponderAgent:
         assert result["analysis"]["severity"] == "high"
         assert result["analysis"]["official_patch"]["available"] is True
         assert len(result["search_sources"]) == 1
+
+    def test_analyze_without_user_prompt_in_langfuse_raises_before_llm_request(
+        self,
+        mock_hn_client,
+        mock_tavily_client,
+        security_llm,
+        hn_agent_config,
+        hn_langfuse_prompts,
+    ):
+        """user プロンプトを Langfuse から取れなければ、LLM を呼ばずに PromptUnavailableError."""
+        del hn_langfuse_prompts[("hn-agent-security-responder-user", "production")]
+        thread = HNThread.objects.create(hn_id=956, title="No prompt", author="x")
+        agent = SecurityResponderAgent(
+            hn_client=mock_hn_client, tavily_client=mock_tavily_client
+        )
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            async_to_sync(agent.analyze)(thread)
+
+        assert exc_info.value.prompt_name == "hn-agent-security-responder-user"
+        assert security_llm.requests == []
 
     def test_analyze_prompt_contains_uncommitted_data(
         self,

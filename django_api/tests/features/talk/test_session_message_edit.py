@@ -49,7 +49,7 @@ def auth_client(user):
 def system_prompt(db, langfuse_prompts):
     """Talk 設定のシステムプロンプトの参照（本文は Langfuse の代役の production にある）."""
     langfuse_prompts[("edit-system", "production")] = "system"
-    return Prompt.objects.create(name="edit-system", langfuse_prompt_name="edit-system")
+    return Prompt.objects.create(name="edit-system")
 
 
 @pytest.fixture

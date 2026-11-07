@@ -72,26 +72,27 @@ def hn_llm_services(db):
 
 
 @pytest.fixture
-def hn_prompt_refs(db):
-    """HN Agent 用のプロンプト（Prompt）を用意する.
+def hn_prompts(db):
+    """HN Agent 設定が選ぶ 8 本のプロンプト（Prompt）を、項目名 → プロンプトで返す.
 
-    data migration でシード済みのものを取得する（テスト DB にも適用される）。
+    data migration で seed 済みのもの（名前は Langfuse のプロンプト名。テスト DB にも
+    適用される）。本文は `hn_langfuse_prompts` が Langfuse の代役に置く。
     """
     names = {
-        "orchestrator_system": "hn-agent-orchestrator-system",
-        "orchestrator_user": "hn-agent-orchestrator-user",
-        "detective_system": "hn-agent-detective-system",
-        "detective_user": "hn-agent-detective-user",
-        "devils_advocate_system": "hn-agent-devils-advocate-system",
-        "devils_advocate_user": "hn-agent-devils-advocate-user",
-        "security_responder_system": "hn-agent-security-responder-system",
-        "security_responder_user": "hn-agent-security-responder-user",
+        "orchestrator_system_prompt": "hn-agent-orchestrator",
+        "orchestrator_user_prompt": "hn-agent-orchestrator-user",
+        "detective_system_prompt": "hn-agent-detective",
+        "detective_user_prompt": "hn-agent-detective-user",
+        "devils_advocate_system_prompt": "hn-agent-devils-advocate",
+        "devils_advocate_user_prompt": "hn-agent-devils-advocate-user",
+        "security_responder_system_prompt": "hn-agent-security-responder",
+        "security_responder_user_prompt": "hn-agent-security-responder-user",
     }
-    return {key: Prompt.objects.get(name=name) for key, name in names.items()}
+    return {field: Prompt.objects.get(name=name) for field, name in names.items()}
 
 
 @pytest.fixture
-def hn_agent_config(hn_prompt_refs):
+def hn_agent_config(hn_prompts):
     """有効な HNAgentConfig インスタンスを用意."""
     return HNAgentConfig.objects.create(
         name="test-config",
@@ -100,14 +101,7 @@ def hn_agent_config(hn_prompt_refs):
         velocity_threshold=50.0,
         poll_interval_seconds=600,
         front_page_limit=30,
-        orchestrator_system_prompt=hn_prompt_refs["orchestrator_system"],
-        orchestrator_user_prompt=hn_prompt_refs["orchestrator_user"],
-        detective_system_prompt=hn_prompt_refs["detective_system"],
-        detective_user_prompt=hn_prompt_refs["detective_user"],
-        devils_advocate_system_prompt=hn_prompt_refs["devils_advocate_system"],
-        devils_advocate_user_prompt=hn_prompt_refs["devils_advocate_user"],
-        security_responder_system_prompt=hn_prompt_refs["security_responder_system"],
-        security_responder_user_prompt=hn_prompt_refs["security_responder_user"],
+        **hn_prompts,
     )
 
 

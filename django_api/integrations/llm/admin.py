@@ -135,48 +135,29 @@ class LLMServiceConfigAdmin(admin.ModelAdmin):
 class PromptAdmin(admin.ModelAdmin):
     """Prompts 管理（各機能の設定は、ここで登録したプロンプトから選ぶ）."""
 
-    list_display = (
-        "name",
-        "langfuse_prompt_name",
-        "label",
-        "description",
-        "updated_at",
-    )
+    list_display = ("name", "label", "description")
     list_filter = ("label",)
-    # 各機能の設定のプロンプトの欄（autocomplete）が、この検索で候補を出す
-    search_fields = ("name", "langfuse_prompt_name", "description")
+    # 各機能の設定のプロンプトの欄（autocomplete）も、この検索で候補を出す
+    search_fields = ("name", "description")
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
         (
-            "基本設定",
+            "プロンプト",
             {
                 "fields": ("name", "description"),
                 "description": (
-                    "Django 側で一意に識別する名前と用途説明。"
-                    "各機能設定（HN Agent / Companion / Talk）はここで登録したプロンプトを"
-                    "選択します。"
+                    "本文は、プロンプト名と同じ名前の Langfuse の text プロンプトを、下のラベルで"
+                    "読みます。フォールバックはありません（Langfuse から取れなければ、この"
+                    "プロンプトを使う機能は止まります）。各機能の設定（HN Agent / Companion / "
+                    "Talk）は、ここで登録したプロンプトから選びます。"
                 ),
             },
         ),
         (
-            "Langfuse連携",
+            "Langfuse",
             {
-                "fields": ("langfuse_prompt_name", "label"),
-                "description": (
-                    "Langfuse 上のプロンプト名とラベル。"
-                    "Langfuse 接続時はここで指定したプロンプトが取得されます。"
-                ),
-            },
-        ),
-        (
-            "フォールバック",
-            {
-                "fields": ("fallback_text",),
-                "description": (
-                    "Langfuse 接続失敗・プロンプト未登録時に使用されるテキスト。"
-                    "`{{変数}}` は呼び出し側の variables で簡易置換されます。"
-                ),
+                "fields": ("label",),
             },
         ),
         (

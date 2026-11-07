@@ -33,7 +33,7 @@ LLM 呼び出しは LiteLLM Proxy 経由でプロバイダー非依存、観測�
     - 🔐 **User**: ユーザー認証・管理機能
     - **integrations/** - 外部サービス連携
         - 🤖 **LLM**: LiteLLM Proxy 経由の LLM クライアント（プロバイダー非依存・Langfuse 自動トレース）と、全エージェントで共有する Prompts（`Prompt`。HN Agent / Talk 設定 / Companion のシステムプロンプトが選ぶ）・Agent Skills（Companion のスキル・Talk のシーン）
-        - 🔭 **Langfuse**: プロンプトの本文の取得（Prompts と Agent Skills の本文は Langfuse の text プロンプト）+ Sessions 機能でチャット会話を集約観測
+        - 🔭 **Langfuse**: プロンプトの本文の取得（Prompts と Agent Skills の本文は、同じ名前の Langfuse の text プロンプト。フォールバックなし）+ Sessions 機能でチャット会話を集約観測
         - 🔗 **MS Graph**: Microsoft Graph API 設定・認証・クライアント
         - ☁️ **OneDrive**: Microsoft OneDrive との統合機能
         - 📅 **Outlook**: Outlook Calendar 予定取得機能
@@ -149,7 +149,7 @@ curl http://localhost:3000/           # Frontend
 | TTS | `TTS_TIMEOUT` | TTS リクエストのタイムアウト秒（デフォルト `120`） |
 | LLM | `LITELLM_PROXY_URL` | LiteLLM Proxy のベース URL（デフォルト `http://litellm-proxy:4000/v1`） |
 | LLM | `LITELLM_MASTER_KEY` | `LLMProviderConfig` の Virtual Key 未設定時のフォールバック |
-| Langfuse | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 認証（任意。未設定時はトレース・プロンプト取得を skip） |
+| Langfuse | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse 認証。**必須**（プロンプトの本文はすべて Langfuse から取り、フォールバックはない。未設定だと HN Agent の調査・Companion・Talk のチャットが動かない。トレースも送らない） |
 | Langfuse | `LANGFUSE_BASE_URL` | self-hosted 使用時のみ（未指定時はクラウド） |
 | Langfuse | `LANGFUSE_TRACING_ENVIRONMENT` | `dev` / `prd` |
 

@@ -44,13 +44,13 @@ def _create_fixtures():
     refs = {
         field: Prompt.objects.get(name=name)
         for field, name in {
-            "orchestrator_system_prompt": "hn-agent-orchestrator-system",
+            "orchestrator_system_prompt": "hn-agent-orchestrator",
             "orchestrator_user_prompt": "hn-agent-orchestrator-user",
-            "detective_system_prompt": "hn-agent-detective-system",
+            "detective_system_prompt": "hn-agent-detective",
             "detective_user_prompt": "hn-agent-detective-user",
-            "devils_advocate_system_prompt": "hn-agent-devils-advocate-system",
+            "devils_advocate_system_prompt": "hn-agent-devils-advocate",
             "devils_advocate_user_prompt": "hn-agent-devils-advocate-user",
-            "security_responder_system_prompt": "hn-agent-security-responder-system",
+            "security_responder_system_prompt": "hn-agent-security-responder",
             "security_responder_user_prompt": "hn-agent-security-responder-user",
         }.items()
     }
@@ -96,7 +96,7 @@ def _run_talk():
     from integrations.llm.models import Prompt
     from tests.fixtures.llm import ScriptedLLM
 
-    ref = Prompt.objects.create(name="trace-talk", langfuse_prompt_name="trace-talk")
+    ref = Prompt.objects.create(name="trace-talk")
     setting = TalkSetting.objects.create(name="trace", system_prompt=ref)
     llm = ScriptedLLM("返信")
     service = TalkService()
@@ -160,9 +160,7 @@ def _run_companion():
     from integrations.tts.client import TTSResult
     from tests.fixtures.llm import ScriptedLLM, load_capability
 
-    ref = Prompt.objects.create(
-        name="trace-companion", langfuse_prompt_name="trace-companion"
-    )
+    ref = Prompt.objects.create(name="trace-companion")
     config = CompanionConfig.objects.create(
         name="trace", is_active=True, system_prompt=ref, tts_enabled=True
     )
@@ -206,10 +204,7 @@ def main() -> None:
     client = Langfuse(span_exporter=exporter)
 
     # プロンプトの取得だけ Langfuse サーバーへ出ないようにする（送信はしていない）
-    with patch(
-        "integrations.langfuse.client.get_prompt_with_variables",
-        return_value=(lambda **_: "prompt", set()),
-    ):
+    with patch("integrations.llm.prompts.fetch_text_prompt", return_value="prompt"):
         thread = _create_fixtures()
         result = _run_investigation(thread)
         _run_talk()

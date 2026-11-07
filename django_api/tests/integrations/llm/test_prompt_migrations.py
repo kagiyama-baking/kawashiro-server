@@ -1,4 +1,4 @@
-"""プロンプト（Prompt）を AI設定（llm_config）へ移す migration のテスト.
+"""プロンプト（Prompt）を AI設定（llm_config）へ移し、名前を Langfuse のプロンプト名にする migration のテスト.
 
 llm_config の 0018 は、langfuse_integration の LangfusePromptRef を、表を変えずに llm_config の
 Prompt にする（状態だけ）。HN Agent の 0018 は 8 本の外部キーの向き先を、Companion の 0008・
@@ -7,6 +7,11 @@ system_prompt に改める（列の名前が変わる）。langfuse_integration 
 消す。行・外部キーの値・表がそのまま残ることと、戻し方（`migrate llm_config 0017`）で元に戻る
 ことを確かめる。0018 は、権限と管理画面の履歴が指す内容の型（ContentType）も付け替える
 （移す先の行もあれば 1 つにまとめる）。
+
+llm_config の 0019 は、名前を Langfuse のプロンプト名そのものにし、Langfuse のプロンプト名と
+フォールバックテキストの列を消す。名前にできない Langfuse のプロンプト名（空・前後の空白や改行・
+重なり）があれば、0018 の最初で何も変えずに止まる（0019 も同じ検査をする）。後退では列を戻し、
+HN Agent の seed の 4 本を元の識別名に戻す（100 字を超える名前があれば止まる）。
 """
 
 import pytest
@@ -18,6 +23,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
+from django.db.models import Q
 
 from integrations.llm.models import Prompt
 from tests.fixtures.migrations import applied_apps, prompt_model, system_prompt_field
@@ -40,6 +46,20 @@ TALK_RENAME = ("talk", "0020_rename_system_prompt_ref_to_system_prompt")
 DELETE_OLD = ("langfuse_integration", "0004_delete_langfusepromptref")
 AFTER_MOVE = [DELETE_OLD]
 MOVE_MIGRATIONS = {MOVE, HN_RETARGET, COMPANION_RENAME, TALK_RENAME, DELETE_OLD}
+# 名前を Langfuse のプロンプト名にする migration と、その前後（前は移した後の時点）
+RENAME = ("llm_config", "0019_prompt_name_is_langfuse_prompt_name")
+BEFORE_RENAME = [MOVE, DELETE_OLD]
+AFTER_RENAME = [RENAME]
+ALL_MIGRATIONS = {*MOVE_MIGRATIONS, RENAME}
+# 0019 が付け替えの途中に使う一時の名前の接頭辞
+TEMPORARY_PREFIX = "__llm_config_0019__/"
+# HN Agent の seed の system プロンプト（0019 より前の識別名 → Langfuse のプロンプト名）
+HN_SEED_SYSTEM_NAMES = {
+    "hn-agent-orchestrator-system": "hn-agent-orchestrator",
+    "hn-agent-detective-system": "hn-agent-detective",
+    "hn-agent-devils-advocate-system": "hn-agent-devils-advocate",
+    "hn-agent-security-responder-system": "hn-agent-security-responder",
+}
 
 # HN Agent 設定がプロンプトを選ぶ 8 本の外部キー
 HN_PROMPT_FIELDS = (
@@ -53,11 +73,12 @@ HN_PROMPT_FIELDS = (
     "security_responder_user_prompt",
 )
 
-# テストで作る設定とプロンプト（後始末で消す）
+# テストで作る設定とプロンプト。後始末では、名前（Langfuse のプロンプト名も）がこの接頭辞か
+# 一時の名前の接頭辞で始まるプロンプトを消す
 CONFIG_NAME = "prompt-move-test"
-SYSTEM_PROMPT_NAME = "prompt-move-test-system"
-HN_PROMPT_NAMES = tuple(f"prompt-move-test-hn-{field}" for field in HN_PROMPT_FIELDS)
-CLEANUP_PROMPT_NAMES = (SYSTEM_PROMPT_NAME, *HN_PROMPT_NAMES)
+TEST_PREFIX = "prompt-move-test-"
+SYSTEM_PROMPT_NAME = f"{TEST_PREFIX}system"
+HN_PROMPT_NAMES = tuple(f"{TEST_PREFIX}hn-{field}" for field in HN_PROMPT_FIELDS)
 
 # 権限と管理画面の履歴を付ける、テスト用のユーザーとグループ
 TEST_USER_EMAIL = "prompt-move-test@example.com"
@@ -111,7 +132,9 @@ def _delete_test_rows(apps) -> None:
         name=CONFIG_NAME
     ).delete()
     apps.get_model("talk", "TalkSetting").objects.filter(name=CONFIG_NAME).delete()
-    prompt_model(apps).objects.filter(name__in=CLEANUP_PROMPT_NAMES).delete()
+    prompt_model(apps).objects.filter(
+        Q(name__startswith=TEST_PREFIX) | Q(name__startswith=TEMPORARY_PREFIX)
+    ).delete()
     # ユーザーを消すと、そのユーザーの履歴と権限の付与も消える
     apps.get_model(settings.AUTH_USER_MODEL).objects.filter(
         email=TEST_USER_EMAIL
@@ -132,10 +155,24 @@ def _applied_migrations() -> set:
 
 
 def _create_prompt(apps, name: str, **fields):
-    """その時点のモデルでプロンプトを作る（Langfuse のプロンプト名は、指定しなければ名前と同じ）."""
-    return prompt_model(apps).objects.create(
-        name=name, **{"langfuse_prompt_name": name, **fields}
-    )
+    """その時点のモデルでプロンプトを作る.
+
+    0019 より前のモデルでは、Langfuse のプロンプト名を指定しなければ名前と同じにする。
+    """
+    model = prompt_model(apps)
+    if _has_field(model, "langfuse_prompt_name"):
+        fields.setdefault("langfuse_prompt_name", name)
+    return model.objects.create(name=name, **fields)
+
+
+def _has_field(model, name: str) -> bool:
+    """モデルにその項目があるか."""
+    return name in {field.name for field in model._meta.get_fields()}
+
+
+def _names_by_pk(apps, pks) -> dict[int, str]:
+    """その時点のモデルで、プロンプトの pk → 名前."""
+    return dict(prompt_model(apps).objects.filter(pk__in=pks).values_list("pk", "name"))
 
 
 def _create_configs(apps) -> dict[str, int]:
@@ -335,13 +372,13 @@ def test_move_renames_system_prompt_column(migrator, table):
 
 
 @pytest.mark.integration
-def test_rollback_to_llm_config_0017_unapplies_all_move_migrations(migrator):
-    """戻し方（`migrate llm_config 0017`）で、移す migration がすべて外れる."""
-    _migrate(migrator, AFTER_MOVE)
+def test_rollback_to_llm_config_0017_unapplies_all_six_migrations(migrator):
+    """戻し方（`migrate llm_config 0017`）で、移す 5 本と名前を付け替える 0019 がすべて外れる."""
+    assert ALL_MIGRATIONS.issubset(_applied_migrations())
 
     _migrate(migrator, ROLLBACK)
 
-    assert MOVE_MIGRATIONS.isdisjoint(_applied_migrations())
+    assert ALL_MIGRATIONS.isdisjoint(_applied_migrations())
     assert LLM_BEFORE_MOVE in _applied_migrations()
 
 
@@ -508,3 +545,274 @@ def test_rollback_with_both_content_types_keeps_one_row_with_old_permissions(
     assert _permissions(moved) == _default_permissions(
         "langfusepromptref", OLD_VERBOSE_NAME
     )
+
+
+@pytest.mark.integration
+def test_move_with_duplicate_langfuse_prompt_names_stops_before_changing_anything(
+    migrator,
+):
+    """Langfuse のプロンプト名が重なる参照があれば、0018 の最初で止まり、何も変えない.
+
+    名前は Langfuse のプロンプト名になり一意なので、重なると付け替えられない。エラーには、
+    重なる参照（識別名・Langfuse のプロンプト名@ラベル）を挙げる（重ならない参照は挙げない）。
+    """
+    apps = _migrate(migrator, BEFORE_MOVE)
+    shared = f"{TEST_PREFIX}shared"
+    _create_prompt(apps, f"{TEST_PREFIX}a", langfuse_prompt_name=shared)
+    _create_prompt(
+        apps, f"{TEST_PREFIX}b", langfuse_prompt_name=shared, label="staging"
+    )
+    _create_prompt(apps, f"{TEST_PREFIX}other")
+    original = _content_type(OLD_CONTENT_TYPE)
+    rows = _prompt_rows(apps, [f"{TEST_PREFIX}a", f"{TEST_PREFIX}b"])
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _migrate(migrator, AFTER_RENAME)
+
+    message = str(exc_info.value)
+    assert "何も変えていません" in message
+    assert f"{TEST_PREFIX}a（{shared}@production）" in message
+    assert f"{TEST_PREFIX}b（{shared}@staging）" in message
+    assert f"{TEST_PREFIX}other" not in message
+    assert ALL_MIGRATIONS.isdisjoint(_applied_migrations())
+    stopped_apps = migrator.loader.project_state(BEFORE_MOVE).apps
+    assert _prompt_rows(stopped_apps, [f"{TEST_PREFIX}a", f"{TEST_PREFIX}b"]) == rows
+    assert _prompt_content_types() == [(*OLD_CONTENT_TYPE, original.pk)]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "langfuse_prompt_name",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("  ", id="spaces_only"),
+        pytest.param(" prompt-move-test-x", id="leading_space"),
+        pytest.param("prompt-move-test-x\n", id="trailing_newline"),
+        pytest.param("prompt-move-test\nx", id="newline_inside"),
+        pytest.param(TEST_PREFIX + "x" * 184, id="201_chars"),
+    ],
+)
+def test_move_with_unusable_langfuse_prompt_name_stops_and_names_the_ref(
+    migrator, langfuse_prompt_name
+):
+    """Langfuse のプロンプト名が名前にできない（空・前後の空白や改行・途中の改行・200 字超）なら止める."""
+    apps = _migrate(migrator, BEFORE_MOVE)
+    _create_prompt(apps, f"{TEST_PREFIX}bad", langfuse_prompt_name=langfuse_prompt_name)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _migrate(migrator, AFTER_RENAME)
+
+    assert f"{TEST_PREFIX}bad" in str(exc_info.value)
+    assert ALL_MIGRATIONS.isdisjoint(_applied_migrations())
+
+
+@pytest.mark.integration
+def test_move_with_name_starting_with_temporary_prefix_stops(migrator):
+    """名前が 0019 の一時の名前（__llm_config_0019__/）で始まる参照があれば止める."""
+    apps = _migrate(migrator, BEFORE_MOVE)
+    _create_prompt(apps, f"{TEMPORARY_PREFIX}1")
+
+    with pytest.raises(RuntimeError, match=TEMPORARY_PREFIX):
+        _migrate(migrator, AFTER_RENAME)
+
+    assert ALL_MIGRATIONS.isdisjoint(_applied_migrations())
+
+
+@pytest.mark.integration
+def test_rename_sets_names_to_langfuse_prompt_names_including_swaps_and_chains(
+    migrator,
+):
+    """名前を Langfuse のプロンプト名に付け替える（pk はそのまま）.
+
+    名前が入れ替わる 2 件と、つながる 2 件（一方の Langfuse 名が他方の名前）があっても、
+    一意の制約に触れずに付け替える。名前と Langfuse のプロンプト名が同じ行は変えない。
+    """
+    apps = _migrate(migrator, BEFORE_MOVE)
+    x, y, first, second, same = (
+        f"{TEST_PREFIX}{suffix}" for suffix in ("x", "y", "1", "2", "same")
+    )
+    expected = {
+        _create_prompt(apps, x, langfuse_prompt_name=y).pk: y,
+        _create_prompt(apps, y, langfuse_prompt_name=x).pk: x,
+        _create_prompt(apps, first, langfuse_prompt_name=second).pk: second,
+        _create_prompt(apps, second, langfuse_prompt_name=f"{TEST_PREFIX}3").pk: (
+            f"{TEST_PREFIX}3"
+        ),
+        _create_prompt(apps, same).pk: same,
+    }
+
+    new_apps = _migrate(migrator, AFTER_RENAME)
+
+    assert _names_by_pk(new_apps, expected) == expected
+
+
+@pytest.mark.integration
+def test_rename_keeps_prompts_chosen_by_configs(migrator):
+    """名前を付け替えても、設定は同じプロンプト（pk）を選んでいる."""
+    apps = _migrate(migrator, BEFORE_MOVE)
+    chosen = _create_configs(apps)
+    prompts = prompt_model(apps).objects
+    for pk in set(chosen.values()):
+        prompts.filter(pk=pk).update(langfuse_prompt_name=f"{TEST_PREFIX}lf-{pk}")
+
+    new_apps = _migrate(migrator, AFTER_RENAME)
+
+    assert _chosen_prompts(new_apps) == chosen
+    assert _names_by_pk(new_apps, chosen.values()) == {
+        pk: f"{TEST_PREFIX}lf-{pk}" for pk in chosen.values()
+    }
+
+
+@pytest.fixture
+def hn_seed_system_prompts(migrator) -> dict[int, str]:
+    """HN Agent の seed の system プロンプト 4 本（pk → すべて当てた時点の名前）.
+
+    seed は data migration が入れるが、同じワーカーで先に流れた transaction=True のテストが
+    DB を空にしていることがある（pytest-django は、DB の印のない migration のテストを最後に
+    流す）。なければ同じ名前で作る（seed の代わりなので、後始末では消さない）。
+    """
+    return {
+        Prompt.objects.get_or_create(name=name)[0].pk: name
+        for name in HN_SEED_SYSTEM_NAMES.values()
+    }
+
+
+@pytest.mark.integration
+def test_rename_gives_hn_seed_system_prompts_their_langfuse_names(
+    migrator, hn_seed_system_prompts
+):
+    """HN Agent の seed の system プロンプト 4 本は、Langfuse のプロンプト名になる（pk はそのまま）."""
+    apps = _migrate(migrator, BEFORE_MOVE)
+    old_names = {new: old for old, new in HN_SEED_SYSTEM_NAMES.items()}
+    assert _names_by_pk(apps, hn_seed_system_prompts) == {
+        pk: old_names[name] for pk, name in hn_seed_system_prompts.items()
+    }
+
+    new_apps = _migrate(migrator, AFTER_RENAME)
+
+    assert _names_by_pk(new_apps, hn_seed_system_prompts) == hn_seed_system_prompts
+
+
+@pytest.mark.integration
+def test_rename_drops_langfuse_prompt_name_and_fallback_text_columns(migrator):
+    """名前を付け替えた後は、Langfuse のプロンプト名とフォールバックテキストの列がない."""
+    _migrate(migrator, BEFORE_RENAME)
+    table = Prompt._meta.db_table
+    assert {"langfuse_prompt_name", "fallback_text"} <= _column_names(table)
+
+    _migrate(migrator, AFTER_RENAME)
+
+    assert {"langfuse_prompt_name", "fallback_text"}.isdisjoint(_column_names(table))
+
+
+@pytest.mark.integration
+def test_rename_with_duplicates_added_after_move_stops_and_keeps_names(migrator):
+    """0018 の後に Langfuse のプロンプト名が重なる行ができていても、0019 も止まり何も変えない."""
+    apps = _migrate(migrator, BEFORE_RENAME)
+    shared = f"{TEST_PREFIX}shared"
+    pks = [
+        _create_prompt(apps, f"{TEST_PREFIX}{suffix}", langfuse_prompt_name=shared).pk
+        for suffix in ("a", "b")
+    ]
+
+    with pytest.raises(RuntimeError, match="何も変えていません"):
+        _migrate(migrator, AFTER_RENAME)
+
+    assert RENAME not in _applied_migrations()
+    stopped_apps = migrator.loader.project_state(BEFORE_RENAME).apps
+    assert _names_by_pk(stopped_apps, pks) == {
+        pks[0]: f"{TEST_PREFIX}a",
+        pks[1]: f"{TEST_PREFIX}b",
+    }
+
+
+@pytest.mark.integration
+def test_rename_reverse_restores_columns_and_hn_seed_names(
+    migrator, hn_seed_system_prompts
+):
+    """戻すと列が戻り（Langfuse のプロンプト名は名前と同じ、フォールバックは空）、HN の seed は元の識別名に戻る."""
+    added = Prompt.objects.create(name=f"{TEST_PREFIX}added").pk
+    seeds = hn_seed_system_prompts
+    old_names = {new: old for old, new in HN_SEED_SYSTEM_NAMES.items()}
+
+    old_apps = _migrate(migrator, BEFORE_RENAME)
+
+    rows = prompt_model(old_apps).objects.filter(pk__in=[added, *seeds])
+    assert set(
+        rows.values_list("pk", "name", "langfuse_prompt_name", "fallback_text")
+    ) == {
+        (added, f"{TEST_PREFIX}added", f"{TEST_PREFIX}added", ""),
+        *((pk, old_names[name], name, "") for pk, name in seeds.items()),
+    }
+
+
+@pytest.fixture
+def prompt_with_old_seed_name(migrator, hn_seed_system_prompts):
+    """HN の seed の元の識別名（hn-agent-detective-system）を名前に使うプロンプト（後始末で消す）."""
+    prompt = Prompt.objects.create(name="hn-agent-detective-system")
+    yield prompt
+    prompt_model(applied_apps(migrator)).objects.filter(pk=prompt.pk).delete()
+
+
+@pytest.mark.integration
+def test_rename_reverse_keeps_seed_name_when_old_name_is_taken(
+    migrator, prompt_with_old_seed_name
+):
+    """元の識別名がほかのプロンプトに使われていれば、その seed は名前を戻さない（重ならないように）."""
+    seed = Prompt.objects.get(name="hn-agent-detective")
+
+    old_apps = _migrate(migrator, BEFORE_RENAME)
+
+    assert _names_by_pk(old_apps, [seed.pk, prompt_with_old_seed_name.pk]) == {
+        seed.pk: "hn-agent-detective",
+        prompt_with_old_seed_name.pk: "hn-agent-detective-system",
+    }
+
+
+@pytest.mark.integration
+def test_rename_reverse_with_name_over_100_chars_stops_and_keeps_0019_applied(
+    migrator,
+):
+    """100 字を超える名前があれば、戻さずに止める（0019 より前の名前は 100 字まで）.
+
+    0019 は当たったまま、名前も列もそのまま。エラーには、その名前を挙げる。
+    """
+    long_name = TEST_PREFIX + "a" * (101 - len(TEST_PREFIX))
+    Prompt.objects.create(name=long_name)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _migrate(migrator, BEFORE_RENAME)
+
+    assert long_name in str(exc_info.value)
+    assert "何も変えていません" in str(exc_info.value)
+    assert RENAME in _applied_migrations()
+    assert Prompt.objects.filter(name=long_name).exists()
+    assert "langfuse_prompt_name" not in _column_names(Prompt._meta.db_table)
+
+
+@pytest.mark.integration
+def test_rollback_after_rename_returns_converted_names_to_langfuse_integration_model(
+    migrator,
+):
+    """`migrate llm_config 0017` で、付け替えた名前のまま LangfusePromptRef に戻る.
+
+    Langfuse のプロンプト名は名前と同じ（本文を取る先は変わらない）。seed 以外の元の
+    識別名は戻らない。
+    """
+    apps = _migrate(migrator, BEFORE_MOVE)
+    pk = _create_prompt(
+        apps, f"{TEST_PREFIX}old", langfuse_prompt_name=f"{TEST_PREFIX}new"
+    ).pk
+    _migrate(migrator, AFTER_RENAME)
+
+    _migrate(migrator, ROLLBACK)
+
+    old_apps = migrator.loader.project_state(BEFORE_MOVE).apps
+    assert (
+        prompt_model(old_apps)._meta.label == "langfuse_integration.LangfusePromptRef"
+    )
+    assert list(
+        prompt_model(old_apps)
+        .objects.filter(pk=pk)
+        .values_list("name", "langfuse_prompt_name")
+    ) == [(f"{TEST_PREFIX}new", f"{TEST_PREFIX}new")]
