@@ -27,7 +27,7 @@ kawashiro-server/
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/            # Talk（Talk 設定とシーンで話すチャット。応答は JSON か SSE）+ 廃止予定の会話生成 API
+│   │   ├── talk/            # Talk（Talk 設定とシーンで話すチャット。応答は JSON か SSE）
 │   │   ├── media/           # 画像変換・ZIP→PDF
 │   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
 │   │   └── companion/       # Companion エージェント（システムプロンプト + スキル・常設ツール。発話からセリフを生成する API）
@@ -62,7 +62,7 @@ kawashiro-server/
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
 | LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
-| Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・廃止予定の会話生成（TalkConfig・プレースホルダー） | `django_api/features/talk/README.md` |
+| Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動） | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
 | Companion の設定モデル（CompanionConfig）・スキルの本文の取得・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
@@ -143,7 +143,7 @@ uv run pytest tests/ \
 
 # 個別実行
 uv run pytest tests/features/talk/ -v
-uv run pytest tests/features/talk/test_services.py::test_関数名 -v
+uv run pytest tests/features/talk/test_chat_reply_service.py::test_関数名 -v
 ```
 
 ホストから実行する場合は `.env` の `DB_ENGINE` を無効化して SQLite フォールバックを使う（詳細・落とし穴は `docs/development.md`）。

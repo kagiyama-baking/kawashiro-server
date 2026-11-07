@@ -69,7 +69,7 @@ class TestPreValidationStaysHttp:
 
     def test_session_without_setting_returns_400(self, auth_client, user):
         """Talk 設定のない（移行できなかった旧プリセットの）チャットは続けられない."""
-        orphan = ChatSession.objects.create(user=user, config_name="nope")
+        orphan = ChatSession.objects.create(user=user)
 
         response = self._post(auth_client, orphan.id)
 
@@ -141,7 +141,7 @@ class TestPreValidationStaysHttp:
     def test_edit_session_without_setting_returns_400_and_keeps_message(
         self, auth_client, user
     ):
-        orphan = ChatSession.objects.create(user=user, config_name="nope")
+        orphan = ChatSession.objects.create(user=user)
         message = ChatMessage.objects.create(
             session=orphan, sequence=0, role="user", content="元の発話"
         )
@@ -220,7 +220,7 @@ class TestPreValidationStaysHttp:
     def test_prompt_preparation_failure_returns_mapped_status(
         self, talk_llm_settings, auth_client, session
     ):
-        """プロンプトの準備の失敗は handle_synthesis_error と同じ写像になる."""
+        """プロンプトの準備の失敗は classify_synthesis_error の写像の HTTP ステータスになる."""
         with patch.object(
             TalkService,
             "prepare_chat_prompt",

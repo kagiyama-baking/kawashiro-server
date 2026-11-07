@@ -13,7 +13,6 @@ from .sessions import (
     SessionPagination,
 )
 from .settings import TalkSettingsListView
-from .synthesize import ConfigsListView, TalkSynthesizeView, TodayInfoView
 
 __all__ = [
     "ChatSessionAudioBulkDeleteView",
@@ -22,9 +21,6 @@ __all__ = [
     "ChatSessionMessageAudioView",
     "ChatSessionMessageEditView",
     "ChatSessionMessageView",
-    "ConfigsListView",
     "SessionPagination",
     "TalkSettingsListView",
-    "TalkSynthesizeView",
-    "TodayInfoView",
 ]

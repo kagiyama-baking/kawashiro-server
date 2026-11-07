@@ -57,9 +57,9 @@ class TestSessionListCreate:
         assert response.status_code == 401
 
     def test_list_returns_only_own_sessions(self, auth_client, user, other_user):
-        ChatSession.objects.create(user=user, config_name="m", title="自分A")
-        ChatSession.objects.create(user=user, config_name="m", title="自分B")
-        ChatSession.objects.create(user=other_user, config_name="m", title="他人")
+        ChatSession.objects.create(user=user, title="自分A")
+        ChatSession.objects.create(user=user, title="自分B")
+        ChatSession.objects.create(user=other_user, title="他人")
 
         response = auth_client.get(self.URL)
         assert response.status_code == 200
@@ -69,7 +69,7 @@ class TestSessionListCreate:
         assert titles == ["自分A", "自分B"]
 
     def test_list_includes_aggregates(self, auth_client, user):
-        session = ChatSession.objects.create(user=user, config_name="m", title="t")
+        session = ChatSession.objects.create(user=user, title="t")
         ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="hi"
         )
@@ -91,9 +91,9 @@ class TestSessionListCreate:
         """一覧は updated_at 降順（最新更新が先頭）であること."""
         from django.utils import timezone
 
-        old = ChatSession.objects.create(user=user, config_name="m", title="古い")
-        mid = ChatSession.objects.create(user=user, config_name="m", title="中")
-        new = ChatSession.objects.create(user=user, config_name="m", title="新しい")
+        old = ChatSession.objects.create(user=user, title="古い")
+        mid = ChatSession.objects.create(user=user, title="中")
+        new = ChatSession.objects.create(user=user, title="新しい")
 
         # 明示的に updated_at を逆順にずらす（auto_now を回避するため update を使用）
         now = timezone.now()
@@ -111,7 +111,7 @@ class TestSessionListCreate:
 
     def test_list_pagination_default_limit_is_20(self, auth_client, user):
         for i in range(25):
-            ChatSession.objects.create(user=user, config_name="m", title=f"#{i}")
+            ChatSession.objects.create(user=user, title=f"#{i}")
 
         response = auth_client.get(self.URL)
         assert response.status_code == 200
@@ -120,7 +120,7 @@ class TestSessionListCreate:
 
     def test_list_pagination_supports_limit_and_offset(self, auth_client, user):
         for i in range(25):
-            ChatSession.objects.create(user=user, config_name="m", title=f"#{i}")
+            ChatSession.objects.create(user=user, title=f"#{i}")
 
         response = auth_client.get(self.URL + "?limit=5&offset=10")
         assert response.status_code == 200
@@ -129,7 +129,7 @@ class TestSessionListCreate:
     def test_create_session_with_setting_and_scene_returns_detail(
         self, auth_client, user
     ):
-        """Talk 設定とシーンを固定したセッションを作り、詳細を返す（旧プリセット名は空）."""
+        """Talk 設定とシーンを固定したセッションを作り、詳細を返す."""
         scene = AgentSkillFactory(name="talk-scene-cafe", description="カフェで話す")
         setting = TalkSettingFactory(name="ひな", skills=[scene], tts_enabled=True)
 
@@ -145,14 +145,8 @@ class TestSessionListCreate:
         }
         assert response.data["tts_enabled"] is True
         assert response.data["title"] == ""
-        assert "config_name" not in response.data
         session = ChatSession.objects.get(pk=response.data["id"])
-        assert (session.user, session.setting, session.skill, session.config_name) == (
-            user,
-            setting,
-            scene,
-            "",
-        )
+        assert (session.user, session.setting, session.skill) == (user, setting, scene)
 
     @pytest.mark.parametrize("body", [{}, {"skill": None}, {"skill": ""}])
     def test_create_session_without_scene(self, auth_client, body):
@@ -237,7 +231,7 @@ class TestSessionListCreate:
         scene = AgentSkillFactory(name="talk-scene-cafe", description="カフェで話す")
         setting = TalkSettingFactory(name="ひな", skills=[scene], tts_enabled=True)
         ChatSession.objects.create(user=user, setting=setting, skill=scene, title="新")
-        ChatSession.objects.create(user=user, config_name="gone", title="旧")
+        ChatSession.objects.create(user=user, title="旧")
 
         response = auth_client.get(self.URL)
 
@@ -249,7 +243,6 @@ class TestSessionListCreate:
         assert items["新"]["tts_enabled"] is True
         assert (items["旧"]["setting"], items["旧"]["skill"]) == (None, None)
         assert items["旧"]["tts_enabled"] is False
-        assert all("config_name" not in item for item in items.values())
 
 
 @pytest.mark.django_db
@@ -258,7 +251,7 @@ class TestSessionDetail:
         return f"/talk/sessions/{session_id}/"
 
     def test_get_returns_messages(self, auth_client, user):
-        session = ChatSession.objects.create(user=user, config_name="m", title="t")
+        session = ChatSession.objects.create(user=user, title="t")
         ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="a"
         )
@@ -272,7 +265,7 @@ class TestSessionDetail:
         assert response.data["message_count"] == 2
 
     def test_get_other_users_session_returns_404(self, auth_client, other_user):
-        session = ChatSession.objects.create(user=other_user, config_name="m")
+        session = ChatSession.objects.create(user=other_user)
         response = auth_client.get(self._url(session.id))
         assert response.status_code == 404
 
@@ -281,7 +274,7 @@ class TestSessionDetail:
         assert response.status_code == 404
 
     def test_patch_updates_title(self, auth_client, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         response = auth_client.patch(
             self._url(session.id), {"title": "新タイトル"}, format="json"
         )
@@ -290,7 +283,7 @@ class TestSessionDetail:
         assert session.title == "新タイトル"
 
     def test_patch_other_users_session_returns_404(self, auth_client, other_user):
-        session = ChatSession.objects.create(user=other_user, config_name="m")
+        session = ChatSession.objects.create(user=other_user)
         response = auth_client.patch(
             self._url(session.id), {"title": "x"}, format="json"
         )
@@ -299,13 +292,13 @@ class TestSessionDetail:
         assert session.title == ""
 
     def test_delete_removes_session(self, auth_client, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         response = auth_client.delete(self._url(session.id))
         assert response.status_code == 204
         assert not ChatSession.objects.filter(id=session.id).exists()
 
     def test_delete_other_users_session_returns_404(self, auth_client, other_user):
-        session = ChatSession.objects.create(user=other_user, config_name="m")
+        session = ChatSession.objects.create(user=other_user)
         response = auth_client.delete(self._url(session.id))
         assert response.status_code == 404
         assert ChatSession.objects.filter(id=session.id).exists()

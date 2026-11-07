@@ -97,7 +97,7 @@ INSTALLED_APPS = [
     "features.media",  # 画像処理などのメディア関連機能
     "integrations.tts",  # Text-to-Speech機能
     "integrations.weather",  # 気象庁天気予報機能
-    "features.talk",  # 会話生成機能
+    "features.talk",  # Talk（Talk 設定で話すチャット）
     "health",  # ヘルスチェック
     # タスクキュー
     "django_celery_beat",  # Celery Beat定期タスクスケジューラ
@@ -332,7 +332,7 @@ SPECTACULAR_SETTINGS = {
         {"name": "tts", "description": "Text-to-Speech読み上げAPI"},
         {"name": "weather", "description": "気象庁天気予報API"},
         {"name": "hn-agent", "description": "HN監視・分析エージェントAPI"},
-        {"name": "talk", "description": "会話生成API"},
+        {"name": "talk", "description": "Talk のチャットAPI（設定・履歴）"},
         {
             "name": "companion",
             "description": "Companion エージェントAPI（発話に合うスキルでセリフを生成）",

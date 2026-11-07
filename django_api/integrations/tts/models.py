@@ -8,8 +8,7 @@ from django.db import models
 class AbstractTTSSettings(models.Model):
     """音声合成の設定項目.
 
-    テーブルは持たず、継承した設定モデルのテーブルに列ができる。
-    項目は `features.talk.models.TalkConfig` の TTS 設定と同じ。
+    テーブルは持たず、継承した設定モデル（Talk 設定・Companion 設定）のテーブルに列ができる。
     """
 
     tts_enabled = models.BooleanField(

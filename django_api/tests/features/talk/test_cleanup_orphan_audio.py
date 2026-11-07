@@ -19,7 +19,7 @@ def user(db):
 
 
 def _make_message_with_audio(user, sequence: int = 1) -> ChatMessage:
-    session = ChatSession.objects.create(user=user, config_name="m")
+    session = ChatSession.objects.create(user=user)
     msg = ChatMessage(
         session=session,
         sequence=sequence,
@@ -69,7 +69,7 @@ class TestCleanupOrphanAudio:
         assert msg.audio_size_bytes == original_size
 
     def test_skips_records_without_audio(self, user):
-        session = ChatSession.objects.create(user=user, config_name="m")
+        session = ChatSession.objects.create(user=user)
         ChatMessage.objects.create(
             session=session, sequence=0, role="user", content="hi"
         )

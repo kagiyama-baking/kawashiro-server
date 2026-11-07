@@ -62,28 +62,6 @@ class LangfusePromptRefFactory(factory.django.DjangoModelFactory):
     description = ""
 
 
-class TalkConfigFactory(factory.django.DjangoModelFactory):
-    """TalkConfig のファクトリ."""
-
-    class Meta:
-        model = "talk.TalkConfig"
-        django_get_or_create = ("name",)
-
-    name = factory.Sequence(lambda n: f"talk-config-{n}")
-    display_name = factory.LazyAttribute(lambda o: o.name)
-    area_code = ""
-    system_prompt_ref = factory.SubFactory(
-        LangfusePromptRefFactory,
-        name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
-        fallback_text="system prompt fallback",
-    )
-    user_prompt_ref = factory.SubFactory(
-        LangfusePromptRefFactory,
-        name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-user"),
-        fallback_text="user prompt fallback",
-    )
-
-
 class TalkSettingFactory(factory.django.DjangoModelFactory):
     """TalkSetting のファクトリ（既定は有効・シーンなし・音声なし）.
 

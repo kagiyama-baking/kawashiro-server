@@ -281,7 +281,7 @@ class TestSessionMessagePost:
 
     def test_session_without_setting_returns_400(self, auth_client, user):
         """Talk 設定のない（移行できなかった旧プリセットの）チャットは続けられない."""
-        sess = ChatSession.objects.create(user=user, config_name="nope")
+        sess = ChatSession.objects.create(user=user)
         response = auth_client.post(_url(sess.id), {"content": "hi"}, format="json")
         assert response.status_code == 400
         assert "Talk 設定がない" in response.data["error"]

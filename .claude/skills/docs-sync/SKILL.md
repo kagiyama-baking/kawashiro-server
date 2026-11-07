@@ -32,13 +32,13 @@ description: コード変更に伴うドキュメント更新チェック。コ�
 | `django_api/*/urls.py`・views の追加・削除 | `django_api/README.md` 機能一覧表 + 該当機能 README の API 表 |
 | `django_api/integrations/` 配下の新アプリ追加 | `.claude/CLAUDE.md` リポジトリ構造 + `django_api/README.md` 機能一覧表 |
 | `django_api/integrations/llm/`・`langfuse/`（モデル・admin・クライアント・config） | `django_api/integrations/llm/README.md`（3レイヤ表・admin 表（Agent Skills の `AgentSkill` 表を含む）・命名規約。`apps.py` の `verbose_name`（admin のグループ名「AI設定」）やモデルの表示名を変えたら、管理画面の経路を書いた `docs/initial-setup.md`・`django_api/README.md`・ルート `README.md`・各機能の README も。`fetch_text_prompt` の取得・キャッシュの扱いを変えたら `django_api/features/companion/README.md` の「スキル」も。`langfuse_session` の付与・失敗時の扱いを変えたら `django_api/features/talk/README.md` の「Langfuse Sessions 連携」と `django_api/features/companion/README.md` の「トレース（Langfuse）」も。`resolve_skill_body`（`skills.py`）・`resolve_required_prompt` の取り方を変えたら companion README の「スキル」と talk README の「チャットのプロンプト」も） |
-| `django_api/features/talk/`（モデル・views・services） | `django_api/features/talk/README.md`（Talk 設定（TalkSetting）表・TalkConfig 表・API 表・上限値。Talk 設定の項目や admin の経路を変えたら `docs/initial-setup.md` の 5-4 も） |
+| `django_api/features/talk/`（モデル・views・services） | `django_api/features/talk/README.md`（Talk 設定（TalkSetting）表・API 表・上限値。Talk 設定の項目や admin の経路を変えたら `docs/initial-setup.md` の 5-3 も） |
 | `django_api/features/media/views.py`（`MAX_*` 等の制限値） | `django_api/features/media/README.md` 制限値表 |
 | `django_api/features/hn_agent/` | `django_api/features/hn_agent/README.md` |
 | `django_api/features/companion/` | `django_api/features/companion/README.md`（`models.py` → CompanionConfig 表、`migrations/` → 「構成」（旧スキルを写す 0004 の規則は「旧 CompanionSkill からの移行」）、`admin.py` → 「管理画面」、`agent.py` → 「ツール」「応答の方針」、`skills.py` → 「スキル」、`services.py` → 「実行の流れ」の各節（スキルの指定と自動選択・上限と再試行・トレース）、`serializers.py`・`views.py`・`throttling.py`・`urls.py` → 「API」（リクエスト・レスポンス・エラー・回数制限）、ファイルの増減 → 「構成」） |
-| `django_api/integrations/tts/models.py`（`AbstractTTSSettings` の項目・`get_tts_options()`） | `django_api/features/companion/README.md`（`tts_*` の行と `get_tts_options()` の説明）+ `django_api/features/talk/README.md`（Talk 設定の `tts_*` の行） |
+| `django_api/integrations/tts/models.py`（`AbstractTTSSettings` の項目・`get_tts_options()`） | `django_api/features/talk/README.md`（Talk 設定の表の `tts_*` の行。項目・既定値の正で、Companion の表はここを参照する）+ `django_api/features/companion/README.md`（`tts_*` の行と `get_tts_options()` の説明） |
 | `django_api/integrations/weather/` | `django_api/integrations/weather/README.md`（返す辞書の形を変えたら `django_api/features/companion/README.md` の「ツール」の `get_weather` も） |
-| `django_api/integrations/holiday/`（日時情報のキー・祝日 API のタイムアウト） | `django_api/features/talk/README.md`（プレースホルダー表の `{{datetime}}` 行）+ `django_api/features/companion/README.md`（「ツール」の `get_datetime`） |
+| `django_api/integrations/holiday/`（日時情報のキー・祝日 API のタイムアウト） | `django_api/features/companion/README.md`（「ツール」の `get_datetime`） |
 | `django_api/integrations/msgraph/outlook.py`（`get_calendar_events` の引数・取得範囲・返す予定の項目・タイムゾーン） | `django_api/features/companion/README.md`（「ツール」の `get_today_events`） |
 | admin 設定モデルの migration（フィールド増減・seed 投入） | 該当 README + `docs/initial-setup.md` の投入手順 |
 | `@shared_task` の追加・改名 | 該当機能 README + `docs/initial-setup.md`（PeriodicTask 登録名） |
