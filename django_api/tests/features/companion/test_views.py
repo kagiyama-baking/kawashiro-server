@@ -2,7 +2,8 @@
 
 実行サービスはビューが参照する名前（`features.companion.views.run_companion`）で
 差し替えるので、LLM・Langfuse・音声合成は呼ばない。回数制限は `test_throttling.py`。
-有効な設定がない DB では回数制限が数えないので、ここでは設定を作らない。
+有効な設定がない DB では回数制限が数えないので、ここでは設定を作らない（実行サービスを
+差し替えずに通す最後のテストだけは、有効な設定を作る）。
 """
 
 import base64
@@ -14,6 +15,7 @@ from django.urls import reverse
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework import status
 
+from features.companion.agent import COMPANION_AGENT
 from features.companion.exceptions import (
     CompanionNotConfiguredError,
     UnknownSkillError,
@@ -28,6 +30,8 @@ from integrations.llm.exceptions import (
 )
 from integrations.tts.client import TTSResult
 from integrations.tts.exceptions import TTSNetworkError, TTSTimeoutError
+from tests.fixtures.factories import CompanionConfigFactory
+from tests.fixtures.llm import ScriptedLLM, make_llm_settings
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
 
@@ -370,3 +374,28 @@ class TestCompanionRunSchema:
             for name, field in response["properties"].items()
             if field.get("nullable")
         ] == ["skill", "audio_data", "audio_format"]
+
+
+@pytest.mark.integration
+def test_run_without_system_prompt_in_langfuse_returns_503_without_llm_request(
+    authenticated_client,
+):
+    """有効な設定のシステムプロンプトを Langfuse から取れなければ 503（フォールバックはない）.
+
+    実行サービスを差し替えずに通す（Langfuse の代役には本文を入れていない）。モデルは呼ばない。
+    """
+    CompanionConfigFactory(is_active=True)
+    llm = ScriptedLLM("おはようございます")
+
+    with (
+        patch(
+            "features.companion.services.get_llm_settings",
+            side_effect=make_llm_settings,
+        ),
+        COMPANION_AGENT.override(model=llm.model),
+    ):
+        response = _post(authenticated_client, {"prompt": "おはよう"})
+
+    assert response.status_code == 503
+    assert response.json() == {"error": CONFIG_ERROR}
+    assert llm.requests == []

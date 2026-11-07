@@ -33,8 +33,7 @@ def _span_to_dict(span) -> dict:
 def _create_fixtures():
     """調査に必要な最小限のデータを作る."""
     from features.hn_agent.models import HNAgentConfig, HNThread, HNThreadSnapshot
-    from integrations.langfuse.models import LangfusePromptRef
-    from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
+    from integrations.llm.models import LLMProviderConfig, LLMServiceConfig, Prompt
 
     provider = LLMProviderConfig.objects.create(name="trace", model_alias="test-alias")
     for service_name in ("orchestrator", "detective", "talk", "companion"):
@@ -43,15 +42,15 @@ def _create_fixtures():
         )
 
     refs = {
-        field: LangfusePromptRef.objects.get(name=name)
+        field: Prompt.objects.get(name=name)
         for field, name in {
-            "orchestrator_system_prompt": "hn-agent-orchestrator-system",
+            "orchestrator_system_prompt": "hn-agent-orchestrator",
             "orchestrator_user_prompt": "hn-agent-orchestrator-user",
-            "detective_system_prompt": "hn-agent-detective-system",
+            "detective_system_prompt": "hn-agent-detective",
             "detective_user_prompt": "hn-agent-detective-user",
-            "devils_advocate_system_prompt": "hn-agent-devils-advocate-system",
+            "devils_advocate_system_prompt": "hn-agent-devils-advocate",
             "devils_advocate_user_prompt": "hn-agent-devils-advocate-user",
-            "security_responder_system_prompt": "hn-agent-security-responder-system",
+            "security_responder_system_prompt": "hn-agent-security-responder",
             "security_responder_user_prompt": "hn-agent-security-responder-user",
         }.items()
     }
@@ -94,13 +93,11 @@ def _run_talk():
     from features.talk.llm_agents import TALK_CHAT_AGENT
     from features.talk.models import TalkSetting
     from features.talk.services import TalkService
-    from integrations.langfuse.models import LangfusePromptRef
+    from integrations.llm.models import Prompt
     from tests.fixtures.llm import ScriptedLLM
 
-    ref = LangfusePromptRef.objects.create(
-        name="trace-talk", langfuse_prompt_name="trace-talk", fallback_text="system"
-    )
-    setting = TalkSetting.objects.create(name="trace", system_prompt_ref=ref)
+    ref = Prompt.objects.create(name="trace-talk")
+    setting = TalkSetting.objects.create(name="trace", system_prompt=ref)
     llm = ScriptedLLM("返信")
     service = TalkService()
     with TALK_CHAT_AGENT.override(model=llm.model):
@@ -158,17 +155,14 @@ def _run_companion():
     from features.companion.agent import COMPANION_AGENT
     from features.companion.models import CompanionConfig
     from features.companion.services import run_companion
-    from integrations.langfuse.models import LangfusePromptRef
-    from integrations.llm.models import AgentSkill
+    from integrations.llm.models import AgentSkill, Prompt
     from integrations.llm.runtime import _LITELLM_PROFILE
     from integrations.tts.client import TTSResult
     from tests.fixtures.llm import ScriptedLLM, load_capability
 
-    ref = LangfusePromptRef.objects.create(
-        name="trace-companion", langfuse_prompt_name="trace-companion"
-    )
+    ref = Prompt.objects.create(name="trace-companion")
     config = CompanionConfig.objects.create(
-        name="trace", is_active=True, system_prompt_ref=ref, tts_enabled=True
+        name="trace", is_active=True, system_prompt=ref, tts_enabled=True
     )
     config.skills.add(
         AgentSkill.objects.create(name="good-morning", description="朝のあいさつ")
@@ -210,10 +204,7 @@ def main() -> None:
     client = Langfuse(span_exporter=exporter)
 
     # プロンプトの取得だけ Langfuse サーバーへ出ないようにする（送信はしていない）
-    with patch(
-        "integrations.langfuse.client.get_prompt_with_variables",
-        return_value=(lambda **_: "prompt", set()),
-    ):
+    with patch("integrations.llm.prompts.fetch_text_prompt", return_value="prompt"):
         thread = _create_fixtures()
         result = _run_investigation(thread)
         _run_talk()

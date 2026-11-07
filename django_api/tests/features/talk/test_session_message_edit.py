@@ -4,8 +4,6 @@
 `test_chat_turn_sse.py`、LLM はモデルだけを差し替えて実行する。
 """
 
-from unittest.mock import patch
-
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -14,15 +12,9 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from features.talk.models import ChatMessage, ChatSession, TalkSetting
-from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import Prompt
 
 User = get_user_model()
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -54,25 +46,15 @@ def auth_client(user):
 
 
 @pytest.fixture
-def prompt_refs(db):
-    sys_ref = LangfusePromptRef.objects.create(
-        name="edit-system",
-        langfuse_prompt_name="edit-system",
-        fallback_text="system",
-    )
-    user_ref = LangfusePromptRef.objects.create(
-        name="edit-user",
-        langfuse_prompt_name="edit-user",
-        fallback_text="user",
-    )
-    return sys_ref, user_ref
+def system_prompt(db, langfuse_prompts):
+    """Talk 設定のシステムプロンプトの参照（本文は Langfuse の代役の production にある）."""
+    langfuse_prompts[("edit-system", "production")] = "system"
+    return Prompt.objects.create(name="edit-system")
 
 
 @pytest.fixture
-def talk_setting(prompt_refs):
-    return TalkSetting.objects.create(
-        name="編集再送用", system_prompt_ref=prompt_refs[0]
-    )
+def talk_setting(system_prompt):
+    return TalkSetting.objects.create(name="編集再送用", system_prompt=system_prompt)
 
 
 @pytest.fixture

@@ -9,7 +9,7 @@ from django.db.models import ProtectedError
 from features.talk.models import ChatSession, TalkSetting
 from tests.fixtures.factories import (
     AgentSkillFactory,
-    LangfusePromptRefFactory,
+    PromptFactory,
     TalkSettingFactory,
 )
 
@@ -52,16 +52,14 @@ class TestTalkSetting:
         existing = TalkSettingFactory(name="ひな")
 
         with pytest.raises(ValidationError) as exc_info:
-            TalkSetting(
-                name="ひな", system_prompt_ref=existing.system_prompt_ref
-            ).save()
+            TalkSetting(name="ひな", system_prompt=existing.system_prompt).save()
 
         assert "name" in exc_info.value.message_dict
 
     def test_talk_setting_with_blank_name_raises_validation_error(self):
         """名前は必須."""
         with pytest.raises(ValidationError) as exc_info:
-            TalkSetting(name="", system_prompt_ref=LangfusePromptRefFactory()).save()
+            TalkSetting(name="", system_prompt=PromptFactory()).save()
 
         assert "name" in exc_info.value.message_dict
 

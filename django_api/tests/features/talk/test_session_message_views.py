@@ -14,17 +14,11 @@ from rest_framework.test import APIClient
 
 from features.talk.models import ChatMessage, ChatSession, TalkSetting
 from features.talk.services import TalkService
-from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import Prompt
 from integrations.tts.client import TTSResult
 from integrations.tts.exceptions import TTSNetworkError
 
 User = get_user_model()
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -57,36 +51,26 @@ def auth_client(user):
 
 
 @pytest.fixture
-def prompt_refs(db):
-    sys_ref = LangfusePromptRef.objects.create(
-        name="msg-system",
-        langfuse_prompt_name="msg-system",
-        fallback_text="あなたは親切な AI です。",
-    )
-    user_ref = LangfusePromptRef.objects.create(
-        name="msg-user",
-        langfuse_prompt_name="msg-user",
-        fallback_text="dummy",
-    )
-    return sys_ref, user_ref
+def system_prompt(db, langfuse_prompts):
+    """Talk 設定のシステムプロンプトの参照（本文は Langfuse の代役の production にある）."""
+    langfuse_prompts[("msg-system", "production")] = "あなたは親切な AI です。"
+    return Prompt.objects.create(name="msg-system")
 
 
 @pytest.fixture
-def talk_setting(prompt_refs):
-    return TalkSetting.objects.create(
-        name="セッション用", system_prompt_ref=prompt_refs[0]
-    )
+def talk_setting(system_prompt):
+    return TalkSetting.objects.create(name="セッション用", system_prompt=system_prompt)
 
 
 @pytest.fixture
-def tts_setting(prompt_refs):
+def tts_setting(system_prompt):
     return TalkSetting.objects.create(
         name="セッション用TTS",
         tts_enabled=True,
         tts_format="wav",
         tts_model="model",
         tts_style="Neutral",
-        system_prompt_ref=prompt_refs[0],
+        system_prompt=system_prompt,
     )
 
 

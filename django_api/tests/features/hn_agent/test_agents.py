@@ -16,6 +16,7 @@ from features.hn_agent.agents import run_analysis
 from features.hn_agent.agents.detective import DETECTIVE_AGENT, DetectiveAgent
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from integrations.hn.client import HNComment
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
@@ -25,13 +26,6 @@ from integrations.llm.runtime import arun_agent
 from tests.fixtures.llm import ScriptedLLM, litellm_response, make_llm_settings
 
 pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -163,22 +157,52 @@ class TestDetectiveAgent:
         assert result["analysis"]["title_ja"] == "テスト記事タイトル"
 
     def test_investigate_prompt_contains_uncommitted_data(
-        self, agent, hot_thread, detective_llm, hn_agent_config
+        self, agent, hot_thread, detective_llm, hn_agent_config, hn_langfuse_prompts
     ):
-        """準備処理は呼び出し元の DB 接続で動き、未コミットのデータがプロンプトに入る."""
+        """準備処理は呼び出し元の DB 接続で動き、未コミットのデータがプロンプトに入る.
+
+        system は Langfuse の本文そのまま、user は本文に変数を差し込んだもの。
+        """
         detective_llm.enqueue(self.MOCK_ANALYSIS_JSON)
 
         async_to_sync(agent.investigate)(hot_thread)
 
         request = detective_llm.requests[0]
-        assert "スコア: 200, コメント数: 50" in request.user_prompt
-        assert "Hot Thread" in request.user_prompt
+        assert request.user_prompt.startswith(
+            "タイトル: Hot Thread\nURL: https://example.com/hot\n投稿者: author1\n"
+            "スコア: 200, コメント数: 50\n"
+        )
         assert "Background Info" in request.user_prompt
         assert "[user1]: Great article!" in request.user_prompt
+        assert "{{" not in request.user_prompt
         assert (
             request.instructions
-            == hn_agent_config.detective_system_prompt.fallback_text
+            == hn_langfuse_prompts[("hn-agent-detective", "production")]
         )
+
+    @pytest.mark.parametrize(
+        "prompt_name", ["hn-agent-detective", "hn-agent-detective-user"]
+    )
+    def test_investigate_without_prompt_in_langfuse_raises_before_llm_request(
+        self,
+        agent,
+        hot_thread,
+        detective_llm,
+        hn_agent_config,
+        hn_langfuse_prompts,
+        prompt_name,
+    ):
+        """プロンプトを Langfuse から取れなければ、LLM を呼ばずに PromptUnavailableError.
+
+        フォールバックはない。Orchestrator のツールは、この失敗を error の JSON にして返す。
+        """
+        del hn_langfuse_prompts[(prompt_name, "production")]
+
+        with pytest.raises(PromptUnavailableError) as exc_info:
+            async_to_sync(agent.investigate)(hot_thread)
+
+        assert exc_info.value.prompt_name == prompt_name
+        assert detective_llm.requests == []
 
     def test_investigate_sends_detective_service_metadata(
         self, agent, hot_thread, detective_llm, hn_agent_config

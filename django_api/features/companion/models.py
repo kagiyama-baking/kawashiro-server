@@ -13,7 +13,7 @@ class CompanionConfigManager(models.Manager):
     def get_active_config(self) -> "CompanionConfig":
         """有効な設定を取得.
 
-        システムプロンプトの参照を先読みする。
+        システムプロンプト（Prompt）を先読みする。
 
         Returns:
             CompanionConfig インスタンス
@@ -21,7 +21,7 @@ class CompanionConfigManager(models.Manager):
         Raises:
             CompanionConfig.DoesNotExist: 有効な設定が存在しない場合
         """
-        return self.select_related("system_prompt_ref").get(is_active=True)
+        return self.select_related("system_prompt").get(is_active=True)
 
 
 class CompanionConfig(AbstractTTSSettings):
@@ -42,12 +42,12 @@ class CompanionConfig(AbstractTTSSettings):
         default=False,
         help_text="この設定を有効にする（有効にできるのは1つの設定のみ）",
     )
-    system_prompt_ref = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+    system_prompt = models.ForeignKey(
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="システムプロンプト",
-        help_text="全スキルに共通のシステムプロンプトの Langfuse参照",
+        help_text="全スキルに共通のシステムプロンプト（AI設定 → Prompts）",
     )
     skills = models.ManyToManyField(
         AgentSkill,

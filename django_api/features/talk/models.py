@@ -38,13 +38,13 @@ class TalkSetting(AbstractTTSSettings):
             "複数の設定を有効にできる"
         ),
     )
-    system_prompt_ref = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+    system_prompt = models.ForeignKey(
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="システムプロンプト",
         help_text=(
-            "チャットのシステムプロンプト（Langfuse の text プロンプト）の参照。"
+            "チャットのシステムプロンプト（AI設定 → Prompts）。"
             "変数（{{weather}} など）は展開しない"
         ),
     )

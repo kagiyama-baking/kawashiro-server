@@ -8,8 +8,8 @@ from langfuse import observe
 from pydantic_ai import Agent, PromptedOutput
 
 from integrations.hn.client import HNAlgoliaClient
-from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
+from integrations.llm.prompts import resolve_prompt_text
 
 from ..models import HNAgentConfig, HNThread
 from . import (
@@ -82,7 +82,7 @@ class DevilsAdvocateAgent:
 
         agent_config = HNAgentConfig.objects.get_active_config()
 
-        user_prompt = resolve_prompt(
+        user_prompt = resolve_prompt_text(
             agent_config.devils_advocate_user_prompt,
             title=thread.title,
             url=thread.url or "(self-post)",
@@ -90,7 +90,7 @@ class DevilsAdvocateAgent:
             score_info=score_info,
             comments_section=self._format_comments_section(comments_text),
         )
-        system_prompt = resolve_prompt(agent_config.devils_advocate_system_prompt)
+        system_prompt = resolve_prompt_text(agent_config.devils_advocate_system_prompt)
 
         return PreparedAnalysis(
             settings=get_llm_settings("devils_advocate"),

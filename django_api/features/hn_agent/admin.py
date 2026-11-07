@@ -83,7 +83,7 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "プロンプト参照（Langfuse）",
+            "プロンプト",
             {
                 "fields": (
                     "orchestrator_system_prompt",
@@ -97,7 +97,8 @@ class HNAgentConfigAdmin(admin.ModelAdmin):
                 ),
                 "description": (
                     "Orchestrator / Detective / Devil's Advocate / Security Responder "
-                    "それぞれの system / user プロンプトを Langfuseプロンプト参照から選択します。"
+                    "それぞれの system / user プロンプトを、「AI設定 → Prompts」に登録したものから"
+                    "選択します。"
                 ),
             },
         ),

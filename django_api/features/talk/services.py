@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Any
 
 from langfuse import observe
 
-from integrations.langfuse.client import langfuse_session, resolve_required_prompt
+from integrations.langfuse.client import langfuse_session
 from integrations.llm.config import get_llm_settings
+from integrations.llm.prompts import resolve_prompt_text
 from integrations.llm.runtime import run_agent_sync, stream_text_sync
 from integrations.llm.skills import resolve_skill_body
 from integrations.tts.client import TTSClient, TTSResult
@@ -49,10 +50,10 @@ class TalkService:
         """チャットの system プロンプトを確定する（LLM を呼ぶ前の検証を含む）.
 
         LLM の設定を先に確かめ（Langfuse に問い合わせる前に止める）、Talk 設定の
-        システムプロンプトを参照から解決する。シーン（スキル）があれば、本文を Langfuse
-        から取り（フォールバックはない）、「# シーン設定」の節として後ろに足す。変数は
-        展開しない。応答のストリームを始める前に呼び、失敗を通常の HTTP ステータスで
-        返せるようにする。
+        システムプロンプトの本文を Langfuse から取る。シーン（スキル）があれば、その本文も
+        Langfuse から取り、「# シーン設定」の節として後ろに足す。どちらもフォールバックは
+        なく、変数は展開しない。応答のストリームを始める前に呼び、失敗を通常の HTTP
+        ステータスで返せるようにする。
 
         Args:
             setting: チャットの Talk 設定
@@ -63,11 +64,11 @@ class TalkService:
 
         Raises:
             LLMConfigurationError: LLM 設定がない場合
-            PromptUnavailableError: システムプロンプトの本文が空か、シーンの本文を
-                取れないか空の場合
+            PromptUnavailableError: システムプロンプトかシーンの本文を Langfuse から
+                取れないか、空の場合
         """
         get_llm_settings("talk")
-        system_prompt = resolve_required_prompt(setting.system_prompt_ref)
+        system_prompt = resolve_prompt_text(setting.system_prompt)
         if skill is None:
             return system_prompt
         return (

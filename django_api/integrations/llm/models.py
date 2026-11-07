@@ -1,4 +1,4 @@
-"""LLM API設定モデルと、全エージェントで共有するスキル（Agent Skills）のモデル."""
+"""LLM API設定モデルと、全エージェントで共有するプロンプト（Prompts）・スキル（Agent Skills）のモデル."""
 
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
@@ -100,6 +100,70 @@ class LLMServiceConfig(models.Model):
 
     def __str__(self):
         return f"{self.get_service_name_display()} → {self.provider_config.name}"
+
+
+# プロンプト名の規則（Langfuse のプロンプト名そのもの）。前後の空白と改行は不可で、Langfuse の
+# フォルダの `/` と途中の空白は使える。途中の改行（CR・LF）も通さない（`.` は CR に合うので
+# 使わない）。`$` は末尾の改行も通すので `\Z` で終える。
+PROMPT_NAME_PATTERN = r"^\S(?:[^\r\n]*\S)?\Z"
+
+
+class Prompt(models.Model):
+    """プロンプト（Langfuse の text プロンプト。全エージェントで共有する）.
+
+    名前は Langfuse のプロンプト名そのもので、本文はその名前の text プロンプトを `label` で取る
+    （`integrations/llm/prompts.py` の `resolve_prompt_text`。フォールバックはない）。各機能の
+    設定（HN Agent の 8 本、Companion 設定・Talk 設定のシステムプロンプト）が外部キーで選ぶ。
+    """
+
+    name = models.CharField(
+        "プロンプト名",
+        max_length=200,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=PROMPT_NAME_PATTERN,
+                message="プロンプト名の前後には、空白と改行を入れられません（途中の改行も不可）",
+            ),
+        ],
+        help_text=(
+            "本文を取る Langfuse の text プロンプトの名前そのもの（例: hn-agent-orchestrator。"
+            "フォルダは / で区切る）。200 字以内。前後の空白と改行は使えない。名前を変えると"
+            "本文を取る先も変わる"
+        ),
+    )
+    label = models.CharField(
+        "ラベル",
+        max_length=50,
+        default="production",
+        help_text="本文を取る Langfuse のプロンプトのラベル（staging / production）",
+    )
+    description = models.CharField(
+        "説明",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="このプロンプトの用途（admin の一覧に出る）",
+    )
+    created_at = models.DateTimeField("作成日時", auto_now_add=True)
+    updated_at = models.DateTimeField("更新日時", auto_now=True)
+
+    class Meta:
+        verbose_name = "Prompt"
+        verbose_name_plural = "Prompts"
+        ordering = ["name"]
+        # langfuse_integration から状態だけの migration（llm_config 0018・langfuse_integration
+        # 0004）で移したので、表は langfuse_integration の 0001 が作ったまま。既定の表名
+        # （llm_config_prompt）にそろえるなら、後で AlterModelTable を足す。
+        db_table = "langfuse_integration_langfusepromptref"
+
+    def __str__(self) -> str:
+        return f"{self.name}@{self.label}"
+
+    def save(self, *args, **kwargs):
+        """保存時にバリデーションを実行."""
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 # スキル名の規則（Agent Skills の命名: 英小文字・数字・ハイフン。先頭・末尾・連続のハイフンは不可）。

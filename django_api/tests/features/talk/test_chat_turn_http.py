@@ -125,6 +125,23 @@ class TestPreValidationStaysHttp:
         message.refresh_from_db()
         assert message.content == "元の発話"
 
+    def test_unavailable_system_prompt_returns_503_without_llm_request(
+        self, chat_llm, auth_client, session, chat_turn_env
+    ):
+        """Talk 設定のシステムプロンプトを Langfuse から取れなければ 503（フォールバックはない）.
+
+        LLM を呼ばず、発話も保存しない。
+        """
+        del chat_turn_env[("chat-turn-system", "production")]
+
+        response = self._post(auth_client, session.id)
+
+        assert response.status_code == 503
+        assert not response.streaming
+        assert response.data == {"error": "サービスの設定に問題があります"}
+        assert chat_llm.requests == []
+        assert session.messages.count() == 0
+
     def test_unavailable_scene_body_returns_503(
         self, talk_llm_settings, auth_client, scene_session, scene, chat_turn_env
     ):
