@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx2
@@ -29,13 +30,24 @@ from features.hn_agent.agents.security_responder import (
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from features.hn_agent.orchestrator import MAX_STEPS, ORCHESTRATOR_AGENT, Orchestrator
 from integrations.hn.client import HNComment
-from integrations.langfuse.exceptions import PromptUnavailableError
 from tests.fixtures.langfuse import FakeLangfuse
 from tests.fixtures.llm import ScriptedLLM, litellm_response, tool_calls
 
 pytestmark = pytest.mark.django_db
 
 FIXED_ERROR_SUMMARY = "LLM呼び出しエラーにより調査を中断しました。"
+# プロンプトを Langfuse から取れず、調査を始めなかったときの final_summary
+PROMPT_UNAVAILABLE_SUMMARY = "プロンプトを取得できないため調査を中断しました。"
+ORCHESTRATOR_LOGGER = "features.hn_agent.orchestrator"
+# サブエージェント（Detective・Devil's Advocate・Security Responder）の 6 本の Langfuse のプロンプト名
+SUBAGENT_PROMPT_NAMES = (
+    "hn-agent-detective",
+    "hn-agent-detective-user",
+    "hn-agent-devils-advocate",
+    "hn-agent-devils-advocate-user",
+    "hn-agent-security-responder",
+    "hn-agent-security-responder-user",
+)
 
 # Langfuse 上のプロンプトはこの名前と説明を前提に書かれている（変更時はプロンプトも直す）
 TOOL_DESCRIPTIONS = {
@@ -178,6 +190,24 @@ def _tool_returns(request) -> dict[str, str]:
     }
 
 
+def _orchestrator_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Orchestrator が出した ERROR のログのメッセージ."""
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == ORCHESTRATOR_LOGGER and record.levelno == logging.ERROR
+    ]
+
+
+def _prompt_error_log(thread: HNThread, prompt_name: str) -> str:
+    """プロンプトを取れずに中断したときのログ（取れなかったプロンプトの名前と理由を含む）."""
+    return (
+        f"プロンプトを取得できないため調査を中断: [{thread.hn_id}] "
+        f"プロンプト「{prompt_name}」を使えません（Langfuse からプロンプトを取得できませんでした: "
+        f"{prompt_name} (label=production)）"
+    )
+
+
 @pytest.mark.integration
 class TestOrchestrator:
     """Orchestratorのテスト."""
@@ -312,25 +342,72 @@ class TestOrchestrator:
         """Orchestrator のプロンプトを Langfuse から取れなければ、LLM を呼ばずに調査を中断する.
 
         フォールバックはない。調査済みにしない（次のポーリングで再び調査する）ので、Slack へも
-        送らない。原因（PromptUnavailableError）はログに残す。
+        送らない。ログには、LLM の失敗ではなく、どのプロンプトを取れなかったかを出す。
         """
         del hn_langfuse_prompts[(prompt_name, "production")]
 
         result = orchestrator.investigate(thread)
 
         assert orchestrator_llm.requests == []
-        assert result["final_summary"] == FIXED_ERROR_SUMMARY
+        assert result["final_summary"] == PROMPT_UNAVAILABLE_SUMMARY
         mock_detective_agent.investigate.assert_not_awaited()
         mock_reporter.report_detective.assert_not_called()
         thread.refresh_from_db()
         assert thread.is_investigated is False
-        (record,) = [
-            r
-            for r in caplog.records
-            if r.name == "features.hn_agent.orchestrator" and r.exc_info
-        ]
-        assert record.exc_info[0] is PromptUnavailableError
-        assert record.exc_info[1].prompt_name == prompt_name
+        assert _orchestrator_errors(caplog) == [_prompt_error_log(thread, prompt_name)]
+
+    @pytest.mark.parametrize("prompt_name", SUBAGENT_PROMPT_NAMES)
+    def test_missing_subagent_prompt_aborts_before_llm_and_hn_tavily_requests(
+        self,
+        orchestrator_llm,
+        thread,
+        mock_reporter,
+        hn_langfuse_prompts,
+        caplog,
+        prompt_name,
+    ):
+        """サブエージェントのプロンプトが 1 本でも取れなければ、LLM も HN・Tavily も呼ばずに中断する.
+
+        ツールの中で初めて失敗すると、HN・Tavily を呼んだ後に Orchestrator の LLM がもう一度
+        呼ばれ、調査済みにならないのでポーリングのたびに繰り返す。サブエージェントは本物
+        （HN・Tavily のクライアントだけ代役）にし、3 つのツールを呼ぶ台本にする。
+        """
+        hn_client = MagicMock()
+        hn_client.get_comments.return_value = []
+        hn_client.flatten_comments.return_value = []
+        tavily_client = MagicMock()
+        tavily_client.search_context.return_value = []
+        orchestrator = Orchestrator(
+            detective_agent=DetectiveAgent(
+                hn_client=hn_client, tavily_client=tavily_client
+            ),
+            devils_advocate_agent=DevilsAdvocateAgent(hn_client=hn_client),
+            security_responder_agent=SecurityResponderAgent(
+                hn_client=hn_client, tavily_client=tavily_client
+            ),
+            reporter=mock_reporter,
+        )
+        orchestrator_llm.enqueue(
+            tool_calls(
+                "detective_investigate",
+                "devils_advocate_analyze",
+                "security_responder_analyze",
+            ),
+            "結論",
+        )
+        del hn_langfuse_prompts[(prompt_name, "production")]
+
+        result = orchestrator.investigate(thread)
+
+        assert orchestrator_llm.requests == []
+        hn_client.get_comments.assert_not_called()
+        tavily_client.search_context.assert_not_called()
+        assert result["final_summary"] == PROMPT_UNAVAILABLE_SUMMARY
+        assert result["steps"] == []
+        mock_reporter.report_detective.assert_not_called()
+        thread.refresh_from_db()
+        assert thread.is_investigated is False
+        assert _orchestrator_errors(caplog) == [_prompt_error_log(thread, prompt_name)]
 
     def test_usage_limit_exceeded_returns_fixed_summary(
         self,

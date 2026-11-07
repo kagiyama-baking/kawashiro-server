@@ -1,7 +1,24 @@
 """HN Agentデータモデル."""
 
+from typing import TYPE_CHECKING
+
 from django.core.validators import MinValueValidator
 from django.db import models
+
+if TYPE_CHECKING:
+    from integrations.llm.models import Prompt
+
+# HN Agent 設定が選ぶ 8 本のプロンプトの外部キー（Orchestrator の 2 本と、ツールで呼ぶ
+# サブエージェント（Detective・Devil's Advocate・Security Responder）の 6 本。system と user）
+ORCHESTRATOR_PROMPT_FIELDS = ("orchestrator_system_prompt", "orchestrator_user_prompt")
+SUBAGENT_PROMPT_FIELDS = (
+    "detective_system_prompt",
+    "detective_user_prompt",
+    "devils_advocate_system_prompt",
+    "devils_advocate_user_prompt",
+    "security_responder_system_prompt",
+    "security_responder_user_prompt",
+)
 
 
 class HNThread(models.Model):
@@ -100,14 +117,7 @@ class HNAgentConfigManager(models.Manager):
             HNAgentConfig.DoesNotExist: 有効な設定が存在しない場合
         """
         return self.select_related(
-            "orchestrator_system_prompt",
-            "orchestrator_user_prompt",
-            "detective_system_prompt",
-            "detective_user_prompt",
-            "devils_advocate_system_prompt",
-            "devils_advocate_user_prompt",
-            "security_responder_system_prompt",
-            "security_responder_user_prompt",
+            *ORCHESTRATOR_PROMPT_FIELDS, *SUBAGENT_PROMPT_FIELDS
         ).get(is_active=True)
 
 
@@ -250,3 +260,7 @@ class HNAgentConfig(models.Model):
                 is_active=False
             )
         super().save(*args, **kwargs)
+
+    def subagent_prompts(self) -> list["Prompt"]:
+        """サブエージェントが使う 6 本のプロンプト（`SUBAGENT_PROMPT_FIELDS` の順）."""
+        return [getattr(self, field) for field in SUBAGENT_PROMPT_FIELDS]

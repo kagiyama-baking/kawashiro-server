@@ -81,11 +81,12 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
   2. `HNAgentConfig.objects.get_active_config()` で有効設定を取得（8 FK を先読み）
   3. `resolve_prompt_text(config.orchestrator_system_prompt)` で system prompt の本文を Langfuse から取る
   4. `resolve_prompt_text(config.orchestrator_user_prompt, hn_id=..., title=..., …)` で user prompt の本文に変数を差し込んで取る
-  5. `run_agent_sync` で実行（同期の `investigate()` から呼ぶ）。`UsageLimits(request_limit=11, tool_calls_limit=10)` で打ち切り、超過時は `final_summary` が固定文になる
-  6. 各ツールの docstring（発火条件を含む）を見て LLM がどのツールを何回呼ぶかを判断。同じステップで複数のツールを呼ぶと並行に動く
-  7. いずれかのエージェントが結果を返した場合のみ `HNThread.is_investigated = True` を一元的に更新
-  8. Reporter に結果を渡して Slack 通知（送らない入口は下の「Slack 通知の有無」）
-- **プロンプトを取れないとき**: 3・4 で Langfuse から取れない（届かない・そのラベルのプロンプトがない・Chat 型）か本文が空なら、フォールバックはなく、LLM を呼ばずに調査を中断します（`PromptUnavailableError`。`final_summary` は「LLM呼び出しエラーにより調査を中断しました。」、例外はログに残る）。調査済みにしないので、閾値を超えたままなら次のポーリングで調べ直し、Slack へは送りません
+  5. サブエージェントの 6 本（system と user。user は変数なしで）も `resolve_prompt_text` で取れることを確かめる（SDK のキャッシュ（既定 60 秒）が効くので、ツールの中で取り直すときは通信しない）
+  6. `run_agent_sync` で実行（同期の `investigate()` から呼ぶ）。`UsageLimits(request_limit=11, tool_calls_limit=10)` で打ち切り、超過時は `final_summary` が固定文になる
+  7. 各ツールの docstring（発火条件を含む）を見て LLM がどのツールを何回呼ぶかを判断。同じステップで複数のツールを呼ぶと並行に動く
+  8. いずれかのエージェントが結果を返した場合のみ `HNThread.is_investigated = True` を一元的に更新
+  9. Reporter に結果を渡して Slack 通知（送らない入口は下の「Slack 通知の有無」）
+- **プロンプトを取れないとき**: 3〜5 で 8 本のどれか 1 本でも Langfuse から取れない（届かない・そのラベルのプロンプトがない・Chat 型）か本文が空なら、フォールバックはなく、LLM も HN・Tavily も呼ばずに調査を中断します（`PromptUnavailableError`。`final_summary` は「プロンプトを取得できないため調査を中断しました。」、ログ（ERROR）には取れなかったプロンプトの名前と理由が出る）。調査済みにしないので、閾値を超えたままなら次のポーリングで調べ直します（そのたびに中断する）。Slack へは送りません
 - **ツールの契約**: `detective_investigate` / `devils_advocate_analyze` / `security_responder_analyze` の関数名と docstring は Langfuse 上のプロンプトが前提にしているので、変えるときはプロンプトも直します（`test_tool_names_and_descriptions_match_prompt_contract` で固定）。ツール内の例外は `{"error": ...}` の JSON にして LLM へ返し、そのステップは `success: False` になります。どのツールも引数を取らないので、モデルが付けた引数は検証せず無視します。未知のツール名はモデルへ伝えて続行します（打ち切りは上の `UsageLimits`）
 - **推論深度**: 有効な `HNAgentConfig.reasoning_effort`（`low` / `medium` / `high`）を、Orchestrator のリクエストにだけ `reasoning_effort` として載せます（サブエージェントには送りません）。「無効」（空文字）なら載せません。モデルが受け付けないときの扱いと選び方は [docs/initial-setup.md](../../../docs/initial-setup.md) の 5-1 を参照してください。送信本文は `tests/integrations/llm/test_runtime.py` と `tests/features/hn_agent/test_orchestrator.py` で固定しています
 - **ツール選択の判断基準（System Prompt）**
@@ -102,7 +103,7 @@ PydanticAI のエージェント（`ORCHESTRATOR_AGENT`）を使い、LLM が「
 - `async def investigate/analyze(self, thread)` で、ツールから `await` されます。ORM・HN/Tavily 取得・プロンプト解決・LLM 設定の取得は同期の `_prepare(thread)` にまとめて `sync_to_async`（呼び出し元スレッド）で実行し、LLM の応答だけをイベントループ上で待ちます。同じステップで複数のツールが呼ばれると、準備処理は直列、LLM 呼び出しは並行になります
 - 応答は `agents/__init__.py` の `run_analysis` が `PromptedOutput(Schema, template=False)` で検証します。Langfuse のプロンプトが JSON の形を指示しているので、スキーマをプロンプトや API パラメータとして送ることはありません（コードフェンスは除去されます）
 - スキーマ（`agents/schemas.py`）は未知のキーも残し、必須キーは下の各エージェントに示したものだけです。`analysis` には LLM が返したキーだけが入ります（任意キーの既定値は足しません）。文字列項目とリストの `null` は既定値に寄せます
-- プロンプトを Langfuse から取れなければ（フォールバックはない）、LLM を呼ばずに `PromptUnavailableError` を送出し、ツールが error の JSON にして Orchestrator のモデルへ返します（そのステップは失敗。Orchestrator の LLM は呼ばれたまま進む）
+- プロンプトは Orchestrator が LLM を呼ぶ前に確かめるので（上の「Orchestrator」の 5）、ふつうはここで取れないことはありません。確かめた後に Langfuse から消えたなどで取れなければ（フォールバックはない）、LLM を呼ばずに `PromptUnavailableError` を送出し、ツールが error の JSON にして Orchestrator のモデルへ返します（そのステップは失敗）
 - 読めない応答（JSON でない・必須キーがない）は出力リトライを 1 回行い、それでも駄目なら最後の応答の先頭 500 文字を入れたフォールバックを返します。調査済みマークと Slack 通知は通常どおり行うので、再調査のループにはなりません。接続エラーや不正な HTTP 応答などはそのまま送出し、ツール側で error JSON になります（調査済みにはなりません）
 
 ### Detective Agent（`agents/detective.py`）

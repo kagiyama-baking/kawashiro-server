@@ -253,7 +253,7 @@ except LLMClientError:
 
 | 状況 | 挙動 |
 |---|---|
-| Prompts のプロンプト（HN Agent の 8 本、Companion・Talk 設定のシステムプロンプト）を Langfuse から取れない（`LANGFUSE_*` が未設定・届かない・そのラベルのプロンプトがない・Chat 型・`langfuse` を import できない）か、本文が空 | **フェイルソフトしません（フォールバックなし）。** `resolve_prompt_text` が `PromptUnavailableError` にする。Companion と Talk のチャットは LLM を呼ばずに 503（Talk はそのターン）。HN Agent は、Orchestrator のプロンプトなら LLM を呼ばずに調査を中断し（ログに残す。調査済みにしないので次のポーリングで調べ直し、Slack へは送らない）、サブエージェントのプロンプトならそのツールが失敗として Orchestrator に返る（[HN Agent の README](../../features/hn_agent/README.md)）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける |
+| Prompts のプロンプト（HN Agent の 8 本、Companion・Talk 設定のシステムプロンプト）を Langfuse から取れない（`LANGFUSE_*` が未設定・届かない・そのラベルのプロンプトがない・Chat 型・`langfuse` を import できない）か、本文が空 | **フェイルソフトしません（フォールバックなし）。** `resolve_prompt_text` が `PromptUnavailableError` にする。Companion と Talk のチャットは LLM を呼ばずに 503（Talk はそのターン）。HN Agent は 8 本のどれかが取れなければ、LLM を呼ばずに調査を中断する（詳細は [HN Agent の README の「Orchestrator」](../../features/hn_agent/README.md#orchestratororchestratorpy)）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける |
 | Agent Skill（Companion のスキル・Talk のシーン）の本文を Langfuse から取れない（届かない・未登録・Chat 型）か、空 | **フェイルソフトしません。** `PromptUnavailableError` で実行（Talk ではそのターン）を止め、API は 503（フォールバックなし）。キャッシュの扱いは上と同じ（[Companion の README の「スキル」](../../features/companion/README.md#スキル)） |
 | Langfuse への `session_id` 付与失敗 | 警告ログのみ。Talk のチャットも Companion の実行も継続 |
 | Companion の出力（セリフと使ったスキル）を Langfuse のスパンに記録できない | 警告ログのみ。実行は続け、API はセリフを返す（[Companion の README の「トレース（Langfuse）」](../../features/companion/README.md#トレースlangfuse)） |
