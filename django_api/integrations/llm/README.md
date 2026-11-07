@@ -243,7 +243,8 @@ except LLMClientError:
 | Langfuse 側が Chat 型プロンプト | 未対応のため警告ログを出して `fallback_text` にフォールバック（対応しているのは Text 型のみ） |
 | `langfuse` パッケージ未インストール | `ImportError` を捕捉して `fallback_text` にフォールバック |
 | Langfuse への `session_id` 付与失敗 | 警告ログのみ。Talk のチャットも Companion の実行も継続 |
-| Agent Skill（Companion のスキル）の本文を Langfuse から取れない（届かない・未登録・Chat 型）か、空 | **フェイルソフトしません。** `PromptUnavailableError` で実行を止め、API は 503（フォールバックなし）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける（[Companion の README の「スキル」](../../features/companion/README.md#スキル)） |
+| Agent Skill（Companion のスキル・Talk のシーン）の本文を Langfuse から取れない（届かない・未登録・Chat 型）か、空 | **フェイルソフトしません。** `PromptUnavailableError` で実行（Talk ではそのターン）を止め、API は 503（フォールバックなし）。SDK のキャッシュに一度取れた本文があれば、取り直しに失敗しても古い本文で動き続ける（[Companion の README の「スキル」](../../features/companion/README.md#スキル)） |
+| Companion・Talk 設定のシステムプロンプトの本文が空（Langfuse から取れず `fallback_text` も空） | **フェイルソフトしません。** `resolve_required_prompt` が `PromptUnavailableError` にし、API は 503（空のシステムプロンプトで話さない） |
 | Companion の出力（セリフと使ったスキル）を Langfuse のスパンに記録できない | 警告ログのみ。実行は続け、API はセリフを返す（[Companion の README の「トレース（Langfuse）」](../../features/companion/README.md#トレースlangfuse)） |
 | `LLMProviderConfig` の Virtual Key 未設定 | 環境変数 `LITELLM_MASTER_KEY` にフォールバック。それも未設定ならプレースホルダーのキーで送信し、認証の判断は LiteLLM Proxy に任せる |
 | `LLMServiceConfig` が無い / `is_active=False` | `LLMConfigurationError`（**ここはフェイルソフトしません**。設定漏れは早期に顕在化させます） |

@@ -7,7 +7,12 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
-from integrations.llm.exceptions import LLMClientError, LLMTimeoutError
+from integrations.langfuse.exceptions import PromptUnavailableError
+from integrations.llm.exceptions import (
+    LLMClientError,
+    LLMConfigurationError,
+    LLMTimeoutError,
+)
 from integrations.msgraph.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -81,7 +86,9 @@ def classify_synthesis_error(exc: Exception, fallback: str) -> tuple[int, str]:
         logger.error("AI/TTSサービスエラー: %s", str(exc))
         return status.HTTP_502_BAD_GATEWAY, "AI生成サービスへの接続に失敗しました"
 
-    if isinstance(exc, ConfigurationError):
+    if isinstance(
+        exc, (ConfigurationError, LLMConfigurationError, PromptUnavailableError)
+    ):
         logger.error("サービス設定エラー: %s", str(exc))
         return status.HTTP_503_SERVICE_UNAVAILABLE, "サービスの設定に問題があります"
 

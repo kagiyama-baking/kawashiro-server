@@ -157,6 +157,7 @@ LLM 設定の詳細は [../django_api/integrations/llm/README.md](../django_api/
 3. **システムプロンプトの参照を作る**（手順 4-3）— 識別名と `Langfuse プロンプト名` を手順 2 のプロンプト名にし、ラベルは手順 2 で付けたものにします。シーンの本文には参照を作りません
 4. **シーンを Agent Skills に登録する** — 「AI ツール設定 → AI設定 → Agent Skills」から、名前（手順 2 のプロンプト名そのもの）・説明（フロントの Talk の選択肢に出る、人が読む短い文。例: 「カフェで向かい合って話す場面」）・ラベル・有効を入れて保存します
 5. **Talk 設定を作る** — 「AI ツール設定 → Talk → Talk 設定」から、名前（フロントの選択肢に出る）・システムプロンプト（手順 3）・シーン（手順 4 のスキル。なくてもよい）・音声を入れて保存します。「有効」は既定で ON です
+6. **確かめる** — `GET /talk/settings/`（手順 9 の 5）に設定とシーンが出ることを確かめ、フロントの Talk で設定とシーンを選んで話します。送信が 503 なら、サービス設定 `Talk`・システムプロンプト・シーンの本文（Langfuse のプロンプト名とラベル）のどれかが足りません（手順 1〜4）
 
 > **Note:** 旧プリセットで作ったチャットがある環境では、migration `talk/0018` が、使われていたプリセットごとに Talk 設定を自動で作り（名前はプリセットの表示名）、そのチャットを紐づけます。名前を整えたり、使わない設定を無効にしたりしてください（規則は [Talk の README](../django_api/features/talk/README.md#talk-設定talksettingリファレンス)）。
 
@@ -219,11 +220,11 @@ curl -X POST http://localhost:8000/user/token/ \
   -H "Content-Type: application/json" \
   -d '{"email": "admin@example.com", "password": "YOUR_PASSWORD"}'
 
-# 5. Talk の設定一覧（Token 認証）
-curl http://localhost:8000/talk/configs/ \
+# 5. Talk 設定の一覧（Token 認証）。有効な設定と選べるシーンが返る
+curl http://localhost:8000/talk/settings/ \
   -H "Authorization: Token YOUR_TOKEN"
 
-# 6. 会話生成。TTS 有効時は audio_data（Base64）を含む JSON が返る
+# 6. 会話生成（廃止予定）。TTS 有効時は audio_data（Base64）を含む JSON が返る
 curl -X POST http://localhost:8000/talk/synthesize/ \
   -H "Authorization: Token YOUR_TOKEN" \
   -H "Content-Type: application/json" \

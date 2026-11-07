@@ -14,6 +14,7 @@ from features.talk.views._common import (
     handle_synthesis_error,
 )
 from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
@@ -57,7 +58,9 @@ CLASSIFICATION = [
     (TTSNetworkError("x"), 502, "AI生成サービスへの接続に失敗しました"),
     (ConfigurationError("x"), 503, "サービスの設定に問題があります"),
     (AuthenticationError("x"), 502, "外部サービスへの認証に失敗しました"),
-    (LLMConfigurationError("x"), 500, FALLBACK),
+    # LLM の設定がない・プロンプトの本文を使えないのも、設定の問題として 503
+    (LLMConfigurationError("x"), 503, "サービスの設定に問題があります"),
+    (PromptUnavailableError("x"), 503, "サービスの設定に問題があります"),
     (RuntimeError("内部の詳細"), 500, FALLBACK),
 ]
 

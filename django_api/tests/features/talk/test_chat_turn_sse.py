@@ -95,11 +95,11 @@ class TestEventSequence:
         ]
 
     def test_existing_title_emits_no_title_event(
-        self, chat_llm, title_llm, auth_client, user, talk_config
+        self, chat_llm, title_llm, auth_client, user, talk_setting
     ):
         """タイトルがあれば生成しない."""
         titled = ChatSession.objects.create(
-            user=user, config_name=talk_config.name, title="既存"
+            user=user, setting=talk_setting, title="既存"
         )
         chat_llm.enqueue("返信")
 
@@ -194,11 +194,11 @@ class TestEventSequence:
         assert tts_session.updated_at > before
 
     def test_done_advances_updated_at_after_commit(
-        self, chat_llm, auth_client, user, talk_config
+        self, chat_llm, auth_client, user, talk_setting
     ):
         """done の時点でも updated_at を進める（タイトルも音声もないターンで確かめる）."""
         titled = ChatSession.objects.create(
-            user=user, config_name=talk_config.name, title="既存"
+            user=user, setting=talk_setting, title="既存"
         )
         chat_llm.enqueue("返信")
         reader = send_sse(auth_client, titled.id)

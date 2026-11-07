@@ -16,9 +16,11 @@ from integrations.langfuse.client import (
     get_prompt_with_variables,
     langfuse_session,
     render_template,
+    resolve_required_prompt,
 )
 from integrations.llm.config import get_llm_settings
 from integrations.llm.runtime import run_agent_sync, stream_text_sync
+from integrations.llm.skills import resolve_skill_body
 from integrations.msgraph import OutlookMSGraphClient
 from integrations.tts.client import TTSClient, TTSResult
 from integrations.weather.client import WeatherClient
@@ -32,11 +34,15 @@ from .llm_agents import (
 )
 
 if TYPE_CHECKING:
-    from .models import TalkConfig
+    from integrations.llm.models import AgentSkill
+
+    from .models import TalkConfig, TalkSetting
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PLACEHOLDERS = frozenset({"weather", "events", "datetime"})
+# チャットのシーン（スキル）の本文の前に置く見出し
+SCENE_SECTION_HEADING = "# シーン設定"
 
 
 class TalkService:
@@ -153,36 +159,36 @@ class TalkService:
     # クライアントから無制限に引き出されないようにする。
     CHAT_MAX_OUTPUT_TOKENS = 1024
 
-    @observe(name="talk/prepare_chat", capture_input=False, capture_output=False)
-    def prepare_chat_prompt(self, config: "TalkConfig") -> str:
+    def prepare_chat_prompt(
+        self, setting: "TalkSetting", skill: "AgentSkill | None" = None
+    ) -> str:
         """チャットの system プロンプトを確定する（LLM を呼ぶ前の検証を含む）.
 
-        config の system_prompt のみを Langfuse から取得し、プレースホルダー
-        `{{weather}}` / `{{events}}` / `{{datetime}}` を検出して必要なデータを
-        並列取得して埋め込む。応答のストリームを始める前に呼び、失敗を通常の HTTP
-        ステータスで返せるようにする。
+        LLM の設定を先に確かめ（Langfuse に問い合わせる前に止める）、Talk 設定の
+        システムプロンプトを参照から解決する。シーン（スキル）があれば、本文を Langfuse
+        から取り（フォールバックはない）、「# シーン設定」の節として後ろに足す。変数は
+        展開しない。応答のストリームを始める前に呼び、失敗を通常の HTTP ステータスで
+        返せるようにする。
 
         Args:
-            config: 会話生成設定
+            setting: チャットの Talk 設定
+            skill: チャットのシーン（なしなら None）
 
         Returns:
-            展開済みの system プロンプト
+            system プロンプト（シーンがあれば、その節を足したもの）
 
         Raises:
-            PlaceholderDataMissingError: system_prompt が要求するデータ取得設定が
-                不足している場合（例: {{weather}} 使用時の area_code 未設定）
             LLMConfigurationError: LLM 設定がない場合
+            PromptUnavailableError: システムプロンプトの本文が空か、シーンの本文を
+                取れないか空の場合
         """
-        system_compile, required_keys = self._prepare_chat_context(config)
-        logger.debug("検出されたプレースホルダー: %s", required_keys)
-
-        self._validate_requirements(config, required_keys)
-
-        data = self._fetch_placeholder_data(config, required_keys)
-        system_prompt = system_compile(**self._build_prompt_variables(data))
-
         get_llm_settings("talk")
-        return system_prompt
+        system_prompt = resolve_required_prompt(setting.system_prompt_ref)
+        if skill is None:
+            return system_prompt
+        return (
+            f"{system_prompt}\n\n{SCENE_SECTION_HEADING}\n\n{resolve_skill_body(skill)}"
+        )
 
     @observe(name="talk/chat", capture_input=False)
     def stream_chat_reply(
@@ -222,17 +228,6 @@ class TalkService:
                 message_history=history,
                 max_tokens=self.CHAT_MAX_OUTPUT_TOKENS,
             )
-
-    def _prepare_chat_context(
-        self,
-        config: "TalkConfig",
-    ) -> tuple[Callable[..., str], set[str]]:
-        """Chat 用に system プロンプトの compile 関数と必要プレースホルダーを取得."""
-        system_compile, system_vars = get_prompt_with_variables(
-            config.system_prompt_ref
-        )
-        required_keys = system_vars & SUPPORTED_PLACEHOLDERS
-        return system_compile, required_keys
 
     # セッションタイトル要約用の出力上限。20 文字程度に収める想定だが
     # 余裕を持って 60 トークン。

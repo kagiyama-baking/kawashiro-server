@@ -126,8 +126,9 @@ def validate_skill_name_not_reserved(value: str) -> None:
 class AgentSkill(models.Model):
     """エージェントのスキル（Agent Skills。用途ごとの手順）.
 
-    全エージェントで共有する（いまは Companion 設定が、登録したスキルから使うものを選ぶ。
-    `CompanionConfig.skills`）。名前と説明はモデルに見せる一覧になり、本文はそのスキルを
+    全エージェントで共有する（Companion 設定が使うスキルを `CompanionConfig.skills` で、
+    Talk 設定が選べるシーンを `TalkSetting.skills` で選ぶ）。Companion では名前と説明が
+    モデルに見せる一覧になり、Talk では説明がフロントの選択肢になる。本文はそのスキルを
     使うときだけ、スキル名と同じ名前の Langfuse の text プロンプトを `label` で取る
     （フォールバックはない）。
     """

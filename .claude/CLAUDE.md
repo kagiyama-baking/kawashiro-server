@@ -27,7 +27,7 @@ kawashiro-server/
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
+│   │   ├── talk/            # Talk（Talk 設定とシーンで話すチャット。応答は JSON か SSE）+ 廃止予定の会話生成 API
 │   │   ├── media/           # 画像変換・ZIP→PDF
 │   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
 │   │   └── companion/       # Companion エージェント（システムプロンプト + スキル・常設ツール。発話からセリフを生成する API）
