@@ -195,6 +195,14 @@ class Migration(migrations.Migration):
     dependencies = [
         ("llm_config", "0017_alter_llmserviceconfig_service_name"),
         ("langfuse_integration", "0003_seed_new_agent_refs"),
+        # 参照を使う各アプリの最後の migration。新しい DB でも、seed を旧名で引く HN Agent の
+        # 0012・0016、参照を作る Talk の 0012、Talk 設定を作る 0018 が、名前の検査と付け替え
+        # より前に当たる。また、どのアプリを戻しても（例: `migrate talk 0018`）、プロンプトの
+        # 6 本（この 0018・0019、hn_agent 0018・companion 0008・talk 0020・
+        # langfuse_integration 0004）が一緒に外れ、一部だけが戻った DB にならない
+        ("hn_agent", "0017_make_new_agent_prompt_refs_required"),
+        ("companion", "0007_alter_companionconfig_skills_related_name"),
+        ("talk", "0019_delete_talkconfig_remove_chatsession_config_name"),
         # 内容の型を付け替えるときに、権限とその付与先（グループ・ユーザー）・履歴も扱う
         ("contenttypes", "0002_remove_content_type_name"),
         ("auth", "0012_alter_user_first_name_max_length"),

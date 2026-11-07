@@ -20,6 +20,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 from integrations.llm.models import Prompt
 from tests.fixtures.migrations import prompt_model
@@ -30,6 +31,7 @@ from tests.fixtures.prompt_migrations import (
     BEFORE_MOVE,
     HN_PROMPT_FIELDS,
     LLM_BEFORE_MOVE,
+    MOVE,
     ROLLBACK,
     SYSTEM_PROMPT_NAME,
     TEMPORARY_PREFIX,
@@ -51,6 +53,19 @@ OLD_CONTENT_TYPE = ("langfuse_integration", "langfusepromptref")
 NEW_CONTENT_TYPE = ("llm_config", "prompt")
 OLD_VERBOSE_NAME = "Langfuseプロンプト参照"
 NEW_VERBOSE_NAME = "Prompt"
+
+# 0018 より前に当たっていなければならない、各アプリの data migration と最後の migration。
+# seed（langfuse_integration 0002・0003）を旧名で引く HN Agent の 0012・0016、旧プリセットの
+# 参照を作る Talk の 0012、Talk 設定を作って紐づける 0018 が、名前の検査と付け替えより前に済む
+DATA_MIGRATIONS_BEFORE_MOVE = [
+    ("hn_agent", "0012_populate_prompt_refs"),
+    ("hn_agent", "0016_populate_new_agent_prompt_refs"),
+    ("hn_agent", "0017_make_new_agent_prompt_refs_required"),
+    ("companion", "0007_alter_companionconfig_skills_related_name"),
+    ("talk", "0012_migrate_system_prompt_to_ref"),
+    ("talk", "0018_bind_chat_sessions_to_talk_settings"),
+    ("talk", "0019_delete_talkconfig_remove_chatsession_config_name"),
+]
 
 
 def _prompt_content_types() -> list[tuple[str, str, int]]:
@@ -423,3 +438,57 @@ def test_move_with_name_starting_with_temporary_prefix_stops(prompt_migrator):
         migrate_to(prompt_migrator, AFTER_RENAME)
 
     assert ALL_MIGRATIONS.isdisjoint(applied_migrations())
+
+
+def _rolled_back(targets) -> set[tuple[str, str]]:
+    """targets へ migrate したときに外れる migration（DB は変えない）."""
+    plan = MigrationExecutor(connection).migration_plan(targets)
+    return {
+        (migration.app_label, migration.name)
+        for migration, backwards in plan
+        if backwards
+    }
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_fresh_db_applies_move_after_data_migrations_of_hn_companion_and_talk():
+    """新しい DB では、0018 は HN Agent・Companion・Talk の data migration と最後の migration の後に当たる."""
+    executor = MigrationExecutor(connection)
+    plan = executor.migration_plan(executor.loader.graph.leaf_nodes(), clean_start=True)
+    order = [(migration.app_label, migration.name) for migration, _ in plan]
+
+    for earlier in DATA_MIGRATIONS_BEFORE_MOVE:
+        assert order.index(earlier) < order.index(MOVE), earlier
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param(
+            ("talk", "0018_bind_chat_sessions_to_talk_settings"), id="talk_0018"
+        ),
+        pytest.param(("talk", "0016_talkconfig_synthesize_rate_limit"), id="talk_0016"),
+        pytest.param(
+            ("companion", "0006_move_agentskill_to_llm_config"), id="companion_0006"
+        ),
+        pytest.param(
+            ("hn_agent", "0016_populate_new_agent_prompt_refs"), id="hn_agent_0016"
+        ),
+    ],
+)
+def test_rolling_back_app_before_move_also_unapplies_all_six_migrations(target):
+    """HN Agent・Companion・Talk を 0018 より前の版へ戻すと、プロンプトの 6 本もすべて外れる.
+
+    一部だけが外れて半分戻った DB（Companion の列は改名したままなど）にならない。
+    """
+    assert ALL_MIGRATIONS.issubset(_rolled_back([target]))
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_rolling_back_to_llm_config_0017_unapplies_exactly_six_migrations():
+    """戻し方（`migrate llm_config 0017`）で外れるのはプロンプトの 6 本だけ（Talk 設定などは残る）."""
+    assert _rolled_back(ROLLBACK) == ALL_MIGRATIONS
