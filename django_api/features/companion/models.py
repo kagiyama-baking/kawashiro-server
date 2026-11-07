@@ -52,7 +52,7 @@ class CompanionConfig(AbstractTTSSettings):
     skills = models.ManyToManyField(
         AgentSkill,
         blank=True,
-        related_name="configs",
+        related_name="companion_configs",
         verbose_name="スキル",
         help_text=(
             "この設定で使うスキル（Agent Skills に登録したもの）。"

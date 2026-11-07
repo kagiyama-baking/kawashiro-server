@@ -1,5 +1,6 @@
 """talk ビュー共通ヘルパ（例外の分類・音声の保存）のテスト."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -11,9 +12,11 @@ from features.talk.models import ChatMessage, ChatSession
 from features.talk.views._common import (
     attach_audio_to_message,
     classify_synthesis_error,
+    get_owned_session,
     handle_synthesis_error,
 )
 from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,
@@ -57,7 +60,9 @@ CLASSIFICATION = [
     (TTSNetworkError("x"), 502, "AI生成サービスへの接続に失敗しました"),
     (ConfigurationError("x"), 503, "サービスの設定に問題があります"),
     (AuthenticationError("x"), 502, "外部サービスへの認証に失敗しました"),
-    (LLMConfigurationError("x"), 500, FALLBACK),
+    # LLM の設定がない・プロンプトの本文を使えないのも、設定の問題として 503
+    (LLMConfigurationError("x"), 503, "サービスの設定に問題があります"),
+    (PromptUnavailableError("x"), 503, "サービスの設定に問題があります"),
     (RuntimeError("内部の詳細"), 500, FALLBACK),
 ]
 
@@ -179,3 +184,24 @@ class TestAttachAudioToMessage:
             assert (
                 attach_audio_to_message(assistant_message, b"\x00" * 8, "wav") is False
             )
+
+
+@pytest.mark.django_db
+def test_get_owned_session_loads_setting_scene_and_system_prompt_in_one_query(
+    django_assert_num_queries,
+):
+    """ターンの事前検証で使う Talk 設定・シーン・システムプロンプトの参照を一度に引く."""
+    from tests.fixtures.factories import AgentSkillFactory, TalkSettingFactory
+
+    owner = get_user_model().objects.create_user(
+        email="owned-session@example.com", password="dummypass1234"
+    )
+    scene = AgentSkillFactory(name="talk-scene-cafe")
+    setting = TalkSettingFactory(skills=[scene])
+    created = ChatSession.objects.create(user=owner, setting=setting, skill=scene)
+
+    with django_assert_num_queries(1):
+        session = get_owned_session(SimpleNamespace(user=owner), created.pk)
+        loaded = (session.setting.system_prompt_ref.name, session.skill.name)
+
+    assert loaded == (setting.system_prompt_ref.name, "talk-scene-cafe")

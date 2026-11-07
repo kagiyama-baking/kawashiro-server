@@ -21,7 +21,7 @@ vi.mock('@/lib/api/talk', () => ({
     deleteAudio: vi.fn(),
     deleteSession: vi.fn(),
     fetchAudioBlob: vi.fn(),
-    fetchConfigs: vi.fn(),
+    fetchSettings: vi.fn(),
     getSession: vi.fn(),
     listSessions: vi.fn(),
     streamEdit: vi.fn(),
@@ -61,7 +61,9 @@ function detail(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: messages.length,
         total_audio_bytes: 0,
         created_at: NOW,
@@ -318,15 +320,11 @@ describe('useChatRuntime', () => {
 
     describe('新規チャット', () => {
         async function ready() {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([
-                {
-                    name: 'friendly',
-                    display_name: 'フレンドリー',
-                    tts_enabled: false,
-                },
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([
+                { id: 1, name: 'フレンドリー', tts_enabled: false, skills: [] },
             ]);
             await act(async () => {
-                await store().loadConfigs();
+                await store().loadSettings();
             });
         }
 

@@ -16,7 +16,6 @@ import pytest
 from features.companion.agent import COMPANION_AGENT, response_policy
 from features.companion.exceptions import (
     CompanionNotConfiguredError,
-    PromptUnavailableError,
     UnknownSkillError,
 )
 from features.companion.models import CompanionConfig
@@ -28,6 +27,7 @@ from features.companion.services import (
     run_companion,
 )
 from features.companion.skills import skill_instructions
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,

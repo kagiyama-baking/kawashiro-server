@@ -8,8 +8,8 @@ import { useChatStore } from '@/stores/chat-store';
 import type { ChatSessionMessage, ChatUiMessage } from '@/types/talk';
 import { AudioBundleDownload } from './AudioBundleDownload';
 import { AudioBundlePlay } from './AudioBundlePlay';
-import { PresetPicker } from './PresetPicker';
 import { SessionTitleEditor } from './SessionTitleEditor';
+import { TalkSettingPicker } from './TalkSettingPicker';
 
 function isSaved(
     message: ChatUiMessage,
@@ -76,7 +76,7 @@ function BulkAudioActions({ sessionId }: { readonly sessionId: string }) {
     );
 }
 
-/** タイトル、プリセット、音声の一括操作。会話が始まるまでは出さない。 */
+/** タイトル、Talk 設定とシーン、音声の一括操作。会話が始まるまでは出さない。 */
 export function ChatHeader() {
     const session = useChatStore((s) => s.activeSession);
     const updateActiveTitle = useChatStore((s) => s.updateActiveTitle);
@@ -91,7 +91,7 @@ export function ChatHeader() {
                     title={session.title}
                     onSave={updateActiveTitle}
                 />
-                <PresetPicker />
+                <TalkSettingPicker />
             </div>
             <BulkAudioActions sessionId={session.id} />
         </header>

@@ -38,11 +38,19 @@ class ChatSessionMessageView(APIView):
         responses={
             201: OpenApiResponse(response=ChatSessionDetailSerializer),
             (200, SSE_MEDIA_TYPE): SSE_RESPONSE,
-            400: OpenApiResponse(description="入力不正 / メッセージ件数上限"),
+            400: OpenApiResponse(
+                description=(
+                    "入力不正 / メッセージ件数上限 / Talk 設定がない・無効 / "
+                    "シーンが使えない"
+                )
+            ),
             401: OpenApiResponse(description="認証エラー"),
-            404: OpenApiResponse(description="セッションまたは設定が見つからない"),
+            404: OpenApiResponse(description="セッションが見つからない"),
             406: OpenApiResponse(description="Accept が text/event-stream のみ"),
             502: OpenApiResponse(description="LLM/TTS 等の外部サービスエラー"),
+            503: OpenApiResponse(
+                description="LLM の設定がない / プロンプトの本文を使えない"
+            ),
             504: OpenApiResponse(description="外部サービスタイムアウト"),
         },
     )
@@ -80,11 +88,19 @@ class ChatSessionMessageEditView(APIView):
         responses={
             (200, SSE_MEDIA_TYPE): SSE_RESPONSE,
             200: OpenApiResponse(response=ChatSessionDetailSerializer),
-            400: OpenApiResponse(description="入力不正 / assistant 編集不可"),
+            400: OpenApiResponse(
+                description=(
+                    "入力不正 / assistant 編集不可 / Talk 設定がない・無効 / "
+                    "シーンが使えない"
+                )
+            ),
             401: OpenApiResponse(description="認証エラー"),
             404: OpenApiResponse(description="セッション/メッセージが見つからない"),
             406: OpenApiResponse(description="Accept が text/event-stream のみ"),
             502: OpenApiResponse(description="LLM/TTS 等の外部サービスエラー"),
+            503: OpenApiResponse(
+                description="LLM の設定がない / プロンプトの本文を使えない"
+            ),
             504: OpenApiResponse(description="外部サービスタイムアウト"),
         },
     )

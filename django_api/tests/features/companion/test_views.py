@@ -16,10 +16,10 @@ from rest_framework import status
 
 from features.companion.exceptions import (
     CompanionNotConfiguredError,
-    PromptUnavailableError,
     UnknownSkillError,
 )
 from features.companion.services import CompanionReply
+from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.exceptions import (
     LLMClientError,
     LLMConfigurationError,

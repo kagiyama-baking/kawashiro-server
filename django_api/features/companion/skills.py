@@ -3,12 +3,11 @@
 PydanticAI の on-demand capability を使う。モデルにはスキル名と説明の一覧（カタログ）だけを
 見せ、モデルが組み込みの `load_capability` ツールで読み込んだスキルの本文だけを、その後の
 リクエストに system として入れる。本文は読み込まれたときに、スキル名と同じ名前の Langfuse の
-text プロンプトをスキルのラベルで取り（`resolve_skill_body`。フォールバックはない）、1 回の
-実行で 1 回だけ取る。
+text プロンプトをスキルのラベルで取り（`integrations.llm.skills.resolve_skill_body`。
+フォールバックはない）、1 回の実行で 1 回だけ取る。
 
 スキルを指定した実行では capability を使わず、本文を実行の指示の末尾に足す
-（`skill_instructions`）。システムプロンプトは参照（`LangfusePromptRef`）から解決する
-（`resolve_required_prompt`）。
+（`skill_instructions`）。
 """
 
 from collections.abc import Sequence
@@ -21,66 +20,13 @@ from pydantic_ai.messages import (
     ModelMessage,
 )
 
-from integrations.langfuse.client import fetch_text_prompt, resolve_prompt
-from integrations.langfuse.exceptions import LangfusePromptError
-from integrations.langfuse.models import LangfusePromptRef
 from integrations.llm.models import AgentSkill
+from integrations.llm.skills import resolve_skill_body
 
 from .agent import CompanionDeps
-from .exceptions import PromptUnavailableError
 
 # スキルを指定した実行で、本文の前に置く見出し
 _SKILL_SECTION_HEADING = "# 今回の手順"
-
-
-def resolve_required_prompt(ref: LangfusePromptRef) -> str:
-    """プロンプト（システムプロンプト）の本文を参照から解決し、空なら例外にする.
-
-    `resolve_prompt` は Langfuse から取れなくても例外を出さずにフォールバックテキストへ落ち、
-    フォールバックテキストは空でもよい。空のまま「読めた体」で続けないよう、ここで止める。
-    Langfuse と通信する同期関数なので、イベントループの外で呼ぶ。
-
-    Args:
-        ref: プロンプトの参照（変数のない text プロンプト）
-
-    Returns:
-        前後の空白を除いた本文
-
-    Raises:
-        PromptUnavailableError: 本文が空（空白だけ）の場合
-    """
-    text = resolve_prompt(ref).strip()
-    if not text:
-        raise PromptUnavailableError(ref.name)
-    return text
-
-
-def resolve_skill_body(skill: AgentSkill) -> str:
-    """スキルの本文を Langfuse から取り、取れないか空なら例外にする.
-
-    スキル名と同じ名前の Langfuse の text プロンプトを、スキルのラベルで取る。フォールバックは
-    ない（同じ名前の `LangfusePromptRef` があっても使わない）。SDK のキャッシュ（既定 60 秒。
-    取り直しに失敗したら期限切れの本文を返す）はそのまま使う。Langfuse と通信する同期関数
-    なので、イベントループの外で呼ぶ。
-
-    Args:
-        skill: 本文を取るスキル
-
-    Returns:
-        前後の空白を除いた本文
-
-    Raises:
-        PromptUnavailableError: 取れない場合（元の LangfusePromptError を `__cause__` に
-            持つ）か、本文が空（空白だけ）の場合
-    """
-    try:
-        text = fetch_text_prompt(skill.name, label=skill.label)
-    except LangfusePromptError as exc:
-        raise PromptUnavailableError(skill.name, reason=str(exc)) from exc
-    text = text.strip()
-    if not text:
-        raise PromptUnavailableError(skill.name, reason="本文が空です")
-    return text
 
 
 def skill_instructions(skill: AgentSkill) -> str:

@@ -13,10 +13,9 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from features.talk.chat_turn import ChatTurnRunner
-from features.talk.models import ChatMessage, ChatSession, TalkConfig
+from features.talk.models import ChatMessage, ChatSession
 from features.talk.services import TalkService
 from features.talk.views._common import SESSION_MAX_MESSAGES
-from integrations.langfuse.models import LangfusePromptRef
 from integrations.tts.exceptions import TTSTimeoutError
 from tests.fixtures.sse import (
     SSE_ACCEPT,
@@ -68,16 +67,80 @@ class TestPreValidationStaysHttp:
         assert response.status_code == 400
         assert not response.streaming
 
-    def test_missing_config_returns_404(self, auth_client, user):
+    def test_session_without_setting_returns_400(self, auth_client, user):
+        """Talk 設定のない（移行できなかった旧プリセットの）チャットは続けられない."""
         orphan = ChatSession.objects.create(user=user, config_name="nope")
 
         response = self._post(auth_client, orphan.id)
 
-        assert response.status_code == 404
+        assert response.status_code == 400
         assert not response.streaming
-        assert "error" in response.data
+        assert response.data == {
+            "error": (
+                "このチャットには Talk 設定がないため、続けられません。"
+                "新しいチャットを始めてください"
+            )
+        }
+        assert orphan.messages.count() == 0
 
-    def test_edit_missing_config_returns_404_and_keeps_message(self, auth_client, user):
+    def test_disabled_setting_returns_400(self, auth_client, session, talk_setting):
+        """Talk 設定を無効にしたチャットは続けられない."""
+        talk_setting.is_enabled = False
+        talk_setting.save()
+
+        response = self._post(auth_client, session.id)
+
+        assert response.status_code == 400
+        assert not response.streaming
+        assert "Talk 設定「チャットのターン」は無効" in response.data["error"]
+        assert session.messages.count() == 0
+
+    def test_disabled_scene_returns_400(self, auth_client, scene_session, scene):
+        """シーンのスキルを無効にしたチャットは続けられない."""
+        scene.is_enabled = False
+        scene.save()
+
+        response = self._post(auth_client, scene_session.id)
+
+        assert response.status_code == 400
+        assert f"シーン「{scene.name}」は使えなくなった" in response.data["error"]
+
+    def test_edit_with_scene_removed_from_setting_returns_400_and_keeps_history(
+        self, auth_client, scene_session, scene, talk_setting
+    ):
+        """シーンを Talk 設定から外したチャットは、編集でも続けない（履歴は残す）."""
+        message = ChatMessage.objects.create(
+            session=scene_session, sequence=0, role="user", content="元の発話"
+        )
+        talk_setting.skills.remove(scene)
+
+        response = auth_client.patch(
+            edit_url(scene_session.id, message.id),
+            {"content": "編集後"},
+            format="json",
+            HTTP_ACCEPT=SSE_ACCEPT,
+        )
+
+        assert response.status_code == 400
+        message.refresh_from_db()
+        assert message.content == "元の発話"
+
+    def test_unavailable_scene_body_returns_503(
+        self, talk_llm_settings, auth_client, scene_session, scene, chat_turn_env
+    ):
+        """シーンの本文を Langfuse から取れなければ 503（シーンなしで話さない）."""
+        del chat_turn_env[(scene.name, scene.label)]
+
+        response = self._post(auth_client, scene_session.id)
+
+        assert response.status_code == 503
+        assert not response.streaming
+        assert response.data == {"error": "サービスの設定に問題があります"}
+        assert scene_session.messages.count() == 0
+
+    def test_edit_session_without_setting_returns_400_and_keeps_message(
+        self, auth_client, user
+    ):
         orphan = ChatSession.objects.create(user=user, config_name="nope")
         message = ChatMessage.objects.create(
             session=orphan, sequence=0, role="user", content="元の発話"
@@ -90,7 +153,7 @@ class TestPreValidationStaysHttp:
             HTTP_ACCEPT=SSE_ACCEPT,
         )
 
-        assert response.status_code == 404
+        assert response.status_code == 400
         assert not response.streaming
         message.refresh_from_db()
         assert message.content == "元の発話"
@@ -154,31 +217,10 @@ class TestPreValidationStaysHttp:
         assert event_names(events)[-1] == "done"
         assert session.messages.count() == SESSION_MAX_MESSAGES + 2
 
-    def test_missing_placeholder_config_returns_400(self, auth_client, user, db):
-        system_ref = LangfusePromptRef.objects.create(
-            name="w-sys", langfuse_prompt_name="w-sys", fallback_text="天気 {{weather}}"
-        )
-        user_ref = LangfusePromptRef.objects.create(
-            name="w-usr", langfuse_prompt_name="w-usr", fallback_text="u"
-        )
-        config = TalkConfig.objects.create(
-            name="no-area",
-            display_name="no-area",
-            system_prompt_ref=system_ref,
-            user_prompt_ref=user_ref,
-        )
-        target = ChatSession.objects.create(user=user, config_name=config.name)
-
-        response = self._post(auth_client, target.id)
-
-        assert response.status_code == 400
-        assert not response.streaming
-        assert target.messages.count() == 0
-
-    def test_placeholder_fetch_failure_returns_mapped_status(
+    def test_prompt_preparation_failure_returns_mapped_status(
         self, talk_llm_settings, auth_client, session
     ):
-        """プレースホルダーの取得失敗は handle_synthesis_error と同じ写像になる."""
+        """プロンプトの準備の失敗は handle_synthesis_error と同じ写像になる."""
         with patch.object(
             TalkService,
             "prepare_chat_prompt",
@@ -189,13 +231,13 @@ class TestPreValidationStaysHttp:
         assert response.status_code == 504
         assert not response.streaming
 
-    def test_missing_llm_settings_returns_500(self, auth_client, session):
-        """LLM 設定がなければストリームを始めない."""
+    def test_missing_llm_settings_returns_503(self, auth_client, session):
+        """LLM 設定がなければストリームを始めない（設定の問題として 503）."""
         response = self._post(auth_client, session.id)
 
-        assert response.status_code == 500
+        assert response.status_code == 503
         assert not response.streaming
-        assert response.data == {"error": "チャット応答の生成中に問題が発生しました"}
+        assert response.data == {"error": "サービスの設定に問題があります"}
 
     @patch(
         "rest_framework.throttling.ScopedRateThrottle.THROTTLE_RATES",
@@ -209,6 +251,32 @@ class TestPreValidationStaysHttp:
 
         assert response.status_code == 429
         assert not response.streaming
+
+
+@pytest.mark.django_db
+class TestSceneInstructions:
+    """シーンの本文は、システムプロンプトの後ろの「# シーン設定」の節として渡す."""
+
+    def test_scene_body_is_sent_after_system_prompt(
+        self, chat_llm, title_llm, auth_client, scene_session, scene, chat_turn_env
+    ):
+        chat_llm.enqueue("こんにちは")
+
+        send_sse(auth_client, scene_session.id).read_all()
+
+        body = chat_turn_env[(scene.name, scene.label)]
+        assert chat_llm.requests[0].instructions == (
+            f"あなたは親切な AI です。\n\n# シーン設定\n\n{body}"
+        )
+
+    def test_session_without_scene_sends_system_prompt_only(
+        self, chat_llm, title_llm, auth_client, session
+    ):
+        chat_llm.enqueue("こんにちは")
+
+        send_sse(auth_client, session.id).read_all()
+
+        assert chat_llm.requests[0].instructions == "あなたは親切な AI です。"
 
 
 @pytest.mark.django_db

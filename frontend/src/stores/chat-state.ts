@@ -2,7 +2,7 @@ import type {
     ChatSessionDetail,
     ChatSessionListItem,
     ChatUiMessage,
-    GenerateConfig,
+    TalkSetting,
 } from '@/types/talk';
 import { CHAT_HISTORY_MAX_COUNT } from '@/types/talk';
 import { aggregateFromDetail, mergeServerMessages } from './chat-messages';
@@ -13,9 +13,12 @@ export interface ChatStoreState {
     readonly sessionsOffset: number;
     readonly hasMoreSessions: boolean;
     readonly isLoadingList: boolean;
-    readonly configs: readonly GenerateConfig[];
-    readonly selectedConfigName: string | null;
-    readonly configsFailed: boolean;
+    // 新規チャットで選べる Talk 設定。届くまでは null（届いて空なら選べるものがない）
+    readonly settings: readonly TalkSetting[] | null;
+    readonly selectedSettingId: number | null;
+    // 選んだシーンのスキル名。null は「なし」
+    readonly selectedSkillName: string | null;
+    readonly settingsFailed: boolean;
     readonly activeSessionId: string | null;
     readonly activeSession: ChatSessionListItem | null;
     readonly messages: readonly ChatUiMessage[];
@@ -41,7 +44,7 @@ export type GetChatState = () => ChatStoreState;
 export const selectIsAtMessageLimit = (state: ChatStoreState): boolean =>
     state.messages.length >= CHAT_HISTORY_MAX_COUNT;
 
-/** 読み込みに失敗した。セッションは決まっているが、履歴もプリセットも分からない状態。 */
+/** 読み込みに失敗した。セッションは決まっているが、履歴も Talk 設定も分からない状態。 */
 export const selectHasLoadFailed = (state: ChatStoreState): boolean =>
     state.activeSessionId !== null &&
     state.activeSession === null &&
@@ -52,7 +55,7 @@ export const selectIsSendDisabled = (state: ChatStoreState): boolean =>
     state.isSyncing ||
     selectIsAtMessageLimit(state) ||
     selectHasLoadFailed(state) ||
-    (state.activeSessionId === null && state.selectedConfigName === null);
+    (state.activeSessionId === null && state.selectedSettingId === null);
 
 let threadKeyCounter = 0;
 
@@ -61,7 +64,10 @@ function nextThreadKey(): number {
     return threadKeyCounter;
 }
 
-/** 表示中のセッションのない状態。threadKey を変えるので ChatThread はリマウントする。 */
+/**
+ * 表示中のセッションのない状態。threadKey を変えるので ChatThread はリマウントする。
+ * 次に始めるチャットのシーンは「なし」から選ぶ（Talk 設定の選択は保つ）。
+ */
 export function emptyThread(): Partial<ChatStoreState> {
     return {
         activeSessionId: null,
@@ -74,6 +80,7 @@ export function emptyThread(): Partial<ChatStoreState> {
         error: null,
         audioObjectUrls: new Map(),
         audioBlobs: new Map(),
+        selectedSkillName: null,
     };
 }
 
@@ -83,9 +90,10 @@ export const initialChatState: ChatStoreState = {
     sessionsOffset: 0,
     hasMoreSessions: false,
     isLoadingList: false,
-    configs: [],
-    selectedConfigName: null,
-    configsFailed: false,
+    settings: null,
+    selectedSettingId: null,
+    selectedSkillName: null,
+    settingsFailed: false,
     activeSessionId: null,
     activeSession: null,
     messages: [],

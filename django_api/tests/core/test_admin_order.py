@@ -75,5 +75,5 @@ def test_renamed_verbose_names_applied(superuser):
     assert names.get("llm_config") == "AI設定"
     assert names.get("langfuse_integration") == "Langfuse"
     assert names.get("hn_agent") == "HackerNews Agent"
-    assert names.get("talk") == "Talk Generator"
+    assert names.get("talk") == "Talk"
     assert names.get("companion") == "Companion"

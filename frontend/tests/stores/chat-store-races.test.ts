@@ -26,7 +26,7 @@ vi.mock('@/lib/api/talk', () => ({
     deleteAudio: vi.fn(),
     deleteSession: vi.fn(),
     fetchAudioBlob: vi.fn(),
-    fetchConfigs: vi.fn(),
+    fetchSettings: vi.fn(),
     getSession: vi.fn(),
     listSessions: vi.fn(),
     streamEdit: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('@/lib/api/talk', () => ({
 const state = () => useChatStore.getState();
 const flush = () => vi.advanceTimersByTimeAsync(0);
 
-const voiced = { name: 'voiced', display_name: '音声あり', tts_enabled: true };
+const voiced = { id: 2, name: '音声あり', tts_enabled: true, skills: [] };
 
 function nextStreamMessage(stream: ControlledStream) {
     vi.mocked(api.streamMessage).mockImplementationOnce((_id, _c, opts) =>
@@ -301,9 +301,7 @@ describe('chat-store の競合と異常系', () => {
 
     describe('編集の失敗と音声の待ち', () => {
         async function savedTurnWaitingForAudio() {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([voiced]);
-            await state().loadConfigs();
-            await openSession('s1', [], { config_name: 'voiced' });
+            await openSession('s1', [], { tts_enabled: true });
             const first = controlledStream();
             nextStreamMessage(first);
             void state().sendMessage('こんにちは');
@@ -345,7 +343,7 @@ describe('chat-store の競合と異常系', () => {
                             audio_size_bytes: 9,
                         },
                     ],
-                    { config_name: 'voiced' },
+                    { tts_enabled: true },
                 ),
             );
 
@@ -540,8 +538,8 @@ describe('chat-store の競合と異常系', () => {
 
     describe('遅延作成中の停止', () => {
         it('作成の応答を待たずに not-sent を返し、作られたら消す', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([voiced]);
-            await state().loadConfigs();
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([voiced]);
+            await state().loadSettings();
             const created = deferred<ChatSessionDetail>();
             vi.mocked(api.createSession).mockReturnValueOnce(created.promise);
 
@@ -561,8 +559,8 @@ describe('chat-store の競合と異常系', () => {
         });
 
         it('作成が失敗しても文言を出さない', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([voiced]);
-            await state().loadConfigs();
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([voiced]);
+            await state().loadSettings();
             const created = deferred<ChatSessionDetail>();
             vi.mocked(api.createSession).mockReturnValueOnce(created.promise);
 
@@ -758,15 +756,12 @@ describe('chat-store の競合と異常系', () => {
             expect(onSessionAbandoned).toHaveBeenCalledTimes(1);
         });
 
-        it('プリセットが消えた 404 ならセッションは残す', async () => {
+        it('編集対象が消えた 404 ならセッションは残す', async () => {
             await openSession('s1', history);
-            vi.mocked(api.streamMessage).mockImplementationOnce(
+            vi.mocked(api.streamEdit).mockImplementationOnce(
                 // eslint-disable-next-line require-yield
                 async function* () {
-                    throw httpError(
-                        { error: "設定 'friendly' が見つかりません" },
-                        404,
-                    );
+                    throw httpError(null, 404);
                 },
             );
             vi.mocked(api.getSession).mockResolvedValueOnce(
@@ -774,12 +769,21 @@ describe('chat-store の競合と異常系', () => {
             );
             const onSessionAbandoned = vi.fn();
 
-            await state().sendMessage('こんにちは', { onSessionAbandoned });
+            await expect(
+                state().editMessage(state().messages[0].localId, '直した', {
+                    onSessionAbandoned,
+                }),
+            ).resolves.toBe('not-sent');
             await flush();
 
+            // 開いたときと、消えていないかの確認の 2 回
+            expect(api.getSession).toHaveBeenCalledTimes(2);
             expect(onSessionAbandoned).not.toHaveBeenCalled();
             expect(state().activeSessionId).toBe('s1');
-            expect(state().error).toBe("設定 'friendly' が見つかりません");
+            expect(state().messages.map((m) => m.content)).toEqual(
+                history.map((m) => m.content),
+            );
+            expect(state().error).toBe('応答の生成に失敗しました');
         });
 
         it('確かめる間に別のチャットへ移っていたら何もしない', async () => {

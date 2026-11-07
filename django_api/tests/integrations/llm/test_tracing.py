@@ -231,14 +231,11 @@ class TestStreamingTrace:
         assert generation["status"] != "ERROR"
         assert talk["status"] != "ERROR"
 
-    def test_prepare_chat_is_separate_trace_without_io(self, captured):
-        """プロンプトの準備は別のトレースで記録し、内容は残さない."""
-        spans = captured["spans"]
-        prepare = _find(spans, "talk/prepare_chat")
+    def test_prepare_chat_records_no_separate_trace(self, captured):
+        """プロンプトの準備はトレースを作らない（ターンごとに別のトレースが増えない）."""
+        names = {span["name"] for span in captured["spans"]}
 
-        assert prepare["parent_id"] is None
-        assert "langfuse.observation.input" not in prepare["attributes"]
-        assert "langfuse.observation.output" not in prepare["attributes"]
+        assert "talk/prepare_chat" not in names
 
 
 @pytest.mark.integration

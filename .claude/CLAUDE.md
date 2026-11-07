@@ -27,7 +27,7 @@ kawashiro-server/
 │   │   ├── tavily/          # Tavily Web検索APIクライアント
 │   │   └── slack/           # Slack Incoming Webhook通知クライアント
 │   ├── features/            # ビジネス機能
-│   │   ├── talk/            # 会話生成API + チャット履歴セッション（応答は JSON か SSE）
+│   │   ├── talk/            # Talk（Talk 設定とシーンで話すチャット。応答は JSON か SSE）+ 廃止予定の会話生成 API
 │   │   ├── media/           # 画像変換・ZIP→PDF
 │   │   ├── hn_agent/        # HN監視・分析エージェント（PydanticAI）
 │   │   └── companion/       # Companion エージェント（システムプロンプト + スキル・常設ツール。発話からセリフを生成する API）
@@ -62,7 +62,7 @@ kawashiro-server/
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
 | LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
-| Talk・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・プレースホルダー | `django_api/features/talk/README.md` |
+| Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動）・廃止予定の会話生成（TalkConfig・プレースホルダー） | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
 | Companion の設定モデル（CompanionConfig）・スキルの本文の取得・ツールの契約・実行の流れ・API（エラー・回数制限）・Langfuse プロンプトのラベル | `django_api/features/companion/README.md` |
@@ -172,6 +172,7 @@ django_api/tests/
 ├── conftest.py              # 共通フィクスチャ（APIClient, User, Token等）+ 実 LLM・Langfuse へのガード
 ├── fixtures/
 │   ├── factories.py         # factory-boy ファクトリ（UserFactory等）
+│   ├── langfuse.py          # Langfuse のプロンプトの取得の代役（FakeLangfuse）
 │   ├── llm.py               # LLM の代役（ScriptedLLM）
 │   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
 │   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
@@ -233,6 +234,8 @@ def test_user_login_with_invalid_password_raises_error():
 | `mock_ms_graph_settings`      | MS Graph設定モック                 |
 | `ms_graph_client`             | OneDrive MSGraphClientモック       |
 | `fake_litellm`                | LiteLLM の HTTP 層の代役           |
+| `langfuse_prompts`            | Langfuse の text プロンプトの代役（`(プロンプト名, ラベル) → 本文` の dict。companion では autouse） |
+| `langfuse_unreachable`        | Langfuse に届かない状態（`langfuse_prompts` の上に重ねる） |
 | `admin_site_client`           | 管理画面にスーパーユーザーでログインしたクライアント（`_static_storage_without_manifest` を使う） |
 | `_static_storage_without_manifest` | 静的ファイルを manifest なしの保存先にする（collectstatic なしで管理画面を描画できる） |
 
@@ -270,7 +273,7 @@ llm.requests[1].system_prompts  # system の本文の並び（指示の各部分
 
 ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
 
-Companion のテスト（`tests/features/companion/`）では、`conftest.py` の autouse の `langfuse_prompts` が Langfuse のプロンプトの取得を代役にします。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
+Langfuse のプロンプトの取得は、`tests/conftest.py` の `langfuse_prompts` で代役にします（Companion のテスト `tests/features/companion/` では、その `conftest.py` が autouse にしている）。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
 
 ## コーディング規約
 

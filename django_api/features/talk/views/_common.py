@@ -7,7 +7,12 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from integrations.holiday import HolidayNetworkError, HolidayTimeoutError
-from integrations.llm.exceptions import LLMClientError, LLMTimeoutError
+from integrations.langfuse.exceptions import PromptUnavailableError
+from integrations.llm.exceptions import (
+    LLMClientError,
+    LLMConfigurationError,
+    LLMTimeoutError,
+)
 from integrations.msgraph.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -81,7 +86,9 @@ def classify_synthesis_error(exc: Exception, fallback: str) -> tuple[int, str]:
         logger.error("AI/TTSサービスエラー: %s", str(exc))
         return status.HTTP_502_BAD_GATEWAY, "AI生成サービスへの接続に失敗しました"
 
-    if isinstance(exc, ConfigurationError):
+    if isinstance(
+        exc, (ConfigurationError, LLMConfigurationError, PromptUnavailableError)
+    ):
         logger.error("サービス設定エラー: %s", str(exc))
         return status.HTTP_503_SERVICE_UNAVAILABLE, "サービスの設定に問題があります"
 
@@ -100,8 +107,15 @@ def handle_synthesis_error(exc: Exception, *, fallback_message: str) -> Response
 
 
 def get_owned_session(request, session_id) -> ChatSession | None:
-    """request.user が所有する ChatSession を返す（無ければ None）."""
-    return ChatSession.objects.filter(id=session_id, user=request.user).first()
+    """request.user が所有する ChatSession を返す（無ければ None）.
+
+    ターンの事前検証で使う Talk 設定（とシステムプロンプトの参照）とシーンも一緒に引く。
+    """
+    return (
+        ChatSession.objects.select_related("setting__system_prompt_ref", "skill")
+        .filter(id=session_id, user=request.user)
+        .first()
+    )
 
 
 def create_assistant_message(

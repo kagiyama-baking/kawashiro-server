@@ -11,9 +11,11 @@ from integrations.langfuse.client import (
     get_prompt_with_variables,
     langfuse_session,
     resolve_prompt,
+    resolve_required_prompt,
 )
-from integrations.langfuse.exceptions import LangfusePromptError
+from integrations.langfuse.exceptions import LangfusePromptError, PromptUnavailableError
 from integrations.langfuse.models import LangfusePromptRef
+from tests.fixtures.factories import LangfusePromptRefFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -490,3 +492,44 @@ class TestExtractVariables:
         from integrations.langfuse.client import extract_variables
 
         assert extract_variables("{{ spaced }}") == {"spaced"}
+
+
+REQUIRED_PROMPT_TEXT = "システムプロンプト"
+EMPTY_PROMPT_TEXTS = ["", " \n\t "]
+
+
+@pytest.mark.unit
+class TestResolveRequiredPrompt:
+    """resolve_required_prompt（システムプロンプト。本文が空なら読めた体で続けない）."""
+
+    def test_resolve_required_prompt_with_text_returns_stripped_text(
+        self, langfuse_prompts
+    ):
+        """前後の空白を除いた本文を返す."""
+        ref = LangfusePromptRefFactory.build(
+            name="companion-system", fallback_text=f"\n  {REQUIRED_PROMPT_TEXT}\n"
+        )
+
+        assert resolve_required_prompt(ref) == REQUIRED_PROMPT_TEXT
+
+    @pytest.mark.parametrize("fallback_text", EMPTY_PROMPT_TEXTS)
+    def test_resolve_required_prompt_with_empty_text_raises_error_with_ref_name(
+        self, langfuse_prompts, fallback_text
+    ):
+        """本文が空（空白だけ）なら、参照の識別名を持つ PromptUnavailableError を送出する.
+
+        `resolve_prompt` は Langfuse から取れないと例外を出さずにフォールバックテキストへ落ちる。
+        """
+        ref = LangfusePromptRefFactory.build(
+            name="companion-system", fallback_text=fallback_text
+        )
+
+        with pytest.raises(
+            PromptUnavailableError, match="companion-system"
+        ) as exc_info:
+            resolve_required_prompt(ref)
+
+        assert (exc_info.value.ref_name, exc_info.value.reason) == (
+            "companion-system",
+            "本文が空です",
+        )

@@ -29,7 +29,7 @@ import { CHAT_MESSAGE_MAX_LENGTH } from '@/types/talk';
 import { ChatHeader } from './ChatHeader';
 import { ChatNotices } from './ChatNotices';
 import { MessageAudio } from './MessageAudio';
-import { PresetPicker } from './PresetPicker';
+import { TalkSettingPicker } from './TalkSettingPicker';
 
 // マウスがある環境では、最後の行以外のアクションは行に乗せたときだけ出す。
 // タッチの環境とキーボード操作では常に届くようにする。
@@ -299,7 +299,7 @@ function Welcome() {
     return (
         <div className="mb-5 flex flex-col items-center gap-1 text-center">
             <PageHeader eyebrow="TALK" title="何を話しましょうか" />
-            <PresetPicker />
+            <TalkSettingPicker />
         </div>
     );
 }

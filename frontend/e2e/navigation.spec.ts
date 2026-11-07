@@ -5,7 +5,7 @@ test.describe('ナビゲーション', () => {
         // XHR/fetchのAPIリクエストのみモック（HTMLリクエストは除外）
         await page.route('**/api/**', (route) => {
             if (route.request().resourceType() === 'fetch' || route.request().resourceType() === 'xhr') {
-                return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [], configs: [], styles: [] }) });
+                return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [], settings: [], styles: [] }) });
             }
             return route.continue();
         });

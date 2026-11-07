@@ -13,7 +13,7 @@ from pydantic_ai.exceptions import ModelHTTPError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from features.talk.models import ChatMessage, ChatSession, TalkConfig
+from features.talk.models import ChatMessage, ChatSession, TalkSetting
 from integrations.langfuse.models import LangfusePromptRef
 
 User = get_user_model()
@@ -69,22 +69,17 @@ def prompt_refs(db):
 
 
 @pytest.fixture
-def talk_config(prompt_refs):
-    sys_ref, user_ref = prompt_refs
-    return TalkConfig.objects.create(
-        name="edit-config",
-        display_name="編集再送用",
-        tts_enabled=False,
-        system_prompt_ref=sys_ref,
-        user_prompt_ref=user_ref,
+def talk_setting(prompt_refs):
+    return TalkSetting.objects.create(
+        name="編集再送用", system_prompt_ref=prompt_refs[0]
     )
 
 
 @pytest.fixture
-def populated_session(user, talk_config):
+def populated_session(user, talk_setting):
     """user/assistant が複数件入った session を作る."""
     session = ChatSession.objects.create(
-        user=user, config_name=talk_config.name, title="既存タイトル"
+        user=user, setting=talk_setting, title="既存タイトル"
     )
     msgs = []
     for i in range(4):
@@ -248,7 +243,7 @@ class TestSessionMessageEdit:
         session, msgs = populated_session
         # 別 session を作って、その msg id を渡す
         other_session = ChatSession.objects.create(
-            user=session.user, config_name=session.config_name
+            user=session.user, setting=session.setting
         )
         other_msg = ChatMessage.objects.create(
             session=other_session, sequence=0, role="user", content="他"
@@ -264,7 +259,7 @@ class TestSessionMessageEdit:
         """他ユーザーの msg_id を URL に混ぜても 404 になる（IDOR 防御）."""
         session, _ = populated_session
         other_session = ChatSession.objects.create(
-            user=other_user, config_name=session.config_name
+            user=other_user, setting=session.setting
         )
         other_msg = ChatMessage.objects.create(
             session=other_session, sequence=0, role="user", content="他人の発言"

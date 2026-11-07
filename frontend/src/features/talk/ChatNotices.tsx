@@ -61,14 +61,14 @@ export function ChatNotices() {
     const isRunning = useChatStore((s) => s.isRunning);
     const isAtLimit = useChatStore(selectIsAtMessageLimit);
     const hasLoadFailed = useChatStore(selectHasLoadFailed);
-    const configsFailed = useChatStore(
-        (s) => s.configsFailed && s.activeSessionId === null,
+    const settingsFailed = useChatStore(
+        (s) => s.settingsFailed && s.activeSessionId === null,
     );
 
     return (
         <div className="mb-2 flex flex-col gap-2 empty:hidden">
-            {configsFailed && (
-                <ErrorNotice message="プリセットを取得できませんでした。ページを再読み込みしてください。" />
+            {settingsFailed && (
+                <ErrorNotice message="Talk 設定を取得できませんでした。ページを再読み込みしてください。" />
             )}
             {hasLoadFailed && (
                 <ErrorNotice

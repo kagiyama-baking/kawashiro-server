@@ -92,7 +92,7 @@ def _run_investigation(thread):
 def _run_talk():
     """Talk のチャットをストリーミングで session_id 付きで実行する."""
     from features.talk.llm_agents import TALK_CHAT_AGENT
-    from features.talk.models import TalkConfig
+    from features.talk.models import TalkSetting
     from features.talk.services import TalkService
     from integrations.langfuse.models import LangfusePromptRef
     from tests.fixtures.llm import ScriptedLLM
@@ -100,16 +100,11 @@ def _run_talk():
     ref = LangfusePromptRef.objects.create(
         name="trace-talk", langfuse_prompt_name="trace-talk", fallback_text="system"
     )
-    config = TalkConfig.objects.create(
-        name="trace",
-        display_name="trace",
-        system_prompt_ref=ref,
-        user_prompt_ref=ref,
-    )
+    setting = TalkSetting.objects.create(name="trace", system_prompt_ref=ref)
     llm = ScriptedLLM("返信")
     service = TalkService()
     with TALK_CHAT_AGENT.override(model=llm.model):
-        system_prompt = service.prepare_chat_prompt(config)
+        system_prompt = service.prepare_chat_prompt(setting)
         list(
             service.stream_chat_reply(
                 system_prompt,
@@ -183,7 +178,7 @@ def _run_companion():
     )
     with (
         COMPANION_AGENT.override(model=llm.model),
-        patch("features.companion.skills.fetch_text_prompt", return_value="手順"),
+        patch("integrations.llm.skills.fetch_text_prompt", return_value="手順"),
         patch("features.companion.services.TTSClient") as tts_client,
         patch("django.utils.timezone.now", return_value=COMPANION_NOW),
     ):

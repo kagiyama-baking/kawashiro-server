@@ -12,7 +12,7 @@ from pydantic_ai.exceptions import ModelHTTPError, ModelTimeoutError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from features.talk.models import ChatMessage, ChatSession, TalkConfig
+from features.talk.models import ChatMessage, ChatSession, TalkSetting
 from features.talk.services import TalkService
 from integrations.langfuse.models import LangfusePromptRef
 from integrations.tts.client import TTSResult
@@ -72,35 +72,27 @@ def prompt_refs(db):
 
 
 @pytest.fixture
-def talk_config(prompt_refs):
-    sys_ref, user_ref = prompt_refs
-    return TalkConfig.objects.create(
-        name="chat-session-test",
-        display_name="セッション用",
-        tts_enabled=False,
-        system_prompt_ref=sys_ref,
-        user_prompt_ref=user_ref,
+def talk_setting(prompt_refs):
+    return TalkSetting.objects.create(
+        name="セッション用", system_prompt_ref=prompt_refs[0]
     )
 
 
 @pytest.fixture
-def talk_config_tts(prompt_refs):
-    sys_ref, user_ref = prompt_refs
-    return TalkConfig.objects.create(
-        name="chat-session-tts",
-        display_name="セッション用TTS",
+def tts_setting(prompt_refs):
+    return TalkSetting.objects.create(
+        name="セッション用TTS",
         tts_enabled=True,
         tts_format="wav",
         tts_model="model",
         tts_style="Neutral",
-        system_prompt_ref=sys_ref,
-        user_prompt_ref=user_ref,
+        system_prompt_ref=prompt_refs[0],
     )
 
 
 @pytest.fixture
-def session(user, talk_config):
-    return ChatSession.objects.create(user=user, config_name=talk_config.name)
+def session(user, talk_setting):
+    return ChatSession.objects.create(user=user, setting=talk_setting)
 
 
 def _url(session_id) -> str:
@@ -148,9 +140,9 @@ class TestSessionMessagePost:
 
     @patch("features.talk.services.TTSClient")
     def test_send_with_tts_saves_audio_file(
-        self, mock_tts_class, chat_llm, title_llm, auth_client, talk_config_tts, user
+        self, mock_tts_class, chat_llm, title_llm, auth_client, tts_setting, user
     ):
-        sess = ChatSession.objects.create(user=user, config_name=talk_config_tts.name)
+        sess = ChatSession.objects.create(user=user, setting=tts_setting)
         chat_llm.enqueue("音声付き")
         mock_tts_class.return_value.synthesize.return_value = TTSResult(
             audio_data=b"\x00" * 200, content_type="audio/wav", format="wav"
@@ -170,10 +162,10 @@ class TestSessionMessagePost:
 
     @patch("features.talk.services.TTSClient")
     def test_tts_failure_returns_201_and_keeps_reply(
-        self, mock_tts_class, chat_llm, title_llm, auth_client, talk_config_tts, user
+        self, mock_tts_class, chat_llm, title_llm, auth_client, tts_setting, user
     ):
         """音声合成の失敗は致命にせず、本文を残して 201 を返す（以前は 502）."""
-        sess = ChatSession.objects.create(user=user, config_name=talk_config_tts.name)
+        sess = ChatSession.objects.create(user=user, setting=tts_setting)
         chat_llm.enqueue("本文")
         mock_tts_class.return_value.synthesize.side_effect = TTSNetworkError("down")
 
@@ -196,10 +188,10 @@ class TestSessionMessagePost:
         assert response.data["title"] == "自動タイトル"
 
     def test_does_not_overwrite_existing_title(
-        self, chat_llm, title_llm, auth_client, user, talk_config
+        self, chat_llm, title_llm, auth_client, user, talk_setting
     ):
         sess = ChatSession.objects.create(
-            user=user, config_name=talk_config.name, title="既存タイトル"
+            user=user, setting=talk_setting, title="既存タイトル"
         )
         chat_llm.enqueue("返信")
 
@@ -287,11 +279,12 @@ class TestSessionMessagePost:
         assert chat_llm.requests[0].instructions == "あなたは親切な AI です。"
         assert chat_llm.requests[0].conversation == [("user", "おはよう")]
 
-    def test_session_config_missing_returns_404(self, auth_client, user):
-        # 存在しない config を指す session
+    def test_session_without_setting_returns_400(self, auth_client, user):
+        """Talk 設定のない（移行できなかった旧プリセットの）チャットは続けられない."""
         sess = ChatSession.objects.create(user=user, config_name="nope")
         response = auth_client.post(_url(sess.id), {"content": "hi"}, format="json")
-        assert response.status_code == 404
+        assert response.status_code == 400
+        assert "Talk 設定がない" in response.data["error"]
 
     @patch(
         "rest_framework.throttling.ScopedRateThrottle.THROTTLE_RATES",

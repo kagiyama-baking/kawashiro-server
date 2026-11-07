@@ -14,22 +14,23 @@ features/companion/
 ├── models.py                  # CompanionConfig（スキルは integrations/llm/models.py の AgentSkill から選ぶ）
 ├── admin.py                   # 設定（スキルの選択・有効化アクション）。Agent Skills の画面は integrations/llm/admin.py
 ├── agent.py                   # COMPANION_AGENT・常設ツール（get_datetime / get_weather / get_today_events）・応答の方針（response_policy）・出力の検証
-├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・スキルの本文の取得（resolve_skill_body）・システムプロンプトの解決（resolve_required_prompt）・loaded_skill
+├── skills.py                  # スキル → 実行ごとの遅延 capability（build_skill_capabilities）・指定したスキルの本文の節（skill_instructions）・loaded_skill。本文の取得（resolve_skill_body）は integrations/llm/skills.py、システムプロンプトの解決（resolve_required_prompt）は integrations/langfuse/client.py
 ├── services.py                # run_companion（1 回の実行）→ CompanionReply
 ├── serializers.py             # 実行 API の入力（prompt / skill）と応答（text / skill / audio_data / audio_format）
 ├── views.py                   # CompanionRunView（POST /companion/run/）・例外と HTTP ステータスの対応
 ├── throttling.py              # CompanionRateThrottle（有効な設定の rate_limit で、ユーザーごとに数える）
 ├── urls.py                    # app_name = "companion"（run/）
-├── exceptions.py              # CompanionError / PromptUnavailableError / CompanionNotConfiguredError / UnknownSkillError
-└── migrations/                # 0001_initial と次の 5 本（0001 まで戻せる）
+├── exceptions.py              # CompanionError / CompanionNotConfiguredError / UnknownSkillError（PromptUnavailableError は integrations/langfuse/exceptions.py）
+└── migrations/                # 0001_initial と次の 6 本（0001 まで戻せる）
     ├── 0002_rename_persona_prompt_ref_to_system_prompt_ref.py  # persona_prompt_ref → system_prompt_ref の改名（手書き）
     ├── 0003_agentskill_companionconfig_skills.py               # AgentSkill と CompanionConfig.skills を足す
     ├── 0004_migrate_companionskill_to_agentskill.py            # 旧 CompanionSkill の行を AgentSkill に写す（下の「旧 CompanionSkill からの移行」）
     ├── 0005_delete_companionskill.py                           # 旧 CompanionSkill を消す
-    └── 0006_move_agentskill_to_llm_config.py                   # AgentSkill を llm_config へ移す（状態だけ。下記）
+    ├── 0006_move_agentskill_to_llm_config.py                   # AgentSkill を llm_config へ移す（状態だけ。下記）
+    └── 0007_alter_companionconfig_skills_related_name.py       # スキルの逆参照名を companion_configs にする（DB は無変更）
 ```
 
-`0006` は `AgentSkill` を llm_config アプリへ移す migration です（llm_config の `0014` の後に当たります）。どちらも表は変えないので、行・設定の選択・表（`companion_agentskill`）はそのまま残ります（表名と内容の型（ContentType）の扱いは [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）。`0006` を持たない版のコードに戻すときは、先に `0006` を含む版のコードで `python manage.py migrate llm_config 0013` を実行します（llm_config の `0016`（サービス設定の表示名）、`0015`（スキル名から接頭辞 `companion-skill-` を外す。規則は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）、`0006`、llm_config の `0014`（内容の型の行も companion に戻す）の順に外れ、`AgentSkill` は companion のモデルに戻ります）。`migrate companion 0005` だけでは、`0016`・`0015` は外れますが llm_config の `0014` が当たったまま残り、内容の型の行も llm_config のままです（古い版の管理画面では、それまでの履歴と付けた権限が見えません）。戻すときは `migrate llm_config 0013` を使ってください。
+`0006` は `AgentSkill` を llm_config アプリへ移す migration です（llm_config の `0014` の後に当たります）。どちらも表は変えないので、行・設定の選択・表（`companion_agentskill`）はそのまま残ります（表名と内容の型（ContentType）の扱いは [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）。`0006` を持たない版のコードに戻すときは、先に `0006` を含む版のコードで `python manage.py migrate llm_config 0013` を実行します（llm_config の `0017`（サービス `talk` の表示名）・`0016`（サービス設定の表示名）、`0015` に依存する companion の `0007`（逆参照名）と talk の `0017` 以降（Talk 設定。**作った Talk 設定とチャットの紐づけも消える**）、llm_config の `0015`（スキル名から接頭辞 `companion-skill-` を外す。規則は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）、`0006`、llm_config の `0014`（内容の型の行も companion に戻す）が外れ、`AgentSkill` は companion のモデルに戻ります）。`migrate companion 0005` だけでは、`0006` に依存する llm_config の `0015` 以降（と、それに依存する companion の `0007`・talk の `0017` 以降）は外れますが、llm_config の `0014` が当たったまま残り、内容の型の行も llm_config のままです（古い版の管理画面では、それまでの履歴と付けた権限が見えません）。戻すときは `migrate llm_config 0013` を使ってください。
 
 音声合成の項目は `integrations/tts/models.py` の抽象モデル `AbstractTTSSettings` から継承します（テーブルは持たないので tts アプリに migration はありません）。
 
@@ -42,7 +43,7 @@ features/companion/
 | `name` | CharField(255) | 設定の識別名 | 一意 |
 | `is_active` | Bool, `False` | 有効な設定 | 有効にして保存すると、ほかの設定は無効になる |
 | `system_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | 全スキルに共通のシステムプロンプトの参照 | 必須。参照中の `LangfusePromptRef` は削除できない |
-| `skills` | M2M → `AgentSkill`（`related_name="configs"`） | この設定で使うスキル（下の「スキルの登録（Agent Skills）」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
+| `skills` | M2M → `AgentSkill`（`related_name="companion_configs"`。0007 までは `configs`） | この設定で使うスキル（下の「スキルの登録（Agent Skills）」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
 | `area_code` | CharField(10), `""` | 天気予報の予報区コード（例: `130010`）。空なら天気を扱わない | 空か 6 桁の半角数字（`^[0-9]{6}\Z`。全角数字・末尾の改行は通さない） |
 | `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限（数え方は下の「API」の「回数制限」） | 1 以上 |
 | `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の `TalkConfig` 表](../talk/README.md#talkconfig-リファレンス) の `tts_*` 行と同じ | 同左 |
@@ -83,8 +84,8 @@ features/companion/
 
 - **モデルが最初に見るのは一覧（カタログ）だけです。** system にスキル名と説明が `- good-morning: 朝のあいさつ（「おはよう」など）` の形で並び、組み込みの `load_capability` ツールが足されます。一覧の見出し・囲み（`<context id="capability:deferred_capabilities">`）・後ろの注記は PydanticAI の英語の定型文です。本文はまだ送りません。
 - **モデルが `load_capability`（引数 `id` にスキル名）を呼ぶと、そのスキルの本文が以降のリクエストに入ります。** ツールの結果（読み込んだ旨の英語の定型文だけ）の直後の system（`<context id="capability:<スキル名>">` で囲んだもの）として届き、ユーザーの発話やツールの結果には混ざりません（送る形は `tests/integrations/llm/test_runtime.py` の `TestCapabilitiesContract` で固定）。読み込まなかったスキルの本文は送りません。
-- **本文は読み込まれたときに Langfuse から取り、1 回の実行で 1 回だけ取ります。** `resolve_skill_body(skill)` が `fetch_text_prompt(skill.name, label=skill.label)`（`integrations/langfuse/client.py`）で、スキル名と同じ名前のプロンプトをスキルのラベルで取ります。読み込んだ後はリクエストのたびに本文を送りますが、最初に取った本文を使い続けます（実行の途中で本文は変わりません）。取るのは呼び出し元のスレッドです。
-- **本文を取れないか、空ならエラーです（フォールバックはありません）。** Langfuse から取れない（届かない・そのラベルのプロンプトがない・Text 型でない）か、本文が空（空白だけ）なら、`PromptUnavailableError`（`exceptions.py`）で実行ごと止めます（API では 503）。例外はプロンプト名を `ref_name`、理由を `reason` に持ち、取れなかったときは元の `LangfusePromptError` を `__cause__` に持ちます。同じ名前の `LangfusePromptRef` があっても、そのフォールバックテキストは使いません。読み込めた体で続けたり、そのスキルを飛ばしたりはしません。
+- **本文は読み込まれたときに Langfuse から取り、1 回の実行で 1 回だけ取ります。** `resolve_skill_body(skill)`（`integrations/llm/skills.py`。全エージェント共通）が `fetch_text_prompt(skill.name, label=skill.label)`（`integrations/langfuse/client.py`）で、スキル名と同じ名前のプロンプトをスキルのラベルで取ります。読み込んだ後はリクエストのたびに本文を送りますが、最初に取った本文を使い続けます（実行の途中で本文は変わりません）。取るのは呼び出し元のスレッドです。
+- **本文を取れないか、空ならエラーです（フォールバックはありません）。** Langfuse から取れない（届かない・そのラベルのプロンプトがない・Text 型でない）か、本文が空（空白だけ）なら、`PromptUnavailableError`（`integrations/langfuse/exceptions.py`）で実行ごと止めます（API では 503）。例外はプロンプト名を `ref_name`、理由を `reason` に持ち、取れなかったときは元の `LangfusePromptError` を `__cause__` に持ちます。同じ名前の `LangfusePromptRef` があっても、そのフォールバックテキストは使いません。読み込めた体で続けたり、そのスキルを飛ばしたりはしません。
 - **Langfuse SDK のプロンプトのキャッシュはそのまま使います（DB のフォールバックではありません）。** キャッシュはプロセス（gunicorn のワーカー）ごとで、プロンプト名とラベルで引きます。期限（既定 60 秒）が切れた後の最初の取得は古い本文を返し、裏で取り直します。そのため Langfuse で本文を直しても、反映されるのは取り直した後の実行からです。一度取れた本文は、その後 Langfuse に届かなくなっても返り続けます（取り直しに失敗しても古い本文のまま）。エラーになるのは、そのプロセスのキャッシュにまだないとき（起動の直後や、初めて使うスキル）と、Langfuse でプロンプトが見つからなくなってキャッシュから外れた後です。キャッシュにないときは SDK がその場で取りに行き、失敗すると 3 回まで試します（1 回の待ちは SDK の既定で 5 秒）。
 - **本文は変数のない text プロンプトです。** `{{...}}` は展開せず、そのまま届きます。日時・天気・予定のデータは本文に埋め込めないので、下の「ツール」を呼ぶよう本文に書きます（ツール名は表の名前のとおりに書く）。
 - **使ったスキルは `loaded_skill(messages)` で実行の履歴から取ります。** 最初に読み込みに成功したスキル名を返し、どれも読み込まなければ `None` です。不明な名前・読み込み済みのスキルを読み込もうとすると、モデルに再試行を求めるだけで数えません。`run_companion` では続けて 3 回まで再試行でき、それを超えて失敗すると実行が失敗します（`LLMOutputError`。下の「上限と再試行」）。
