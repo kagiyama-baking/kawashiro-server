@@ -9,6 +9,9 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('hn_agent', '0001_initial'),
+        # vector の列を作るので、pgvector の拡張を入れた後に当てる（新しい PostgreSQL の DB で、
+        # ほかのアプリの依存から HN Agent の migration が core より先に当たっても止まらないように）
+        ('core', '0002_enable_pgvector'),
     ]
 
     operations = [
