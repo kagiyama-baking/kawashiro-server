@@ -413,3 +413,58 @@ def test_0018_round_trip_to_0016_keeps_preset_name_and_binds_again(migrator):
     apps = _migrate(migrator, AFTER_BIND)
     bound = apps.get_model("talk", "ChatSession").objects.select_related("setting")
     assert bound.get(pk=session).setting.name == "チャット用（移行テスト）"
+
+
+@pytest.mark.integration
+def test_0018_rebinds_to_renamed_setting_already_used_by_same_preset(migrator):
+    """紐づけ直しでは、同じプリセットのチャットが紐づく Talk 設定を使う（改名していても作らない）."""
+    apps = _migrate(migrator, BEFORE_BIND)
+    user_id = _bind_user(apps)
+    _preset(apps, "bind-chat", "チャット用（移行テスト）")
+    first = _session(apps, user_id, "bind-chat")
+    apps = _migrate(migrator, AFTER_BIND)
+    apps.get_model("talk", "TalkSetting").objects.filter(
+        name="チャット用（移行テスト）"
+    ).update(name="ひな（移行テストで改名）")
+
+    # 旧版のコードが、紐づけの後にチャットを作った
+    apps = _migrate(migrator, BEFORE_BIND)
+    later = _session(apps, user_id, "bind-chat")
+    apps = _migrate(migrator, AFTER_BIND)
+
+    assert list(_settings_by_name(apps)) == ["ひな（移行テストで改名）"]
+    sessions = apps.get_model("talk", "ChatSession").objects.select_related("setting")
+    assert {sessions.get(pk=pk).setting.name for pk in (first, later)} == {
+        "ひな（移行テストで改名）"
+    }
+
+
+@pytest.mark.integration
+def test_0018_with_preset_sessions_split_across_settings_stops_and_changes_nothing(
+    migrator,
+):
+    """同じプリセットのチャットが 2 つの Talk 設定に分かれていると、どれに紐づけるか決めずに止まる."""
+    apps = _migrate(migrator, BEFORE_BIND)
+    user_id = _bind_user(apps)
+    chat = _preset(apps, "bind-chat", "チャット用（移行テスト）")
+    talk_setting = apps.get_model("talk", "TalkSetting")
+    session_model = apps.get_model("talk", "ChatSession")
+    for name in ("分かれた設定 A（移行テスト）", "分かれた設定 B（移行テスト）"):
+        setting = talk_setting.objects.create(
+            name=name, system_prompt_ref_id=chat.system_prompt_ref_id
+        )
+        session_model.objects.filter(pk=_session(apps, user_id, "bind-chat")).update(
+            setting=setting
+        )
+    unbound = _session(apps, user_id, "bind-chat")
+
+    migrator.loader.build_graph()
+    with pytest.raises(RuntimeError, match="bind-chat") as exc_info:
+        migrator.migrate(AFTER_BIND)
+
+    assert "何も変えていません" in str(exc_info.value)
+    apps = migrator.loader.project_state(BEFORE_BIND).apps
+    assert (
+        apps.get_model("talk", "ChatSession").objects.get(pk=unbound).setting_id is None
+    )
+    assert len(_settings_by_name(apps)) == 2

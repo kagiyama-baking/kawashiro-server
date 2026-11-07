@@ -6,10 +6,12 @@
 紐づける（更新日時は変えない）。名前はプリセットの表示名（空白だけならプリセット名）で、
 表示名がほかのプリセットと重なるときは「表示名（プリセット名）」にする。
 
-同じ名前の Talk 設定がすでにあり、システムプロンプトも同じなら、作らずにそれへ紐づける
-（音声は違ってもよい。移した後に admin で調整した設定を、紐づけ直しでも使う）。システム
-プロンプトが違うか、作る名前どうしが重なるときは、何も変えずに RuntimeError で止める。
-プリセットが消えたチャットは紐づけない。旧プリセット名は変えない。
+同じプリセットのチャットがすでに Talk 設定に紐づいていれば（紐づけ直し）、名前を見ずに
+その Talk 設定へ紐づける（移した後に名前や音声を整えていてもよい。2 つ以上に分かれていれば
+止める）。そうでなければ、同じ名前の Talk 設定がすでにあり、システムプロンプトも同じなら、
+作らずにそれへ紐づける（音声は違ってもよい）。システムプロンプトが違うか、作る名前どうしが
+重なるときは、何も変えずに RuntimeError で止める。プリセットが消えたチャットは紐づけない。
+旧プリセット名は変えない。
 
 後退では何もしない（0017 を戻すと Talk 設定の表と列ごと消え、旧プリセット名は残っている）。
 """
@@ -72,6 +74,21 @@ def _problems(planned, configs, existing) -> list[str]:
     return problems
 
 
+def _bound_settings(chat_session, configs) -> dict[str, set[int]]:
+    """プリセット名 → そのプリセットのチャットがすでに紐づいている Talk 設定の ID."""
+    bound: dict[str, set[int]] = {}
+    rows = (
+        chat_session.objects.filter(
+            config_name__in=[c.name for c in configs], setting__isnull=False
+        )
+        .values_list("config_name", "setting_id")
+        .distinct()
+    )
+    for config_name, setting_id in rows:
+        bound.setdefault(config_name, set()).add(setting_id)
+    return bound
+
+
 def bind_sessions_to_settings(apps, schema_editor):
     """Talk 設定のないチャットを、そのプリセットから作った Talk 設定へ紐づける."""
     chat_session = apps.get_model("talk", "ChatSession")
@@ -83,19 +100,33 @@ def bind_sessions_to_settings(apps, schema_editor):
     configs = list(talk_config.objects.filter(name__in=used).order_by("name"))
     if not configs:
         return
-    planned = _planned_names(talk_config, configs)
+    # 紐づけ直し: 同じプリセットのチャットが紐づく Talk 設定を使う（名前は見ない）
+    bound = _bound_settings(chat_session, configs)
+    new_configs = [c for c in configs if c.name not in bound]
+    planned = _planned_names(talk_config, new_configs)
     existing = {
         s.name: s for s in talk_setting.objects.filter(name__in=planned.values())
     }
-    problems = _problems(planned, configs, existing)
+    problems = [
+        f"- プリセット {name} のチャットが、複数の Talk 設定（ID: "
+        f"{', '.join(str(i) for i in sorted(ids))}）に分かれて紐づいていて、"
+        "どれに紐づけるか決められません"
+        for name, ids in sorted(bound.items())
+        if len(ids) > 1
+    ] + _problems(planned, new_configs, existing)
     if problems:
         raise RuntimeError(
             "既存のチャットを Talk 設定へ移せないので、migration を止めました"
             "（何も変えていません）。Talk 設定は、チャットに使われたプリセットの表示名で"
-            "作ります。重なる表示名か、同じ名前の Talk 設定の名前を変えてから、"
+            "作ります。重なる表示名か同じ名前の Talk 設定の名前を変えるか、分かれて"
+            "紐づいたチャットを 1 つの Talk 設定にそろえてから、"
             "migrate し直してください:\n" + "\n".join(problems)
         )
     for config in configs:
+        if config.name in bound:
+            (setting_id,) = bound[config.name]
+            unbound.filter(config_name=config.name).update(setting_id=setting_id)
+            continue
         setting = existing.get(planned[config.name])
         if setting is None:
             setting = talk_setting.objects.create(
