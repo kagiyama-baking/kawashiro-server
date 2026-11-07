@@ -1,19 +1,15 @@
-"""旧会話生成（Talk Generator）のプリセットの表を消し、チャットの旧プリセット名をモデルから外す.
+"""旧会話生成（Talk Generator）のプリセットの表と、チャットの旧プリセット名の列を消す.
 
 0018 でチャットを Talk 設定へ移した後に当たる（紐づけた Talk 設定はそのまま残る）。
-プリセット（`TalkConfig`）は表ごと消す。プリセットが参照していたプロンプト参照
-（`LangfusePromptRef`）は消さない。
+プリセット（`TalkConfig`）は表ごと消し、旧プリセット名（`ChatSession.config_name`）は
+列ごと消す。プリセットが参照していたプロンプト参照（`LangfusePromptRef`）は消さない。
 
-旧プリセット名（`ChatSession.config_name`）は、モデルからは外すが DB の列は値ごと残す。
-イメージだけ #268 の版（0018 まで）に戻しても、旧版のコードがこの列を読み書きして
-チャットが動くようにするため。いまのコードは列を書かないので、DB の既定値（空文字）を
-付ける。列は後の掃除の migration で消す。
-
-後退では、空のプリセットの表を作り直し、旧プリセット名の列から DB の既定値を外す
-（列の値はそのまま）。消したプリセットは戻らない。
+後退では、空のプリセットの表と、空文字の旧プリセット名の列を作り直すだけで、消した
+プリセットと旧プリセット名は戻らない。0018 までのコード（イメージだけ戻した旧版）は
+この列と表を読むので、旧版に戻すときは先にこの版のコードで 0018 まで戻す。
 """
 
-from django.db import migrations, models
+from django.db import migrations
 
 
 class Migration(migrations.Migration):
@@ -22,30 +18,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.SeparateDatabaseAndState(
-            database_operations=[
-                migrations.AlterField(
-                    model_name="chatsession",
-                    name="config_name",
-                    field=models.CharField(
-                        blank=True,
-                        db_default="",
-                        default="",
-                        help_text=(
-                            "Talk 設定より前のチャットのプリセット名（移行の元）。"
-                            "新しいチャットでは空"
-                        ),
-                        max_length=50,
-                        verbose_name="旧プリセット名（廃止予定）",
-                    ),
-                ),
-            ],
-            state_operations=[
-                migrations.RemoveField(
-                    model_name="chatsession",
-                    name="config_name",
-                ),
-            ],
+        migrations.RemoveField(
+            model_name="chatsession",
+            name="config_name",
         ),
         migrations.DeleteModel(
             name="TalkConfig",

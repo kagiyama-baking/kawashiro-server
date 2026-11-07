@@ -6,18 +6,14 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.recorder import MigrationRecorder
-
-from features.talk.models import ChatSession
-from tests.fixtures.factories import TalkSettingFactory
 
 # Talk 設定（0017）より前
 BEFORE_TALK_SETTINGS = [("talk", "0016_talkconfig_synthesize_rate_limit")]
 # 既存のチャットを Talk 設定へ移す前（0017）と、移す migration（0018）
 BEFORE_BIND = [("talk", "0017_talksetting_chatsession_setting_skill")]
 AFTER_BIND = [("talk", "0018_bind_chat_sessions_to_talk_settings")]
-# 旧会話生成設定（プリセット）の表を消し、チャットの旧プリセット名をモデルから外す migration（0019）
+# 旧会話生成設定（プリセット）の表と、チャットの旧プリセット名の列を消す migration（0019）
 AFTER_REMOVE_PRESETS = [
     ("talk", "0019_delete_talkconfig_remove_chatsession_config_name")
 ]
@@ -449,10 +445,10 @@ def test_0018_with_preset_sessions_split_across_settings_stops_and_changes_nothi
 
 
 @pytest.mark.integration
-def test_0019_drops_presets_table_and_keeps_preset_name_column_and_bound_sessions(
+def test_0019_drops_presets_table_and_preset_name_column_and_keeps_bound_sessions(
     migrator,
 ):
-    """プリセットの表は消し、旧プリセット名の列は値ごと DB に残す（Talk 設定への紐づけも残る）.
+    """プリセットの表と旧プリセット名の列を消す（Talk 設定への紐づけと更新日時は残る）.
 
     プリセットが参照していたプロンプト参照は消さない。
     """
@@ -462,20 +458,16 @@ def test_0019_drops_presets_table_and_keeps_preset_name_column_and_bound_session
     apps = _migrate(migrator, AFTER_REMOVE_PRESETS)
 
     assert "talk_talkconfig" not in _table_names()
-    assert "config_name" in _column_names("talk_chatsession")
+    assert "config_name" not in _column_names("talk_chatsession")
     chat = apps.get_model("talk", "ChatSession").objects.get(pk=session)
     assert (chat.setting_id, chat.updated_at) == (setting_id, OLD_UPDATED_AT)
-    # 列はモデルから外したので、0018 の時点のモデル（#268 の版のコード）で読む
-    old_apps = migrator.loader.project_state(AFTER_BIND).apps
-    old_chat = old_apps.get_model("talk", "ChatSession").objects.get(pk=session)
-    assert old_chat.config_name == "bind-chat"
     refs = apps.get_model("langfuse_integration", "LangfusePromptRef").objects
     assert refs.filter(name="bind-chat-system").exists()
 
 
 @pytest.mark.integration
-def test_0019_backwards_recreates_empty_presets_and_keeps_preset_names(migrator):
-    """0018 へ戻すと空のプリセットの表ができ、旧プリセット名は値が残る（消したプリセットは戻らない）."""
+def test_0019_backwards_recreates_empty_presets_and_blank_preset_names(migrator):
+    """0018 へ戻すと空のプリセットの表と、空文字の旧プリセット名の列ができる（消したものは戻らない）."""
     apps = _migrate(migrator, AFTER_BIND)
     session, setting_id = _bound_session(apps, _bind_user(apps))
     _migrate(migrator, AFTER_REMOVE_PRESETS)
@@ -485,44 +477,7 @@ def test_0019_backwards_recreates_empty_presets_and_keeps_preset_names(migrator)
     assert "talk_talkconfig" in _table_names()
     assert not apps.get_model("talk", "TalkConfig").objects.exists()
     chat = apps.get_model("talk", "ChatSession").objects.get(pk=session)
-    assert (chat.config_name, chat.setting_id) == ("bind-chat", setting_id)
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-def test_0019_sessions_created_by_current_code_get_blank_preset_name(
-    django_user_model,
-):
-    """いまのコードは旧プリセット名の列を書かないので、DB の既定値の空文字が入る."""
-    user = django_user_model.objects.create_user(
-        email="talk-0019-current@example.com", password="dummypass1234"
-    )
-
-    session = ChatSession.objects.create(user=user, setting=TalkSettingFactory())
-
-    old_apps = MigrationLoader(connection).project_state(AFTER_BIND).apps
-    stored = old_apps.get_model("talk", "ChatSession").objects.get(pk=session.pk)
-    assert stored.config_name == ""
-
-
-@pytest.mark.integration
-@pytest.mark.django_db
-def test_0019_lets_code_of_0018_create_and_read_sessions(django_user_model):
-    """0019 の後も、0018 の時点のモデル（イメージだけ #268 の版に戻したコード）がチャットを作って読める."""
-    old_apps = MigrationLoader(connection).project_state(AFTER_BIND).apps
-    old_session_model = old_apps.get_model("talk", "ChatSession")
-    user = django_user_model.objects.create_user(
-        email="talk-0019-rollback@example.com", password="dummypass1234"
-    )
-    setting = TalkSettingFactory()
-
-    created = old_session_model.objects.create(user_id=user.pk, setting_id=setting.pk)
-
-    rows = old_session_model.objects.filter(user_id=user.pk).values_list(
-        "config_name", "setting_id"
-    )
-    assert list(rows) == [("", setting.pk)]
-    assert ChatSession.objects.get(pk=created.pk).setting == setting
+    assert (chat.config_name, chat.setting_id) == ("", setting_id)
 
 
 @pytest.mark.integration
