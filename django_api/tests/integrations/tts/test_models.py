@@ -1,6 +1,6 @@
 """音声合成の設定項目の抽象モデル（AbstractTTSSettings）のテスト.
 
-`get_tts_options()` の振る舞いは、継承するモデル（`CompanionConfig`）のテストで確かめる
+`get_tts_options()` の振る舞いは、継承するモデル（`CompanionConfig`・`TalkSetting`）のテストで確かめる
 （抽象モデルはインスタンスを作れない）。
 """
 

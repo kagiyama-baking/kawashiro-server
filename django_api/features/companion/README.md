@@ -125,7 +125,7 @@ features/companion/
 | 10 | 音声合成が有効なら `TTSClient().synthesize(text, **config.get_tts_options())` で合成する | 音声合成の失敗（`TTSTimeoutError` / `TTSNetworkError` をそのまま） |
 
 - 1〜5 で止まったときはモデルを呼びません。スキル名の確認（2）は、LLM の接続設定を読む前に行います。
-- 出力トークンの上限（`max_tokens`）は付けません（Talk の単発生成と同じ）。
+- 出力トークンの上限（`max_tokens`）は付けません。
 
 ### スキルの指定と自動選択
 
