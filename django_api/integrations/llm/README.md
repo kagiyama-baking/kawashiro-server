@@ -38,8 +38,8 @@ LLM 接続・プロンプト管理・観測と、全エージェントで共有�
   Langfuse から取得してコンパイル、失敗時は `fallback_text` を Mustache 風に簡易置換します。
 - **`resolve_required_prompt(ref)`**（同上）
   `resolve_prompt` で本文を解決し、空（空白だけ）なら `PromptUnavailableError` にします（空のシステムプロンプトで続けない）。変数は展開しません。Companion と Talk 設定のシステムプロンプトが使います。
-- **`fetch_text_prompt(name, *, label)`**（同上）
-  参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を compile せずにそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまはスキルの本文（`resolve_skill_body`）だけが使います。
+- **`fetch_text_prompt(name, *, label, variables=None)`**（同上）
+  参照を使わず、Langfuse の Text 型プロンプトを名前とラベルで取り、本文を返します。`variables`（変数名 → 値の dict）を渡すと、本文の `{{変数}}` を SDK の compile で展開します（値は文字列にし、渡していない変数の `{{x}}` は残ります）。渡さなければ（`None`）compile せず、本文をそのまま返します。取れなければ（`langfuse` を import できない・届かない・未登録・Text 型でない）`LangfusePromptError` で、フォールバックはありません。SDK のプロンプトのキャッシュはそのまま使います。いまはスキルの本文（`resolve_skill_body`。変数は渡さない）だけが使います。
 - **`langfuse_session(session_id)`**（同上）
   中で実行する処理のトレースと配下の観測に、Langfuse のセッション ID（`session.id`）を伝播する with 文です（`propagate_attributes` を包む）。入った時点の現在のスパン（`@observe` の関数の中ならそのスパン）にも付きます。`None`・空文字なら何もせず、伝播の開始・解除に失敗しても警告ログだけで本処理は続けます。いまは Talk のチャットと Companion が使います（§6 の「Langfuse の Sessions」）。
 

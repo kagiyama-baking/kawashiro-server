@@ -2,7 +2,7 @@
 
 import logging
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -104,12 +104,16 @@ def resolve_required_prompt(ref: "LangfusePromptRef") -> str:
     return text
 
 
-def fetch_text_prompt(name: str, *, label: str) -> str:
-    """Langfuse の Text 型プロンプトを名前とラベルで取り、本文をそのまま返す.
+def fetch_text_prompt(
+    name: str, *, label: str, variables: Mapping[str, Any] | None = None
+) -> str:
+    """Langfuse の Text 型プロンプトを名前とラベルで取り、本文を返す.
 
     fallback を持たない取得経路（いまはスキルが使い、いずれプロジェクト全体を
     こちらへ寄せる）。取れなければ fallback_text に落とさず例外にする。
-    本文は compile しないので、`{{x}}` は展開されずに残る。
+    `variables` を渡すと、本文の `{{x}}` を SDK の compile で展開する（値は str に
+    する。渡していない変数の `{{x}}` は残る）。None（既定）なら展開せず、本文を
+    そのまま返す。
 
     SDK 自身のプロンプトキャッシュの挙動は変えない。TTL（既定 60 秒）を過ぎた
     ものも返しつつ裏で取り直すので、一度取れた後は取得に失敗しても古い本文が
@@ -119,9 +123,10 @@ def fetch_text_prompt(name: str, *, label: str) -> str:
     Args:
         name: Langfuse 上のプロンプト名
         label: 取得するラベル（production / staging など）
+        variables: 本文に差し込む変数（None なら展開しない）
 
     Returns:
-        プロンプト本文（未展開）
+        プロンプト本文（`variables` が None なら未展開）
 
     Raises:
         LangfusePromptError: langfuse を import できない・Langfuse に届かない・
@@ -153,7 +158,9 @@ def fetch_text_prompt(name: str, *, label: str) -> str:
             f"(label={label}, type={prompt_type})"
         )
 
-    return prompt.prompt
+    if variables is None:
+        return prompt.prompt
+    return prompt.compile(**variables)
 
 
 @contextmanager

@@ -279,6 +279,45 @@ class TestFetchTextPrompt:
 
         assert fetch_text_prompt("skill-greeting", label="staging") == body
 
+    def test_fetch_text_prompt_with_variables_returns_body_with_them_expanded(
+        self, langfuse_prompts
+    ):
+        """変数を渡すと、本文の `{{x}}` を SDK の compile で展開した本文を返す（値は str にする）."""
+        langfuse_prompts[("hn-agent-detective-user", "production")] = (
+            "タイトル: {{title}}\n{{ score_info }}（{{count}} 件）"
+        )
+
+        text = fetch_text_prompt(
+            "hn-agent-detective-user",
+            label="production",
+            variables={"title": "記事", "score_info": "スコア: 200", "count": 3},
+        )
+
+        assert text == "タイトル: 記事\nスコア: 200（3 件）"
+
+    def test_fetch_text_prompt_with_variables_keeps_unknown_placeholders(
+        self, langfuse_prompts
+    ):
+        """渡していない変数の `{{x}}` は展開せずに残す."""
+        langfuse_prompts[("greeting", "staging")] = "{{name}} さん、{{unknown}}"
+
+        text = fetch_text_prompt(
+            "greeting", label="staging", variables={"name": "ひな"}
+        )
+
+        assert text == "ひな さん、{{unknown}}"
+
+    def test_fetch_text_prompt_with_variables_none_returns_body_unexpanded(
+        self, langfuse_prompts
+    ):
+        """変数が None（既定）なら展開しない（`{{x}}` もそのまま返す）."""
+        langfuse_prompts[("greeting", "staging")] = "{{name}} さん"
+
+        assert (
+            fetch_text_prompt("greeting", label="staging", variables=None)
+            == "{{name}} さん"
+        )
+
     @patch("langfuse.get_client")
     def test_fetch_text_prompt_when_get_client_fails_raises_prompt_error(
         self, mock_get_client
