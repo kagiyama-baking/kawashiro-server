@@ -4,11 +4,11 @@ import type {
     ChatSessionDetail,
     ChatSessionListResponse,
     ChatStreamEvent,
-    GenerateConfig,
+    TalkSetting,
 } from '@/types/talk';
 
-interface ConfigsResponse {
-    readonly configs: GenerateConfig[];
+interface SettingsResponse {
+    readonly settings: TalkSetting[];
 }
 
 /** セッションの API のパス。id は URL から来るので、パスの区切りとして解釈されないようにする。 */
@@ -16,11 +16,11 @@ function sessionPath(id: string): string {
     return `talk/sessions/${encodeURIComponent(id)}/`;
 }
 
-export async function fetchConfigs(): Promise<GenerateConfig[]> {
+export async function fetchSettings(): Promise<TalkSetting[]> {
     const response = await apiClient
-        .get('talk/configs/')
-        .json<ConfigsResponse>();
-    return response.configs;
+        .get('talk/settings/')
+        .json<SettingsResponse>();
+    return response.settings;
 }
 
 interface ListSessionsParams {
@@ -39,11 +39,15 @@ export async function listSessions(
         .json<ChatSessionListResponse>();
 }
 
+/** セッションを作る。シーンを使わないなら skillName は null。どちらも作成後は変えられない。 */
 export async function createSession(
-    configName: string,
+    settingId: number,
+    skillName: string | null,
 ): Promise<ChatSessionDetail> {
     return apiClient
-        .post('talk/sessions/', { json: { config_name: configName } })
+        .post('talk/sessions/', {
+            json: { setting: settingId, skill: skillName },
+        })
         .json<ChatSessionDetail>();
 }
 

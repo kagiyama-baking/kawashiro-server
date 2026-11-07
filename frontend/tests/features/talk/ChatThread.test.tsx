@@ -14,7 +14,11 @@ import { ChatThread } from '@/features/talk/ChatThread';
 import { useChatRuntime } from '@/features/talk/useChatRuntime';
 import * as api from '@/lib/api/talk';
 import { useChatStore } from '@/stores/chat-store';
-import type { ChatSessionDetail, ChatSessionMessage } from '@/types/talk';
+import type {
+    ChatSessionDetail,
+    ChatSessionMessage,
+    TalkSetting,
+} from '@/types/talk';
 import {
     controlledStream,
     type ControlledStream,
@@ -26,7 +30,7 @@ vi.mock('@/lib/api/talk', () => ({
     deleteAudio: vi.fn(),
     deleteSession: vi.fn(),
     fetchAudioBlob: vi.fn(),
-    fetchConfigs: vi.fn(),
+    fetchSettings: vi.fn(),
     getSession: vi.fn(),
     listSessions: vi.fn(),
     streamEdit: vi.fn(),
@@ -71,7 +75,9 @@ function detail(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: messages.length,
         total_audio_bytes: 0,
         created_at: NOW,
@@ -81,12 +87,19 @@ function detail(
     };
 }
 
-const friendly = {
-    name: 'friendly',
-    display_name: 'フレンドリー',
+const morning = { name: 'good-morning', description: '朝のあいさつ' };
+const friendly: TalkSetting = {
+    id: 1,
+    name: 'フレンドリー',
     tts_enabled: false,
+    skills: [],
 };
-const voiced = { name: 'voiced', display_name: '音声あり', tts_enabled: true };
+const voiced: TalkSetting = {
+    id: 2,
+    name: '音声あり',
+    tts_enabled: true,
+    skills: [morning],
+};
 
 const store = () => useChatStore.getState();
 
@@ -108,12 +121,15 @@ function renderThread() {
     return { user: userEvent.setup() };
 }
 
-async function loadConfigs(configs = [friendly]) {
-    vi.mocked(api.fetchConfigs).mockResolvedValueOnce(configs);
+async function loadSettings(settings: TalkSetting[] = [friendly]) {
+    vi.mocked(api.fetchSettings).mockResolvedValueOnce(settings);
     await act(async () => {
-        await store().loadConfigs();
+        await store().loadSettings();
     });
 }
+
+const settingSelect = () => screen.getByRole('combobox', { name: 'Talk 設定' });
+const sceneSelect = () => screen.getByRole('combobox', { name: 'シーン' });
 
 async function openSession(
     messages: readonly ChatSessionMessage[] = [
@@ -179,69 +195,192 @@ describe('ChatThread', () => {
     });
 
     describe('空のとき', () => {
-        it('新規チャットでは見出しとプリセットの選択と入力欄を出し、ヘッダは出さない', async () => {
+        it('新規チャットでは見出しと Talk 設定の選択と入力欄を出し、ヘッダは出さない', async () => {
             renderThread();
-            await loadConfigs([friendly, voiced]);
+            await loadSettings([friendly, voiced]);
 
             expect(screen.getByText('TALK')).toBeInTheDocument();
             expect(
                 screen.getByRole('heading', { level: 1 }),
             ).toBeInTheDocument();
+            expect(settingSelect()).toHaveTextContent('フレンドリー');
+            // 先頭の Talk 設定にはシーンがない
             expect(
-                screen.getByRole('combobox', { name: 'プリセット' }),
-            ).toHaveTextContent('フレンドリー');
+                screen.queryByRole('combobox', { name: 'シーン' }),
+            ).not.toBeInTheDocument();
             expect(composerInput()).toBeInTheDocument();
             expect(
                 screen.queryByRole('button', { name: 'タイトルを編集' }),
             ).not.toBeInTheDocument();
         });
 
-        it('プリセットの取得に失敗したら知らせて送信できないままにする', async () => {
+        it('Talk 設定の取得に失敗したら知らせて送信できないままにする', async () => {
             renderThread();
-            vi.mocked(api.fetchConfigs).mockRejectedValueOnce(new Error('x'));
+            vi.mocked(api.fetchSettings).mockRejectedValueOnce(new Error('x'));
             await act(async () => {
-                await store().loadConfigs();
+                await store().loadSettings();
             });
 
-            expect(screen.getByRole('alert')).toHaveTextContent('プリセット');
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'Talk 設定を取得できませんでした。ページを再読み込みしてください。',
+            );
             typeText(composerInput(), 'こんにちは');
             expect(screen.getByRole('button', { name: '送信' })).toBeDisabled();
         });
 
-        it('メッセージのない既存のチャットではプリセットを固定で表示する', async () => {
+        it('選べる Talk 設定がなければ選択を止めて案内し、送信できないままにする', async () => {
             renderThread();
-            await loadConfigs();
+            await loadSettings([]);
+
+            expect(settingSelect()).toBeDisabled();
+            expect(
+                screen.getByText(
+                    '選べる Talk 設定がありません。管理画面の Talk → Talk 設定で有効にしてください。',
+                ),
+            ).toBeInTheDocument();
+            typeText(composerInput(), 'こんにちは');
+            expect(screen.getByRole('button', { name: '送信' })).toBeDisabled();
+        });
+
+        it('Talk 設定の一覧が届くまでは選択を止め、「選べる Talk 設定がありません」は出さない', () => {
+            renderThread();
+
+            expect(settingSelect()).toBeDisabled();
+            expect(
+                screen.queryByText(/選べる Talk 設定がありません/),
+            ).not.toBeInTheDocument();
+        });
+
+        it('メッセージのない既存のチャットでは Talk 設定を固定で表示する', async () => {
+            renderThread();
+            await loadSettings([friendly, voiced]);
             await openSession([]);
 
             expect(screen.getByText('TALK')).toBeInTheDocument();
             expect(screen.getByText('フレンドリー')).toBeInTheDocument();
             expect(
-                screen.queryByRole('combobox', { name: 'プリセット' }),
+                screen.queryByRole('combobox', { name: 'Talk 設定' }),
+            ).not.toBeInTheDocument();
+            expect(
+                screen.queryByRole('combobox', { name: 'シーン' }),
             ).not.toBeInTheDocument();
         });
     });
 
+    describe('Talk 設定とシーンの選択', () => {
+        // jsdom にない API。Radix の Select を開くと呼ばれる
+        const selectApis = {
+            hasPointerCapture: () => false,
+            releasePointerCapture: () => {},
+            scrollIntoView: () => {},
+        };
+
+        beforeEach(() => {
+            Object.assign(Element.prototype, selectApis);
+        });
+
+        afterEach(() => {
+            for (const name of Object.keys(selectApis)) {
+                delete (Element.prototype as unknown as Record<string, unknown>)[
+                    name
+                ];
+            }
+        });
+
+        it('Talk 設定を選ぶと、その設定のシーンを「なし」から選べるようになる', async () => {
+            const { user } = renderThread();
+            await loadSettings([friendly, voiced]);
+
+            await user.click(settingSelect());
+            await user.click(screen.getByRole('option', { name: '音声あり' }));
+
+            expect(store().selectedSettingId).toBe(2);
+            expect(settingSelect()).toHaveTextContent('音声あり');
+            expect(sceneSelect()).toHaveTextContent('なし');
+        });
+
+        it('シーンは説明を主に名前を添えて並べ、選んだら説明だけを出す', async () => {
+            const { user } = renderThread();
+            await loadSettings([voiced]);
+
+            await user.click(sceneSelect());
+            const options = screen.getAllByRole('option');
+            expect(options).toHaveLength(2);
+            expect(options[0]).toHaveTextContent('なし');
+            expect(within(options[1]).getByText('朝のあいさつ')).toBeVisible();
+            expect(within(options[1]).getByText('good-morning')).toBeVisible();
+            await user.click(options[1]);
+
+            expect(store().selectedSkillName).toBe('good-morning');
+            expect(sceneSelect()).toHaveTextContent('朝のあいさつ');
+            expect(sceneSelect()).not.toHaveTextContent('good-morning');
+        });
+
+        it('「なし」を選び直すとシーンを外す', async () => {
+            const { user } = renderThread();
+            await loadSettings([voiced]);
+            act(() => store().selectSkill('good-morning'));
+
+            await user.click(sceneSelect());
+            await user.click(screen.getByRole('option', { name: 'なし' }));
+
+            expect(store().selectedSkillName).toBeNull();
+            expect(sceneSelect()).toHaveTextContent('なし');
+        });
+
+        it('Talk 設定を選び直すとシーンは「なし」に戻り、シーンのない設定ではシーンを隠す', async () => {
+            const { user } = renderThread();
+            await loadSettings([friendly, voiced]);
+            act(() => {
+                store().selectSetting(2);
+                store().selectSkill('good-morning');
+            });
+            expect(sceneSelect()).toHaveTextContent('朝のあいさつ');
+
+            await user.click(settingSelect());
+            await user.click(screen.getByRole('option', { name: 'フレンドリー' }));
+
+            expect(
+                screen.queryByRole('combobox', { name: 'シーン' }),
+            ).not.toBeInTheDocument();
+
+            await user.click(settingSelect());
+            await user.click(screen.getByRole('option', { name: '音声あり' }));
+
+            expect(sceneSelect()).toHaveTextContent('なし');
+        });
+    });
+
     describe('ヘッダ', () => {
-        it('タイトルと固定のプリセットを表示し、h1 は 1 つにする', async () => {
+        it('タイトルと固定の Talk 設定を表示し、h1 は 1 つにする', async () => {
             renderThread();
-            await loadConfigs();
+            await loadSettings();
             await openSession();
 
             expect(screen.getByText('朝の挨拶')).toBeInTheDocument();
             expect(screen.getByText('フレンドリー')).toBeInTheDocument();
             expect(
-                screen.queryByRole('combobox', { name: 'プリセット' }),
+                screen.queryByRole('combobox', { name: 'Talk 設定' }),
             ).not.toBeInTheDocument();
             expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(
                 1,
             );
         });
 
-        it('プリセットの一覧になければ識別子を表示する', async () => {
+        it('シーンのあるチャットでは Talk 設定とシーンの説明を並べて出す', async () => {
             renderThread();
-            await openSession();
+            await openSession(undefined, { skill: morning });
 
-            expect(screen.getByText('friendly')).toBeInTheDocument();
+            expect(
+                screen.getByText('フレンドリー · 朝のあいさつ'),
+            ).toBeInTheDocument();
+        });
+
+        it('Talk 設定を移せなかった古いチャットでは「（Talk 設定なし）」と出す', async () => {
+            renderThread();
+            await openSession(undefined, { setting: null });
+
+            expect(screen.getByText('（Talk 設定なし）')).toBeInTheDocument();
         });
 
         it('タイトルを編集できる', async () => {
@@ -801,12 +940,8 @@ describe('ChatThread', () => {
         });
 
         it('合成中と失敗の表示を出す', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([voiced]);
             renderThread();
-            await act(async () => {
-                await store().loadConfigs();
-            });
-            await openSession([], { config_name: 'voiced' });
+            await openSession([], { tts_enabled: true });
             const stream = controlledStream();
             nextStreamMessage(stream);
             typeText(composerInput(), 'こんにちは');

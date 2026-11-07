@@ -17,7 +17,7 @@ import {
     deleteAudio,
     deleteSession,
     fetchAudioBlob,
-    fetchConfigs,
+    fetchSettings,
     getSession,
     listSessions,
     streamEdit,
@@ -34,10 +34,15 @@ let lastBody: Record<string, unknown> | null = null;
 let lastSearch: URLSearchParams | null = null;
 let lastAccept: string | null = null;
 
+const morningSetting = { id: 3, name: '朝の会話' };
+const morningScene = { name: 'good-morning', description: '朝のあいさつ' };
+
 const baseSession = {
     id: SESSION_ID,
     title: 't',
-    config_name: 'morning',
+    setting: morningSetting,
+    skill: morningScene,
+    tts_enabled: true,
     message_count: 0,
     total_audio_bytes: 0,
     created_at: '2026-04-26T00:00:00Z',
@@ -83,14 +88,11 @@ async function collect(
 }
 
 const server = setupServer(
-    http.get('*/api/talk/configs/', () =>
+    http.get('*/api/talk/settings/', () =>
         HttpResponse.json({
-            configs: [
-                {
-                    name: 'morning',
-                    display_name: '朝のあいさつ',
-                    tts_enabled: true,
-                },
+            settings: [
+                { ...morningSetting, tts_enabled: true, skills: [morningScene] },
+                { id: 4, name: '雑談', tts_enabled: false, skills: [] },
             ],
         }),
     ),
@@ -104,7 +106,9 @@ const server = setupServer(
                 {
                     id: SESSION_ID,
                     title: '雑談',
-                    config_name: 'morning',
+                    setting: morningSetting,
+                    skill: null,
+                    tts_enabled: true,
                     message_count: 4,
                     total_audio_bytes: 2048,
                     created_at: '2026-04-26T00:00:00Z',
@@ -195,9 +199,18 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe('Talk API', () => {
-    it('設定一覧を取得できる', async () => {
-        const configs = await fetchConfigs();
-        expect(configs[0].name).toBe('morning');
+    it('Talk 設定の一覧をシーンごと取得できる', async () => {
+        const settings = await fetchSettings();
+
+        expect(settings).toEqual([
+            {
+                id: 3,
+                name: '朝の会話',
+                tts_enabled: true,
+                skills: [{ name: 'good-morning', description: '朝のあいさつ' }],
+            },
+            { id: 4, name: '雑談', tts_enabled: false, skills: [] },
+        ]);
     });
 
     it('セッション一覧を取得できる（ページネーション付き）', async () => {
@@ -208,10 +221,18 @@ describe('Talk API', () => {
         expect(lastSearch?.get('offset')).toBe('5');
     });
 
-    it('セッションを新規作成できる', async () => {
-        const detail = await createSession('morning');
+    it('Talk 設定とシーンを指定してセッションを新規作成できる', async () => {
+        const detail = await createSession(3, 'good-morning');
+
         expect(detail.id).toBe(SESSION_ID);
-        expect(lastBody).toEqual({ config_name: 'morning' });
+        expect(detail.setting).toEqual(morningSetting);
+        expect(lastBody).toEqual({ setting: 3, skill: 'good-morning' });
+    });
+
+    it('シーンを使わないセッションは skill に null を送る', async () => {
+        await createSession(3, null);
+
+        expect(lastBody).toEqual({ setting: 3, skill: null });
     });
 
     it('セッション詳細を取得できる', async () => {

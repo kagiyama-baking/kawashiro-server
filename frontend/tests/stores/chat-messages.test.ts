@@ -484,11 +484,13 @@ describe('mergeServerMessages', () => {
 });
 
 describe('aggregateFromDetail', () => {
-    it('詳細から一覧の項目を作る', () => {
+    it('詳細から一覧の項目を作る。Talk 設定とシーンと音声の有無も写す', () => {
         const detail: ChatSessionDetail = {
             id: 's1',
             title: 't',
-            config_name: 'c',
+            setting: { id: 3, name: '朝の会話' },
+            skill: { name: 'good-morning', description: '朝のあいさつ' },
+            tts_enabled: true,
             message_count: 0,
             total_audio_bytes: 0,
             created_at: NOW,
@@ -502,7 +504,9 @@ describe('aggregateFromDetail', () => {
         expect(aggregateFromDetail(detail)).toEqual({
             id: 's1',
             title: 't',
-            config_name: 'c',
+            setting: { id: 3, name: '朝の会話' },
+            skill: { name: 'good-morning', description: '朝のあいさつ' },
+            tts_enabled: true,
             message_count: 2,
             total_audio_bytes: 15,
             created_at: NOW,

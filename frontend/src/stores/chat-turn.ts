@@ -269,9 +269,7 @@ export function createChatTurns(
         historyVersion += 1;
         if (!isSameThread(ctx)) return;
         const state = get();
-        const audioPending = state.configs.some(
-            (c) => c.name === state.activeSession?.config_name && c.tts_enabled,
-        );
+        const audioPending = state.activeSession?.tts_enabled ?? false;
         const messages = applySaved(state.messages, {
             userLocalId: ctx.userLocalId,
             assistantLocalId: ctx.assistantLocalId,
@@ -414,7 +412,7 @@ export function createChatTurns(
         }
     };
 
-    /** セッションが別のタブなどで消されていたら手放す。プリセットが消えた 404 と区別するため確かめる。 */
+    /** セッションが別のタブなどで消されていたら手放す。編集対象が消えた 404 と区別するため確かめる。 */
     const abandonIfGone = async (ctx: TurnContext) => {
         try {
             await apiGetSession(ctx.sessionId);
@@ -496,14 +494,15 @@ export function createChatTurns(
         return 'sent';
     };
 
-    /** 新規チャットの最初の送信で使うセッションを作る。使えなければ null を返す。 */
+    /** 新規チャットの最初の送信で、選んだ Talk 設定とシーンのセッションを作る。使えなければ null を返す。 */
     const createSessionForRun = async (
         controller: AbortController,
-        configName: string,
+        settingId: number,
+        skillName: string | null,
         restore: readonly ChatUiMessage[],
         hooks: TurnHooks,
     ): Promise<string | null> => {
-        const creating = apiCreateSession(configName);
+        const creating = apiCreateSession(settingId, skillName);
         const aborted = new Promise<null>((resolve) => {
             controller.signal.addEventListener('abort', () => resolve(null), {
                 once: true,
@@ -558,7 +557,9 @@ export function createChatTurns(
                 state.activeSessionId ??
                 (await createSessionForRun(
                     controller,
-                    state.selectedConfigName ?? '',
+                    // 新規チャットで送れるなら選ばれている（selectIsSendDisabled）
+                    state.selectedSettingId ?? 0,
+                    state.selectedSkillName,
                     restore,
                     hooks,
                 ));

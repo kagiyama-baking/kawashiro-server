@@ -8,7 +8,7 @@ type MenuPath = Exclude<(typeof navItems)[number]['to'], '/'>;
 
 const MENU_DESCRIPTIONS: Readonly<Record<MenuPath, string>> = {
     '/tts': 'テキストを入力して音声を生成',
-    '/talk': '設定に基づき会話テキスト生成＋読み上げ',
+    '/talk': 'Talk 設定とシーンを選んで会話＋読み上げ',
     '/media': '画像変換・ZIP→PDF変換',
     '/pdf-edit': 'PDFのページを並び替え・削除・分割・トリミング',
 };

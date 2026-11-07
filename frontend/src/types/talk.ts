@@ -1,7 +1,15 @@
-export interface GenerateConfig {
+// Talk 設定のシーン（その設定で使えるスキル）
+export interface TalkScene {
     readonly name: string;
-    readonly display_name: string;
+    readonly description: string;
+}
+
+// 新規チャットで選べる Talk 設定。有効なものだけが、シーンも有効なものだけ名前順で届く
+export interface TalkSetting {
+    readonly id: number;
+    readonly name: string;
     readonly tts_enabled: boolean;
+    readonly skills: readonly TalkScene[];
 }
 
 export type ChatRole = 'user' | 'assistant';
@@ -43,7 +51,10 @@ export interface ChatUiMessage {
 export interface ChatSessionListItem {
     readonly id: string;
     readonly title: string;
-    readonly config_name: string;
+    // Talk 設定へ移せなかった古いチャットでは null
+    readonly setting: Pick<TalkSetting, 'id' | 'name'> | null;
+    readonly skill: TalkScene | null;
+    readonly tts_enabled: boolean;
     readonly message_count: number;
     readonly total_audio_bytes: number;
     readonly created_at: string;

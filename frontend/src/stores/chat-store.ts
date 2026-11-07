@@ -5,7 +5,7 @@ import {
     deleteAudio as apiDeleteAudio,
     deleteSession as apiDeleteSession,
     fetchAudioBlob as apiFetchAudioBlob,
-    fetchConfigs as apiFetchConfigs,
+    fetchSettings as apiFetchSettings,
     getSession as apiGetSession,
     listSessions as apiListSessions,
     updateSessionTitle as apiUpdateSessionTitle,
@@ -41,8 +41,11 @@ export type RemoveSessionResult = 'active' | 'other' | 'failed';
 interface ChatStoreActions extends ChatTurns {
     readonly loadSessions: (refresh?: boolean) => Promise<void>;
     readonly loadMoreSessions: () => Promise<void>;
-    readonly loadConfigs: () => Promise<void>;
-    readonly selectConfig: (name: string) => void;
+    readonly loadSettings: () => Promise<void>;
+    /** Talk 設定を選ぶ。覚えておき、シーンは「なし」に戻す。 */
+    readonly selectSetting: (id: number) => void;
+    /** シーンを選ぶ。null は「なし」。シーンは覚えない。 */
+    readonly selectSkill: (name: string | null) => void;
     readonly openSession: (id: string) => Promise<OpenSessionResult>;
     readonly retryOpenSession: () => Promise<OpenSessionResult>;
     readonly startNewChat: () => void;
@@ -59,7 +62,7 @@ interface ChatStoreActions extends ChatTurns {
 
 type ChatStore = ChatStoreState & ChatStoreActions;
 
-const SELECTED_CONFIG_KEY = 'talk-selected-config';
+const SELECTED_SETTING_KEY = 'talk-selected-setting';
 const AUDIO_DELETE_FAILED = '音声を削除できませんでした';
 const SESSION_NOT_FOUND = 'チャットが見つかりませんでした';
 // id は URL から来て API のパスに入る。react-router は %2F を / に戻すので、
@@ -69,19 +72,19 @@ const SESSION_ID_PATTERN = /^[0-9a-zA-Z-]+$/;
 const pendingAudio = new Map<number, Promise<string | null>>();
 let openToken = 0;
 let listToken = 0;
-let configsToken = 0;
+let settingsToken = 0;
 
-function readSelectedConfig(): string | null {
+function readSelectedSetting(): string | null {
     try {
-        return localStorage.getItem(SELECTED_CONFIG_KEY);
+        return localStorage.getItem(SELECTED_SETTING_KEY);
     } catch {
         return null;
     }
 }
 
-function writeSelectedConfig(name: string): void {
+function writeSelectedSetting(id: number): void {
     try {
-        localStorage.setItem(SELECTED_CONFIG_KEY, name);
+        localStorage.setItem(SELECTED_SETTING_KEY, String(id));
     } catch {
         // 保存できなくても今回の選択は使える
     }
@@ -174,30 +177,34 @@ export const useChatStore = create<ChatStore>((set, get) => {
             await get().loadSessions(false);
         },
 
-        loadConfigs: async () => {
-            configsToken += 1;
-            const token = configsToken;
+        loadSettings: async () => {
+            settingsToken += 1;
+            const token = settingsToken;
             try {
-                const configs = await apiFetchConfigs();
-                if (token !== configsToken) return;
-                const remembered = readSelectedConfig();
+                const settings = await apiFetchSettings();
+                if (token !== settingsToken) return;
+                const remembered = readSelectedSetting();
                 const selected =
-                    configs.find((c) => c.name === remembered) ?? configs[0];
+                    settings.find((s) => String(s.id) === remembered) ??
+                    settings[0];
                 set({
-                    configs,
-                    selectedConfigName: selected?.name ?? null,
-                    configsFailed: false,
+                    settings,
+                    selectedSettingId: selected?.id ?? null,
+                    selectedSkillName: null,
+                    settingsFailed: false,
                 });
             } catch {
-                if (token !== configsToken) return;
-                set({ configsFailed: true });
+                if (token !== settingsToken) return;
+                set({ settingsFailed: true });
             }
         },
 
-        selectConfig: (name) => {
-            writeSelectedConfig(name);
-            set({ selectedConfigName: name });
+        selectSetting: (id) => {
+            writeSelectedSetting(id);
+            set({ selectedSettingId: id, selectedSkillName: null });
         },
+
+        selectSkill: (name) => set({ selectedSkillName: name }),
 
         openSession: async (id) => {
             if (get().activeSessionId === id) return 'ok';
@@ -335,7 +342,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             turns.closeAllRuns();
             leaveThread();
             listToken += 1;
-            configsToken += 1;
+            settingsToken += 1;
             set({ ...initialChatState, ...emptyThread() });
         },
     };

@@ -14,11 +14,53 @@ interface ServerMessage {
     readonly created_at: string;
 }
 
+interface ServerScene {
+    readonly name: string;
+    readonly description: string;
+}
+
+interface ServerSetting {
+    readonly id: number;
+    readonly name: string;
+    readonly tts_enabled: boolean;
+    readonly skills: readonly ServerScene[];
+}
+
 interface ServerSession {
     readonly id: string;
     readonly title: string;
-    readonly config_name: string;
+    readonly setting: { readonly id: number; readonly name: string } | null;
+    readonly skill: ServerScene | null;
+    readonly tts_enabled: boolean;
     readonly messages: readonly ServerMessage[];
+}
+
+const morningScene: ServerScene = {
+    name: 'good-morning',
+    description: '朝のあいさつ',
+};
+const friendlySetting: ServerSetting = {
+    id: 1,
+    name: 'フレンドリー',
+    tts_enabled: true,
+    skills: [morningScene],
+};
+const plainSetting: ServerSetting = {
+    id: 2,
+    name: '音声なし',
+    tts_enabled: false,
+    skills: [],
+};
+// サーバーと同じく、有効なものだけを名前順に返す
+const SETTINGS: readonly ServerSetting[] = [friendlySetting, plainSetting];
+
+/** セッションの Talk 設定・シーン・音声の有無の欄。 */
+function settingOf(setting: ServerSetting, skill: ServerScene | null = null) {
+    return {
+        setting: { id: setting.id, name: setting.name },
+        skill,
+        tts_enabled: setting.tts_enabled,
+    };
 }
 
 function message(
@@ -55,7 +97,7 @@ function history(count: number): readonly ServerMessage[] {
 const greeting: ServerSession = {
     id: 's1',
     title: '朝の挨拶の練習',
-    config_name: 'friendly',
+    ...settingOf(friendlySetting),
     messages: [
         message(1, 0, 'user', 'おはようございます。'),
         message(2, 1, 'assistant', 'おはようございます！', {
@@ -69,7 +111,7 @@ const greeting: ServerSession = {
 const plain: ServerSession = {
     id: 's2',
     title: '音声なしの話',
-    config_name: 'plain',
+    ...settingOf(plainSetting),
     messages: [
         message(11, 0, 'user', '元の発話'),
         message(12, 1, 'assistant', '元の応答'),
@@ -80,7 +122,9 @@ function listItem(session: ServerSession) {
     return {
         id: session.id,
         title: session.title,
-        config_name: session.config_name,
+        setting: session.setting,
+        skill: session.skill,
+        tts_enabled: session.tts_enabled,
         message_count: session.messages.length,
         total_audio_bytes: session.messages.reduce(
             (sum, m) => sum + m.audio_size_bytes,
@@ -95,6 +139,8 @@ function listItem(session: ServerSession) {
 interface FakeServer {
     readonly sessions: Map<string, ServerSession>;
     readonly mutations: string[];
+    // セッションの作成で送られた本文
+    readonly createBodies: unknown[];
 }
 
 /**
@@ -108,6 +154,7 @@ async function mockApi(
     const server: FakeServer = {
         sessions: new Map(sessions.map((s) => [s.id, s])),
         mutations: [],
+        createBodies: [],
     };
 
     await page.addInitScript(() => {
@@ -179,23 +226,8 @@ async function mockApi(
         const method = request.method();
         if (method !== 'GET') server.mutations.push(`${method} ${path}`);
 
-        if (path === 'talk/configs/') {
-            return route.fulfill({
-                json: {
-                    configs: [
-                        {
-                            name: 'friendly',
-                            display_name: 'フレンドリー',
-                            tts_enabled: true,
-                        },
-                        {
-                            name: 'plain',
-                            display_name: '音声なし',
-                            tts_enabled: false,
-                        },
-                    ],
-                },
-            });
+        if (path === 'talk/settings/') {
+            return route.fulfill({ json: { settings: SETTINGS } });
         }
         if (path === 'talk/sessions/' && method === 'GET') {
             const results = [...server.sessions.values()].map(listItem);
@@ -209,11 +241,27 @@ async function mockApi(
             });
         }
         if (path === 'talk/sessions/' && method === 'POST') {
-            const body = request.postDataJSON() as { config_name: string };
+            const body = request.postDataJSON() as {
+                setting: number;
+                skill: string | null;
+            };
+            server.createBodies.push(body);
+            const setting = SETTINGS.find((s) => s.id === body.setting);
+            if (!setting) {
+                return route.fulfill({
+                    status: 400,
+                    json: {
+                        setting: ['選んだ Talk 設定は見つからないか、無効です'],
+                    },
+                });
+            }
+            const skill =
+                setting.skills.find((scene) => scene.name === body.skill) ??
+                null;
             const created: ServerSession = {
                 id: 'new',
                 title: '',
-                config_name: body.config_name,
+                ...settingOf(setting, skill),
                 messages: [],
             };
             server.sessions.set(created.id, created);
@@ -332,12 +380,15 @@ async function sendText(page: Page, text: string) {
     await composer(page).press('Enter');
 }
 
-/** 新規チャットを開く。プリセットが読み込まれるまで送信できないので待つ。 */
+const settingSelect = (page: Page) =>
+    page.getByRole('combobox', { name: 'Talk 設定' });
+const sceneSelect = (page: Page) =>
+    page.getByRole('combobox', { name: 'シーン' });
+
+/** 新規チャットを開く。Talk 設定が読み込まれるまで送信できないので待つ。 */
 async function openNewChat(page: Page) {
     await page.goto('/talk');
-    await expect(page.getByRole('combobox', { name: 'プリセット' })).toHaveText(
-        'フレンドリー',
-    );
+    await expect(settingSelect(page)).toHaveText('フレンドリー');
 }
 
 /** 同じ座標を実際のマウスで間を置いて 2 回押す（2 回目は要素の有無に関わらず押す）。 */
@@ -366,13 +417,15 @@ test.describe('チャット画面', () => {
     });
 
     test.describe('新規チャット', () => {
-        test('プリセットを選んで送るとセッションを作り、URL を変えても画面を作り直さない', async ({
+        test('Talk 設定を選んで送るとセッションを作り、URL を変えても画面を作り直さない', async ({
             page,
         }) => {
             await page.goto('/talk');
             await expect(mainArea(page).getByText('TALK')).toBeVisible();
-            await page.getByRole('combobox', { name: 'プリセット' }).click();
+            await settingSelect(page).click();
             await page.getByRole('option', { name: '音声なし' }).click();
+            // シーンのない Talk 設定ではシーンを選ばせない
+            await expect(sceneSelect(page)).toHaveCount(0);
             await composer(page).evaluate((el) => {
                 el.dataset.marker = 'same-element';
             });
@@ -387,7 +440,32 @@ test.describe('チャット画面', () => {
                 'same-element',
             );
             await expect(composer(page)).toHaveValue('');
-            expect(server.sessions.get('new')?.config_name).toBe('plain');
+            expect(server.createBodies).toEqual([{ setting: 2, skill: null }]);
+        });
+
+        test('シーンを選んで送ると Talk 設定とシーンでセッションを作り、ヘッダに出す', async ({
+            page,
+        }) => {
+            await openNewChat(page);
+            await expect(sceneSelect(page)).toHaveText('なし');
+
+            await sceneSelect(page).click();
+            const option = page.getByRole('option', { name: /朝のあいさつ/ });
+            await expect(option).toContainText('good-morning');
+            await option.click();
+            // 選んだ後は説明だけを出す
+            await expect(sceneSelect(page)).toHaveText('朝のあいさつ');
+
+            await sendText(page, 'おはよう');
+
+            await expect(page).toHaveURL('/talk/new');
+            expect(server.createBodies).toEqual([
+                { setting: 1, skill: 'good-morning' },
+            ]);
+            await expect(
+                mainArea(page).getByText('フレンドリー · 朝のあいさつ'),
+            ).toBeVisible();
+            await expect(settingSelect(page)).toHaveCount(0);
         });
 
         test('応答が終わるとタイトルが一覧とヘッダに出る', async ({ page }) => {
@@ -879,7 +957,7 @@ test.describe('チャット画面', () => {
             server.sessions.set('full', {
                 id: 'full',
                 title: '上限のチャット',
-                config_name: 'plain',
+                ...settingOf(plainSetting),
                 messages: history(50),
             });
             await page.goto('/talk/full');
@@ -909,7 +987,7 @@ test.describe('チャット画面', () => {
             server.sessions.set('almost', {
                 id: 'almost',
                 title: '上限の手前のチャット',
-                config_name: 'plain',
+                ...settingOf(plainSetting),
                 messages: history(48),
             });
             await page.goto('/talk/almost');
@@ -920,7 +998,7 @@ test.describe('チャット画面', () => {
             server.sessions.set('almost', {
                 id: 'almost',
                 title: '上限の手前のチャット',
-                config_name: 'plain',
+                ...settingOf(plainSetting),
                 messages: history(50),
             });
             await failNextTurn(page, 400, {
@@ -948,7 +1026,7 @@ test.describe('チャット画面', () => {
             server.sessions.set('full', {
                 id: 'full',
                 title: '上限のチャット',
-                config_name: 'plain',
+                ...settingOf(plainSetting),
                 messages: history(50),
             });
             await page.goto('/talk/full');
@@ -1032,7 +1110,7 @@ test.describe('チャット画面', () => {
             ).toBeVisible();
         });
 
-        test('音声が無効なプリセットでは合成中を出さない', async ({ page }) => {
+        test('音声が無効なチャットでは合成中を出さない', async ({ page }) => {
             await page.goto('/talk/s2');
             await sendText(page, '続きの発話');
             await pushEvent(page, 0, 'message', {
@@ -1268,7 +1346,7 @@ test.describe('チャット画面', () => {
             server.sessions.set('md', {
                 id: 'md',
                 title: 'Markdown',
-                config_name: 'plain',
+                ...settingOf(plainSetting),
                 messages: [
                     message(1, 0, 'user', '<b>発話はそのまま</b>'),
                     message(
@@ -1400,7 +1478,7 @@ test.describe('チャット画面', () => {
             server.sessions.set('wide', {
                 id: 'wide',
                 title: '横にはみ出しやすい内容',
-                config_name: 'plain',
+                ...settingOf(plainSetting),
                 messages: [
                     message(
                         1,

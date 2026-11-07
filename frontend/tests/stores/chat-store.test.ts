@@ -11,7 +11,7 @@ import type {
     ChatSessionListItem,
     ChatSessionMessage,
     ChatUiMessage,
-    GenerateConfig,
+    TalkSetting,
 } from '@/types/talk';
 import {
     controlledStream,
@@ -24,7 +24,7 @@ vi.mock('@/lib/api/talk', () => ({
     deleteAudio: vi.fn(),
     deleteSession: vi.fn(),
     fetchAudioBlob: vi.fn(),
-    fetchConfigs: vi.fn(),
+    fetchSettings: vi.fn(),
     getSession: vi.fn(),
     listSessions: vi.fn(),
     streamEdit: vi.fn(),
@@ -70,7 +70,9 @@ function detail(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: messages.length,
         total_audio_bytes: 0,
         created_at: NOW,
@@ -86,7 +88,9 @@ function listItem(
     return {
         id: 's1',
         title: '朝の挨拶',
-        config_name: 'friendly',
+        setting: { id: 1, name: 'フレンドリー' },
+        skill: null,
+        tts_enabled: false,
         message_count: 0,
         total_audio_bytes: 0,
         created_at: NOW,
@@ -135,12 +139,19 @@ async function openSession(messages: readonly ChatSessionMessage[] = []) {
     await state().openSession('s1');
 }
 
-const friendly = {
-    name: 'friendly',
-    display_name: 'フレンドリー',
+const morning = { name: 'good-morning', description: '朝のあいさつ' };
+const friendly: TalkSetting = {
+    id: 1,
+    name: 'フレンドリー',
     tts_enabled: false,
+    skills: [],
 };
-const voiced = { name: 'voiced', display_name: '音声あり', tts_enabled: true };
+const voiced: TalkSetting = {
+    id: 2,
+    name: '音声あり',
+    tts_enabled: true,
+    skills: [morning],
+};
 
 const savedTurn = {
     type: 'message',
@@ -283,8 +294,6 @@ describe('chat-store', () => {
         });
 
         it('前のターンの音声合成を待っている間でも次を送れる', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
-            await state().loadConfigs();
             await openSession();
             const first = controlledStream();
             nextStreamMessage(first);
@@ -321,10 +330,8 @@ describe('chat-store', () => {
 
     describe('音声', () => {
         async function startVoiced() {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([voiced]);
-            await state().loadConfigs();
             vi.mocked(api.getSession).mockResolvedValueOnce(
-                detail([], { config_name: 'voiced' }),
+                detail([], { tts_enabled: true }),
             );
             await state().openSession('s1');
             const stream = controlledStream();
@@ -333,7 +340,7 @@ describe('chat-store', () => {
             return stream;
         }
 
-        it('音声が有効なプリセットでは message で合成中にする', async () => {
+        it('音声が有効なチャットでは message で合成中にする', async () => {
             const stream = await startVoiced();
 
             stream.push(savedTurn);
@@ -394,9 +401,9 @@ describe('chat-store', () => {
             expect(state().messages[1].audioState).toBe('idle');
         });
 
-        it('音声が無効なプリセットでは合成中にしない', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
-            await state().loadConfigs();
+        it('音声が無効なチャットでは、新規チャットで音声ありを選んでいても合成中にしない', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([voiced]);
+            await state().loadSettings();
             await openSession();
             const stream = controlledStream();
             nextStreamMessage(stream);
@@ -418,7 +425,7 @@ describe('chat-store', () => {
                         savedTurn.user,
                         { ...savedTurn.assistant, audio_url: '/a/11/' },
                     ],
-                    { config_name: 'voiced' },
+                    { tts_enabled: true },
                 ),
             );
 
@@ -457,7 +464,7 @@ describe('chat-store', () => {
             void state().sendMessage('次');
             vi.mocked(api.getSession).mockResolvedValueOnce(
                 detail([savedTurn.user, savedTurn.assistant], {
-                    config_name: 'voiced',
+                    tts_enabled: true,
                 }),
             );
 
@@ -577,12 +584,12 @@ describe('chat-store', () => {
     describe('新規チャット', () => {
         const created = detail([], { id: 'new', title: '' });
 
-        async function ready() {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
-            await state().loadConfigs();
+        async function ready(settings: TalkSetting[] = [friendly]) {
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce(settings);
+            await state().loadSettings();
         }
 
-        it('プリセットが選ばれていなければ送らない', async () => {
+        it('Talk 設定が選ばれていなければ送らない', async () => {
             await expect(state().sendMessage('こんにちは')).resolves.toBe(
                 'not-sent',
             );
@@ -602,7 +609,7 @@ describe('chat-store', () => {
             expect(state().isRunning).toBe(true);
             await flush();
 
-            expect(api.createSession).toHaveBeenCalledWith('friendly');
+            expect(api.createSession).toHaveBeenCalledWith(1, null);
             expect(onSessionCreated).toHaveBeenCalledWith('new');
             expect(state().activeSessionId).toBe('new');
             expect(state().sessions[0].id).toBe('new');
@@ -611,6 +618,57 @@ describe('chat-store', () => {
                 'new',
                 'こんにちは',
                 expect.anything(),
+            );
+        });
+
+        it('選んだ Talk 設定とシーンでセッションを作る', async () => {
+            await ready([friendly, voiced]);
+            state().selectSetting(2);
+            state().selectSkill('good-morning');
+            vi.mocked(api.createSession).mockResolvedValueOnce(created);
+            nextStreamMessage(controlledStream());
+
+            void state().sendMessage('おはよう');
+            await flush();
+
+            expect(api.createSession).toHaveBeenCalledWith(2, 'good-morning');
+        });
+
+        it('作ったセッションが音声ありなら message で合成中にする', async () => {
+            await ready();
+            vi.mocked(api.createSession).mockResolvedValueOnce(
+                detail([], { id: 'new', title: '', tts_enabled: true }),
+            );
+            const stream = controlledStream();
+            nextStreamMessage(stream);
+            void state().sendMessage('こんにちは');
+            await flush();
+
+            stream.push(savedTurn);
+            await flush();
+
+            expect(state().activeSession?.tts_enabled).toBe(true);
+            expect(state().messages[1].audioState).toBe('pending');
+        });
+
+        it('選んだシーンが使えなければサーバーの項目エラーを出して発話を戻す', async () => {
+            await ready([voiced]);
+            state().selectSkill('good-morning');
+            vi.mocked(api.createSession).mockRejectedValueOnce(
+                httpError(
+                    { skill: ['このシーンは選んだ Talk 設定では使えません'] },
+                    400,
+                ),
+            );
+
+            await expect(state().sendMessage('おはよう')).resolves.toBe(
+                'not-sent',
+            );
+
+            expect(state().messages).toEqual([]);
+            expect(state().activeSessionId).toBeNull();
+            expect(state().error).toBe(
+                'このシーンは選んだ Talk 設定では使えません',
             );
         });
 
@@ -970,8 +1028,8 @@ describe('chat-store', () => {
         });
 
         it('作ったばかりのセッションで何も保存されなければ空セッションを消す', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
-            await state().loadConfigs();
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([friendly]);
+            await state().loadSettings();
             vi.mocked(api.createSession).mockResolvedValueOnce(
                 detail([], { id: 'new' }),
             );
@@ -1486,21 +1544,21 @@ describe('chat-store', () => {
 
         it('画面を離れたあとに届いた一覧と設定は捨てる', async () => {
             let resolveList: (value: never) => void = () => {};
-            let resolveConfigs: (value: GenerateConfig[]) => void = () => {};
+            let resolveSettings: (value: TalkSetting[]) => void = () => {};
             vi.mocked(api.listSessions).mockImplementationOnce(
                 () =>
                     new Promise((resolve) => {
                         resolveList = resolve as (value: never) => void;
                     }),
             );
-            vi.mocked(api.fetchConfigs).mockImplementationOnce(
+            vi.mocked(api.fetchSettings).mockImplementationOnce(
                 () =>
                     new Promise((resolve) => {
-                        resolveConfigs = resolve;
+                        resolveSettings = resolve;
                     }),
             );
             const list = state().loadSessions();
-            const configs = state().loadConfigs();
+            const settings = state().loadSettings();
 
             state().reset();
             resolveList({
@@ -1509,11 +1567,12 @@ describe('chat-store', () => {
                 previous: null,
                 results: [listItem()],
             } as never);
-            resolveConfigs([friendly]);
-            await Promise.all([list, configs]);
+            resolveSettings([friendly]);
+            await Promise.all([list, settings]);
 
             expect(state().sessions).toEqual([]);
-            expect(state().configs).toEqual([]);
+            expect(state().settings).toBeNull();
+            expect(state().selectedSettingId).toBeNull();
         });
 
         it('読み込みに失敗したらバナーを出す', async () => {
@@ -1622,37 +1681,43 @@ describe('chat-store', () => {
         });
     });
 
-    describe('プリセット', () => {
-        it('既定は先頭のプリセット', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([
+    describe('Talk 設定とシーン', () => {
+        it('一覧が届くまでは null で、届いたら先頭の Talk 設定を選ぶ。シーンはなし', async () => {
+            expect(state().settings).toBeNull();
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([
                 friendly,
                 voiced,
             ]);
 
-            await state().loadConfigs();
+            await state().loadSettings();
 
-            expect(state().configs).toEqual([friendly, voiced]);
-            expect(state().selectedConfigName).toBe('friendly');
+            expect(state().settings).toEqual([friendly, voiced]);
+            expect(state().selectedSettingId).toBe(1);
+            expect(state().selectedSkillName).toBeNull();
         });
 
-        it('前回の選択を覚えている', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValue([friendly, voiced]);
-            await state().loadConfigs();
+        it('前回選んだ Talk 設定を覚えている', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValue([friendly, voiced]);
+            await state().loadSettings();
 
-            state().selectConfig('voiced');
+            state().selectSetting(2);
             state().reset();
-            await state().loadConfigs();
+            await state().loadSettings();
 
-            expect(state().selectedConfigName).toBe('voiced');
+            expect(localStorage.getItem('talk-selected-setting')).toBe('2');
+            expect(state().selectedSettingId).toBe(2);
         });
 
-        it('覚えているプリセットがなくなっていれば先頭を選ぶ', async () => {
-            localStorage.setItem('talk-selected-config', 'gone');
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
+        it('覚えている Talk 設定がなくなっていれば先頭を選ぶ', async () => {
+            localStorage.setItem('talk-selected-setting', '99');
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([
+                friendly,
+                voiced,
+            ]);
 
-            await state().loadConfigs();
+            await state().loadSettings();
 
-            expect(state().selectedConfigName).toBe('friendly');
+            expect(state().selectedSettingId).toBe(1);
         });
 
         it('localStorage が使えなくても動く', async () => {
@@ -1666,31 +1731,72 @@ describe('chat-store', () => {
                 .mockImplementation(() => {
                     throw new Error('blocked');
                 });
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([
+                friendly,
+                voiced,
+            ]);
 
-            await state().loadConfigs();
-            state().selectConfig('friendly');
+            await state().loadSettings();
+            state().selectSetting(2);
 
-            expect(state().selectedConfigName).toBe('friendly');
+            expect(state().selectedSettingId).toBe(2);
             getItem.mockRestore();
             setItem.mockRestore();
         });
 
         it('取得に失敗したら記録する', async () => {
-            vi.mocked(api.fetchConfigs).mockRejectedValueOnce(new Error('x'));
+            vi.mocked(api.fetchSettings).mockRejectedValueOnce(new Error('x'));
 
-            await state().loadConfigs();
+            await state().loadSettings();
 
-            expect(state().configsFailed).toBe(true);
-            expect(state().selectedConfigName).toBeNull();
+            expect(state().settingsFailed).toBe(true);
+            expect(state().selectedSettingId).toBeNull();
         });
 
-        it('プリセットがなければ選ばない', async () => {
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([]);
+        it('選べる Talk 設定がなければ選ばない', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([]);
 
-            await state().loadConfigs();
+            await state().loadSettings();
 
-            expect(state().selectedConfigName).toBeNull();
+            expect(state().settings).toEqual([]);
+            expect(state().selectedSettingId).toBeNull();
+        });
+
+        it('シーンを選べて、なしにも戻せる', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([voiced]);
+            await state().loadSettings();
+
+            state().selectSkill('good-morning');
+            expect(state().selectedSkillName).toBe('good-morning');
+
+            state().selectSkill(null);
+            expect(state().selectedSkillName).toBeNull();
+        });
+
+        it('Talk 設定を選び直すとシーンはなしに戻る', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([
+                friendly,
+                voiced,
+            ]);
+            await state().loadSettings();
+            state().selectSetting(2);
+            state().selectSkill('good-morning');
+
+            state().selectSetting(1);
+
+            expect(state().selectedSettingId).toBe(1);
+            expect(state().selectedSkillName).toBeNull();
+        });
+
+        it('シーンは覚えない', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValue([voiced]);
+            await state().loadSettings();
+            state().selectSkill('good-morning');
+
+            state().reset();
+            await state().loadSettings();
+
+            expect(state().selectedSkillName).toBeNull();
         });
     });
 
@@ -1852,13 +1958,20 @@ describe('chat-store', () => {
             }),
         );
 
-        it('新規チャットではプリセットが選ばれるまで送信できない', async () => {
+        it('新規チャットでは Talk 設定が選ばれるまで送信できない', async () => {
             expect(selectIsSendDisabled(state())).toBe(true);
 
-            vi.mocked(api.fetchConfigs).mockResolvedValueOnce([friendly]);
-            await state().loadConfigs();
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([friendly]);
+            await state().loadSettings();
 
             expect(selectIsSendDisabled(state())).toBe(false);
+        });
+
+        it('選べる Talk 設定がなければ新規チャットでは送信できない', async () => {
+            vi.mocked(api.fetchSettings).mockResolvedValueOnce([]);
+            await state().loadSettings();
+
+            expect(selectIsSendDisabled(state())).toBe(true);
         });
 
         it('読み込み中は送信できない', () => {
