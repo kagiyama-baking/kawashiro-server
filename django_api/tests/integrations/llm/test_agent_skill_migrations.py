@@ -22,6 +22,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
 from integrations.llm.models import AgentSkill
+from tests.fixtures.migrations import applied_apps, prompt_model
 
 # 移す前の時点（AgentSkill は companion のモデル）
 LLM_BEFORE_MOVE = ("llm_config", "0013_add_companion_service_choice")
@@ -77,7 +78,7 @@ def migrator(django_db_setup, django_db_blocker):
     を使わない理由は tests/features/talk/test_migrations.py の migrator と同じ）。
     DB の遮断を自分で外すので、テスト DB ができていなければ触る前に中止する。
     作った行は当て直す前に消す（0015 は名前を付け替え、64 字を超える名前があると止まる
-    ため）。消すのは、いま当たっている時点のモデル（`_applied_apps`）。talk の 0017 は
+    ため）。消すのは、いま当たっている時点のモデル（`applied_apps`）。talk の 0017 は
     llm_config に依存するので、llm_config を戻すと Talk 設定の表とチャットセッションの
     シーンの列も外れ、いまのモデルで消すと、それらを参照して落ちる。
     内容の型（ContentType）の行は migration が付け替えるので、当て直した後にキャッシュを
@@ -92,7 +93,7 @@ def migrator(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         executor = MigrationExecutor(connection)
         yield executor
-        apps = _applied_apps(executor)
+        apps = applied_apps(executor)
         skill_app = (
             "llm_config"
             if LLM_MOVE in executor.loader.applied_migrations
@@ -104,9 +105,7 @@ def migrator(django_db_setup, django_db_blocker):
         apps.get_model(skill_app, "AgentSkill").objects.filter(
             name__in=CLEANUP_SKILL_NAMES
         ).delete()
-        apps.get_model("langfuse_integration", "LangfusePromptRef").objects.filter(
-            name=PROMPT_REF_NAME
-        ).delete()
+        prompt_model(apps).objects.filter(name=PROMPT_REF_NAME).delete()
         # ユーザーを消すと、そのユーザーの履歴と権限の付与も消える
         apps.get_model(settings.AUTH_USER_MODEL).objects.filter(
             email=TEST_USER_EMAIL
@@ -114,14 +113,6 @@ def migrator(django_db_setup, django_db_blocker):
         apps.get_model("auth", "Group").objects.filter(name=TEST_GROUP_NAME).delete()
         executor.migrate(executor.loader.graph.leaf_nodes())
         ContentType.objects.clear_cache()
-
-
-def _applied_apps(migrator):
-    """DB に当たっている migration の時点のモデルを引ける apps を返す（グラフを読み直す）."""
-    migrator.loader.build_graph()
-    nodes = migrator.loader.graph.nodes
-    applied = [key for key in migrator.loader.applied_migrations if key in nodes]
-    return migrator.loader.project_state(applied).apps
 
 
 def _migrate(migrator, targets):

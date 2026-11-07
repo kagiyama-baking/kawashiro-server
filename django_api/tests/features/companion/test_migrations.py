@@ -5,8 +5,8 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
-from integrations.langfuse.models import LangfusePromptRef
 from integrations.llm.models import AgentSkill
+from tests.fixtures.migrations import applied_apps, prompt_model
 
 BEFORE_RENAME = [("companion", "0001_initial")]
 AFTER_RENAME = [("companion", "0002_rename_persona_prompt_ref_to_system_prompt_ref")]
@@ -29,11 +29,14 @@ CLEANUP_SKILL_NAMES = (
     *TEST_SKILL_NAMES,
     *(f"companion-skill-{name}" for name in TEST_SKILL_NAMES),
 )
-# 規則（companion-skill-<スキル名>）に合わせない参照の識別名
+# 規則（companion-skill-<スキル名>）に合わせない参照の識別名と、その Langfuse のプロンプト名
 CUSTOM_REF_NAME = "companion-migration-test-custom"
+CUSTOM_PROMPT_NAMES = ("custom-night", "custom-morning")
+# 後始末で消す参照（llm_config の 0019 の後は、名前が Langfuse のプロンプト名になる）
 TEST_REF_NAMES = (
     PROMPT_REF_NAME,
     CUSTOM_REF_NAME,
+    *CUSTOM_PROMPT_NAMES,
     *(f"companion-skill-{name}" for name in TEST_SKILL_NAMES),
 )
 
@@ -51,9 +54,11 @@ def migrator(django_db_setup, django_db_blocker):
     スキーマを変えるので、テストのトランザクションの外で動かす（transactional_db を
     使わない理由は tests/features/talk/test_migrations.py の migrator と同じ）。
     DB の遮断を自分で外すので、テスト DB ができていなければ触る前に中止する。
-    後始末では、いま当たっている時点のモデルで作った設定（旧スキル・スキルの選択ごと）を
-    先に消してから当て直す。0004 は行き・戻りとも、設定が持つ旧スキル・選んだスキルを
-    確かめて止まることがあるため。スキルと参照は、すべて当てた後で消す。
+    後始末では、いま当たっている時点のモデルで作った設定（旧スキル・スキルの選択ごと）と
+    参照を先に消してから当て直す。0004 は行き・戻りとも、設定が持つ旧スキル・選んだスキルを
+    確かめて止まることがあるため。参照は、llm_config の 0018 が Langfuse のプロンプト名の
+    重なりを確かめて止まることがあるため（0004 の止まるテストは、重なる参照を残す）。
+    スキルは、すべて当てた後で消す。
     """
     if connection.settings_dict["NAME"] == CONFIGURED_DB_NAME:
         pytest.fail(
@@ -64,13 +69,14 @@ def migrator(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         executor = MigrationExecutor(connection)
         yield executor
-        _applied_apps(executor).get_model(
-            "companion", "CompanionConfig"
-        ).objects.filter(name__in=CONFIG_NAMES).delete()
+        apps = applied_apps(executor)
+        apps.get_model("companion", "CompanionConfig").objects.filter(
+            name__in=CONFIG_NAMES
+        ).delete()
+        prompt_model(apps).objects.filter(name__in=TEST_REF_NAMES).delete()
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
         AgentSkill.objects.filter(name__in=CLEANUP_SKILL_NAMES).delete()
-        LangfusePromptRef.objects.filter(name__in=TEST_REF_NAMES).delete()
 
 
 def _migrate(migrator, targets):
@@ -78,18 +84,6 @@ def _migrate(migrator, targets):
     migrator.loader.build_graph()
     migrator.migrate(targets)
     return migrator.loader.project_state(targets).apps
-
-
-def _applied_apps(migrator):
-    """DB に当たっている companion の最後の migration の時点のモデルを引ける apps を返す.
-
-    止まった migration があると、テストが指定した時点とは限らない。
-    """
-    migrator.loader.build_graph()
-    applied = [
-        key for key in migrator.loader.applied_migrations if key[0] == "companion"
-    ]
-    return migrator.loader.project_state([max(applied)]).apps
 
 
 def _create_config_before_rename(apps) -> int:

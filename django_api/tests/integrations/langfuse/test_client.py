@@ -6,32 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from integrations.langfuse.client import (
-    fetch_text_prompt,
-    get_prompt_with_variables,
-    langfuse_session,
-    resolve_prompt,
-    resolve_required_prompt,
-)
-from integrations.langfuse.exceptions import LangfusePromptError, PromptUnavailableError
-from integrations.langfuse.models import LangfusePromptRef
-from tests.fixtures.factories import LangfusePromptRefFactory
-
-pytestmark = pytest.mark.django_db
+from integrations.langfuse.client import fetch_text_prompt, langfuse_session
+from integrations.langfuse.exceptions import LangfusePromptError
 
 CLIENT_LOGGER = "integrations.langfuse.client"
 SESSION_ID = "companion/2026-11-07"
-
-
-@pytest.fixture
-def ref(db):
-    """テスト用プロンプト参照."""
-    return LangfusePromptRef.objects.create(
-        name="test-ref",
-        langfuse_prompt_name="test-prompt",
-        label="production",
-        fallback_text="fallback: {{name}} ({{count}})",
-    )
 
 
 def _text_prompt(body):
@@ -68,184 +47,6 @@ def _chat_prompt():
     )
 
 
-@pytest.mark.integration
-class TestResolvePrompt:
-    """resolve_prompt のテスト."""
-
-    @patch("langfuse.get_client")
-    def test_returns_langfuse_prompt_when_available(self, mock_get_client, ref):
-        """Langfuse から取得成功したら compile 済みテキストを返す."""
-        from langfuse.model import TextPromptClient
-
-        mock_client = MagicMock()
-        mock_prompt = MagicMock(spec=TextPromptClient)
-        mock_prompt.variables = []
-        mock_prompt.compile.return_value = "compiled text"
-        mock_client.get_prompt.return_value = mock_prompt
-        mock_get_client.return_value = mock_client
-
-        result = resolve_prompt(ref, name="alice", count=3)
-
-        assert result == "compiled text"
-        mock_client.get_prompt.assert_called_once_with(
-            "test-prompt", label="production"
-        )
-        mock_prompt.compile.assert_called_once_with(name="alice", count=3)
-
-    @patch("langfuse.get_client")
-    def test_returns_fallback_when_langfuse_errors(self, mock_get_client, ref):
-        """Langfuse エラー時は fallback を変数置換して返す."""
-        mock_get_client.side_effect = RuntimeError("connection failed")
-
-        result = resolve_prompt(ref, name="alice", count=3)
-
-        assert result == "fallback: alice (3)"
-
-    @patch("langfuse.get_client")
-    def test_returns_fallback_when_prompt_not_found(self, mock_get_client, ref):
-        """プロンプト未登録時も fallback を返す."""
-        mock_client = MagicMock()
-        mock_client.get_prompt.side_effect = Exception("Prompt not found")
-        mock_get_client.return_value = mock_client
-
-        result = resolve_prompt(ref, name="bob", count=0)
-
-        assert result == "fallback: bob (0)"
-
-    @patch("langfuse.get_client", side_effect=ImportError("No module"))
-    def test_returns_fallback_when_import_error(self, _mock, ref):
-        """langfuse 未インストール時も fallback を返す."""
-        result = resolve_prompt(ref, name="bob", count=0)
-
-        assert result == "fallback: bob (0)"
-
-    @patch("langfuse.get_client")
-    def test_fallback_keeps_unknown_placeholders(self, mock_get_client, db):
-        """未知のプレースホルダーは元の `{{key}}` のまま残す."""
-        mock_get_client.side_effect = RuntimeError("boom")
-        ref = LangfusePromptRef.objects.create(
-            name="partial",
-            langfuse_prompt_name="partial",
-            fallback_text="hello {{name}} / {{unknown}}",
-        )
-
-        result = resolve_prompt(ref, name="world")
-
-        assert result == "hello world / {{unknown}}"
-
-    @patch("langfuse.get_client")
-    def test_fallback_without_variables(self, mock_get_client, db):
-        """variables が無くても fallback は機能する."""
-        mock_get_client.side_effect = RuntimeError("boom")
-        ref = LangfusePromptRef.objects.create(
-            name="plain",
-            langfuse_prompt_name="plain",
-            fallback_text="static text",
-        )
-
-        result = resolve_prompt(ref)
-
-        assert result == "static text"
-
-    @patch("langfuse.get_client")
-    def test_resolves_label(self, mock_get_client, db):
-        """staging ラベルも指定される."""
-        from langfuse.model import TextPromptClient
-
-        mock_client = MagicMock()
-        mock_prompt = MagicMock(spec=TextPromptClient)
-        mock_prompt.variables = []
-        mock_prompt.compile.return_value = "ok"
-        mock_client.get_prompt.return_value = mock_prompt
-        mock_get_client.return_value = mock_client
-
-        ref = LangfusePromptRef.objects.create(
-            name="staging-ref",
-            langfuse_prompt_name="hello",
-            label="staging",
-        )
-
-        resolve_prompt(ref, who="there")
-
-        mock_client.get_prompt.assert_called_once_with("hello", label="staging")
-
-
-@pytest.mark.integration
-class TestGetPromptWithVariables:
-    """get_prompt_with_variables のテスト."""
-
-    @patch("langfuse.get_client")
-    def test_returns_variables_and_compile_from_langfuse(self, mock_get_client, ref):
-        """Langfuse 取得成功時は prompt.variables と compile 関数を返す."""
-        from langfuse.model import TextPromptClient
-
-        mock_client = MagicMock()
-        mock_prompt = MagicMock(spec=TextPromptClient)
-        mock_prompt.variables = ["name", "count"]
-        mock_prompt.compile.return_value = "compiled text"
-        mock_client.get_prompt.return_value = mock_prompt
-        mock_get_client.return_value = mock_client
-
-        compile_fn, variables = get_prompt_with_variables(ref)
-
-        assert variables == {"name", "count"}
-        assert compile_fn(name="alice", count=3) == "compiled text"
-        mock_prompt.compile.assert_called_once_with(name="alice", count=3)
-
-    @patch("langfuse.get_client")
-    def test_returns_variables_extracted_from_fallback_on_error(
-        self, mock_get_client, ref
-    ):
-        """Langfuse エラー時は fallback_text から正規表現で変数抽出する."""
-        mock_get_client.side_effect = RuntimeError("connection failed")
-
-        compile_fn, variables = get_prompt_with_variables(ref)
-
-        # fallback_text = "fallback: {{name}} ({{count}})"
-        assert variables == {"name", "count"}
-        assert compile_fn(name="alice", count=3) == "fallback: alice (3)"
-
-    @patch("langfuse.get_client", side_effect=ImportError("No module"))
-    def test_returns_fallback_on_import_error(self, _mock, ref):
-        """ImportError 時も fallback 経路."""
-        compile_fn, variables = get_prompt_with_variables(ref)
-
-        assert variables == {"name", "count"}
-        assert compile_fn(name="bob", count=0) == "fallback: bob (0)"
-
-    @patch("langfuse.get_client")
-    def test_fallback_with_empty_template(self, mock_get_client, db):
-        """変数を含まない fallback_text は空集合を返す."""
-        mock_get_client.side_effect = RuntimeError("boom")
-        ref = LangfusePromptRef.objects.create(
-            name="plain-vars",
-            langfuse_prompt_name="plain-vars",
-            fallback_text="no variables here",
-        )
-
-        compile_fn, variables = get_prompt_with_variables(ref)
-
-        assert variables == set()
-        assert compile_fn() == "no variables here"
-
-    @patch("langfuse.get_client")
-    def test_chat_prompt_falls_back_to_text(self, mock_get_client, ref):
-        """Chat 型プロンプト（非 Text）は fallback 経路に落とす."""
-        from langfuse.model import ChatPromptClient
-
-        mock_client = MagicMock()
-        mock_prompt = MagicMock(spec=ChatPromptClient)
-        mock_prompt.variables = ["name", "count"]
-        mock_client.get_prompt.return_value = mock_prompt
-        mock_get_client.return_value = mock_client
-
-        compile_fn, variables = get_prompt_with_variables(ref)
-
-        # ChatPromptClient は未サポートのため fallback_text から変数抽出される
-        assert variables == {"name", "count"}
-        assert compile_fn(name="alice", count=3) == "fallback: alice (3)"
-
-
 @pytest.mark.unit
 class TestFetchTextPrompt:
     """fetch_text_prompt のテスト（fallback を持たない取得経路）."""
@@ -278,6 +79,45 @@ class TestFetchTextPrompt:
         mock_get_client.return_value.get_prompt.return_value = _text_prompt(body)
 
         assert fetch_text_prompt("skill-greeting", label="staging") == body
+
+    def test_fetch_text_prompt_with_variables_returns_body_with_them_expanded(
+        self, langfuse_prompts
+    ):
+        """変数を渡すと、本文の `{{x}}` を SDK の compile で展開した本文を返す（値は str にする）."""
+        langfuse_prompts[("hn-agent-detective-user", "production")] = (
+            "タイトル: {{title}}\n{{ score_info }}（{{count}} 件）"
+        )
+
+        text = fetch_text_prompt(
+            "hn-agent-detective-user",
+            label="production",
+            variables={"title": "記事", "score_info": "スコア: 200", "count": 3},
+        )
+
+        assert text == "タイトル: 記事\nスコア: 200（3 件）"
+
+    def test_fetch_text_prompt_with_variables_keeps_unknown_placeholders(
+        self, langfuse_prompts
+    ):
+        """渡していない変数の `{{x}}` は展開せずに残す."""
+        langfuse_prompts[("greeting", "staging")] = "{{name}} さん、{{unknown}}"
+
+        text = fetch_text_prompt(
+            "greeting", label="staging", variables={"name": "ひな"}
+        )
+
+        assert text == "ひな さん、{{unknown}}"
+
+    def test_fetch_text_prompt_with_variables_none_returns_body_unexpanded(
+        self, langfuse_prompts
+    ):
+        """変数が None（既定）なら展開しない（`{{x}}` もそのまま返す）."""
+        langfuse_prompts[("greeting", "staging")] = "{{name}} さん"
+
+        assert (
+            fetch_text_prompt("greeting", label="staging", variables=None)
+            == "{{name}} さん"
+        )
 
     @patch("langfuse.get_client")
     def test_fetch_text_prompt_when_get_client_fails_raises_prompt_error(
@@ -468,44 +308,3 @@ class TestLangfuseSession:
 
         body.assert_called_once_with()
         assert _client_warnings(caplog) == []
-
-
-REQUIRED_PROMPT_TEXT = "システムプロンプト"
-EMPTY_PROMPT_TEXTS = ["", " \n\t "]
-
-
-@pytest.mark.unit
-class TestResolveRequiredPrompt:
-    """resolve_required_prompt（システムプロンプト。本文が空なら読めた体で続けない）."""
-
-    def test_resolve_required_prompt_with_text_returns_stripped_text(
-        self, langfuse_prompts
-    ):
-        """前後の空白を除いた本文を返す."""
-        ref = LangfusePromptRefFactory.build(
-            name="companion-system", fallback_text=f"\n  {REQUIRED_PROMPT_TEXT}\n"
-        )
-
-        assert resolve_required_prompt(ref) == REQUIRED_PROMPT_TEXT
-
-    @pytest.mark.parametrize("fallback_text", EMPTY_PROMPT_TEXTS)
-    def test_resolve_required_prompt_with_empty_text_raises_error_with_ref_name(
-        self, langfuse_prompts, fallback_text
-    ):
-        """本文が空（空白だけ）なら、参照の識別名を持つ PromptUnavailableError を送出する.
-
-        `resolve_prompt` は Langfuse から取れないと例外を出さずにフォールバックテキストへ落ちる。
-        """
-        ref = LangfusePromptRefFactory.build(
-            name="companion-system", fallback_text=fallback_text
-        )
-
-        with pytest.raises(
-            PromptUnavailableError, match="companion-system"
-        ) as exc_info:
-            resolve_required_prompt(ref)
-
-        assert (exc_info.value.ref_name, exc_info.value.reason) == (
-            "companion-system",
-            "本文が空です",
-        )

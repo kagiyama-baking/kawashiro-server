@@ -8,6 +8,8 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.recorder import MigrationRecorder
 
+from tests.fixtures.migrations import applied_apps, prompt_model, system_prompt_field
+
 # Talk 設定（0017）より前
 BEFORE_TALK_SETTINGS = [("talk", "0016_talkconfig_synthesize_rate_limit")]
 # 既存のチャットを Talk 設定へ移す前（0017）と、移す migration（0018）
@@ -58,17 +60,9 @@ def migrator(django_db_setup, django_db_blocker):
         executor = MigrationExecutor(connection)
         yield executor
         # 0018 が止まる行が残っていると当て直せないので、いま当たっている時点のモデルで先に消す
-        _delete_bind_rows(_applied_apps(executor))
+        _delete_bind_rows(applied_apps(executor))
         executor.loader.build_graph()
         executor.migrate(executor.loader.graph.leaf_nodes())
-
-
-def _applied_apps(migrator):
-    """DB に当たっている migration の時点のモデルを引ける apps を返す（グラフを読み直す）."""
-    migrator.loader.build_graph()
-    nodes = migrator.loader.graph.nodes
-    applied = [key for key in migrator.loader.applied_migrations if key in nodes]
-    return migrator.loader.project_state(applied).apps
 
 
 def _talk_model(apps, model_name):
@@ -86,13 +80,12 @@ def _delete_bind_rows(apps):
     ).delete()
     talk_setting = _talk_model(apps, "TalkSetting")
     if talk_setting is not None:
-        talk_setting.objects.filter(system_prompt_ref__name__in=BIND_REFS).delete()
+        prompt = system_prompt_field(talk_setting)
+        talk_setting.objects.filter(**{f"{prompt}__name__in": BIND_REFS}).delete()
     talk_config = _talk_model(apps, "TalkConfig")
     if talk_config is not None:
         talk_config.objects.filter(name__in=BIND_PRESETS).delete()
-    apps.get_model("langfuse_integration", "LangfusePromptRef").objects.filter(
-        name__in=BIND_REFS
-    ).delete()
+    prompt_model(apps).objects.filter(name__in=BIND_REFS).delete()
 
 
 def _migrate(migrator, targets):
@@ -483,11 +476,18 @@ def test_0019_backwards_recreates_empty_presets_and_blank_preset_names(migrator)
 @pytest.mark.integration
 @pytest.mark.django_db
 def test_rolling_back_service_display_name_keeps_talk_settings_migrations():
-    """サービスの表示名（llm_config 0017）だけを戻しても、Talk 設定と逆参照名の migration は外れない."""
+    """サービスの表示名（llm_config 0017）を戻しても、Talk 設定（talk 0017〜0019）は外れない.
+
+    llm_config の 0018 以降（プロンプトの移設）は 0017 に依存するので一緒に外れる。
+    """
     plan = MigrationExecutor(connection).migration_plan(
         [("llm_config", "0016_alter_llmserviceconfig_options")]
     )
 
-    assert [(migration.app_label, migration.name) for migration, _ in plan] == [
-        ("llm_config", "0017_alter_llmserviceconfig_service_name")
-    ]
+    unapplied = {(migration.app_label, migration.name) for migration, _ in plan}
+    assert ("llm_config", "0017_alter_llmserviceconfig_service_name") in unapplied
+    assert {
+        ("talk", "0017_talksetting_chatsession_setting_skill"),
+        ("talk", "0018_bind_chat_sessions_to_talk_settings"),
+        ("talk", "0019_delete_talkconfig_remove_chatsession_config_name"),
+    }.isdisjoint(unapplied)

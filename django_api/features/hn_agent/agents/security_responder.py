@@ -8,8 +8,8 @@ from langfuse import observe
 from pydantic_ai import Agent, PromptedOutput
 
 from integrations.hn.client import HNAlgoliaClient
-from integrations.langfuse.client import resolve_prompt
 from integrations.llm.config import get_llm_settings
+from integrations.llm.prompts import resolve_prompt_text
 from integrations.tavily.client import TavilyClient
 from integrations.tavily.exceptions import TavilyError
 
@@ -130,7 +130,7 @@ class SecurityResponderAgent:
 
         agent_config = HNAgentConfig.objects.get_active_config()
 
-        user_prompt = resolve_prompt(
+        user_prompt = resolve_prompt_text(
             agent_config.security_responder_user_prompt,
             title=thread.title,
             url=thread.url or "(self-post)",
@@ -139,7 +139,9 @@ class SecurityResponderAgent:
             comments_section=self._format_comments_section(comments_text),
             search_section=self._format_search_section(search_sources),
         )
-        system_prompt = resolve_prompt(agent_config.security_responder_system_prompt)
+        system_prompt = resolve_prompt_text(
+            agent_config.security_responder_system_prompt
+        )
 
         return PreparedAnalysis(
             settings=get_llm_settings("security_responder"),

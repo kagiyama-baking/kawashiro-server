@@ -14,7 +14,6 @@ ADMIN_APP_ORDER = [
     "django_celery_beat",
     # AIツール設定
     "llm_config",
-    "langfuse_integration",
     "hn_agent",
     "companion",
     "talk",

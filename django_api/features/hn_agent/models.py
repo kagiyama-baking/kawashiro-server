@@ -1,7 +1,24 @@
 """HN Agentデータモデル."""
 
+from typing import TYPE_CHECKING
+
 from django.core.validators import MinValueValidator
 from django.db import models
+
+if TYPE_CHECKING:
+    from integrations.llm.models import Prompt
+
+# HN Agent 設定が選ぶ 8 本のプロンプトの外部キー（Orchestrator の 2 本と、ツールで呼ぶ
+# サブエージェント（Detective・Devil's Advocate・Security Responder）の 6 本。system と user）
+ORCHESTRATOR_PROMPT_FIELDS = ("orchestrator_system_prompt", "orchestrator_user_prompt")
+SUBAGENT_PROMPT_FIELDS = (
+    "detective_system_prompt",
+    "detective_user_prompt",
+    "devils_advocate_system_prompt",
+    "devils_advocate_user_prompt",
+    "security_responder_system_prompt",
+    "security_responder_user_prompt",
+)
 
 
 class HNThread(models.Model):
@@ -91,7 +108,7 @@ class HNAgentConfigManager(models.Manager):
     def get_active_config(self):
         """有効な設定を取得.
 
-        プロンプト参照 FK を先読みして N+1 を回避する。
+        8 本のプロンプトの外部キーを先読みして N+1 を回避する。
 
         Returns:
             HNAgentConfigインスタンス
@@ -100,14 +117,7 @@ class HNAgentConfigManager(models.Manager):
             HNAgentConfig.DoesNotExist: 有効な設定が存在しない場合
         """
         return self.select_related(
-            "orchestrator_system_prompt",
-            "orchestrator_user_prompt",
-            "detective_system_prompt",
-            "detective_user_prompt",
-            "devils_advocate_system_prompt",
-            "devils_advocate_user_prompt",
-            "security_responder_system_prompt",
-            "security_responder_user_prompt",
+            *ORCHESTRATOR_PROMPT_FIELDS, *SUBAGENT_PROMPT_FIELDS
         ).get(is_active=True)
 
 
@@ -170,62 +180,62 @@ class HNAgentConfig(models.Model):
         ),
     )
 
-    # プロンプト参照（Langfuse 管理）
+    # プロンプト（AI設定 → Prompts。本文は Langfuse）
     orchestrator_system_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Orchestrator システムプロンプト",
-        help_text="Orchestrator に与えるシステムプロンプト（Langfuse参照）",
+        help_text="Orchestrator に与えるシステムプロンプト（AI設定 → Prompts）",
     )
     orchestrator_user_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Orchestrator ユーザープロンプト",
-        help_text="Orchestrator に与えるユーザープロンプト（Langfuse参照）",
+        help_text="Orchestrator に与えるユーザープロンプト（AI設定 → Prompts）",
     )
     detective_system_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Detective システムプロンプト",
-        help_text="Detective に与えるシステムプロンプト（Langfuse参照）",
+        help_text="Detective に与えるシステムプロンプト（AI設定 → Prompts）",
     )
     detective_user_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Detective ユーザープロンプト",
-        help_text="Detective に与えるユーザープロンプト（Langfuse参照）",
+        help_text="Detective に与えるユーザープロンプト（AI設定 → Prompts）",
     )
     devils_advocate_system_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Devil's Advocate システムプロンプト",
-        help_text="Devil's Advocate に与えるシステムプロンプト（Langfuse参照）",
+        help_text="Devil's Advocate に与えるシステムプロンプト（AI設定 → Prompts）",
     )
     devils_advocate_user_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Devil's Advocate ユーザープロンプト",
-        help_text="Devil's Advocate に与えるユーザープロンプト（Langfuse参照）",
+        help_text="Devil's Advocate に与えるユーザープロンプト（AI設定 → Prompts）",
     )
     security_responder_system_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Security Responder システムプロンプト",
-        help_text="Security Responder に与えるシステムプロンプト（Langfuse参照）",
+        help_text="Security Responder に与えるシステムプロンプト（AI設定 → Prompts）",
     )
     security_responder_user_prompt = models.ForeignKey(
-        "langfuse_integration.LangfusePromptRef",
+        "llm_config.Prompt",
         on_delete=models.PROTECT,
         related_name="+",
         verbose_name="Security Responder ユーザープロンプト",
-        help_text="Security Responder に与えるユーザープロンプト（Langfuse参照）",
+        help_text="Security Responder に与えるユーザープロンプト（AI設定 → Prompts）",
     )
 
     created_at = models.DateTimeField("作成日時", auto_now_add=True)
@@ -250,3 +260,7 @@ class HNAgentConfig(models.Model):
                 is_active=False
             )
         super().save(*args, **kwargs)
+
+    def subagent_prompts(self) -> list["Prompt"]:
+        """サブエージェントが使う 6 本のプロンプト（`SUBAGENT_PROMPT_FIELDS` の順）."""
+        return [getattr(self, field) for field in SUBAGENT_PROMPT_FIELDS]

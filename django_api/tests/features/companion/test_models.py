@@ -15,14 +15,14 @@ from integrations.tts.client import TTSClient
 from tests.fixtures.factories import (
     AgentSkillFactory,
     CompanionConfigFactory,
-    LangfusePromptRefFactory,
+    PromptFactory,
 )
 
 
 def _unsaved_config(**fields) -> CompanionConfig:
     """保存前の設定（指定しない項目は正しい値）."""
     return CompanionConfig(
-        system_prompt_ref=LangfusePromptRefFactory(name="companion-system"),
+        system_prompt=PromptFactory(name="companion-system"),
         **{"name": "main", **fields},
     )
 
@@ -63,18 +63,18 @@ class TestCompanionConfigActivation:
         with pytest.raises(CompanionConfig.DoesNotExist):
             CompanionConfig.objects.get_active_config()
 
-    def test_get_active_config_with_active_config_prefetches_system_prompt_ref(
+    def test_get_active_config_with_active_config_prefetches_system_prompt(
         self, django_assert_num_queries
     ):
         """システムプロンプトの参照は同じクエリで読む（追加のクエリなし）."""
         CompanionConfigFactory(
             is_active=True,
-            system_prompt_ref=LangfusePromptRefFactory(name="companion-system"),
+            system_prompt=PromptFactory(name="companion-system"),
         )
 
         with django_assert_num_queries(1):
             config = CompanionConfig.objects.get_active_config()
-            assert config.system_prompt_ref.name == "companion-system"
+            assert config.system_prompt.name == "companion-system"
 
     def test_config_str_when_active_marks_active(self):
         """有効な設定は名前に「（有効）」が付く."""
@@ -154,12 +154,12 @@ class TestCompanionConfigValidation:
 
         assert not CompanionConfig.objects.exists()
 
-    def test_system_prompt_ref_delete_while_referenced_raises_protected_error(self):
+    def test_system_prompt_delete_while_referenced_raises_protected_error(self):
         """設定が参照しているシステムプロンプトの参照は消せない."""
         config = CompanionConfigFactory()
 
         with pytest.raises(ProtectedError):
-            config.system_prompt_ref.delete()
+            config.system_prompt.delete()
 
 
 @pytest.mark.integration

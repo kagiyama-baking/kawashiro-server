@@ -15,8 +15,8 @@ kawashiro-server/
 │   ├── user/                # ユーザー管理API（作成・トークン認証・更新）
 │   ├── health/              # ヘルスチェック（ミドルウェア方式、ALLOWED_HOSTS検証前に応答）
 │   ├── integrations/        # 外部サービス連携
-│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のスキル（Agent Skills）。admin のグループ「AI設定」
-│   │   ├── langfuse/        # Langfuseプロンプト参照（LangfusePromptRef / resolve_prompt）
+│   │   ├── llm/             # LiteLLM Proxy経由のPydanticAI実行基盤・接続設定・全エージェント共有のプロンプト（Prompts）とスキル（Agent Skills）。admin のグループ「AI設定」
+│   │   ├── langfuse/        # Langfuse 連携（プロンプトの取得・セッションの伝播）。モデルなし（migration の履歴のために残す）
 │   │   ├── msgraph/         # Microsoft Graph API設定・クライアント（証明書認証）
 │   │   ├── onedrive/        # OneDrive連携API
 │   │   ├── outlook/         # Outlook Calendar連携API
@@ -61,7 +61,7 @@ kawashiro-server/
 | CI/CD 詳細・デプロイ・Secrets・タグ運用・ロールバック | `docs/deployment.md` |
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
-| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
+| LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Prompts の Prompt・Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
 | Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動） | `django_api/features/talk/README.md` |
 | メディア変換の制限値 | `django_api/features/media/README.md` |
 | HN Agent アーキテクチャ・プロンプト変数・Celery タスク | `django_api/features/hn_agent/README.md` |
@@ -174,6 +174,8 @@ django_api/tests/
 │   ├── factories.py         # factory-boy ファクトリ（UserFactory等）
 │   ├── langfuse.py          # Langfuse のプロンプトの取得の代役（FakeLangfuse）
 │   ├── llm.py               # LLM の代役（ScriptedLLM）
+│   ├── migrations.py        # migration のテストのヘルパ（DB に当たっている時点のモデルを引く）
+│   ├── prompt_migrations.py # プロンプト（Prompt）の migration のテストの時点・ヘルパ（フィクスチャは integrations/llm/conftest.py）
 │   ├── sse.py               # SSE 応答を読むヘルパ（SSEReader）
 │   └── trace_capture.py     # トレース構造の確認用（test_tracing がサブプロセスで実行）
 ├── core/                    # admin並び順等のコアテスト
@@ -234,7 +236,7 @@ def test_user_login_with_invalid_password_raises_error():
 | `mock_ms_graph_settings`      | MS Graph設定モック                 |
 | `ms_graph_client`             | OneDrive MSGraphClientモック       |
 | `fake_litellm`                | LiteLLM の HTTP 層の代役           |
-| `langfuse_prompts`            | Langfuse の text プロンプトの代役（`(プロンプト名, ラベル) → 本文` の dict。companion では autouse） |
+| `langfuse_prompts`            | Langfuse の text プロンプトの代役（`(プロンプト名, ラベル) → 本文` の dict。companion では autouse。HN Agent では 8 本の本文を入れた `hn_langfuse_prompts` が autouse） |
 | `langfuse_unreachable`        | Langfuse に届かない状態（`langfuse_prompts` の上に重ねる） |
 | `admin_site_client`           | 管理画面にスーパーユーザーでログインしたクライアント（`_static_storage_without_manifest` を使う） |
 | `_static_storage_without_manifest` | 静的ファイルを manifest なしの保存先にする（collectstatic なしで管理画面を描画できる） |
@@ -273,7 +275,7 @@ llm.requests[1].system_prompts  # system の本文の並び（指示の各部分
 
 ストリーミングの流し方は、`ScriptedLLM` では `stream_of("途中", hang=True)`（`gap` / `raises` も指定できる）、`fake_litellm` では `litellm_stream(...)` / `LiteLLMStreamBody` で指定します。切断は `response.close()` で再現します（`tests/fixtures/sse.py` の `SSEReader.disconnect`）。
 
-Langfuse のプロンプトの取得は、`tests/conftest.py` の `langfuse_prompts` で代役にします（Companion のテスト `tests/features/companion/` では、その `conftest.py` が autouse にしている）。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です（システムプロンプトは参照のフォールバックテキストに落ちる）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
+Langfuse のプロンプトの取得は、`tests/conftest.py` の `langfuse_prompts` で代役にします（Companion のテスト `tests/features/companion/` では、その `conftest.py` が autouse にしている。HN Agent のテストでは `tests/features/hn_agent/conftest.py` の `hn_langfuse_prompts` が 8 本の本文を入れて autouse にしている）。`(プロンプト名, ラベル) → 本文` の dict に入れたものだけを返し、ない名前・ラベルは SDK と同じ `NotFoundError` です。フォールバックはないので、設定が使うプロンプト（Prompts の `Prompt`。名前がそのまま Langfuse のプロンプト名）の本文も、テストで dict に入れます（入れなければ `PromptUnavailableError`）。Langfuse に届かない状態は `langfuse_unreachable` で再現します。
 
 ## コーディング規約
 

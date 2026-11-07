@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from features.talk.llm_agents import TALK_CHAT_AGENT, TALK_TITLE_AGENT
 from features.talk.models import ChatMessage, ChatSession, TalkSetting
-from integrations.langfuse.models import LangfusePromptRef
+from integrations.llm.models import Prompt
 from integrations.tts.client import TTSResult
 from tests.fixtures.factories import AgentSkillFactory
 from tests.fixtures.llm import ScriptedLLM, make_llm_settings
@@ -57,8 +57,8 @@ def media_root(settings, tmp_path):
 def chat_turn_env(media_root, langfuse_prompts):
     """Langfuse を代役にする（スロットルの計数は `tests/conftest.py` が毎回空にする）.
 
-    システムプロンプトは参照のフォールバックテキストに落ちる。シーンの本文は
-    `langfuse_prompts` に入れたものだけを返す。
+    システムプロンプト（`system_prompt`）とシーンの本文は、`langfuse_prompts` に
+    入れたものだけを返す。
     """
     return langfuse_prompts
 
@@ -78,37 +78,33 @@ def auth_client(user):
     return client
 
 
-@pytest.fixture
-def prompt_refs(db):
-    return (
-        LangfusePromptRef.objects.create(
-            name="chat-turn-system",
-            langfuse_prompt_name="chat-turn-system",
-            fallback_text="あなたは親切な AI です。",
-        ),
-        LangfusePromptRef.objects.create(
-            name="chat-turn-user",
-            langfuse_prompt_name="chat-turn-user",
-            fallback_text="dummy",
-        ),
-    )
+# Talk 設定のシステムプロンプト（Langfuse の text プロンプトの名前と本文。ラベルは production）
+SYSTEM_PROMPT_NAME = "chat-turn-system"
+SYSTEM_PROMPT_BODY = "あなたは親切な AI です。"
 
 
 @pytest.fixture
-def talk_setting(prompt_refs):
+def system_prompt(db, chat_turn_env):
+    """Talk 設定のシステムプロンプトの参照（本文は Langfuse の production にある）."""
+    chat_turn_env[(SYSTEM_PROMPT_NAME, "production")] = SYSTEM_PROMPT_BODY
+    return Prompt.objects.create(name=SYSTEM_PROMPT_NAME)
+
+
+@pytest.fixture
+def talk_setting(system_prompt):
     return TalkSetting.objects.create(
-        name="チャットのターン", system_prompt_ref=prompt_refs[0]
+        name="チャットのターン", system_prompt=system_prompt
     )
 
 
 @pytest.fixture
-def tts_setting(prompt_refs):
+def tts_setting(system_prompt):
     return TalkSetting.objects.create(
         name="チャットのターン（音声あり）",
         tts_enabled=True,
         tts_format="wav",
         tts_model="model",
-        system_prompt_ref=prompt_refs[0],
+        system_prompt=system_prompt,
     )
 
 
