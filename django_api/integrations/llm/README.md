@@ -192,6 +192,7 @@ LLM 呼び出しはすべて PydanticAI のエージェントで行います。�
 ```python
 from pydantic_ai import Agent
 
+from features.hn_agent.models import HNAgentConfig
 from integrations.langfuse.exceptions import PromptUnavailableError
 from integrations.llm.config import get_llm_settings
 from integrations.llm.exceptions import (
@@ -207,9 +208,12 @@ from integrations.llm.runtime import run_agent_sync
 MY_AGENT = Agent(name="my-feature", output_type=str | None)
 
 try:
-    settings = get_llm_settings("talk")  # admin のサービス設定を解決（DB を読む）
-    system_prompt = resolve_prompt_text(config.system_prompt)  # Langfuse から取る
-    user_prompt = resolve_prompt_text(config.user_prompt, weather="晴れ")  # 変数を差し込む
+    settings = get_llm_settings("orchestrator")  # admin のサービス設定を解決（DB を読む）
+    config = HNAgentConfig.objects.get_active_config()  # 機能の設定（Prompts から選んだプロンプト）
+    system_prompt = resolve_prompt_text(config.orchestrator_system_prompt)  # Langfuse から取る
+    user_prompt = resolve_prompt_text(  # 変数を差し込む（渡していない {{x}} は残る）
+        config.orchestrator_user_prompt, hn_id="123", title="記事のタイトル"
+    )
 
     result = run_agent_sync(
         MY_AGENT, settings, user_prompt=user_prompt, instructions=system_prompt
