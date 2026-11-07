@@ -2,9 +2,8 @@
 
 モデルは台本（`ScriptedLLM`）を本番のプロファイルで差し替え、`run_agent_sync` を通す。
 LLM の接続設定は DB を読まないテスト用のもの（サービス名は呼び出しのまま）にする。Langfuse は
-代役（conftest の `langfuse_prompts`）にし、スキルの本文は (プロンプト名, ラベル) で入れたものを
-返させる（システムプロンプトは取れずに、参照のフォールバックテキストになる）。音声合成と祝日・
-天気のクライアントは差し替えるので、外へは出ない。
+代役（conftest の `langfuse_prompts`）にし、システムプロンプトとスキルの本文は (プロンプト名,
+ラベル) で入れたものを返させる。音声合成と祝日・天気のクライアントは差し替えるので、外へは出ない。
 """
 
 import logging
@@ -53,6 +52,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 SERVICES = "features.companion.services"
 LANGFUSE_CLIENT = "integrations.langfuse.client"
 AREA_CODE = "130010"
+# 設定のシステムプロンプト（Langfuse の text プロンプトの名前と本文。ラベルは production）
+SYSTEM_PROMPT_NAME = "companion-test-system"
 SYSTEM_PROMPT = "システムプロンプト"
 MORNING_BODY = "天気と今日の予定に触れて、朝のあいさつをする"
 NIGHT_BODY = "明日の天気に触れて、おやすみのあいさつをする"
@@ -95,6 +96,16 @@ def _skill(langfuse_prompts, name: str, body: str, **fields):
     return skill
 
 
+def _active_config(
+    langfuse_prompts, *, system_prompt: str = SYSTEM_PROMPT, **fields
+) -> CompanionConfig:
+    """有効な設定を作り、システムプロンプトの本文を Langfuse の代役に production で置く."""
+    langfuse_prompts[(SYSTEM_PROMPT_NAME, "production")] = system_prompt
+    return CompanionConfigFactory(
+        is_active=True, system_prompt_ref__name=SYSTEM_PROMPT_NAME, **fields
+    )
+
+
 @pytest.fixture
 def config(db, langfuse_prompts) -> CompanionConfig:
     """有効な設定と、名前順と逆に選んだスキル 3 件（welcome-home は無効）."""
@@ -112,12 +123,7 @@ def config(db, langfuse_prompts) -> CompanionConfig:
             ("good-morning", "朝のあいさつ（「おはよう」など）", MORNING_BODY, True),
         ]
     ]
-    return CompanionConfigFactory(
-        is_active=True,
-        area_code=AREA_CODE,
-        system_prompt_ref__fallback_text=SYSTEM_PROMPT,
-        skills=skills,
-    )
+    return _active_config(langfuse_prompts, area_code=AREA_CODE, skills=skills)
 
 
 @pytest.fixture
@@ -251,11 +257,12 @@ class TestAutoSelection:
 
         assert reply.text == "おはよう！"
 
-    def test_run_companion_without_enabled_skills_offers_no_skills(self, db):
+    def test_run_companion_without_enabled_skills_offers_no_skills(
+        self, db, langfuse_prompts
+    ):
         """有効なスキルがなければ、一覧も読み込みのツールも、方針の読み込みの一文も入れない."""
-        CompanionConfigFactory(
-            is_active=True,
-            system_prompt_ref__fallback_text=SYSTEM_PROMPT,
+        _active_config(
+            langfuse_prompts,
             skills=[AgentSkillFactory(name="good-morning", is_enabled=False)],
         )
         llm = _scripted("こんにちは")
@@ -283,12 +290,13 @@ class TestAutoSelection:
         assert reply.skill == "good-morning"
 
     def test_run_companion_when_loaded_skill_body_unavailable_raises_error_after_one_request(
-        self, config, langfuse_unreachable
+        self, config, langfuse_prompts
     ):
         """読み込んだスキルの本文を Langfuse から取れなければ、続けずに PromptUnavailableError.
 
         モデルへのリクエストは読み込みを決めた 1 回だけ（本文のない手順で答えさせない）。
         """
+        del langfuse_prompts[("good-morning", "staging")]
         llm = _scripted(load_capability("good-morning"), "おはよう！")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
@@ -361,13 +369,13 @@ class TestSkillSpecified:
         assert llm.requests == []
 
     def test_run_companion_with_skill_when_body_unavailable_raises_error_before_llm(
-        self, config, langfuse_unreachable
+        self, config, langfuse_prompts
     ):
         """指定したスキルの本文を Langfuse から取れなければ、モデルを呼ばずに PromptUnavailableError.
 
-        システムプロンプトは参照のフォールバックテキストに落ちるが、スキルの本文には
-        フォールバックがない。
+        システムプロンプトは取れても、スキルの本文のプロンプトがそのラベルになければ止まる。
         """
+        del langfuse_prompts[("good-night", "staging")]
         llm = _scripted("おやすみ！")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
@@ -425,9 +433,7 @@ class TestBeforeModelErrors:
 
         save() はほかの設定を無効にするので、update で 2 件とも有効にする。
         """
-        CompanionConfigFactory.create_batch(
-            2, system_prompt_ref__fallback_text=SYSTEM_PROMPT
-        )
+        CompanionConfigFactory.create_batch(2)
         CompanionConfig.objects.update(is_active=True)
 
     def test_run_companion_without_active_config_raises_not_configured_error(
@@ -480,20 +486,18 @@ class TestBeforeModelErrors:
 
         assert llm.requests == []
 
-    @pytest.mark.parametrize("fallback_text", EMPTY_TEXTS)
+    @pytest.mark.parametrize("body", EMPTY_TEXTS)
     def test_run_companion_with_empty_system_prompt_raises_prompt_unavailable_error(
-        self, db, fallback_text
+        self, db, langfuse_prompts, body
     ):
         """システムプロンプトの本文が空なら、モデルを呼ばずに PromptUnavailableError."""
-        config = CompanionConfigFactory(
-            is_active=True, system_prompt_ref__fallback_text=fallback_text
-        )
+        _active_config(langfuse_prompts, system_prompt=body)
         llm = _scripted("こんにちは")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
             _run(llm)
 
-        assert exc_info.value.ref_name == config.system_prompt_ref.name
+        assert exc_info.value.ref_name == SYSTEM_PROMPT_NAME
         assert llm.requests == []
 
 

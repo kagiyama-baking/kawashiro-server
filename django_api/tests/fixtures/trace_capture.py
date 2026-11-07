@@ -98,7 +98,7 @@ def _run_talk():
     from tests.fixtures.llm import ScriptedLLM
 
     ref = LangfusePromptRef.objects.create(
-        name="trace-talk", langfuse_prompt_name="trace-talk", fallback_text="system"
+        name="trace-talk", langfuse_prompt_name="trace-talk"
     )
     setting = TalkSetting.objects.create(name="trace", system_prompt_ref=ref)
     llm = ScriptedLLM("返信")

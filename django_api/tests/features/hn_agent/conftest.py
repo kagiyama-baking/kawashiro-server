@@ -10,6 +10,44 @@ from integrations.langfuse.models import LangfusePromptRef
 from integrations.llm.models import LLMProviderConfig, LLMServiceConfig
 from tests.fixtures.llm import ScriptedLLM, tool_calls
 
+# HN Agent の 8 本のプロンプトの本文（Langfuse のプロンプト名 → 代役が返す本文）。
+# user プロンプトは、各エージェントが差し込む変数をすべて含む（展開した結果をテストで確かめる）。
+HN_PROMPT_BODIES = {
+    "hn-agent-orchestrator": "Orchestrator のシステムプロンプト（テスト）",
+    "hn-agent-orchestrator-user": (
+        "HN ID: {{hn_id}}\nタイトル: {{title}}\nURL: {{url}}\n投稿者: {{author}}\n"
+        "{{score_info}}"
+    ),
+    "hn-agent-detective": "Detective のシステムプロンプト（テスト）",
+    "hn-agent-detective-user": (
+        "タイトル: {{title}}\nURL: {{url}}\n投稿者: {{author}}\n{{score_info}}\n"
+        "{{background_section}}\n{{comments_section}}"
+    ),
+    "hn-agent-devils-advocate": "Devil's Advocate のシステムプロンプト（テスト）",
+    "hn-agent-devils-advocate-user": (
+        "タイトル: {{title}}\nURL: {{url}}\n投稿者: {{author}}\n{{score_info}}\n"
+        "{{comments_section}}"
+    ),
+    "hn-agent-security-responder": "Security Responder のシステムプロンプト（テスト）",
+    "hn-agent-security-responder-user": (
+        "タイトル: {{title}}\nURL: {{url}}\n投稿者: {{author}}\n{{score_info}}\n"
+        "{{comments_section}}\n{{search_section}}"
+    ),
+}
+
+
+@pytest.fixture(autouse=True)
+def hn_langfuse_prompts(langfuse_prompts):
+    """HN Agent の 8 本のプロンプトの本文を、Langfuse の代役に production で置く.
+
+    autouse なので、HN Agent のテストは Langfuse へ出ない。返す dict（`langfuse_prompts`）から
+    本文を消せば、そのプロンプトを Langfuse から取れない状態を作れる。
+    """
+    langfuse_prompts.update(
+        {(name, "production"): body for name, body in HN_PROMPT_BODIES.items()}
+    )
+    return langfuse_prompts
+
 
 @pytest.fixture
 def hn_llm_services(db):
@@ -99,7 +137,8 @@ def scripted_investigation_thread(hn_llm_services, hn_agent_config):
     """調査すると Detective の結果が 1 件出るスレッドを用意する.
 
     引数なしで Orchestrator を作る入口（API・管理コマンド）のテスト用。モデルは台本で、
-    遅延生成される Detective も差し替えるので、LLM・HN・Tavily・Langfuse へは出ない。
+    遅延生成される Detective も差し替え、プロンプトは Langfuse の代役（`hn_langfuse_prompts`）
+    から取るので、LLM・HN・Tavily・Langfuse へは出ない。
     """
     thread = HNThread.objects.create(
         hn_id=900,
@@ -111,7 +150,6 @@ def scripted_investigation_thread(hn_llm_services, hn_agent_config):
     with (
         ORCHESTRATOR_AGENT.override(model=llm.model),
         patch("features.hn_agent.orchestrator.DetectiveAgent") as detective_class,
-        patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")),
     ):
         detective_class.return_value.investigate = AsyncMock(
             return_value={

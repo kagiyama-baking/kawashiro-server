@@ -49,7 +49,11 @@ class SuperUserFactory(UserFactory):
 
 
 class LangfusePromptRefFactory(factory.django.DjangoModelFactory):
-    """LangfusePromptRef のファクトリ."""
+    """LangfusePromptRef のファクトリ（Langfuse のプロンプト名は識別名と同じ）.
+
+    フォールバックテキストは空のまま。本文はテストで Langfuse の代役
+    （`langfuse_prompts`）に入れる。
+    """
 
     class Meta:
         model = "langfuse_integration.LangfusePromptRef"
@@ -58,7 +62,6 @@ class LangfusePromptRefFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"prompt-ref-{n}")
     langfuse_prompt_name = factory.LazyAttribute(lambda o: o.name)
     label = "production"
-    fallback_text = "fallback"
     description = ""
 
 
@@ -78,7 +81,6 @@ class TalkSettingFactory(factory.django.DjangoModelFactory):
     system_prompt_ref = factory.SubFactory(
         LangfusePromptRefFactory,
         name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
-        fallback_text="system prompt fallback",
     )
 
     @factory.post_generation
@@ -116,7 +118,6 @@ class CompanionConfigFactory(factory.django.DjangoModelFactory):
     system_prompt_ref = factory.SubFactory(
         LangfusePromptRefFactory,
         name=factory.LazyAttribute(lambda o: f"{o.factory_parent.name}-system"),
-        fallback_text="system prompt fallback",
     )
 
     @factory.post_generation

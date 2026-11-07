@@ -24,14 +24,15 @@ SCENE_BODY = "カフェで向かい合って、ゆっくり話している。"
 
 @pytest.fixture(autouse=True)
 def _langfuse_prompts(langfuse_prompts):
-    """Langfuse は代役にする（入れていない参照のプロンプトはフォールバックテキストに落ちる）."""
+    """Langfuse は代役にする（入れた本文だけを返す）."""
     return langfuse_prompts
 
 
 @pytest.fixture
-def chat_setting(db):
-    """システムプロンプトだけの Talk 設定（本文は参照のフォールバックテキスト）."""
-    ref = LangfusePromptRefFactory(name="talk-chat-system", fallback_text=SYSTEM_PROMPT)
+def chat_setting(db, langfuse_prompts):
+    """システムプロンプトだけの Talk 設定（本文は Langfuse の production にある）."""
+    langfuse_prompts[("talk-chat-system", "production")] = SYSTEM_PROMPT
+    ref = LangfusePromptRefFactory(name="talk-chat-system")
     return TalkSettingFactory(name="チャットテスト設定", system_prompt_ref=ref)
 
 
@@ -75,9 +76,8 @@ class TestPrepareChatPrompt:
         self, talk_llm_settings, langfuse_prompts
     ):
         """システムプロンプトとシーンの変数は展開しない（外部のデータを取りに行かない）."""
-        ref = LangfusePromptRefFactory(
-            name="talk-vars-system", fallback_text="現在時刻: {{datetime}}"
-        )
+        langfuse_prompts[("talk-vars-system", "production")] = "現在時刻: {{datetime}}"
+        ref = LangfusePromptRefFactory(name="talk-vars-system")
         langfuse_prompts[(SCENE_NAME, "staging")] = "天気: {{weather}}"
 
         prompt = TalkService().prepare_chat_prompt(
@@ -89,10 +89,11 @@ class TestPrepareChatPrompt:
         assert "{{weather}}" in prompt
 
     def test_prepare_chat_prompt_with_empty_system_prompt_raises_error(
-        self, talk_llm_settings
+        self, talk_llm_settings, langfuse_prompts
     ):
         """システムプロンプトの本文が空なら PromptUnavailableError（空のまま話さない）."""
-        ref = LangfusePromptRefFactory(name="talk-empty-system", fallback_text=" \n")
+        langfuse_prompts[("talk-empty-system", "production")] = " \n"
+        ref = LangfusePromptRefFactory(name="talk-empty-system")
 
         with pytest.raises(PromptUnavailableError) as exc_info:
             TalkService().prepare_chat_prompt(TalkSettingFactory(system_prompt_ref=ref))

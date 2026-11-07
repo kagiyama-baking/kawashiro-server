@@ -1,7 +1,7 @@
 """Devil's Advocate Agent のテスト."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from asgiref.sync import async_to_sync
@@ -15,13 +15,6 @@ from integrations.hn.client import HNComment
 from tests.fixtures.llm import ScriptedLLM
 
 pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -105,9 +98,12 @@ class TestDevilsAdvocateAgent:
         assert result["comments_analyzed"] == 1
 
     def test_analyze_prompt_contains_uncommitted_data(
-        self, mock_hn_client, advocate_llm, hn_agent_config
+        self, mock_hn_client, advocate_llm, hn_agent_config, hn_langfuse_prompts
     ):
-        """準備処理は呼び出し元の DB 接続で動き、未コミットのデータがプロンプトに入る."""
+        """準備処理は呼び出し元の DB 接続で動き、未コミットのデータがプロンプトに入る.
+
+        system は Langfuse の本文そのまま、user は本文に変数を差し込んだもの。
+        """
         advocate_llm.enqueue(self.MOCK_ANALYSIS_JSON)
         thread = HNThread.objects.create(hn_id=902, title="Uncommitted", author="x")
         HNThreadSnapshot.objects.create(thread=thread, score=123, num_comments=45)
@@ -116,11 +112,15 @@ class TestDevilsAdvocateAgent:
         async_to_sync(agent.analyze)(thread)
 
         request = advocate_llm.requests[0]
-        assert "スコア: 123, コメント数: 45" in request.user_prompt
+        assert request.user_prompt.startswith(
+            "タイトル: Uncommitted\nURL: (self-post)\n投稿者: x\n"
+            "スコア: 123, コメント数: 45\n"
+        )
         assert "[grumpy_dev]: This is overhyped." in request.user_prompt
+        assert "{{" not in request.user_prompt
         assert (
             request.instructions
-            == hn_agent_config.devils_advocate_system_prompt.fallback_text
+            == hn_langfuse_prompts[("hn-agent-devils-advocate", "production")]
         )
         metadata = request.model_settings["extra_body"]["metadata"]
         assert metadata["service_name"] == "devils_advocate"

@@ -29,6 +29,7 @@ from features.hn_agent.agents.security_responder import (
 from features.hn_agent.models import HNThread, HNThreadSnapshot
 from features.hn_agent.orchestrator import MAX_STEPS, ORCHESTRATOR_AGENT, Orchestrator
 from integrations.hn.client import HNComment
+from tests.fixtures.langfuse import FakeLangfuse
 from tests.fixtures.llm import ScriptedLLM, litellm_response, tool_calls
 
 pytestmark = pytest.mark.django_db
@@ -55,13 +56,6 @@ TOOL_DESCRIPTIONS = {
         "セキュリティ話題ではこのツール単独で完結させてよい（detective は不要）。"
     ),
 }
-
-
-@pytest.fixture(autouse=True)
-def _disable_langfuse_client():
-    """Langfuse 接続を外して resolve_prompt を fallback_text 経由にする."""
-    with patch("langfuse.get_client", side_effect=RuntimeError("disabled in tests")):
-        yield
 
 
 @pytest.fixture
@@ -551,9 +545,12 @@ class TestOrchestrator:
         mock_reporter.report_detective.assert_not_called()
 
     def test_request_uses_prompts_and_orchestrator_settings(
-        self, orchestrator, orchestrator_llm, thread, hn_agent_config
+        self, orchestrator, orchestrator_llm, thread, hn_langfuse_prompts
     ):
-        """プロンプトと LLM 設定は Orchestrator のものを使い、出力上限は付けない."""
+        """プロンプトと LLM 設定は Orchestrator のものを使い、出力上限は付けない.
+
+        system は Langfuse の本文そのまま、user は本文にスレッドの変数を差し込んだもの。
+        """
         orchestrator_llm.enqueue("結論")
 
         orchestrator.investigate(thread)
@@ -561,10 +558,13 @@ class TestOrchestrator:
         request = orchestrator_llm.requests[0]
         assert (
             request.instructions
-            == hn_agent_config.orchestrator_system_prompt.fallback_text
+            == hn_langfuse_prompts[("hn-agent-orchestrator", "production")]
         )
-        assert "Test Orchestrator Thread" in request.user_prompt
-        assert "スコア: 200, コメント数: 50" in request.user_prompt
+        assert request.user_prompt == (
+            "HN ID: 700\nタイトル: Test Orchestrator Thread\n"
+            "URL: https://example.com/orch\n投稿者: testuser\n"
+            "スコア: 200, コメント数: 50"
+        )
         settings = request.model_settings
         assert settings["extra_body"]["metadata"]["service_name"] == "orchestrator"
         assert "max_tokens" not in settings
@@ -606,12 +606,19 @@ class TestOrchestrator:
             assert tool.parameters_json_schema["properties"] == {}
 
     def test_finalize_trace_records_decision_log(
-        self, orchestrator, orchestrator_llm, thread, mock_detective_agent
+        self,
+        orchestrator,
+        orchestrator_llm,
+        thread,
+        mock_detective_agent,
+        hn_langfuse_prompts,
     ):
         """判断フローを現在のスパンに記録する."""
         mock_detective_agent.investigate.side_effect = RuntimeError("boom")
         orchestrator_llm.enqueue(tool_calls("detective_investigate"), "結論")
         client = MagicMock()
+        # プロンプトは、差し替えたクライアントからも Langfuse の代役の本文を取る
+        client.get_prompt.side_effect = FakeLangfuse(hn_langfuse_prompts).get_prompt
 
         with patch("langfuse.get_client", return_value=client):
             orchestrator.investigate(thread)
