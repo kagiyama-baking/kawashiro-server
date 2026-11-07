@@ -21,12 +21,13 @@ features/companion/
 ├── throttling.py              # CompanionRateThrottle（有効な設定の rate_limit で、ユーザーごとに数える）
 ├── urls.py                    # app_name = "companion"（run/）
 ├── exceptions.py              # CompanionError / CompanionNotConfiguredError / UnknownSkillError（PromptUnavailableError は integrations/langfuse/exceptions.py）
-└── migrations/                # 0001_initial と次の 5 本（0001 まで戻せる）
+└── migrations/                # 0001_initial と次の 6 本（0001 まで戻せる）
     ├── 0002_rename_persona_prompt_ref_to_system_prompt_ref.py  # persona_prompt_ref → system_prompt_ref の改名（手書き）
     ├── 0003_agentskill_companionconfig_skills.py               # AgentSkill と CompanionConfig.skills を足す
     ├── 0004_migrate_companionskill_to_agentskill.py            # 旧 CompanionSkill の行を AgentSkill に写す（下の「旧 CompanionSkill からの移行」）
     ├── 0005_delete_companionskill.py                           # 旧 CompanionSkill を消す
-    └── 0006_move_agentskill_to_llm_config.py                   # AgentSkill を llm_config へ移す（状態だけ。下記）
+    ├── 0006_move_agentskill_to_llm_config.py                   # AgentSkill を llm_config へ移す（状態だけ。下記）
+    └── 0007_alter_companionconfig_skills_related_name.py       # スキルの逆参照名を companion_configs にする（DB は無変更）
 ```
 
 `0006` は `AgentSkill` を llm_config アプリへ移す migration です（llm_config の `0014` の後に当たります）。どちらも表は変えないので、行・設定の選択・表（`companion_agentskill`）はそのまま残ります（表名と内容の型（ContentType）の扱いは [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）。`0006` を持たない版のコードに戻すときは、先に `0006` を含む版のコードで `python manage.py migrate llm_config 0013` を実行します（llm_config の `0016`（サービス設定の表示名）、`0015`（スキル名から接頭辞 `companion-skill-` を外す。規則は [LLM の README の「Agent Skills」](../../integrations/llm/README.md#agent-skillsagentskill)）、`0006`、llm_config の `0014`（内容の型の行も companion に戻す）の順に外れ、`AgentSkill` は companion のモデルに戻ります）。`migrate companion 0005` だけでは、`0016`・`0015` は外れますが llm_config の `0014` が当たったまま残り、内容の型の行も llm_config のままです（古い版の管理画面では、それまでの履歴と付けた権限が見えません）。戻すときは `migrate llm_config 0013` を使ってください。
@@ -42,7 +43,7 @@ features/companion/
 | `name` | CharField(255) | 設定の識別名 | 一意 |
 | `is_active` | Bool, `False` | 有効な設定 | 有効にして保存すると、ほかの設定は無効になる |
 | `system_prompt_ref` | FK → `LangfusePromptRef`（PROTECT） | 全スキルに共通のシステムプロンプトの参照 | 必須。参照中の `LangfusePromptRef` は削除できない |
-| `skills` | M2M → `AgentSkill`（`related_name="configs"`） | この設定で使うスキル（下の「スキルの登録（Agent Skills）」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
+| `skills` | M2M → `AgentSkill`（`related_name="companion_configs"`。0007 までは `configs`） | この設定で使うスキル（下の「スキルの登録（Agent Skills）」） | 任意（選ばなくてもよい）。無効にしたスキルは、選んでいても使わない。設定を消してもスキルは残り、スキルを消すと選択から外れる |
 | `area_code` | CharField(10), `""` | 天気予報の予報区コード（例: `130010`）。空なら天気を扱わない | 空か 6 桁の半角数字（`^[0-9]{6}\Z`。全角数字・末尾の改行は通さない） |
 | `rate_limit` | PositiveInteger, `10` | 1 ユーザーが 1 分間に実行できる回数の上限（数え方は下の「API」の「回数制限」） | 1 以上 |
 | `tts_*`（9 項目） | `AbstractTTSSettings` から継承 | 音声合成の設定。項目・既定値は [Talk の `TalkConfig` 表](../talk/README.md#talkconfig-リファレンス) の `tts_*` 行と同じ | 同左 |

@@ -239,7 +239,7 @@ class TestCompanionConfigSkills:
         second = CompanionConfigFactory(skills=[skill])
 
         assert list(first.skills.all()) == list(second.skills.all()) == [skill]
-        assert set(skill.configs.all()) == {first, second}
+        assert set(skill.companion_configs.all()) == {first, second}
 
     def test_config_delete_keeps_selected_skills(self):
         """設定を消しても、選んでいたスキルは残る."""
