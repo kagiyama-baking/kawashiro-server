@@ -6,7 +6,7 @@ checker: "git status --porcelain が空、かつ HEAD が開始時の BASE と�
 report_to: "予定タスクの実行結果（最終メッセージ）と Notion の実行ログ（→ run-loop ⑥）"
 notion_loop: "https://app.notion.com/418ddfb6fd8d804bacebcf56ddf88533"  # DB_ループの daily-triage の行（→ run-loop ⑥）
 connectors: [Notion]
-requires: "gh（repo スコープ。Actions の実行結果とコードスキャンの alert を読む）"
+requires: "gh（Actions の実行・ジョブ・ログと、REST の PR・Issue を読む）。無ければ GitHub コネクタの読み取りのツール（→「GitHub の読み方」）"
 limits:
   security_scan_runs: 1      # 読む Security Scan の実行は直近の1回だけ
   ci_runs_per_workflow: 3    # 各ワークフローで一覧に出す実行の数
@@ -49,28 +49,34 @@ Notion の `DB_Claude 実行ログ`（`collection://4a6bf552-978b-4f2c-88d3-7765
    - ジョブ `scan-custom (django-api)` と `scan-custom (frontend)` の成否と、落ちたステップを見る
    - **落ちたのが `Scan image` 以外**（`Pull image` など）なら、脆弱性の仕分けはせず、b の CI の失敗として扱う
 
-2. `Scan image` が落ちたジョブは、失敗したステップの表の見出しと件数だけを読む（`limits.failed_log_lines` 行まで）
+2. `Scan image` が落ちたジョブは、失敗したステップの Trivy の表から、見出しと件数を読む
 
        gh run view --job <JOB_ID> --log-failed | cut -f3- | sed -E 's/^[0-9T:.-]+Z //' \
          | grep -E -A2 '^\S+ \((alpine|debian|ubuntu|python-pkg|node-pkg)[^)]*\)$|Total: [0-9]+' | head -n 60
 
-   （各行の先頭にタイムスタンプが付くので、`sed` で外してから見出しを探す）
+   （各行の先頭にタイムスタンプが付くので、`sed` で外してから探す）
 
    見出しの括弧（`alpine 3.x` などは OS パッケージ、`python-pkg` などは言語のパッケージ）と、
    `Total: N (HIGH: n, CRITICAL: m)` を控える。
 
-3. 個々の脆弱性はコードスキャンの alert（Security Scan が SARIF で上げたもの）から取る
+3. 同じログの表を、**パッケージ × 重大度 × 状態 × 現在の版 × 修正版**の行にまとめる。ログの全文は読まず、この出力だけを読む
 
-       gh api 'repos/{owner}/{repo}/code-scanning/alerts?state=open&tool_name=Trivy&per_page=100' --paginate \
-         -q '.[]|select(.rule.security_severity_level=="critical" or .rule.security_severity_level=="high")
-             |[.most_recent_instance.category, .rule.security_severity_level, .rule.id, .created_at[0:10],
-               (.most_recent_instance.message.text|gsub("\n";" | "))]|@tsv'
+       gh run view --job <JOB_ID> --log-failed | cut -f3- | sed -E 's/^[0-9T:.-]+Z //' \
+         | awk -F'│' '
+             /^│/ && NF >= 9 {
+               for (i = 2; i <= 8; i++) gsub(/^ +| +$/, "", $i)
+               if ($2 != "") { lib = $2; sev = $4; st = $5; inst = $6; fix = $7 }
+               else { if ($4 != "") sev = $4; if ($5 != "") st = $5; if ($6 != "") inst = $6; if ($7 != "") fix = $7 }
+               if ($3 ~ /^(CVE|GHSA)-/) print lib "\t" sev "\t" st "\t" inst "\t" (st == "fixed" ? fix : "") "\t" $3
+             }' \
+         | awk -F'\t' '{k = $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5; n[k]++; if (!(k in c)) c[k] = $6}
+                       END {for (k in n) print k "\t" n[k] "\t" c[k]}' | sort
 
-   `category` がイメージ名、本文の `Package:` `Installed Version:` `Fixed Version:` がパッケージと版。
-   **イメージ × パッケージ × 現在の版 × 修正版**でまとめ、CVE は件数と代表の1つだけ書く。
+   出力の列は「パッケージ・重大度・状態・現在の版・修正版・件数・代表の CVE」。Trivy の表は同じ値のセルを
+   縦にまとめるので、空のセルは上の行の値を引き継ぐ。状態が `fixed` でなければ修正版は空にする。
 
-   - イメージごとの件数が 2 の `Total:` と合わないとき、またはそのジョブの `Upload to Security tab` が
-     成功していないとき（alert が古い）は、2 の表だけで仕分け、食い違いを「要確認」に書く
+   - 件数の合計が 2 の `Total:` と合わないときは、表の読み取りの誤りを疑い、食い違いを「要確認」に書く
+   - コードスキャンの alert（SARIF）は使わない。クラウドの実行環境からは権限が無く読めず、表と同じ中身しか持たないため
 
 4. まとめた各項目を次の3つに分ける
 
@@ -84,9 +90,9 @@ Notion の `DB_Claude 実行ログ`（`collection://4a6bf552-978b-4f2c-88d3-7765
 
    - **言語のパッケージ**: `git show origin/develop:django_api/uv.lock`（frontend は `frontend/pnpm-lock.yaml`）の
      版が修正版以上で、`origin/main` の版が修正版未満ならリリース待ち
-   - **OS パッケージ**: develop の `build.yml` の最新の成功が、その alert の `created_at` より後で、かつ
+   - **OS パッケージ**: develop の `build.yml` の最新の成功が、1 で取った Security Scan の実行より後で、かつ
      main の `release.yml` の最新の成功より後ならリリース待ち（build.yml の Trivy は修正版のある CRITICAL/HIGH で
-     落ちるので、成功したビルドの `:staging` にはその脆弱性が無い）。そうでなければ直せる
+     落ちるので、Security Scan より後に成功したビルドの `:staging` にはその脆弱性が無い）。そうでなければ直せる
    - どちらとも決められないときは推測で埋めず「要確認」に書く
 
 ### b. CI（develop と main の直近の実行）
@@ -109,10 +115,14 @@ Notion の `DB_Claude 実行ログ`（`collection://4a6bf552-978b-4f2c-88d3-7765
 
 ### c. 動きが止まっている PR と Issue
 
-    gh pr list --state open --json number,title,updatedAt,isDraft,reviewDecision,headRefName,url
-    gh issue list --state open --json number,title,updatedAt,labels,url
+    gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' \
+      -q '.[]|[.number,.title,.updated_at,.draft,.head.ref,.html_url]|@tsv'
+    gh api 'repos/{owner}/{repo}/issues?state=open&per_page=100' \
+      -q '.[]|select(.pull_request|not)|[.number,.title,.updated_at,([.labels[].name]|join(",")),.html_url]|@tsv'
 
-`updatedAt` が `limits.stale_days` 日より前のものを挙げる。どこで止まっているか（レビュー待ち・CI の失敗・
+（`gh pr list` / `gh issue list` は GraphQL を使い、クラウドの実行環境では 403 になるので、REST で読む）
+
+`updated_at` が `limits.stale_days` 日より前のものを挙げる。どこで止まっているか（レビュー待ち・CI の失敗・
 ドラフトのまま など）を、取れた情報の範囲で1行で書く。
 
 ### d. 仕分け
@@ -140,17 +150,33 @@ a〜c の全項目を「急ぎ／今週中／放置可」に分け、項目ご�
 仕分けが変わった（直せる → リリース待ち など）、件数が増えた、新しい CVE が加わったときは、その差分だけを書く。
 前回あって今回ないものは「解消」と1行書く。
 
+## GitHub の読み方
+
+上の手順は gh で書いてある。gh はこのリポジトリのローカルでも、claude.ai の Routine（クラウド）でも使える。
+クラウドでは `gh auth status` が「GH_TOKEN が無効」と出るが、REST（Actions の実行・ジョブ・ログ、`gh api` の
+PR・Issue）は通る。GraphQL（`gh pr list` など）とコードスキャンの alert は通らない。
+
+gh の REST が通らないときだけ、GitHub コネクタの**読み取り**のツールで代える。
+
+| 手順 | 代わりのツール |
+|---|---|
+| a1・b の実行の一覧 | `mcp__github__actions_list`（`list_workflow_runs`、`resource_id` にワークフローのファイル名） |
+| a1・b のジョブ | `mcp__github__actions_list`（`list_workflow_jobs`、`resource_id` に実行の ID） |
+| a2・a3・b のログ | `mcp__github__get_job_logs`（失敗したジョブだけ。出力は上の `sed` / `grep` / `awk` と同じ絞り方で読む） |
+| c の PR・Issue | `mcp__github__list_pull_requests` / `mcp__github__list_issues` |
+
+どちらでも Actions の実行・ジョブ・ログが読めなかったら、推測で報告を作らない。エラーの内容と、何が読めなかったかを
+書き、判定を ESCALATE_HUMAN にする。PR・Issue だけが読めなかったときは c を「読めなかった」とし、「要確認」に書いて続ける。
+
 ## 制約
 
 - ログの全文を貼らない・読まない。読むのは失敗したステップの、上のコマンドで絞った周辺だけ（`limits.failed_log_lines`）
-- 使ってよいのは読み取りの操作だけ: `gh run list` / `gh run view` / `gh pr list` / `gh issue list` /
-  `gh api` の GET / `git fetch` / `git show` / `git log` / `git rev-list`。
+- 使ってよいのは読み取りの操作だけ: `gh run list` / `gh run view` / `gh api` の GET / `git fetch` / `git show` /
+  `git log` / `git rev-list`、上の表の GitHub コネクタのツール、Notion の読み取り（`notion-query-data-sources` / `notion-fetch`）。
   **`gh run rerun` `gh workflow run` `gh pr create` `gh issue create` `gh api -X POST|PATCH|PUT|DELETE`、
-  `git commit` `git push` `git checkout` `git switch` などは使わない**
+  `git commit` `git push` `git checkout` `git switch`、GitHub コネクタの書き込みのツール（`actions_run_trigger`
+  `create_pull_request` `merge_pull_request` `issue_write` `add_issue_comment` など、作成・更新・実行・マージをするもの）は使わない**
 - 分からないことは推測で埋めず「要確認」に書く
-- gh で Actions やコードスキャンが読めなかったら、推測で報告を作らない。エラーの内容と足りない権限
-  （例: コードスキャンの alert は `repo`（非公開リポジトリ）または `security_events` スコープ）を書き、
-  判定を ESCALATE_HUMAN にする
 - **全部緑で新しい項目も無ければ、本文は「異常なし」の1行だけにして終える**（判定は「新規なし」）。
   全部緑とは、Security Scan の両ジョブ・b の各ワークフローの直近が成功で、止まっている PR・Issue が無いこと
 
