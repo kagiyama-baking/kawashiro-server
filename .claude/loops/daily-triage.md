@@ -4,7 +4,7 @@ schedule: "毎日 07:00 JST（cron 0 22 * * * UTC）。Security Scan（JST 0:00�
 level: L1
 checker: "git status --porcelain が空、かつ HEAD が開始時の BASE と同じ（→ run-loop ④）"
 report_to: "予定タスクの実行結果（最終メッセージ）と Notion の実行ログ（→ run-loop ⑥）"
-notion_loop: "https://app.notion.com/418ddfb6fd8d804bacebcf56ddf88533"  # DB_ループの daily-triage の行（→ run-loop ②⑥）
+notion_loop: "https://app.notion.com/418ddfb6fd8d804bacebcf56ddf88533"  # DB_ループの daily-triage の行（→ run-loop ⑥）
 connectors: [Notion]
 requires: "gh（repo スコープ。Actions の実行結果とコードスキャンの alert を読む）"
 limits:
