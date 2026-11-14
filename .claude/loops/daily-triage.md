@@ -45,7 +45,10 @@ Notion の `DB_Claude 実行ログ`（`collection://4a6bf552-978b-4f2c-88d3-7765
 
 2. `Scan image` が落ちたジョブは、失敗したステップの表の見出しと件数だけを読む（`limits.failed_log_lines` 行まで）
 
-       gh run view --job <JOB_ID> --log-failed | cut -f3- | grep -E -A2 '^\S+ \((alpine|debian|ubuntu|python-pkg|node-pkg)[^)]*\)$|Total: [0-9]+' | head -n 60
+       gh run view --job <JOB_ID> --log-failed | cut -f3- | sed -E 's/^[0-9T:.-]+Z //' \
+         | grep -E -A2 '^\S+ \((alpine|debian|ubuntu|python-pkg|node-pkg)[^)]*\)$|Total: [0-9]+' | head -n 60
+
+   （各行の先頭にタイムスタンプが付くので、`sed` で外してから見出しを探す）
 
    見出しの括弧（`alpine 3.x` などは OS パッケージ、`python-pkg` などは言語のパッケージ）と、
    `Total: N (HIGH: n, CRITICAL: m)` を控える。
