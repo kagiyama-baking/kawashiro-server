@@ -4,6 +4,7 @@ schedule: "毎日 07:00 JST（cron 0 22 * * * UTC）。Security Scan（JST 0:00�
 level: L1
 checker: "git status --porcelain が空、かつ HEAD が開始時の BASE と同じ（→ run-loop ④）"
 report_to: "予定タスクの実行結果（最終メッセージ）と Notion の実行ログ（→ run-loop ⑥）"
+notion_loop: "https://app.notion.com/418ddfb6fd8d804bacebcf56ddf88533"  # DB_ループの daily-triage の行（→ run-loop ②⑥）
 connectors: [Notion]
 requires: "gh（repo スコープ。Actions の実行結果とコードスキャンの alert を読む）"
 limits:
@@ -26,9 +27,14 @@ limits:
 
 ### 0. 前回の実行ログを読む
 
-Notion の `DB_Claude 実行ログ`（`collection://4a6bf552-978b-4f2c-88d3-77657e77236f`）から、名前が
-`[kawashiro-server] daily-triage ` で始まる行を実行日の新しい順に `limits.previous_logs` 件引き、本文を読む
-（`notion-query-data-sources` の SQL → `notion-fetch`）。`[test]` で始まる行は対象外。
+Notion の `DB_Claude 実行ログ`（`collection://4a6bf552-978b-4f2c-88d3-77657e77236f`）から、「ループ」が
+`notion_loop` の行を指している行を、実行日の新しい順に `limits.previous_logs` 件引き、本文を読む
+（`notion-query-data-sources` の SQL → `notion-fetch`）。名前が `[test]` で始まる行は対象外。
+
+    SELECT url, "名前", "date:実行日:start" FROM "collection://4a6bf552-978b-4f2c-88d3-77657e77236f"
+    WHERE "ループ" LIKE ? AND "名前" NOT LIKE '[test]%'
+    ORDER BY "date:実行日:start" DESC LIMIT 1
+    -- params: ["%418ddfb6fd8d804bacebcf56ddf88533%"]（notion_loop の末尾の ID。「ループ」はページ URL の JSON 配列）
 
 - 前回の各項目のキー（下の「項目のキー」）と、初めて出た日（「継続（MM-DD〜）」の日付。無ければその回の実行日）を控える
 - 前回の行が無い、または読めないときは全項目を新規として扱い、読めなかったことを「要確認」に書く
