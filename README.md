@@ -80,7 +80,7 @@ LLM 周辺は「接続（どのモデル・どの鍵）」「プロンプト（�
 kawashiro-server/
 ├── docker-compose.yml           # 開発用 Compose 設定
 ├── docker-compose.gpu.yml       # NVIDIA GPU ホスト用オーバーレイ（sbv2-api を CUDA 化）
-├── docs/                        # 横断運用ガイド（開発・デプロイ・初期セットアップ）
+├── docs/                        # 横断運用ガイド（開発・デプロイ・初期セットアップ・定期実行のループ）
 ├── .github/workflows/           # CI/CD（build / release / pr-checks / security-scan / cleanup-images）
 ├── frontend/                    # React SPA（Vite + TypeScript + Tailwind）
 ├── django_api/                  # Django REST API（core / user / health / integrations / features）
@@ -232,6 +232,7 @@ Playwright E2E などの詳細は [docs/development.md](docs/development.md) を
 | ローカル開発・テスト実行・検証環境の落とし穴 | [docs/development.md](docs/development.md) |
 | CI/CD・デプロイ・Secrets・タグ運用・ロールバック | [docs/deployment.md](docs/deployment.md) |
 | 初期セットアップ（管理画面の設定投入・定期タスク登録） | [docs/initial-setup.md](docs/initial-setup.md) |
+| Claude Code の定期実行のループ（結果の仕分け・依頼の修正）の運用 | [docs/loops.md](docs/loops.md) |
 | Django API の機能一覧・管理画面ガイド | [django_api/README.md](django_api/README.md) |
 | LLM / LiteLLM / Langfuse の構成と命名規約 | [django_api/integrations/llm/README.md](django_api/integrations/llm/README.md) |
 | Talk（Talk 設定・チャットセッション）の仕様 | [django_api/features/talk/README.md](django_api/features/talk/README.md) |

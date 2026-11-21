@@ -37,7 +37,7 @@ kawashiro-server/
 │   └── Dockerfile           # Python 3.13-alpine ベース
 ├── sbv2_api/                # Style-BERT-VITS2 音声合成サーバー（FastAPI）
 ├── frontend/                # React SPA（Vite + TypeScript + Tailwind、nginx配信）
-├── docs/                    # 横断運用ガイド（development / deployment / initial-setup）
+├── docs/                    # 横断運用ガイド（development / deployment / initial-setup / loops）
 ├── docker-compose.yml       # 開発環境用
 ├── docker-compose.gpu.yml   # NVIDIA GPUホスト用オーバーレイ（sbv2-api をCUDA化）
 ├── secrets/                 # ローカル専用の鍵置き場（Git追跡外・compose未マウント）
@@ -60,6 +60,7 @@ kawashiro-server/
 | ローカル開発・テスト実行・SQLite フォールバック等の落とし穴 | `docs/development.md` |
 | CI/CD 詳細・デプロイ・Secrets・タグ運用・ロールバック | `docs/deployment.md` |
 | 初期セットアップ（createsuperuser → admin 投入順 → 定期タスク登録） | `docs/initial-setup.md` |
+| Claude Code の定期実行のループ（daily-triage・handle-request）の予定タスクの設定・依頼の書き方・dry-run・判定の読み方 | `docs/loops.md`（手順の正は `.claude/loops/` と `.claude/skills/run-loop/SKILL.md`） |
 | API 一覧（アプリ × エンドポイント）・管理画面ガイド | `django_api/README.md` |
 | LLM/LiteLLM/Langfuse 3 レイヤ・admin 設定モデル（Prompts の Prompt・Agent Skills の AgentSkill を含む）・プロンプト命名規約 | `django_api/integrations/llm/README.md` |
 | Talk 設定（TalkSetting）・チャットセッション仕様（SSE のイベント・失敗と停止の挙動） | `django_api/features/talk/README.md` |

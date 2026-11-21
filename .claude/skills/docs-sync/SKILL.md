@@ -53,6 +53,7 @@ description: コード変更に伴うドキュメント更新チェック。コ�
 | `frontend/nginx.conf` | `frontend/README.md`（media の上限に影響する場合は `django_api/features/media/README.md` も） |
 | `sbv2_api/server.py`・`config.yml`・`Dockerfile` | `sbv2_api/README.md`（API・モデル配置・環境変数・GPU 切替） |
 | `secrets/` の鍵ファイル追加・改名 | `docs/initial-setup.md`（MS Graph 節） |
+| `.claude/loops/`・`.claude/skills/run-loop/`（ループの追加・段階・Checker・触らないパス・行の更新・予定タスクの指示文に関わる変更） | `docs/loops.md`（分担が変わるなら `docs/deployment.md` の責務境界の表も） |
 | ドキュメントの新規追加・移動 | `.claude/CLAUDE.md` ドキュメントマップ + ルート `README.md` ドキュメントマップ + 本ファイルの対応マップ |
 
 ## ドキュメント更新不要と判断できる条件

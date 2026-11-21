@@ -18,7 +18,8 @@ kawashiro-server の CI/CD・デプロイ・リリースに関する唯一の正
 | **本番コンテナの pull と再作成** | **GitHub Actions** | `release.yml` / `deploy`（Tailscale + SSH） |
 | 脆弱性の継続監視 | GitHub Actions | `security-scan.yml`（毎日） |
 | GHCR の容量管理 | GitHub Actions | `cleanup-images.yml`（毎週） |
-| Security Scan・CI の結果の仕分けと報告（読むだけ） | Claude Code の予定タスク | `.claude/loops/daily-triage.md`（毎朝。`run-loop` スキルで実行し、Notion の実行ログに残す） |
+| Security Scan・CI の結果の仕分けと報告（読むだけ） | Claude Code の予定タスク | `.claude/loops/daily-triage.md`（毎朝。`run-loop` スキルで実行し、Notion の実行ログに残す。運用は [loops.md](loops.md)） |
+| Notion の依頼を 1 件直して `develop` 宛の PR にする（マージ・デプロイはしない） | Claude Code の予定タスク | `.claude/loops/handle-request.md`（検証役つき。CI・デプロイ・コンテナの構成・環境変数には触れない。運用は [loops.md](loops.md)） |
 
 > 補足: `release.yml` に `deploy` ジョブが追加される以前は「本番デプロイは Ansible が担当」でした。古い記述を見かけたら上表が正です。
 
