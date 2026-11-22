@@ -16,8 +16,10 @@ FROM nginx:alpine AS base
 # build.yml の no-cache-filters: base で OS パッケージの更新を毎回実行する。
 # nginx:alpine 同梱の curl/libcurl は修正版以上を必須にする
 # （CVE-2026-92392 対応。リポジトリに未提供ならビルドを失敗させる）。
+# libxml2 も同様に修正版以上を必須にする（CVE-2026-86144 対応）。
 RUN apk upgrade --no-cache && \
-    apk add --no-cache 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0'
+    apk add --no-cache 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' \
+        'libxml2>=2.13.9-r3'
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
