@@ -53,6 +53,12 @@ RUN uv pip install \
 RUN python -c "from huggingface_hub import snapshot_download; \
     snapshot_download('ku-nlp/deberta-v2-large-japanese-char-wwm', local_dir='/app/bert/deberta-v2-large-japanese-char-wwm')"
 
+# pyopenjtalk の辞書をイメージに含める
+# 辞書は初回の合成時に GitHub からダウンロードされる。イメージに含めないと、コンテナを作り直すたびに
+# 取り直しになり、ネットワークに出られないと合成が 500 になる。辞書がなければビルドを止める
+RUN python -c "import os, pyopenjtalk; pyopenjtalk.g2p('テスト'); \
+    assert os.path.isdir(pyopenjtalk.OPEN_JTALK_DICT_DIR), pyopenjtalk.OPEN_JTALK_DICT_DIR"
+
 # Style-BERT-VITS2のデフォルトパスを設定
 ENV DEFAULT_BERT_TOKENIZER_PATH="/app/bert/deberta-v2-large-japanese-char-wwm"
 
