@@ -6,6 +6,7 @@
 
 - **FastAPI の薄いラッパー**（`server.py` 1 ファイル）。推論エンジンは `style-bert-vits2==2.5.0` に委譲します
 - **起動時に全モデルをプリロード**します。lifespan で日本語 BERT（`ku-nlp/deberta-v2-large-japanese-char-wwm`）をロードした後、`model_assets/` 配下の全 TTS モデルを読み込むため、初回リクエストのレイテンシがありません。プリロードに失敗したモデルは警告ログを残してスキップされ、起動自体は継続します
+- **BERT と pyopenjtalk の辞書はイメージに含めています**（Dockerfile でビルド時にダウンロード）。実行時はインターネットに出られなくても合成できます
 - **CPU 推論がデフォルト**です。GPU 非搭載ホストでもそのまま動作し、NVIDIA GPU ホストではビルド引数と環境変数で CUDA に切り替えます（[CPU / GPU 切替](#cpu--gpu-切替)）
 - **内部サービスのため認証・CORS はありません**。コンテナネットワーク内からのみアクセスされる前提です。Django からは `django_api/integrations/tts/client.py` が `TTS_SERVICE_URL`（既定 `http://sbv2-api:5000`）に対して `POST /synthesize` を呼びます
 
@@ -103,6 +104,8 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
 毎回 `-f` を並べる代わりに、リポジトリルートの `.env` に `COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml` を設定しておく方法もあります（開発機ではこの方式を採用）。
+
+> **Warning:** `docker-compose.gpu.yml` は差分だけのオーバーレイです。`docker compose -f docker-compose.gpu.yml up -d` のように単独で指定すると、ポート・モデルのマウント・`container-network` のない別のコンテナ（`kawashiro-server-sbv2-api-1`）が作られ、Django から合成できません。`-f` を並べるか、`.env` の `COMPOSE_FILE` を使ってください（`-f` を付けると `COMPOSE_FILE` は無視されます）。
 
 > **Note:** `style-bert-vits2` の公式推奨は torch `<2.4` ですが、GPU 構成では RTX 4080 上で 2.5.1 の動作・音質・速度を実測検証済みです。問題が起きた場合は `docker-compose.gpu.yml` の `TORCH_VERSION` 行を削除すれば既定の 2.3.1 に戻ります。
 
