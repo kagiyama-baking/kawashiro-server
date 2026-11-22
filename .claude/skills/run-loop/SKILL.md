@@ -261,7 +261,7 @@ L2 は Checker の節を次の形にする（判定は④の L2 の表）。
 | 実行日 | JST の実行日（`date:実行日:start` に日付だけ、`date:実行日:is_datetime` は 0） |
 | 判定 | ④の判定。L1 は `APPROVE` / `ESCALATE_HUMAN` / `新規なし`。L2 は `APPROVE` / `REJECT` / `ESCALATE_HUMAN` |
 | push | L1 は常に `なし`。L2 は、push したら `済`、Checker が退けて push しなかったら `止めた`、変更を作らずに終えたら `なし` |
-| 要確認 | 判定が ESCALATE_HUMAN なら常に `__YES__`。L1 は、ループ定義が決めていればそれに従う（daily-triage の「要確認のチェック」）。決めていなければ、報告に「急ぎ」の項目か「要確認」の項目が1つでもあれば `__YES__`。L2 は判定が APPROVE 以外なら `__YES__`（細かくはループ定義の結末の表）。それ以外は `__NO__` |
+| 要確認 | 判定が ESCALATE_HUMAN なら常に `__YES__`。L1 は、ループ定義が決めていればそれに従う（daily-triage の「要確認のチェック」）。決めていなければ、報告に「急ぎ」の項目か「要確認」の項目が1つでもあれば `__YES__`。L2 は判定が APPROVE 以外なら `__YES__`（細かくはループ定義の結果の表）。それ以外は `__NO__` |
 | コミット | L1 は空。L2 は push したときだけ、push した HEAD のコミットの URL（`https://github.com/<owner>/<repo>/commit/<ハッシュ>`） |
 
 本文は⑤の報告の全文（最終メッセージと同じもの。Checker の節の「実行ログ」の行は「この行」とする）。
